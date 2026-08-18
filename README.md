@@ -1,143 +1,92 @@
-# AI-Powered Smart Queue Plugin — Setup & Test Guide
+# 🤖 AI-Powered Smart Queue Management System
 
-## Project layout
+A multi-tenant, AI-powered Queue Management System built with **FastAPI**, **Socket.IO**, **SQLite**, **Scikit-Learn**, and **React**. Supports embeddable widgets, arbitrary customer dataset ingestion with automatic column standardization, multi-model ensemble training, priority triage jumping, dedicated user/admin pages, and a QR code kiosk system.
 
-```
-queue-plugin/
+---
+
+## 📁 Repository Structure
+
+```text
+AI-queue-System/
+├── .gitignore               # Excludes node_modules, venv, dist, sqlite DBs, .env
+├── README.md                # Project documentation
 ├── backend/
-│   ├── train_model.py       # generates synthetic data + trains RandomForest
-│   ├── queue_engine.py       # PluginQueueEngine: min-heap + ML predictions
-│   ├── main.py                # FastAPI + Socket.IO server
-│   ├── requirements.txt
-│   └── queue_predictor.pkl   # created after you run train_model.py
+│   ├── main.py              # FastAPI + Socket.IO REST & WebSocket Server
+│   ├── queue_engine.py      # Core Min-Heap Priority Queue Engine & SQLite Persistence
+│   ├── schema_validator.py  # Canonical Schema & Slashed Column Auto-Detection Engine
+│   ├── data_importer.py     # Flexible CSV/Excel Historical Data Importer
+│   ├── train_model.py       # Multi-Model Ensemble Evaluator (ExtraTrees, RF, HGB)
+│   ├── requirements.txt     # Python Dependencies
+│   └── models/              # Hierarchical Trained ML Model Registry
+│       └── global/
+│           ├── queue_predictor.pkl
+│           └── metadata.json
 └── frontend/
-    ├── QueuePluginWidget.jsx  # the embeddable widget
-    └── App.jsx                 # mock host site + staff dashboard demo
+    ├── index.html           # HTML Entrypoint
+    ├── main.jsx            # React Entry Point
+    ├── App.jsx              # Multi-Page Navigation App (User, Admin, ML Studio, Embed, QR)
+    ├── QueuePluginWidget.jsx # Glassmorphism Embeddable Queue Widget
+    ├── package.json         # Frontend Dependencies
+    └── vite.config.js       # Vite Configuration
 ```
 
-## 1. Backend setup
+---
+
+## 🚀 Quickstart & Installation
+
+### 1. Backend Setup (FastAPI + Socket.IO)
 
 ```bash
-cd queue-plugin/backend
-python3 -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+cd backend
+python -m venv venv
+venv\Scripts\activate        # macOS/Linux: source venv/bin/activate
 
 pip install -r requirements.txt
 ```
 
-## 2. Train the ML wait-time model
+### 2. Train Initial Baseline ML Model
 
 ```bash
 python train_model.py
 ```
+*Evaluates GradientBoosting, ExtraTrees, and RandomForest models and saves `models/global/queue_predictor.pkl`.*
 
-You should see output like:
-
-```
-Model trained. Test MAE: 1.6 minutes
-Saved trained model bundle -> queue_predictor.pkl
-```
-
-This creates `queue_predictor.pkl`, which `queue_engine.py` loads automatically
-on startup. **You must run this once before starting the server** — if the
-file is missing, the engine falls back to a flat 10-minute estimate so the
-app still runs, just without real predictions.
-
-## 3. Start the backend server
+### 3. Start Backend Server
 
 ```bash
-uvicorn main:socket_app --reload --port 8000
+python -m uvicorn main:socket_app --port 8000
 ```
+*Health Check URL:* `http://localhost:8000/health`
 
-Check it's alive:
+---
+
+### 4. Frontend Setup (React + Vite)
 
 ```bash
-curl http://localhost:8000/health
-# {"status":"ok"}
-```
-
-## 4. Frontend setup
-
-The widget expects a React project with `socket.io-client` installed:
-
-```bash
-cd queue-plugin/frontend
-npm install react react-dom socket.io-client
-```
-
-Drop `QueuePluginWidget.jsx` into your app, and `App.jsx` shows exactly how
-a host site would use it. If you're just testing quickly, wire `App.jsx`
-into a fresh Vite/CRA project's entry point.
-
-```bash
-npm create vite@latest queue-demo -- --template react
-cd queue-demo
-npm install socket.io-client
-# then copy QueuePluginWidget.jsx and App.jsx into src/, replacing the defaults
+cd frontend
+npm install
 npm run dev
 ```
+*App Access URL:* `http://localhost:5173/`
 
-## 5. Test priority queue-jumping across multiple tabs
+---
 
-This is the key demo moment — proving the min-heap actually reorders live.
+## 🌟 Key Features
 
-1. Open `http://localhost:5173` (or whatever port Vite gives you) in **3
-   separate browser tabs**.
-2. In **Tab 1**, click "Demo: Hospital Mode", join the queue as "Alice",
-   category = `consultation`, urgency = `Routine`.
-3. In **Tab 2**, join as "Bob", category = `pharmacy`, urgency = `Routine`.
-4. Watch both tabs — each shows its live position and estimated wait.
-5. In **Tab 3**, join as "Dan", category = `emergency`, urgency =
-   `Emergency`.
-6. **Watch Tabs 1 and 2 update instantly** — Dan jumps to position #1, and
-   Alice/Bob's positions shift down and their estimated wait times increase.
-   This is `recalculate_wait_times()` firing and broadcasting over the
-   `queue_update` Socket.IO event to every tab in that tenant's room.
-7. On the Staff Dashboard (visible at the top of `App.jsx`'s page), click
-   **"Call Next (priority order)"** — it should serve Dan first, since he's
-   priority 1, even though he joined last.
+### 1. Dedicated Multi-Page Portal
+* **📱 Customer Queue Portal**: Self-checkin kiosk, priority triage selection (`🚨 Emergency (Priority 1)` vs `📋 Routine (Priority 2)`), digital boarding pass countdown timer, and audio chime alerts.
+* **🛡️ Staff Admin Dashboard**: Real-time Analytics Cards, active counter count controls, **Call Next Priority Ticket**, Now Serving desk monitor, and live queue table.
+* **📊 ML Studio & Training**: Historical CSV/Excel dataset upload, auto-detected column badges, custom column mapping overrides, validation breakdown box, and active model health card.
+* **🔌 Plugin & Embed Portal**: Copy-paste 1-line JavaScript embed snippet generator and live floating widget preview.
+* **🔲 QR Kiosk & Scanner**: Kiosk QR code generator and staff QR ticket scanner.
 
-## 6. Test bank category-partitioned FIFO
+### 2. Multi-Tenant Custom Dataset Standardization
+* Accepts CSV / Excel files with arbitrary column names (e.g. `Timestamp / Date-Time`, `Queue Length / Waiting Count`, `Active Counters / Staff`, `Service Category / Department`, `Service Duration / Handling Time`).
+* Case-insensitive normalization, fuzzy alias matching, sub-token compound header parser, and data validation engine (rejection rules, unit conversion, feature derivation).
+* Automatically falls back to Global Model if custom tenant dataset is under 500 rows.
 
-1. Switch to "Demo: Bank Mode".
-2. Join as "Eve", category = `cash`.
-3. Join as "Frank", category = `loan`.
-4. Join as "Grace", category = `cash`.
-5. Confirm Grace's estimated wait only accounts for Eve (same category),
-   not Frank — categories run as independent FIFO lines.
-6. On the Staff Dashboard, click **"Call Next — cash"**: only Eve or Grace
-   should be served, never Frank.
+---
 
-## 7. Verifying the backend logic directly (no frontend needed)
+## ⚙️ License & Author
 
-If you want to sanity-check the engine without spinning up React at all:
-
-```bash
-cd backend
-python3 -c "
-from queue_engine import engine
-engine.join_queue('demo', 'hospital', 'consultation', 'Alice', priority_level=2)
-engine.join_queue('demo', 'hospital', 'emergency', 'Dan', priority_level=1)
-engine.recalculate_wait_times('demo')
-for t in engine.get_queue_snapshot('demo'):
-    print(t)
-"
-```
-
-Dan should print with `position: 1` even though Alice joined first.
-
-## Notes for production hardening (out of scope for the demo, but worth
-## knowing before you actually deploy this)
-
-- **Persistence**: `PluginQueueEngine` currently stores everything in memory
-  — a server restart wipes all queues. Swap in Redis or Postgres-backed
-  storage for real deployments.
-- **CORS**: `main.py` currently allows `*`. Restrict `allow_origins` to the
-  specific host domains you trust before going live.
-- **Auth**: there's no tenant authentication yet — anyone who knows a
-  `tenant_id` string can join/serve on it. Add an API key or JWT check per
-  tenant for a real multi-tenant SaaS.
-- **Model retraining**: `train_model.py` uses synthetic data. In production,
-  replace `generate_synthetic_dataset()` with a query against your real
-  historical ticket logs, and retrain periodically (e.g. nightly) as more
-  real data accumulates.
+Developed for **AI Queue System** — Multi-Tenant SaaS & Embedded Plugin Platform.

@@ -1,29 +1,41 @@
-# Node
+# Node / Frontend
 node_modules/
+dist/
+build/
+.output/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
-# Frontend build
-dist/
-build/
-
-# Python
+# Python / Backend
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
 .venv/
 venv/
+ENV/
+env/
 
-# Environment variables
-.env
-.env.*
-
-# Python generated files
-*.pkl
-
-# Local database
+# SQLite & Data
 *.db
+*.sqlite
+*.sqlite3
 
-# OS
+# Test Scratch Files
+test_user_*.py
+scratch/
+
+# OS / IDE Junk
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
