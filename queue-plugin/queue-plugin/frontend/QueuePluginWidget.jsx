@@ -51,8 +51,8 @@ export default function QueuePluginWidget({
   tenantId = "city-hospital-01",
   consumerType = "hospital",
   defaultCategories = ["consultation", "pharmacy", "emergency"],
-  apiBaseUrl = "http://localhost:8000",
-  wsUrl = "http://localhost:8000",
+  apiBaseUrl = "http://127.0.0.1:8000",
+  wsUrl = "http://127.0.0.1:8000",
 }) {
   const [isOpen, setIsOpen] = useState(true);
   const [name, setName] = useState("");

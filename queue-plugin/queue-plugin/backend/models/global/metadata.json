@@ -1,0 +1,66 @@
+{
+  "tenant_id": "global",
+  "is_tenant_specific": false,
+  "model_type": "GradientBoosting",
+  "training_rows": 3000,
+  "mae": 2.64,
+  "r2": 0.889,
+  "metrics": {
+    "GradientBoosting": {
+      "MAE": 2.636,
+      "RMSE": 3.303,
+      "R2": 0.889
+    },
+    "RandomForest": {
+      "MAE": 2.909,
+      "RMSE": 3.758,
+      "R2": 0.8562
+    },
+    "ExtraTrees": {
+      "MAE": 2.874,
+      "RMSE": 3.783,
+      "R2": 0.8543
+    }
+  },
+  "top_features": {
+    "service_category_dentist": 0.2511,
+    "service_category_license_renewal": 0.1217,
+    "complexity_score": 0.1117,
+    "service_category_cash": 0.1108,
+    "service_category_inquiry": 0.1087,
+    "service_category_pharmacy": 0.0752,
+    "service_category_emergency": 0.0679,
+    "service_category_loan": 0.046
+  },
+  "feature_columns": [
+    "hour_of_day",
+    "day_of_week",
+    "queue_length",
+    "active_staff_counters",
+    "is_peak_hour",
+    "complexity_score",
+    "historical_avg_speed",
+    "consumer_type_bank",
+    "consumer_type_clinic",
+    "consumer_type_government",
+    "consumer_type_hospital",
+    "service_category_account_opening",
+    "service_category_cash",
+    "service_category_consultation",
+    "service_category_dentist",
+    "service_category_document_verification",
+    "service_category_emergency",
+    "service_category_general_checkup",
+    "service_category_inquiry",
+    "service_category_lab_test",
+    "service_category_license_renewal",
+    "service_category_loan",
+    "service_category_pediatrics",
+    "service_category_pharmacy",
+    "service_category_radiology",
+    "service_category_vip_desk"
+  ],
+  "feature_schema_version": "1.0",
+  "data_source": "synthetic",
+  "trained_at": "2026-08-14 12:02:20"
+}

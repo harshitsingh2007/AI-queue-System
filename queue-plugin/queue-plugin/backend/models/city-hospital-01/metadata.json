@@ -1,0 +1,76 @@
+{
+  "tenant_id": "city-hospital-01",
+  "is_tenant_specific": true,
+  "model_type": "ExtraTrees",
+  "training_rows": 2041,
+  "mae": 2.44,
+  "r2": 0.9122,
+  "metrics": {
+    "ExtraTrees": {
+      "MAE": 2.436,
+      "RMSE": 3.714,
+      "R2": 0.9122,
+      "Fit_Time_Sec": 0.269
+    },
+    "HistGradientBoosting": {
+      "MAE": 3.108,
+      "RMSE": 4.284,
+      "R2": 0.8832,
+      "Fit_Time_Sec": 3.355
+    },
+    "RandomForest": {
+      "MAE": 2.743,
+      "RMSE": 3.932,
+      "R2": 0.9016,
+      "Fit_Time_Sec": 0.189
+    }
+  },
+  "top_features": {
+    "staff_load_ratio": 0.3295,
+    "effective_workload": 0.1384,
+    "counter_capacity_index": 0.0991,
+    "active_staff_counters": 0.0987,
+    "service_category_pharmacy": 0.051,
+    "service_category_Technical Support": 0.0388,
+    "queue_length": 0.0312,
+    "service_category_registration": 0.0279
+  },
+  "feature_columns": [
+    "queue_length",
+    "active_staff_counters",
+    "complexity_score",
+    "hour_of_day",
+    "day_of_week",
+    "is_peak_hour",
+    "sin_hour",
+    "cos_hour",
+    "sin_day",
+    "cos_day",
+    "staff_load_ratio",
+    "effective_workload",
+    "counter_capacity_index",
+    "is_weekend",
+    "consumer_type_city-hospital-01",
+    "service_category_Account Services",
+    "service_category_Admissions",
+    "service_category_Banking",
+    "service_category_Billing",
+    "service_category_Customer Support",
+    "service_category_Documentation",
+    "service_category_Government Services",
+    "service_category_Healthcare",
+    "service_category_Returns & Refunds",
+    "service_category_Technical Support",
+    "service_category_billing",
+    "service_category_consultation",
+    "service_category_diagnostics",
+    "service_category_emergency",
+    "service_category_lab_test",
+    "service_category_pharmacy",
+    "service_category_radiology",
+    "service_category_registration"
+  ],
+  "feature_schema_version": "2.0_engineered",
+  "data_source": "historical_upload",
+  "trained_at": "2026-08-18 21:40:38"
+}

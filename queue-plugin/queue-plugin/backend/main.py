@@ -8,24 +8,31 @@ Endpoints & Real-time Features:
 - Complete Queue Lifecycle (Join, Serve, Complete, No-Show, Cancel)
 - Dynamic Counter Adjustments
 - Real-Time Analytics API
-- On-Demand Incremental ML Retraining Endpoint
-- Base64 QR Code Generator Endpoint for Mobile Check-in
+- Base64 QR Code Generator Endpoint
+- Historical Data Preview, Ingestion, Validation & Auto Column Mapping APIs:
+  - `POST /api/v1/plugin/historical-data/preview`
+  - `POST /api/v1/plugin/historical-data/upload`
+  - `POST /api/v1/plugin/historical-data/train`
+  - `GET /api/v1/plugin/model-status/{tenant_id}`
 """
 
 import io
+import json
 import base64
-from fastapi import FastAPI, HTTPException
+import pandas as pd
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Dict, Any
 import socketio
 import qrcode
 
 from queue_engine import engine, PRIORITY_EMERGENCY, PRIORITY_ROUTINE, PRIORITY_STANDARD
-from train_model import retrain_model_from_logs
+from schema_validator import detect_column_mappings, validate_and_transform_dataframe
+from train_model import train_model_for_tenant, get_tenant_model_info, MIN_TRAINING_ROWS
 
-app = FastAPI(title="AI Queue Plugin API", version="2.0.0")
+app = FastAPI(title="AI Queue Plugin API", version="2.5.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,10 +45,10 @@ app.add_middleware(
 # Pydantic Schemas
 # ---------------------------------------------------------------------------
 class JoinRequest(BaseModel):
-    tenant_id: str = Field(..., example="city-hospital-01")
-    consumer_type: str = Field(..., example="hospital")
-    service_category: str = Field(..., example="consultation")
-    name: str = Field(..., example="Priya Sharma")
+    tenant_id: str = Field(..., json_schema_extra={"example": "city-hospital-01"})
+    consumer_type: str = Field(..., json_schema_extra={"example": "hospital"})
+    service_category: str = Field(..., json_schema_extra={"example": "consultation"})
+    name: str = Field(..., json_schema_extra={"example": "Priya Sharma"})
     urgency: Optional[str] = Field(None, description="'emergency' | 'routine'")
 
 class ServeNextRequest(BaseModel):
@@ -55,6 +62,9 @@ class TicketActionRequest(BaseModel):
 class CounterUpdateRequest(BaseModel):
     tenant_id: str
     active_counters: int
+
+class TrainTenantRequest(BaseModel):
+    tenant_id: str = "global"
 
 def _urgency_to_priority(consumer_type: str, urgency: Optional[str]) -> int:
     if consumer_type != "hospital":
@@ -76,7 +86,7 @@ async def _broadcast_queue_update(tenant_id: str):
         await sio.emit("turn_alert", {"tickets": alerts}, room=tenant_id)
 
 # ---------------------------------------------------------------------------
-# REST Endpoints
+# Core Queue & Counter Endpoints
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/plugin/join")
 async def join_queue(payload: JoinRequest):
@@ -144,24 +154,8 @@ async def get_queue(tenant_id: str):
         "serving": engine.get_serving_tickets(tenant_id)
     }
 
-@app.post("/api/v1/plugin/retrain")
-async def trigger_retrain():
-    """Triggers ML model retraining on accumulated operational service logs."""
-    logs = engine.fetch_all_service_logs()
-    bundle = retrain_model_from_logs(logs)
-    engine.reload_model_bundle()
-
-    return {
-        "success": True,
-        "model_name": bundle["model_name"],
-        "best_mae": bundle["best_mae"],
-        "trained_at": bundle["trained_at"],
-        "records_count": len(logs),
-    }
-
 @app.get("/api/v1/plugin/qr/{tenant_id}")
 async def generate_qr(tenant_id: str, host: Optional[str] = "http://localhost:5173"):
-    """Generates Base64 encoded QR Code data URI for host site check-in."""
     target_url = f"{host}?tenant={tenant_id}"
     qr = qrcode.QRCode(version=1, box_size=8, border=2)
     qr.add_data(target_url)
@@ -178,9 +172,153 @@ async def generate_qr(tenant_id: str, host: Optional[str] = "http://localhost:51
         "qr_code_base64": f"data:image/png;base64,{img_str}"
     }
 
+@app.get("/api/v1/plugin/ticket-qr/{ticket_id}")
+async def generate_ticket_qr(ticket_id: str, host: Optional[str] = "http://localhost:5173"):
+    target_url = f"{host}?ticket={ticket_id}"
+    qr = qrcode.QRCode(version=1, box_size=8, border=2)
+    qr.add_data(target_url)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="#0f172a", back_color="#ffffff")
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    img_str = base64.b64encode(buffered.getvalue()).decode()
+
+    return {
+        "ticket_id": ticket_id,
+        "target_url": target_url,
+        "qr_code_base64": f"data:image/png;base64,{img_str}"
+    }
+
+# ---------------------------------------------------------------------------
+# Historical Data Ingestion & Multi-Tenant ML Endpoints
+# ---------------------------------------------------------------------------
+def _read_uploaded_file(file: UploadFile) -> pd.DataFrame:
+    filename = file.filename.lower()
+    contents = file.file.read()
+    try:
+        if filename.endswith(".csv"):
+            return pd.read_csv(io.BytesIO(contents))
+        elif filename.endswith(".xlsx") or filename.endswith(".xls"):
+            return pd.read_excel(io.BytesIO(contents))
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format. Please upload a CSV or Excel (.xlsx) file.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error reading file '{file.filename}': {str(e)}")
+
+@app.post("/api/v1/plugin/historical-data/preview")
+async def preview_historical_data(
+    tenant_id: str = Form(...),
+    file: UploadFile = File(...)
+):
+    df = _read_uploaded_file(file)
+    detected_columns = list(df.columns)
+
+    suggested_mapping, unmapped, missing_required = detect_column_mappings(detected_columns)
+    val_result = validate_and_transform_dataframe(df, suggested_mapping, default_tenant_id=tenant_id)
+
+    # Prepare sample rows (first 5)
+    sample_df = df.head(5).fillna("")
+    sample_rows = sample_df.to_dict(orient="records")
+
+    return {
+        "tenant_id": tenant_id,
+        "detected_columns": detected_columns,
+        "suggested_mapping": suggested_mapping,
+        "unmapped_columns": unmapped,
+        "missing_required": missing_required,
+        "validation_summary": {
+            "total_rows": val_result["total_rows"],
+            "valid_rows": val_result["valid_rows"],
+            "rejected_rows": val_result["rejected_rows"],
+            "warnings": val_result["warnings"],
+            "errors": val_result["errors"],
+        },
+        "sample_rows": sample_rows
+    }
+
+@app.post("/api/v1/plugin/historical-data/upload")
+async def upload_historical_data(
+    tenant_id: str = Form(...),
+    mapping_json: Optional[str] = Form(None),
+    file: UploadFile = File(...)
+):
+    df = _read_uploaded_file(file)
+    mapping = {}
+
+    if mapping_json:
+        try:
+            mapping = json.loads(mapping_json)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid mapping JSON: {str(e)}")
+    else:
+        mapping, _, _ = detect_column_mappings(list(df.columns))
+
+    val_result = validate_and_transform_dataframe(df, mapping, default_tenant_id=tenant_id)
+    clean_df = val_result["clean_df"]
+
+    if clean_df is None or len(clean_df) == 0:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "tenant_id": tenant_id,
+                "message": "Data validation failed. No valid historical records could be parsed.",
+                "errors": val_result["errors"],
+                "warnings": val_result["warnings"],
+            }
+        )
+
+    # Save to SQLite
+    imported_count = engine.save_historical_records(tenant_id, clean_df)
+    engine.save_tenant_mapping(tenant_id, mapping)
+
+    # Check total historical rows in database
+    total_stored = len(engine.get_historical_records(tenant_id))
+    min_met = total_stored >= MIN_TRAINING_ROWS
+
+    return {
+        "success": True,
+        "tenant_id": tenant_id,
+        "imported_records": imported_count,
+        "total_stored_records": total_stored,
+        "rejected_records": val_result["rejected_rows"],
+        "warnings": val_result["warnings"],
+        "min_threshold_met": min_met,
+        "min_required_rows": MIN_TRAINING_ROWS,
+        "message": f"Successfully imported {imported_count} valid records into historical database. Total stored: {total_stored} records."
+    }
+
+@app.post("/api/v1/plugin/historical-data/train")
+async def train_historical_model(payload: TrainTenantRequest):
+    tenant_id = payload.tenant_id
+    records = engine.get_historical_records(tenant_id)
+
+    if records:
+        df = pd.DataFrame(records)
+    else:
+        df = None
+
+    meta = train_model_for_tenant(
+        tenant_id=tenant_id,
+        custom_df=df,
+        min_rows=MIN_TRAINING_ROWS,
+        data_source="historical_upload" if records else "synthetic"
+    )
+    engine.reload_model_cache(tenant_id)
+
+    if "analytics_update" in dir(sio):
+        await _broadcast_queue_update(tenant_id)
+
+    return meta
+
+@app.get("/api/v1/plugin/model-status/{tenant_id}")
+async def get_model_status(tenant_id: str):
+    return get_tenant_model_info(tenant_id)
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "2.0.0"}
+    return {"status": "ok", "version": "2.5.0"}
 
 # ---------------------------------------------------------------------------
 # Socket.IO Layer
@@ -247,13 +385,18 @@ async def set_counters(sid, data):
 
 @sio.event
 async def trigger_retrain(sid, data):
-    logs = engine.fetch_all_service_logs()
-    bundle = retrain_model_from_logs(logs)
-    engine.reload_model_bundle()
-    await sio.emit("retrain_complete", {
-        "model_name": bundle["model_name"],
-        "best_mae": bundle["best_mae"],
-        "trained_at": bundle["trained_at"]
-    }, to=sid)
+    tenant_id = data.get("tenant_id", "global")
+    records = engine.get_historical_records(tenant_id)
+    df = pd.DataFrame(records) if records else None
+
+    meta = train_model_for_tenant(tenant_id=tenant_id, custom_df=df)
+    engine.reload_model_cache(tenant_id)
+
+    await sio.emit("retrain_complete", meta, to=sid)
+    await _broadcast_queue_update(tenant_id)
 
 socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:socket_app", host="0.0.0.0", port=8000, reload=True)
