@@ -1,14 +1,14 @@
 /**
  * App.jsx
  * --------
- * AI-Powered Smart Queue Management System — Multi-Page SaaS Architecture.
+ * Decoupled Multi-Page Architecture for AI-Powered Hospital Queue System.
  *
- * Dedicated Separate Pages:
- * 1. 📱 User Queue Portal (Patient/Customer Join, Live Ticket Pass, Audio Chimes, Position Countdown)
- * 2. 🛡️ Staff Admin Dashboard (Counter Control, Call Next Priority Ticket, Serving Monitor, Queue Table, Real-Time Analytics)
- * 3. 📊 ML Data & Training Studio (CSV/Excel Upload, Standardization Engine, Multi-Model Ensemble Trainer, Model Health Card)
- * 4. 🔌 Plugin & Embed Portal (Copy-Paste JS Embed Code, Kiosk Mode, Floating Glassmorphism Preview)
- * 5. 🔲 QR Code Kiosk & Scanner (Tenant Kiosk QR Generator, Scanner Simulator, Mobile Ticket Boarding Pass)
+ * Dedicated Independent Pages (Not Inter-linked):
+ * 1. 📱 Patient Check-in Portal (`?page=patient` or `/patient`)
+ * 2. 🛡️ Doctor & Staff Desk Dashboard (`?page=staff` or `/staff`)
+ * 3. 📊 Hospital ML Studio & Dataset Trainer (`?page=admin` or `/admin`)
+ * 4. 📺 Waiting Room Kiosk TV Display (`?page=kiosk` or `/kiosk`)
+ * 5. 🏠 Hospital Launchpad Portal Hub (`?page=hub` or `/`)
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -18,48 +18,63 @@ import QueuePluginWidget from "./QueuePluginWidget";
 const API_BASE = "http://127.0.0.1:8000";
 const WS_URL = "http://127.0.0.1:8000";
 
-const DOMAINS = {
-  hospital: {
-    tenantId: "city-hospital-01",
-    name: "City Hospital — Patient Portal",
-    consumerType: "hospital",
-    categories: ["consultation", "pharmacy", "emergency", "radiology", "lab_test"],
-  },
-  bank: {
-    tenantId: "acme-bank-01",
-    name: "Acme National Bank — Branch Services",
-    consumerType: "bank",
-    categories: ["cash", "loan", "account_opening", "vip_desk"],
-  },
-  clinic: {
-    tenantId: "campus-clinic-01",
-    name: "University Health Center",
-    consumerType: "clinic",
-    categories: ["general_checkup", "dentist", "pediatrics"],
-  },
-  government: {
-    tenantId: "govt-passport-01",
-    name: "Regional Administrative Center",
-    consumerType: "government",
-    categories: ["document_verification", "license_renewal", "inquiry"],
-  },
+const HOSPITAL_CONFIG = {
+  tenantId: "city-hospital-01",
+  name: "City General Hospital",
+  consumerType: "hospital",
+  categories: [
+    { id: "consultation", label: "📋 General Consultation" },
+    { id: "emergency", label: "🚨 Emergency Triage" },
+    { id: "pharmacy", label: "💊 Pharmacy & Medicine" },
+    { id: "radiology", label: "🩻 Radiology & X-Ray" },
+    { id: "lab_test", label: "🧪 Pathology & Lab Test" },
+  ],
 };
 
-const CANONICAL_FIELDS = [
-  { key: "timestamp", label: "Timestamp / Date-Time", req: false },
-  { key: "queue_length", label: "Queue Length / Waiting Count", req: true },
-  { key: "active_staff_counters", label: "Active Counters / Staff", req: false },
-  { key: "service_category", label: "Service Category / Department", req: false },
-  { key: "service_time", label: "Service Duration / Handling Time", req: true },
-];
+// Determine active page from URL query params or path
+function getInitialPage() {
+  const params = new URLSearchParams(window.location.search);
+  const pageParam = params.get("page") || params.get("view");
+  if (pageParam) return pageParam.toLowerCase();
+
+  const path = window.location.pathname.toLowerCase();
+  if (path.includes("patient")) return "patient";
+  if (path.includes("staff") || path.includes("doctor")) return "staff";
+  if (path.includes("admin") || path.includes("ml")) return "admin";
+  if (path.includes("kiosk") || path.includes("tv")) return "kiosk";
+
+  return "hub"; // Default to Launchpad Hub
+}
 
 export default function App() {
-  const [activePage, setActivePage] = useState("user"); // "user" | "admin" | "ml" | "embed" | "qr"
-  const [domainKey, setDomainKey] = useState("hospital");
-  const currentDomain = DOMAINS[domainKey];
-  const tenantId = currentDomain.tenantId;
+  const [activePage, setActivePage] = useState(getInitialPage);
+  const tenantId = HOSPITAL_CONFIG.tenantId;
 
-  // Real-time State
+  // User Authentication State
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("ai_queue_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const handleLoginSuccess = (userData) => {
+    setCurrentUser(userData);
+    try {
+      localStorage.setItem("ai_queue_user", JSON.stringify(userData));
+    } catch (e) {}
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem("ai_queue_user");
+    } catch (e) {}
+  };
+
+  // Real-time Queue State
   const [analytics, setAnalytics] = useState(null);
   const [queueSnapshot, setQueueSnapshot] = useState([]);
   const [servingTickets, setServingTickets] = useState([]);
@@ -69,22 +84,21 @@ export default function App() {
   const [socketConnected, setSocketConnected] = useState(false);
   const socketRef = useRef(null);
 
-  // User Join State
-  const [userName, setUserName] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState(currentDomain.categories[0]);
-  const [priorityLevel, setPriorityLevel] = useState(domainKey === "hospital" ? 2 : 1);
-  const [joinStatus, setJoinStatus] = useState(null);
-
-  // Audio Ref
-  const audioRef = useRef(null);
-
-  // Synchronize category selection on domain change
+  // Sync page state when URL changes
   useEffect(() => {
-    setSelectedCategory(currentDomain.categories[0]);
-    setPriorityLevel(domainKey === "hospital" ? 2 : 1);
-  }, [domainKey, currentDomain]);
+    const handlePopState = () => setActivePage(getInitialPage());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
-  // Socket.IO Setup
+  const navigateTo = (page) => {
+    setActivePage(page);
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", page);
+    window.history.pushState({}, "", url.toString());
+  };
+
+  // Socket.IO Connection Setup
   useEffect(() => {
     const socket = io(WS_URL, { transports: ["websocket", "polling"] });
     socketRef.current = socket;
@@ -106,40 +120,37 @@ export default function App() {
       if (data.ticket && activeTicket && data.ticket.ticket_id === activeTicket.ticket_id) {
         setActiveTicket(data.ticket);
         playChimeSound();
-        alert(`🔔 NOW SERVING: Ticket ${data.ticket.ticket_id}! Please proceed to Counter.`);
       }
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return () => socket.disconnect();
   }, [tenantId, activeTicket]);
 
-  // Fetch initial analytics & queue snapshot
+  // Fetch Queue & Analytics
   const refreshData = useCallback(() => {
     fetch(`${API_BASE}/api/v1/plugin/analytics/${tenantId}`)
-      .then((res) => res.json())
-      .then((data) => setAnalytics(data))
-      .catch((err) => console.log("Analytics fetch error:", err));
+      .then((r) => r.json())
+      .then((d) => setAnalytics(d))
+      .catch((e) => console.log("Analytics error:", e));
 
     fetch(`${API_BASE}/api/v1/plugin/queue/${tenantId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setQueueSnapshot(data.snapshot || []);
-        setServingTickets(data.serving || []);
+      .then((r) => r.json())
+      .then((d) => {
+        setQueueSnapshot(d.snapshot || []);
+        setServingTickets(d.serving || []);
       })
-      .catch((err) => console.log("Queue fetch error:", err));
+      .catch((e) => console.log("Queue error:", e));
 
     fetch(`${API_BASE}/api/v1/plugin/qr/${tenantId}`)
-      .then((res) => res.json())
-      .then((data) => setKioskQrData(data))
-      .catch((err) => console.log("QR fetch error:", err));
+      .then((r) => r.json())
+      .then((d) => setKioskQrData(d))
+      .catch((e) => console.log("QR error:", e));
   }, [tenantId]);
 
   useEffect(() => {
     refreshData();
-    const interval = setInterval(refreshData, 5000);
-    return () => clearInterval(interval);
+    const timer = setInterval(refreshData, 4000);
+    return () => clearInterval(timer);
   }, [refreshData]);
 
   // Audio Chime
@@ -149,8 +160,8 @@ export default function App() {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15); // A5
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
       gain.gain.setValueAtTime(0.3, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
       osc.connect(gain);
@@ -162,11 +173,376 @@ export default function App() {
     }
   };
 
-  // Join Queue Action
-  const handleUserJoin = async (e) => {
+  // Staff Desk Actions
+  const handleServeNext = async () => {
+    if (socketRef.current) socketRef.current.emit("serve_next", { tenant_id: tenantId });
+  };
+
+  const handleCompleteTicket = async (ticketId) => {
+    if (socketRef.current) socketRef.current.emit("complete_ticket", { tenant_id: tenantId, ticket_id: ticketId });
+  };
+
+  const handleCounterChange = async (delta) => {
+    const current = analytics ? analytics.active_counters : 2;
+    const next = Math.max(1, current + delta);
+    if (socketRef.current) socketRef.current.emit("set_counters", { tenant_id: tenantId, active_counters: next });
+  };
+
+  const isUserRole = currentUser?.role === "user";
+  const isRestrictedPage = isUserRole && (activePage === "staff" || activePage === "admin");
+
+  return (
+    <div style={appBgStyle}>
+      {/* Top Header Bar */}
+      <header style={topHeaderStyle}>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <span style={logoTagStyle}>🏥 Hospital Queue System</span>
+          <span style={{ fontSize: "12px", color: "#94a3b8" }}>{HOSPITAL_CONFIG.name}</span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          {currentUser && (
+            <>
+              {/* Quick Page Switcher Dropdown (Role Specified) */}
+              <select
+                value={activePage}
+                onChange={(e) => navigateTo(e.target.value)}
+                style={pageSelectStyle}
+              >
+                <option value="hub">🏠 Portal Hub</option>
+                <option value="patient">📱 Standalone Patient Portal</option>
+                {currentUser.role === "admin" && (
+                  <>
+                    <option value="staff">🛡️ Standalone Doctor/Staff Desk</option>
+                    <option value="admin">📊 Standalone ML Data Studio</option>
+                  </>
+                )}
+                <option value="kiosk">📺 Standalone Waiting Room Kiosk</option>
+              </select>
+
+              {/* User Profile Pill */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(30, 41, 59, 0.8)", padding: "4px 12px", borderRadius: "20px", border: "1px solid #334155" }}>
+                <span style={{ fontSize: "13px" }}>{currentUser.role === "admin" ? "🛡️" : "👤"}</span>
+                <span style={{ fontSize: "12px", fontWeight: 700, color: "#f8fafc" }}>{currentUser.username || currentUser.email}</span>
+                <span style={{
+                  fontSize: "10px",
+                  fontWeight: 800,
+                  padding: "2px 8px",
+                  borderRadius: "10px",
+                  background: currentUser.role === "admin" ? "rgba(74, 222, 128, 0.25)" : "rgba(56, 189, 248, 0.25)",
+                  color: currentUser.role === "admin" ? "#4ade80" : "#38bdf8",
+                  textTransform: "uppercase"
+                }}>
+                  {currentUser.role === "admin" ? "ADMIN" : "USER"}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    background: "rgba(239, 68, 68, 0.2)",
+                    color: "#f87171",
+                    border: "1px solid rgba(239, 68, 68, 0.4)",
+                    borderRadius: "10px",
+                    padding: "3px 8px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    marginLeft: "4px"
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* Connection Status Indicator */}
+          <span style={connBadgeStyle(socketConnected)}>
+            <span style={dotStyle(socketConnected)} />
+            {socketConnected ? "Live Socket.IO" : "Offline"}
+          </span>
+        </div>
+      </header>
+
+      {/* RENDER DECOUPLED STANDALONE PAGE */}
+      <main style={mainContentStyle}>
+        {!currentUser ? (
+          <AuthPage onLoginSuccess={handleLoginSuccess} />
+        ) : isRestrictedPage ? (
+          <AccessRestrictedPage currentUser={currentUser} navigateTo={navigateTo} onLogout={handleLogout} />
+        ) : (
+          <>
+            {activePage === "hub" && <HospitalHubPage navigateTo={navigateTo} currentUser={currentUser} onLogout={handleLogout} />}
+            {activePage === "patient" && (
+              <StandalonePatientPage
+                tenantId={tenantId}
+                currentUser={currentUser}
+                activeTicket={activeTicket}
+                setActiveTicket={setActiveTicket}
+                ticketQrData={ticketQrData}
+                setTicketQrData={setTicketQrData}
+                refreshData={refreshData}
+              />
+            )}
+            {activePage === "staff" && (
+              <StandaloneStaffPage
+                tenantId={tenantId}
+                analytics={analytics}
+                queueSnapshot={queueSnapshot}
+                servingTickets={servingTickets}
+                handleServeNext={handleServeNext}
+                handleCompleteTicket={handleCompleteTicket}
+                handleCounterChange={handleCounterChange}
+              />
+            )}
+            {activePage === "admin" && <StandaloneMLAdminPage tenantId={tenantId} currentUser={currentUser} />}
+            {activePage === "kiosk" && (
+              <StandaloneKioskPage
+                tenantId={tenantId}
+                servingTickets={servingTickets}
+                queueSnapshot={queueSnapshot}
+                kioskQrData={kioskQrData}
+              />
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Floating Glassmorphism Plugin Widget */}
+      <QueuePluginWidget tenantId={tenantId} domainKey="hospital" />
+    </div>
+  );
+}
+
+// ===========================================================================
+// 0. LANDING LAUNCHPAD HUB (Switch to any role-allowed standalone page)
+// ===========================================================================
+function HospitalHubPage({ navigateTo, currentUser, onLogout }) {
+  const isAdmin = currentUser?.role === "admin";
+
+  return (
+    <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "20px 0" }}>
+      <div style={{ textAlign: "center", marginBottom: "36px" }}>
+        <h1 style={{ fontSize: "28px", fontWeight: 800, color: "#f8fafc", margin: "0 0 10px 0" }}>
+          🏥 City Hospital — Dedicated Application Hub
+        </h1>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "10px", background: "rgba(30, 41, 59, 0.8)", padding: "6px 16px", borderRadius: "20px", border: "1px solid #334155" }}>
+          <span style={{ color: "#94a3b8", fontSize: "13px" }}>Identified Account:</span>
+          <span style={{ color: "#f8fafc", fontSize: "13px", fontWeight: 700 }}>{currentUser?.username} ({currentUser?.email})</span>
+          <span style={{
+            fontSize: "11px",
+            fontWeight: 800,
+            padding: "2px 10px",
+            borderRadius: "12px",
+            background: isAdmin ? "rgba(74, 222, 128, 0.2)" : "rgba(56, 189, 248, 0.2)",
+            color: isAdmin ? "#4ade80" : "#38bdf8",
+            textTransform: "uppercase"
+          }}>
+            {isAdmin ? "🛡️ ADMIN ROLE" : "👤 USER ROLE"}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+        {/* Patient Portal Card (User & Admin) */}
+        <div style={hubCardStyle} onClick={() => navigateTo("patient")}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={hubIconStyle}>📱</div>
+            <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", fontWeight: 700 }}>
+              USER PAGE
+            </span>
+          </div>
+          <h3 style={{ margin: "12px 0 8px 0", color: "#38bdf8", fontSize: "20px" }}>
+            1. Patient Check-in Portal
+          </h3>
+          <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
+            Mobile/kiosk check-in page for patients. Category selection, Emergency triage, live position countdown, audio chimes, and digital QR ticket pass.
+          </p>
+        </div>
+
+        {/* Doctor & Staff Desk Card (Admin Only or Restricted) */}
+        {isAdmin ? (
+          <div style={hubCardStyle} onClick={() => navigateTo("staff")}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={hubIconStyle}>🛡️</div>
+              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(74, 222, 128, 0.2)", color: "#4ade80", fontWeight: 700 }}>
+                ADMIN PAGE
+              </span>
+            </div>
+            <h3 style={{ margin: "12px 0 8px 0", color: "#4ade80", fontSize: "20px" }}>
+              2. Doctor & Staff Desk Dashboard
+            </h3>
+            <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
+              Desk control panel for doctors & nurses. Active counter adjusters, <strong>Call Next Priority Ticket</strong>, now-serving monitor, and live queue line.
+            </p>
+          </div>
+        ) : (
+          <div style={{ ...hubCardStyle, opacity: 0.65, border: "1px dashed #ef4444", cursor: "default" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={hubIconStyle}>🔒</div>
+              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", fontWeight: 700 }}>
+                ADMIN ONLY
+              </span>
+            </div>
+            <h3 style={{ margin: "12px 0 8px 0", color: "#94a3b8", fontSize: "20px" }}>
+              2. Doctor & Staff Desk Dashboard
+            </h3>
+            <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
+              Restricted to Hospital Doctors & Staff. Sign in with an Admin account to manage queue counters and call tickets.
+            </p>
+            <button
+              onClick={onLogout}
+              style={{ marginTop: "10px", padding: "6px 12px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", border: "1px solid #ef4444", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
+            >
+              Sign In as Admin
+            </button>
+          </div>
+        )}
+
+        {/* ML Studio & Dataset Trainer Card (Admin Only or Restricted) */}
+        {isAdmin ? (
+          <div style={hubCardStyle} onClick={() => navigateTo("admin")}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={hubIconStyle}>📊</div>
+              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(192, 132, 252, 0.2)", color: "#c084fc", fontWeight: 700 }}>
+                ADMIN PAGE
+              </span>
+            </div>
+            <h3 style={{ margin: "12px 0 8px 0", color: "#c084fc", fontSize: "20px" }}>
+              3. Hospital ML Studio & Training
+            </h3>
+            <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
+              Dataset ingestion & AI training studio. Upload historical hospital CSV/Excel files, column auto-mapping badges, and multi-model ensemble trainer.
+            </p>
+          </div>
+        ) : (
+          <div style={{ ...hubCardStyle, opacity: 0.65, border: "1px dashed #ef4444", cursor: "default" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div style={hubIconStyle}>🔒</div>
+              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", fontWeight: 700 }}>
+                ADMIN ONLY
+              </span>
+            </div>
+            <h3 style={{ margin: "12px 0 8px 0", color: "#64748b", fontSize: "20px" }}>
+              3. Hospital ML Studio & Training
+            </h3>
+            <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
+              Restricted to Data Admins. Sign in with an Admin account to upload training datasets and configure AI models.
+            </p>
+          </div>
+        )}
+
+        {/* Waiting Room Kiosk TV Card (User & Admin) */}
+        <div style={hubCardStyle} onClick={() => navigateTo("kiosk")}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div style={hubIconStyle}>📺</div>
+            <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(245, 158, 11, 0.2)", color: "#f59e0b", fontWeight: 700 }}>
+              USER & ADMIN PAGE
+            </span>
+          </div>
+          <h3 style={{ margin: "12px 0 8px 0", color: "#f59e0b", fontSize: "20px" }}>
+            4. Waiting Room Kiosk TV Display
+          </h3>
+          <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
+            Full-screen waiting room monitor display. Displays huge now-serving ticket numbers, assigned doctor desks, and big scannable QR code poster.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// 1. STANDALONE PATIENT CHECK-IN PORTAL (No staff buttons, 100% Patient View)
+// ===========================================================================
+function StandalonePatientPage({
+  tenantId,
+  currentUser,
+  activeTicket,
+  setActiveTicket,
+  ticketQrData,
+  setTicketQrData,
+  refreshData,
+}) {
+  const [name, setName] = useState(currentUser?.username || "");
+  const [category, setCategory] = useState("consultation");
+  const [priority, setPriority] = useState(2);
+  const [statusMsg, setStatusMsg] = useState(null);
+
+  // Real Database Profile State
+  const [phone, setPhone] = useState("");
+  const [gender, setGender] = useState("Male");
+  const [age, setAge] = useState("");
+  const [medicalId, setMedicalId] = useState("");
+  const [profileStatus, setProfileStatus] = useState(null);
+  const [userDbTickets, setUserDbTickets] = useState([]);
+
+  // Fetch real user profile & database history
+  const fetchUserDbData = useCallback(() => {
+    if (!currentUser?.email) return;
+    
+    // Fetch profile
+    fetch(`${API_BASE}/api/v1/auth/me?email=${encodeURIComponent(currentUser.email)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === "success" && data.user) {
+          if (data.user.phone) setPhone(data.user.phone);
+          if (data.user.gender) setGender(data.user.gender);
+          if (data.user.age) setAge(data.user.age);
+          if (data.user.medical_id) setMedicalId(data.user.medical_id);
+          if (data.user.username && !name) setName(data.user.username);
+        }
+      })
+      .catch((e) => console.log("Profile fetch error:", e));
+
+    // Fetch user ticket history from database
+    fetch(`${API_BASE}/api/v1/auth/user-history/${encodeURIComponent(currentUser.email)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === "success" && data.tickets) {
+          setUserDbTickets(data.tickets);
+        }
+      })
+      .catch((e) => console.log("User history fetch error:", e));
+  }, [currentUser, name]);
+
+  useEffect(() => {
+    fetchUserDbData();
+  }, [fetchUserDbData]);
+
+  const handleSaveProfile = async (e) => {
     e.preventDefault();
-    if (!userName.trim()) return;
-    setJoinStatus("Joining queue...");
+    if (!currentUser?.email) return;
+    setProfileStatus("Saving profile to SQLite database...");
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/profile`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: currentUser.email,
+          username: name || currentUser.username,
+          phone: phone,
+          gender: gender,
+          age: Number(age) || 0,
+          medical_id: medicalId,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setProfileStatus("✓ Profile successfully stored in SQLite database!");
+        setTimeout(() => setProfileStatus(null), 3500);
+      } else {
+        setProfileStatus(`❌ ${data.detail}`);
+      }
+    } catch (err) {
+      setProfileStatus(`❌ Profile save error: ${err.message}`);
+    }
+  };
+
+  const handleJoinQueue = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setStatusMsg("Issuing your AI priority ticket...");
 
     try {
       const res = await fetch(`${API_BASE}/api/v1/plugin/queue/join`, {
@@ -174,10 +550,11 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tenant_id: tenantId,
-          consumer_type: currentDomain.consumerType,
-          service_category: selectedCategory,
-          name: userName,
-          priority_level: Number(priorityLevel),
+          consumer_type: "hospital",
+          service_category: category,
+          name: name,
+          priority_level: Number(priority),
+          user_email: currentUser?.email || "",
         }),
       });
 
@@ -185,375 +562,249 @@ export default function App() {
         const data = await res.json();
         const t = data.ticket;
         setActiveTicket(t);
-        setJoinStatus(`🎉 Success! Issued Ticket #${t.ticket_id}`);
-        setUserName("");
+        setStatusMsg(`✓ Ticket #${t.ticket_id} Issued & Saved to Database!`);
 
-        // Fetch Ticket QR code
+        // Fetch Ticket QR Code
         fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${t.ticket_id}`)
           .then((r) => r.json())
           .then((qr) => setTicketQrData(qr))
-          .catch((err) => console.log("Ticket QR error:", err));
+          .catch((e) => console.log("QR error:", e));
 
         refreshData();
+        fetchUserDbData();
       } else {
         const err = await res.json();
-        setJoinStatus(`❌ Error: ${err.detail}`);
+        setStatusMsg(`❌ Error: ${err.detail}`);
       }
     } catch (err) {
-      setJoinStatus(`❌ Join failed: ${err.message}`);
-    }
-  };
-
-  // Staff Admin Actions
-  const handleServeNext = async () => {
-    if (socketRef.current) {
-      socketRef.current.emit("serve_next", { tenant_id: tenantId });
-    }
-  };
-
-  const handleCompleteTicket = async (ticketId) => {
-    if (socketRef.current) {
-      socketRef.current.emit("complete_ticket", { tenant_id: tenantId, ticket_id: ticketId });
-    }
-  };
-
-  const handleCounterChange = async (delta) => {
-    const current = analytics ? analytics.active_counters : 2;
-    const next = Math.max(1, current + delta);
-    if (socketRef.current) {
-      socketRef.current.emit("set_counters", { tenant_id: tenantId, active_counters: next });
+      setStatusMsg(`❌ Join failed: ${err.message}`);
     }
   };
 
   return (
-    <div style={containerStyle}>
-      {/* GLOBAL TOP HEADER */}
-      <header style={headerStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <div style={logoBadgeStyle}>🤖 AI Queue</div>
-          <div>
-            <h1 style={titleStyle}>Smart Queue Management System</h1>
-            <p style={subtitleStyle}>Multi-Tenant AI Queue Plugin & Analytics Platform</p>
-          </div>
-        </div>
-
-        {/* Global Controls & Navigation */}
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          {/* Domain / Industry Selector */}
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Industry Preset:</span>
-            <select
-              value={domainKey}
-              onChange={(e) => setDomainKey(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="hospital">🏥 City Hospital</option>
-              <option value="bank">🏦 Acme Bank</option>
-              <option value="clinic">🩺 Campus Clinic</option>
-              <option value="government">🏛️ Govt Office</option>
-            </select>
-          </div>
-
-          {/* Connection Pill */}
-          <span
-            style={{
-              padding: "4px 10px",
-              borderRadius: "20px",
-              background: socketConnected ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-              color: socketConnected ? "#4ade80" : "#f87171",
-              fontSize: "11px",
-              fontWeight: 700,
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-            }}
-          >
-            <span
-              style={{
-                width: "7px",
-                height: "7px",
-                borderRadius: "50%",
-                background: socketConnected ? "#4ade80" : "#f87171",
-              }}
-            />
-            {socketConnected ? "Live Socket.IO" : "Disconnected"}
-          </span>
-        </div>
-      </header>
-
-      {/* MULTI-PAGE NAVIGATION BAR */}
-      <nav style={navBarStyle}>
-        <button
-          onClick={() => setActivePage("user")}
-          style={navTabStyle(activePage === "user", "#0284c7")}
-        >
-          📱 Customer Queue Portal
-        </button>
-        <button
-          onClick={() => setActivePage("admin")}
-          style={navTabStyle(activePage === "admin", "#059669")}
-        >
-          🛡️ Staff Admin Dashboard
-        </button>
-        <button
-          onClick={() => setActivePage("ml")}
-          style={navTabStyle(activePage === "ml", "#7c3aed")}
-        >
-          📊 ML Studio & Training
-        </button>
-        <button
-          onClick={() => setActivePage("embed")}
-          style={navTabStyle(activePage === "embed", "#ea580c")}
-        >
-          🔌 Plugin & Embed Portal
-        </button>
-        <button
-          onClick={() => setActivePage("qr")}
-          style={navTabStyle(activePage === "qr", "#0d9488")}
-        >
-          🔲 QR Kiosk & Scanner
-        </button>
-      </nav>
-
-      {/* PAGE 1: USER QUEUE PORTAL */}
-      {activePage === "user" && (
-        <UserQueuePortalPage
-          currentDomain={currentDomain}
-          domainKey={domainKey}
-          userName={userName}
-          setUserName={setUserName}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
-          priorityLevel={priorityLevel}
-          setPriorityLevel={setPriorityLevel}
-          handleUserJoin={handleUserJoin}
-          joinStatus={joinStatus}
-          activeTicket={activeTicket}
-          ticketQrData={ticketQrData}
-          analytics={analytics}
-        />
-      )}
-
-      {/* PAGE 2: STAFF ADMIN DASHBOARD */}
-      {activePage === "admin" && (
-        <StaffAdminDashboardPage
-          tenantId={tenantId}
-          analytics={analytics}
-          queueSnapshot={queueSnapshot}
-          servingTickets={servingTickets}
-          handleServeNext={handleServeNext}
-          handleCompleteTicket={handleCompleteTicket}
-          handleCounterChange={handleCounterChange}
-        />
-      )}
-
-      {/* PAGE 3: ML STUDIO & TRAINING */}
-      {activePage === "ml" && <MLStudioPage tenantId={tenantId} />}
-
-      {/* PAGE 4: PLUGIN & EMBED PORTAL */}
-      {activePage === "embed" && <PluginEmbedPage tenantId={tenantId} domainKey={domainKey} />}
-
-      {/* PAGE 5: QR KIOSK & SCANNER */}
-      {activePage === "qr" && (
-        <QRKioskScannerPage
-          tenantId={tenantId}
-          kioskQrData={kioskQrData}
-          activeTicket={activeTicket}
-          ticketQrData={ticketQrData}
-        />
-      )}
-
-      {/* ALWAYS ACCESSIBLE FLOATING GLASSMORPHISM WIDGET */}
-      <QueuePluginWidget tenantId={tenantId} domainKey={domainKey} />
-    </div>
-  );
-}
-
-// ===========================================================================
-// SUB-PAGE 1: CUSTOMER QUEUE PORTAL
-// ===========================================================================
-function UserQueuePortalPage({
-  currentDomain,
-  domainKey,
-  userName,
-  setUserName,
-  selectedCategory,
-  setSelectedCategory,
-  priorityLevel,
-  setPriorityLevel,
-  handleUserJoin,
-  joinStatus,
-  activeTicket,
-  ticketQrData,
-  analytics,
-}) {
-  return (
-    <div style={pageGridStyle}>
-      {/* Join Form Panel */}
-      <div style={panelStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <h2 style={{ margin: 0, fontSize: "18px", color: "#f8fafc" }}>
-            📋 Join {currentDomain.name}
+    <div style={{ maxWidth: "680px", margin: "0 auto" }}>
+      {/* Patient Check-in Card */}
+      <div style={standaloneCardStyle}>
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
+          <span style={{ fontSize: "42px", display: "block", marginBottom: "8px" }}>📱</span>
+          <h2 style={{ margin: "0 0 6px 0", fontSize: "24px", color: "#f8fafc" }}>
+            Patient Self-Checkin Kiosk
           </h2>
-          <span style={{ fontSize: "12px", color: "#38bdf8", fontWeight: 600 }}>Mobile Self-Checkin Kiosk</span>
+          <p style={{ margin: 0, color: "#94a3b8", fontSize: "13px" }}>
+            City General Hospital — Instant Queue Token & Live Wait Tracker
+          </p>
         </div>
 
-        <form onSubmit={handleUserJoin}>
-          <div style={{ marginBottom: "16px" }}>
-            <label style={labelStyle}>Your Full Name / Patient ID</label>
+        <form onSubmit={handleJoinQueue}>
+          <div style={{ marginBottom: "18px" }}>
+            <label style={fieldLabelStyle}>Patient Full Name / Reg #</label>
             <input
               type="text"
-              placeholder="e.g. John Doe / Patient #901"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
+              placeholder="e.g. Sarah Jenkins / Reg #809"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               required
-              style={inputStyle}
+              style={fieldInputStyle}
             />
           </div>
 
-          <div style={{ marginBottom: "16px" }}>
-            <label style={labelStyle}>Service Department / Category</label>
+          <div style={{ marginBottom: "18px" }}>
+            <label style={fieldLabelStyle}>Medical Department</label>
             <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              style={inputStyle}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              style={fieldInputStyle}
             >
-              {currentDomain.categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat.replace("_", " ").toUpperCase()}
+              {HOSPITAL_CONFIG.categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
                 </option>
               ))}
             </select>
           </div>
 
-          {domainKey === "hospital" && (
-            <div style={{ marginBottom: "20px" }}>
-              <label style={labelStyle}>Triage / Priority Level</label>
-              <div style={{ display: "flex", gap: "12px" }}>
-                <button
-                  type="button"
-                  onClick={() => setPriorityLevel(2)}
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    borderRadius: "8px",
-                    border: priorityLevel === 2 ? "2px solid #38bdf8" : "1px solid #334155",
-                    background: priorityLevel === 2 ? "rgba(56, 189, 248, 0.15)" : "#0f172a",
-                    color: priorityLevel === 2 ? "#38bdf8" : "#94a3b8",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontSize: "12px",
-                  }}
-                >
-                  📋 Routine Consultation (Priority 2)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPriorityLevel(1)}
-                  style={{
-                    flex: 1,
-                    padding: "10px",
-                    borderRadius: "8px",
-                    border: priorityLevel === 1 ? "2px solid #ef4444" : "1px solid #334155",
-                    background: priorityLevel === 1 ? "rgba(239, 68, 68, 0.2)" : "#0f172a",
-                    color: priorityLevel === 1 ? "#f87171" : "#94a3b8",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontSize: "12px",
-                  }}
-                >
-                  🚨 Emergency Triage (Priority 1)
-                </button>
-              </div>
-            </div>
-          )}
+          <div style={{ marginBottom: "24px" }}>
+            <label style={fieldLabelStyle}>Urgency / Triage Level</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              <button
+                type="button"
+                onClick={() => setPriority(2)}
+                style={triageBtnStyle(priority === 2, "#38bdf8")}
+              >
+                📋 Routine Consultation
+                <span style={{ display: "block", fontSize: "10px", opacity: 0.8, marginTop: "2px" }}>Standard Queue Order</span>
+              </button>
 
-          <button type="submit" style={primaryBtnStyle}>
-            🎫 Issue AI Priority Ticket Now
+              <button
+                type="button"
+                onClick={() => setPriority(1)}
+                style={triageBtnStyle(priority === 1, "#ef4444")}
+              >
+                🚨 Emergency Triage
+                <span style={{ display: "block", fontSize: "10px", opacity: 0.8, marginTop: "2px" }}>Priority Queue Jump</span>
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" style={patientSubmitBtnStyle}>
+            🎫 Get AI Ticket Token
           </button>
         </form>
 
-        {joinStatus && (
-          <div style={{ marginTop: "16px", padding: "12px", borderRadius: "8px", background: "rgba(15, 23, 42, 0.8)", border: "1px solid #334155", fontSize: "13px", color: "#cbd5e1" }}>
-            {joinStatus}
+        {statusMsg && (
+          <div style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "#0f172a", border: "1px solid #334155", color: "#cbd5e1", fontSize: "13px", textAlign: "center" }}>
+            {statusMsg}
           </div>
         )}
       </div>
 
-      {/* Active Ticket Boarding Pass Panel */}
-      <div style={panelStyle}>
-        <h2 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#f8fafc" }}>
-          🎟️ Your Digital Queue Pass
-        </h2>
-
-        {!activeTicket ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", border: "2px dashed rgba(255,255,255,0.1)", borderRadius: "12px" }}>
-            <span style={{ fontSize: "36px", display: "block", marginBottom: "12px" }}>🎫</span>
-            <p style={{ margin: 0, color: "#94a3b8", fontSize: "14px" }}>
-              Fill out the check-in form to receive your real-time AI ticket pass & countdown.
-            </p>
+      {/* Digital Ticket Pass */}
+      {activeTicket && (
+        <div style={{ ...standaloneCardStyle, marginTop: "24px", border: "2px solid #38bdf8" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "14px", marginBottom: "16px" }}>
+            <div>
+              <span style={{ fontSize: "11px", color: "#94a3b8", textTransform: "uppercase" }}>Your AI Token</span>
+              <h2 style={{ margin: 0, fontSize: "32px", color: "#38bdf8", fontWeight: 800 }}>
+                #{activeTicket.ticket_id}
+              </h2>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <span style={{ fontSize: "11px", color: "#94a3b8" }}>Current Status</span>
+              <span style={passStatusBadgeStyle(activeTicket.status)}>{activeTicket.status.toUpperCase()}</span>
+            </div>
           </div>
-        ) : (
-          <div style={ticketCardStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "12px", marginBottom: "16px" }}>
-              <div>
-                <span style={{ fontSize: "11px", color: "#94a3b8", textTransform: "uppercase" }}>Ticket ID</span>
-                <h3 style={{ margin: 0, fontSize: "28px", color: "#38bdf8", fontWeight: 800 }}>
-                  #{activeTicket.ticket_id}
-                </h3>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <span style={{ fontSize: "11px", color: "#94a3b8" }}>Status</span>
-                <span style={statusBadgeStyle(activeTicket.status)}>{activeTicket.status.toUpperCase()}</span>
-              </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
+            <div>
+              <span style={{ fontSize: "11px", color: "#94a3b8" }}>Patient Name</span>
+              <p style={{ margin: "2px 0 0 0", color: "#f8fafc", fontWeight: 700, fontSize: "15px" }}>{activeTicket.name}</p>
+            </div>
+            <div>
+              <span style={{ fontSize: "11px", color: "#94a3b8" }}>Department</span>
+              <p style={{ margin: "2px 0 0 0", color: "#38bdf8", fontWeight: 700, fontSize: "15px" }}>{activeTicket.service_category.toUpperCase()}</p>
+            </div>
+            <div>
+              <span style={{ fontSize: "11px", color: "#94a3b8" }}>Queue Position</span>
+              <p style={{ margin: "2px 0 0 0", color: "#f59e0b", fontWeight: 800, fontSize: "24px" }}>
+                #{activeTicket.position}
+              </p>
+            </div>
+            <div>
+              <span style={{ fontSize: "11px", color: "#94a3b8" }}>Estimated Wait</span>
+              <p style={{ margin: "2px 0 0 0", color: "#4ade80", fontWeight: 800, fontSize: "24px" }}>
+                {activeTicket.estimated_wait_minutes} min
+              </p>
+            </div>
+          </div>
+
+          {ticketQrData && (
+            <div style={{ textAlign: "center", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "18px" }}>
+              <img
+                src={ticketQrData.qr_code_base64}
+                alt="Ticket QR Code"
+                style={{ width: "150px", height: "150px", borderRadius: "12px", background: "#fff", padding: "8px" }}
+              />
+              <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#94a3b8" }}>
+                Keep this screen open or scan code at desk scanner when called
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Real SQLite Database User Profile Card */}
+      {currentUser && (
+        <div style={{ ...standaloneCardStyle, marginTop: "24px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+            <span style={{ fontSize: "24px" }}>💾</span>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#f8fafc" }}>Real Database User Profile</h3>
+              <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>
+                Persisted in SQLite Database (<code style={{ color: "#38bdf8" }}>queue_system.db</code>)
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveProfile} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+            <div>
+              <label style={fieldLabelStyle}>Account Email (Unique Key)</label>
+              <input type="text" disabled value={currentUser.email} style={{ ...fieldInputStyle, opacity: 0.7 }} />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>Full Name</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} required style={fieldInputStyle} />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>Phone Number</label>
+              <input type="text" placeholder="+1 (555) 019-2834" value={phone} onChange={(e) => setPhone(e.target.value)} style={fieldInputStyle} />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>Medical Card / Health ID</label>
+              <input type="text" placeholder="HC-94021" value={medicalId} onChange={(e) => setMedicalId(e.target.value)} style={fieldInputStyle} />
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>Gender</label>
+              <select value={gender} onChange={(e) => setGender(e.target.value)} style={fieldInputStyle}>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>Age</label>
+              <input type="number" placeholder="32" value={age} onChange={(e) => setAge(e.target.value)} style={fieldInputStyle} />
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-              <div>
-                <span style={{ fontSize: "11px", color: "#94a3b8" }}>Patient / Name</span>
-                <p style={{ margin: "2px 0 0 0", color: "#f8fafc", fontWeight: 600 }}>{activeTicket.name}</p>
-              </div>
-              <div>
-                <span style={{ fontSize: "11px", color: "#94a3b8" }}>Department</span>
-                <p style={{ margin: "2px 0 0 0", color: "#38bdf8", fontWeight: 600 }}>{activeTicket.service_category.toUpperCase()}</p>
-              </div>
-              <div>
-                <span style={{ fontSize: "11px", color: "#94a3b8" }}>Queue Position</span>
-                <p style={{ margin: "2px 0 0 0", color: "#f59e0b", fontWeight: 800, fontSize: "20px" }}>
-                  #{activeTicket.position}
-                </p>
-              </div>
-              <div>
-                <span style={{ fontSize: "11px", color: "#94a3b8" }}>Estimated Wait</span>
-                <p style={{ margin: "2px 0 0 0", color: "#4ade80", fontWeight: 800, fontSize: "20px" }}>
-                  {activeTicket.estimated_wait_minutes} min
-                </p>
-              </div>
+            <div style={{ gridColumn: "span 2", marginTop: "6px" }}>
+              <button type="submit" style={{ ...patientSubmitBtnStyle, background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}>
+                💾 Save Profile to Database
+              </button>
             </div>
+          </form>
 
-            {ticketQrData && (
-              <div style={{ textAlign: "center", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "16px" }}>
-                <img
-                  src={ticketQrData.qr_code_base64}
-                  alt="Ticket QR"
-                  style={{ width: "130px", height: "130px", borderRadius: "10px", padding: "6px", background: "#fff" }}
-                />
-                <p style={{ margin: "8px 0 0 0", fontSize: "11px", color: "#94a3b8" }}>
-                  Scan code at counter scanner or save digital pass
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          {profileStatus && (
+            <div style={{ marginTop: "12px", padding: "10px", borderRadius: "8px", background: "#0f172a", border: "1px solid #334155", color: "#38bdf8", fontSize: "12px", textAlign: "center" }}>
+              {profileStatus}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* User Real Database Queue Tickets History */}
+      {currentUser && (
+        <div style={{ ...standaloneCardStyle, marginTop: "24px" }}>
+          <h3 style={{ margin: "0 0 14px 0", fontSize: "18px", color: "#f8fafc" }}>
+            📜 Your Saved Database Tickets History ({userDbTickets.length})
+          </h3>
+
+          {userDbTickets.length === 0 ? (
+            <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>No past tickets recorded in database yet.</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {userDbTickets.map((t) => (
+                <div key={t.ticket_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px", background: "#0f172a", borderRadius: "10px", border: "1px solid #334155" }}>
+                  <div>
+                    <span style={{ fontWeight: 800, color: "#38bdf8", fontSize: "16px" }}>#{t.ticket_id}</span>
+                    <span style={{ marginLeft: "10px", color: "#cbd5e1", fontSize: "13px" }}>{t.service_category.toUpperCase()}</span>
+                    <span style={{ display: "block", fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
+                      Joined: {new Date(t.join_timestamp * 1000).toLocaleString()}
+                    </span>
+                  </div>
+                  <span style={passStatusBadgeStyle(t.status)}>{t.status.toUpperCase()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ===========================================================================
-// SUB-PAGE 2: STAFF ADMIN DASHBOARD
+// 2. STANDALONE DOCTOR & STAFF DESK DASHBOARD (No patient form, 100% Staff View)
 // ===========================================================================
-function StaffAdminDashboardPage({
+function StandaloneStaffPage({
   tenantId,
   analytics,
   queueSnapshot,
@@ -564,63 +815,77 @@ function StaffAdminDashboardPage({
 }) {
   return (
     <div>
-      {/* Real-time Stat Cards */}
+      {/* Top Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
-        <div style={statCardStyle}>
-          <span style={statLabelStyle}>Currently Waiting</span>
-          <h3 style={{ ...statValStyle, color: "#38bdf8" }}>{analytics ? analytics.currently_waiting : 0}</h3>
-          <span style={{ fontSize: "11px", color: "#94a3b8" }}>Patients in Queue</span>
+        <div style={staffStatCardStyle}>
+          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Patients Waiting</span>
+          <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#38bdf8", margin: "4px 0" }}>
+            {analytics ? analytics.currently_waiting : 0}
+          </h2>
+          <span style={{ fontSize: "11px", color: "#64748b" }}>In Waiting Queue Line</span>
         </div>
-        <div style={statCardStyle}>
-          <span style={statLabelStyle}>Now Serving</span>
-          <h3 style={{ ...statValStyle, color: "#4ade80" }}>{analytics ? analytics.currently_serving : 0}</h3>
-          <span style={{ fontSize: "11px", color: "#94a3b8" }}>Active Desk Consultations</span>
+        <div style={staffStatCardStyle}>
+          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Currently Serving</span>
+          <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#4ade80", margin: "4px 0" }}>
+            {analytics ? analytics.currently_serving : 0}
+          </h2>
+          <span style={{ fontSize: "11px", color: "#64748b" }}>At Doctor Desks</span>
         </div>
-        <div style={statCardStyle}>
-          <span style={statLabelStyle}>Total Completed Today</span>
-          <h3 style={{ ...statValStyle, color: "#c084fc" }}>{analytics ? analytics.total_completed : 0}</h3>
-          <span style={{ fontSize: "11px", color: "#94a3b8" }}>Served Tickets</span>
+        <div style={staffStatCardStyle}>
+          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Completed Today</span>
+          <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#c084fc", margin: "4px 0" }}>
+            {analytics ? analytics.total_completed : 0}
+          </h2>
+          <span style={{ fontSize: "11px", color: "#64748b" }}>Total Patients Consulted</span>
         </div>
-        <div style={statCardStyle}>
-          <span style={statLabelStyle}>Active Staff Counters</span>
+        <div style={staffStatCardStyle}>
+          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Active Doctor Desks</span>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px" }}>
-            <h3 style={{ ...statValStyle, margin: 0, color: "#f59e0b" }}>{analytics ? analytics.active_counters : 2}</h3>
-            <div style={{ display: "flex", gap: "4px" }}>
-              <button onClick={() => handleCounterChange(-1)} style={counterBtnStyle}>-</button>
-              <button onClick={() => handleCounterChange(1)} style={counterBtnStyle}>+</button>
+            <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#f59e0b", margin: 0 }}>
+              {analytics ? analytics.active_counters : 2}
+            </h2>
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button onClick={() => handleCounterChange(-1)} style={plusMinusBtnStyle}>-</button>
+              <button onClick={() => handleCounterChange(1)} style={plusMinusBtnStyle}>+</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div style={pageGridStyle}>
-        {/* Serving Monitor & Action Control */}
-        <div style={panelStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-            <h2 style={{ margin: 0, fontSize: "18px", color: "#f8fafc" }}>
-              ⚡ Desk Operations & Call Control
-            </h2>
-            <button onClick={handleServeNext} style={callNextBtnStyle}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+        {/* Desk Call Control & Serving Monitor */}
+        <div style={standaloneCardStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: "20px", color: "#f8fafc" }}>
+                🛡️ Doctor Desk Operations
+              </h3>
+              <span style={{ fontSize: "12px", color: "#94a3b8" }}>Priority Call Control</span>
+            </div>
+
+            <button onClick={handleServeNext} style={callPriorityBtnStyle}>
               🚨 Call Next Priority Ticket
             </button>
           </div>
 
-          <h4 style={{ margin: "0 0 12px 0", color: "#94a3b8", fontSize: "13px" }}>Now Serving at Counters:</h4>
+          <h4 style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: "13px" }}>Now Serving at Doctor Desks:</h4>
+
           {servingTickets.length === 0 ? (
-            <div style={{ padding: "20px", textAlign: "center", background: "#0f172a", borderRadius: "10px", color: "#64748b", fontSize: "13px" }}>
-              No tickets currently being served. Click "Call Next Priority Ticket" above.
+            <div style={{ padding: "30px", textAlign: "center", background: "#0f172a", borderRadius: "12px", border: "1px solid #334155", color: "#64748b", fontSize: "13px" }}>
+              No patients currently at doctor desks. Click "Call Next Priority Ticket" above.
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {servingTickets.map((t) => (
-                <div key={t.ticket_id} style={servingItemStyle}>
+                <div key={t.ticket_id} style={staffServingRowStyle}>
                   <div>
-                    <span style={{ fontSize: "18px", fontWeight: 800, color: "#4ade80" }}>#{t.ticket_id}</span>
-                    <span style={{ marginLeft: "12px", color: "#f8fafc", fontWeight: 600 }}>{t.name}</span>
-                    <span style={{ marginLeft: "10px", fontSize: "11px", color: "#94a3b8" }}>({t.service_category})</span>
+                    <span style={{ fontSize: "20px", fontWeight: 800, color: "#4ade80" }}>#{t.ticket_id}</span>
+                    <span style={{ marginLeft: "12px", color: "#f8fafc", fontWeight: 700, fontSize: "15px" }}>{t.name}</span>
+                    <span style={{ marginLeft: "10px", fontSize: "11px", color: "#38bdf8" }}>({t.service_category.toUpperCase()})</span>
                   </div>
-                  <button onClick={() => handleCompleteTicket(t.ticket_id)} style={completeBtnStyle}>
-                    ✓ Mark Complete
+
+                  <button onClick={() => handleCompleteTicket(t.ticket_id)} style={finishBtnStyle}>
+                    ✓ Mark Consultation Complete
                   </button>
                 </div>
               ))}
@@ -628,46 +893,46 @@ function StaffAdminDashboardPage({
           )}
         </div>
 
-        {/* Live Queue Table */}
-        <div style={panelStyle}>
-          <h2 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#f8fafc" }}>
-            📊 Waiting Queue Line ({queueSnapshot.length})
-          </h2>
+        {/* Live Patient Waiting Line Table */}
+        <div style={standaloneCardStyle}>
+          <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", color: "#f8fafc" }}>
+            📊 Waiting Line Snapshot ({queueSnapshot.length})
+          </h3>
 
           <div style={{ overflowX: "auto" }}>
-            <table style={tableStyle}>
+            <table style={staffTableStyle}>
               <thead>
                 <tr>
-                  <th style={thStyle}>Pos</th>
-                  <th style={thStyle}>Ticket ID</th>
-                  <th style={thStyle}>Name</th>
-                  <th style={thStyle}>Category</th>
-                  <th style={thStyle}>Priority</th>
-                  <th style={thStyle}>Est Wait</th>
+                  <th style={staffThStyle}>Pos</th>
+                  <th style={staffThStyle}>Token ID</th>
+                  <th style={staffThStyle}>Patient Name</th>
+                  <th style={staffThStyle}>Dept</th>
+                  <th style={staffThStyle}>Triage</th>
+                  <th style={staffThStyle}>Est Wait</th>
                 </tr>
               </thead>
               <tbody>
                 {queueSnapshot.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ ...tdStyle, textAlign: "center", color: "#64748b" }}>
-                      Queue is currently empty.
+                    <td colSpan="6" style={{ ...staffTdStyle, textAlign: "center", color: "#64748b" }}>
+                      Waiting queue is currently empty.
                     </td>
                   </tr>
                 ) : (
                   queueSnapshot.map((t) => (
                     <tr key={t.ticket_id}>
-                      <td style={tdStyle}>#{t.position}</td>
-                      <td style={{ ...tdStyle, fontWeight: 700, color: "#38bdf8" }}>#{t.ticket_id}</td>
-                      <td style={tdStyle}>{t.name}</td>
-                      <td style={tdStyle}>{t.service_category}</td>
-                      <td style={tdStyle}>
+                      <td style={staffTdStyle}>#{t.position}</td>
+                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#38bdf8" }}>#{t.ticket_id}</td>
+                      <td style={{ ...staffTdStyle, fontWeight: 600 }}>{t.name}</td>
+                      <td style={staffTdStyle}>{t.service_category}</td>
+                      <td style={staffTdStyle}>
                         {t.priority_level === 1 ? (
-                          <span style={prioBadgeStyle("#ef4444")}>🚨 Emergency</span>
+                          <span style={badgePrioStyle("#ef4444")}>🚨 Emergency</span>
                         ) : (
-                          <span style={prioBadgeStyle("#3b82f6")}>📋 Routine</span>
+                          <span style={badgePrioStyle("#3b82f6")}>📋 Routine</span>
                         )}
                       </td>
-                      <td style={{ ...tdStyle, fontWeight: 700, color: "#4ade80" }}>{t.estimated_wait_minutes} min</td>
+                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#4ade80" }}>{t.estimated_wait_minutes} min</td>
                     </tr>
                   ))
                 )}
@@ -681,22 +946,22 @@ function StaffAdminDashboardPage({
 }
 
 // ===========================================================================
-// SUB-PAGE 3: ML STUDIO & TRAINING
+// 3. STANDALONE HOSPITAL ML DATA STUDIO & TRAINING (100% ML Admin View)
 // ===========================================================================
-function MLStudioPage({ tenantId }) {
+function StandaloneMLAdminPage({ tenantId }) {
   const [file, setFile] = useState(null);
   const [previewData, setPreviewData] = useState(null);
   const [mapping, setMapping] = useState({});
-  const [uploadStatus, setUploadStatus] = useState(null);
+  const [statusMsg, setStatusMsg] = useState(null);
   const [modelStatus, setModelStatus] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
 
   const fetchModelStatus = useCallback(() => {
     fetch(`${API_BASE}/api/v1/plugin/model-status/${tenantId}`)
-      .then((res) => res.json())
-      .then((data) => setModelStatus(data))
-      .catch((err) => console.log("Model status fetch error:", err));
+      .then((r) => r.json())
+      .then((d) => setModelStatus(d))
+      .catch((e) => console.log("Model status error:", e));
   }, [tenantId]);
 
   useEffect(() => {
@@ -704,13 +969,12 @@ function MLStudioPage({ tenantId }) {
   }, [fetchModelStatus]);
 
   const handleFileSelect = async (e) => {
-    const selectedFile = e.target.files[0];
-    if (!selectedFile) return;
-    setFile(selectedFile);
-    setUploadStatus(null);
+    const selected = e.target.files[0];
+    if (!selected) return;
+    setFile(selected);
 
     const formData = new FormData();
-    formData.append("file", selectedFile);
+    formData.append("file", selected);
     formData.append("tenant_id", tenantId);
 
     try {
@@ -724,17 +988,17 @@ function MLStudioPage({ tenantId }) {
         setMapping(data.suggested_mapping || {});
       } else {
         const err = await res.json();
-        alert(`Error previewing file: ${err.detail}`);
+        alert(`File error: ${err.detail}`);
       }
-    } catch (err) {
-      console.log("Preview error:", err);
+    } catch (e) {
+      console.log("Preview error:", e);
     }
   };
 
   const handleConfirmImport = async () => {
     if (!file) return;
     setIsUploading(true);
-    setUploadStatus("Validating and storing historical records in SQLite...");
+    setStatusMsg("Parsing and storing records into SQLite database...");
 
     const formData = new FormData();
     formData.append("file", file);
@@ -749,20 +1013,20 @@ function MLStudioPage({ tenantId }) {
       const data = await res.json();
       setIsUploading(false);
       if (res.ok) {
-        setUploadStatus(`✓ ${data.message}`);
+        setStatusMsg(`✓ ${data.message}`);
         fetchModelStatus();
       } else {
-        setUploadStatus(`❌ ${data.message || data.detail}`);
+        setStatusMsg(`❌ ${data.message || data.detail}`);
       }
-    } catch (err) {
+    } catch (e) {
       setIsUploading(false);
-      setUploadStatus(`❌ Import failed: ${err.message}`);
+      setStatusMsg(`❌ Import failed: ${e.message}`);
     }
   };
 
   const handleTrainModel = async () => {
     setIsTraining(true);
-    setUploadStatus("Training ML ensemble (ExtraTrees, RandomForest, HistGradientBoosting)...");
+    setStatusMsg("Evaluating multi-model ensemble (ExtraTrees, RandomForest, HistGradientBoosting)...");
 
     try {
       const res = await fetch(`${API_BASE}/api/v1/plugin/historical-data/train`, {
@@ -773,63 +1037,54 @@ function MLStudioPage({ tenantId }) {
       const data = await res.json();
       setIsTraining(false);
       if (data.success === false) {
-        setUploadStatus(`⚠️ ${data.message}`);
+        setStatusMsg(`⚠️ ${data.message}`);
       } else {
-        setUploadStatus(`🎉 Trained! Winner: ${data.model_type} (MAE: ${data.mae} min | R²: ${data.r2})`);
+        setStatusMsg(`🎉 Trained! Winner: ${data.model_type} (MAE: ${data.mae} min | R²: ${data.r2})`);
         fetchModelStatus();
       }
-    } catch (err) {
+    } catch (e) {
       setIsTraining(false);
-      setUploadStatus(`❌ Training failed: ${err.message}`);
+      setStatusMsg(`❌ Training failed: ${e.message}`);
     }
   };
 
   return (
-    <div style={pageGridStyle}>
-      {/* Left Column: Data Upload & Standardization */}
-      <div style={panelStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <h2 style={{ margin: 0, fontSize: "18px", color: "#f8fafc" }}>
-            📂 Upload Historical CSV / Excel Dataset
-          </h2>
-          <span style={{ fontSize: "12px", color: "#c084fc", fontWeight: 600 }}>Multi-Tenant Standardization Engine</span>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+      {/* Dataset Upload & Standardization Box */}
+      <div style={standaloneCardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "20px", color: "#f8fafc" }}>
+              📊 Hospital Historical Dataset Ingestion
+            </h3>
+            <span style={{ fontSize: "12px", color: "#c084fc" }}>Automatic Standardization Layer</span>
+          </div>
         </div>
 
         <input
           type="file"
           accept=".csv, .xlsx, .xls"
           onChange={handleFileSelect}
-          style={{
-            width: "100%",
-            padding: "12px",
-            borderRadius: "10px",
-            border: "1px dashed rgba(255,255,255,0.2)",
-            background: "#0f172a",
-            color: "#94a3b8",
-            fontSize: "13px",
-            cursor: "pointer",
-            marginBottom: "16px",
-          }}
+          style={fileDropStyle}
         />
 
         {previewData && (
           <div>
             <div style={{ marginBottom: "16px" }}>
               <span style={{ fontSize: "12px", color: "#94a3b8", display: "block", marginBottom: "6px" }}>
-                Auto-Detected Column Badges:
+                Auto-Detected Column Standardization Badges:
               </span>
               <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
                 {previewData.detected_columns.map((col) => (
-                  <span key={col} style={{ padding: "4px 8px", borderRadius: "6px", background: "rgba(34, 197, 94, 0.15)", color: "#4ade80", fontSize: "11px", fontWeight: 600 }}>
+                  <span key={col} style={colBadgeStyle}>
                     ✓ {col}
                   </span>
                 ))}
               </div>
             </div>
 
-            {/* Validation Breakdown Box */}
-            <div style={{ padding: "14px", borderRadius: "10px", background: "rgba(15, 23, 42, 0.8)", border: "1px solid #334155", marginBottom: "16px" }}>
-              <h4 style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#f8fafc" }}>Validation Summary</h4>
+            <div style={valSummaryStyle}>
+              <h4 style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#f8fafc" }}>Validation Breakdown</h4>
               <div style={{ display: "flex", gap: "16px", fontSize: "12px" }}>
                 <span style={{ color: "#4ade80", fontWeight: 700 }}>✓ {previewData.validation_summary.valid_rows} Valid Rows</span>
                 <span style={{ color: "#f87171", fontWeight: 700 }}>❌ {previewData.validation_summary.rejected_rows} Rejected</span>
@@ -838,72 +1093,68 @@ function MLStudioPage({ tenantId }) {
             </div>
 
             <div style={{ display: "flex", gap: "12px" }}>
-              <button onClick={handleConfirmImport} disabled={isUploading} style={{ ...primaryBtnStyle, flex: 1 }}>
+              <button onClick={handleConfirmImport} disabled={isUploading} style={importBtnStyle}>
                 {isUploading ? "Storing..." : "📥 Confirm Import to SQLite"}
               </button>
-              <button onClick={handleTrainModel} disabled={isTraining} style={{ ...secondaryBtnStyle, flex: 1 }}>
+              <button onClick={handleTrainModel} disabled={isTraining} style={trainBtnStyle}>
                 {isTraining ? "Training..." : "🚀 Train AI Model Now"}
               </button>
             </div>
           </div>
         )}
 
-        {uploadStatus && (
-          <div style={{ marginTop: "16px", padding: "12px", borderRadius: "8px", background: "rgba(15, 23, 42, 0.9)", border: "1px solid #334155", fontSize: "12px", color: "#cbd5e1" }}>
-            {uploadStatus}
-          </div>
-        )}
+        {statusMsg && <div style={mlStatusBoxStyle}>{statusMsg}</div>}
       </div>
 
-      {/* Right Column: Active Model Health Card */}
-      <div style={panelStyle}>
-        <h2 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#f8fafc" }}>
-          🤖 Active AI Model Registry — {tenantId}
-        </h2>
+      {/* Active Model Health Card */}
+      <div style={standaloneCardStyle}>
+        <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", color: "#f8fafc" }}>
+          🤖 Active Hospital AI Model Registry
+        </h3>
 
         {!modelStatus ? (
-          <p style={{ color: "#94a3b8" }}>Loading model status...</p>
+          <p style={{ color: "#94a3b8" }}>Loading AI model status...</p>
         ) : (
-          <div style={modelHealthCardStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+          <div style={modelRegBoxStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <div>
-                <span style={{ fontSize: "11px", color: "#94a3b8", textTransform: "uppercase" }}>Model Scope</span>
-                <h4 style={{ margin: 0, fontSize: "18px", color: modelStatus.is_tenant_specific ? "#c084fc" : "#38bdf8", fontWeight: 800 }}>
+                <span style={{ fontSize: "11px", color: "#94a3b8", textTransform: "uppercase" }}>Active Model Scope</span>
+                <h3 style={{ margin: 0, fontSize: "22px", color: modelStatus.is_tenant_specific ? "#c084fc" : "#38bdf8", fontWeight: 800 }}>
                   {modelStatus.active_model}
-                </h4>
+                </h3>
               </div>
-              <span style={{ padding: "4px 10px", borderRadius: "12px", background: modelStatus.is_tenant_specific ? "rgba(192, 132, 252, 0.2)" : "rgba(56, 189, 248, 0.2)", color: modelStatus.is_tenant_specific ? "#c084fc" : "#38bdf8", fontSize: "11px", fontWeight: 700 }}>
-                {modelStatus.is_tenant_specific ? "TENANT SPECIFIC" : "GLOBAL BASELINE"}
+              <span style={modelScopeTagStyle(modelStatus.is_tenant_specific)}>
+                {modelStatus.is_tenant_specific ? "HOSPITAL CUSTOM MODEL" : "GLOBAL BASELINE"}
               </span>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-              <div style={smallStatStyle}>
+              <div style={modelMetricBoxStyle}>
                 <span style={{ fontSize: "11px", color: "#94a3b8" }}>Winning Algorithm</span>
-                <p style={{ margin: 0, fontWeight: 700, color: "#f8fafc" }}>{modelStatus.model_type || "GradientBoosting"}</p>
+                <p style={{ margin: 0, fontWeight: 700, color: "#f8fafc", fontSize: "14px" }}>{modelStatus.model_type || "ExtraTrees"}</p>
               </div>
-              <div style={smallStatStyle}>
+              <div style={modelMetricBoxStyle}>
                 <span style={{ fontSize: "11px", color: "#94a3b8" }}>Mean Absolute Error</span>
-                <p style={{ margin: 0, fontWeight: 700, color: "#4ade80" }}>{modelStatus.mae} minutes</p>
+                <p style={{ margin: 0, fontWeight: 700, color: "#4ade80", fontSize: "14px" }}>{modelStatus.mae} minutes</p>
               </div>
-              <div style={smallStatStyle}>
+              <div style={modelMetricBoxStyle}>
                 <span style={{ fontSize: "11px", color: "#94a3b8" }}>R² Accuracy Score</span>
-                <p style={{ margin: 0, fontWeight: 700, color: "#38bdf8" }}>{modelStatus.r2}</p>
+                <p style={{ margin: 0, fontWeight: 700, color: "#38bdf8", fontSize: "14px" }}>{modelStatus.r2}</p>
               </div>
-              <div style={smallStatStyle}>
-                <span style={{ fontSize: "11px", color: "#94a3b8" }}>Dataset Records</span>
-                <p style={{ margin: 0, fontWeight: 700, color: "#f59e0b" }}>{modelStatus.training_rows} rows</p>
+              <div style={modelMetricBoxStyle}>
+                <span style={{ fontSize: "11px", color: "#94a3b8" }}>Historical Training Rows</span>
+                <p style={{ margin: 0, fontWeight: 700, color: "#f59e0b", fontSize: "14px" }}>{modelStatus.training_rows} rows</p>
               </div>
             </div>
 
             {modelStatus.top_features && (
               <div>
-                <span style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginBottom: "6px" }}>
-                  Top Feature Importance Weights:
+                <span style={{ fontSize: "12px", color: "#94a3b8", display: "block", marginBottom: "8px", fontWeight: 600 }}>
+                  Top Model Feature Importance Weights:
                 </span>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  {Object.entries(modelStatus.top_features).slice(0, 4).map(([feat, val]) => (
-                    <div key={feat} style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "#cbd5e1" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {Object.entries(modelStatus.top_features).slice(0, 5).map(([feat, val]) => (
+                    <div key={feat} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#cbd5e1" }}>
                       <span>{feat}</span>
                       <span style={{ fontWeight: 700, color: "#c084fc" }}>{(val * 100).toFixed(1)}%</span>
                     </div>
@@ -914,116 +1165,169 @@ function MLStudioPage({ tenantId }) {
           </div>
         )}
       </div>
+
+      {/* Real SQLite Database Users Directory (Admin View) */}
+      <AdminDbUsersDirectory />
     </div>
   );
 }
 
-// ===========================================================================
-// SUB-PAGE 4: PLUGIN & EMBED PORTAL
-// ===========================================================================
-function PluginEmbedPage({ tenantId, domainKey }) {
-  const embedCode = `<!-- AI Smart Queue Management Plugin -->
-<script 
-  src="${API_BASE}/queue-plugin.js" 
-  data-tenant="${tenantId}"
-  data-theme="dark"
-  async>
-</script>
-<div id="ai-queue-plugin-widget"></div>`;
+function AdminDbUsersDirectory() {
+  const [dbUsers, setDbUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(embedCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const fetchUsers = () => {
+    setLoading(true);
+    fetch(`${API_BASE}/api/v1/auth/users`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === "success" && data.users) {
+          setDbUsers(data.users);
+        }
+      })
+      .catch((e) => console.log("Fetch DB users error:", e))
+      .finally(() => setLoading(false));
   };
 
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
   return (
-    <div style={pageGridStyle}>
-      <div style={panelStyle}>
-        <h2 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#f8fafc" }}>
-          🔌 Embed Widget Code Snippet
-        </h2>
-        <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.6" }}>
-          Copy and paste this lightweight 1-line HTML script tag into your application or website header.
-        </p>
-
-        <div style={{ position: "relative", marginBottom: "16px" }}>
-          <pre style={codeBlockStyle}>{embedCode}</pre>
-          <button onClick={handleCopy} style={copyBtnStyle}>
-            {copied ? "✓ Copied!" : "📋 Copy Code"}
-          </button>
+    <div style={{ ...standaloneCardStyle, marginTop: "28px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "24px" }}>👥</span>
+          <div>
+            <h3 style={{ margin: 0, fontSize: "18px", color: "#f8fafc" }}>Registered Database Users Directory</h3>
+            <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>
+              Real User Accounts Persisted in SQLite Database (<code style={{ color: "#38bdf8" }}>queue_system.db</code>)
+            </p>
+          </div>
         </div>
 
-        <div style={{ padding: "14px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.1)", border: "1px solid #0284c7", fontSize: "12px", color: "#38bdf8" }}>
-          💡 <strong>Zero Setup Needed:</strong> Embeds instantly on HTML, React, Vue, Angular, WordPress, or hospital portal websites.
-        </div>
+        <button onClick={fetchUsers} style={{ padding: "6px 14px", borderRadius: "8px", background: "#1e293b", border: "1px solid #334155", color: "#38bdf8", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>
+          🔄 Refresh DB Table
+        </button>
       </div>
 
-      <div style={panelStyle}>
-        <h2 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#f8fafc" }}>
-          📱 Floating Glassmorphism Widget Preview
-        </h2>
-        <p style={{ color: "#94a3b8", fontSize: "13px" }}>
-          Look at the bottom right corner of your screen! The floating AI Queue widget is active for <strong>{tenantId}</strong>.
-        </p>
+      <div style={{ overflowX: "auto" }}>
+        <table style={staffTableStyle}>
+          <thead>
+            <tr>
+              <th style={staffThStyle}>ID</th>
+              <th style={staffThStyle}>Username</th>
+              <th style={staffThStyle}>Email Address</th>
+              <th style={staffThStyle}>Role</th>
+              <th style={staffThStyle}>Phone</th>
+              <th style={staffThStyle}>Medical ID</th>
+              <th style={staffThStyle}>Created At</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan="7" style={{ ...staffTdStyle, textAlign: "center", color: "#94a3b8" }}>Loading user records from SQLite database...</td>
+              </tr>
+            ) : dbUsers.length === 0 ? (
+              <tr>
+                <td colSpan="7" style={{ ...staffTdStyle, textAlign: "center", color: "#64748b" }}>No users registered in database.</td>
+              </tr>
+            ) : (
+              dbUsers.map((u) => (
+                <tr key={u.id}>
+                  <td style={{ ...staffTdStyle, fontWeight: 700 }}>#{u.id}</td>
+                  <td style={{ ...staffTdStyle, color: "#f8fafc", fontWeight: 600 }}>{u.username}</td>
+                  <td style={{ ...staffTdStyle, color: "#38bdf8" }}>{u.email}</td>
+                  <td style={staffTdStyle}>
+                    <span style={{
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      padding: "2px 8px",
+                      borderRadius: "10px",
+                      background: u.role === "admin" ? "rgba(74, 222, 128, 0.25)" : "rgba(56, 189, 248, 0.25)",
+                      color: u.role === "admin" ? "#4ade80" : "#38bdf8",
+                      textTransform: "uppercase"
+                    }}>
+                      {u.role.toUpperCase()}
+                    </span>
+                  </td>
+                  <td style={staffTdStyle}>{u.phone || "—"}</td>
+                  <td style={staffTdStyle}>{u.medical_id || "—"}</td>
+                  <td style={{ ...staffTdStyle, fontSize: "11px", color: "#64748b" }}>
+                    {u.created_at ? new Date(u.created_at * 1000).toLocaleDateString() : "System Default"}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
 // ===========================================================================
-// SUB-PAGE 5: QR KIOSK & SCANNER
+// 4. STANDALONE WAITING ROOM KIOSK TV DISPLAY (100% Kiosk View)
 // ===========================================================================
-function QRKioskScannerPage({ tenantId, kioskQrData, activeTicket, ticketQrData }) {
+function StandaloneKioskPage({ tenantId, servingTickets, queueSnapshot, kioskQrData }) {
   return (
-    <div style={pageGridStyle}>
-      {/* Left Column: Tenant Kiosk QR Code */}
-      <div style={panelStyle}>
-        <h2 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#f8fafc" }}>
-          🔲 Kiosk QR Poster Generator — {tenantId}
-        </h2>
-        <p style={{ color: "#94a3b8", fontSize: "13px" }}>
-          Print or display this QR code at hospital entry desks or kiosk screens for instant phone check-in.
+    <div style={{ minHeight: "80vh", padding: "20px", display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div style={{ textAlign: "center", marginBottom: "10px" }}>
+        <h1 style={{ fontSize: "36px", fontWeight: 800, color: "#f8fafc", margin: "0 0 6px 0" }}>
+          📺 Waiting Room Kiosk TV Banner
+        </h1>
+        <p style={{ color: "#38bdf8", fontSize: "16px", margin: 0, fontWeight: 600 }}>
+          City General Hospital — Live Counter Display
         </p>
-
-        {kioskQrData ? (
-          <div style={{ textAlign: "center", padding: "24px", background: "#0f172a", borderRadius: "12px", border: "1px solid #334155" }}>
-            <img
-              src={kioskQrData.qr_code_base64}
-              alt="Tenant Kiosk QR"
-              style={{ width: "200px", height: "200px", borderRadius: "12px", background: "#fff", padding: "10px" }}
-            />
-            <p style={{ margin: "12px 0 0 0", color: "#cbd5e1", fontSize: "12px" }}>
-              Target Link: <code style={{ color: "#38bdf8" }}>{kioskQrData.target_url}</code>
-            </p>
-          </div>
-        ) : (
-          <p style={{ color: "#94a3b8" }}>Generating QR code...</p>
-        )}
       </div>
 
-      {/* Right Column: Ticket Scanner Simulator */}
-      <div style={panelStyle}>
-        <h2 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#f8fafc" }}>
-          📷 Staff QR Ticket Scanner & Mobile Pass
-        </h2>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px" }}>
+        {/* Big Now Serving Banner */}
+        <div style={kioskServingBoxStyle}>
+          <h2 style={{ margin: "0 0 20px 0", color: "#4ade80", fontSize: "28px" }}>
+            🔔 NOW SERVING AT DOCTOR DESKS
+          </h2>
 
-        {!activeTicket ? (
-          <p style={{ color: "#94a3b8" }}>No active ticket issued yet. Issue a ticket on the Customer Queue Portal page first.</p>
-        ) : (
-          <div style={{ textAlign: "center", padding: "20px", background: "#0f172a", borderRadius: "12px", border: "1px solid #334155" }}>
-            <h3 style={{ margin: "0 0 8px 0", color: "#4ade80" }}>Ticket #{activeTicket.ticket_id} Active</h3>
-            {ticketQrData && (
-              <img
-                src={ticketQrData.qr_code_base64}
-                alt="Active Ticket QR"
-                style={{ width: "160px", height: "160px", borderRadius: "10px", background: "#fff", padding: "8px" }}
-              />
-            )}
-          </div>
-        )}
+          {servingTickets.length === 0 ? (
+            <div style={{ padding: "60px 20px", color: "#64748b", fontSize: "20px", fontWeight: 700 }}>
+              Please wait... Next token calling shortly.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              {servingTickets.map((t) => (
+                <div key={t.ticket_id} style={bigTokenBoxStyle}>
+                  <span style={{ fontSize: "14px", color: "#94a3b8", textTransform: "uppercase" }}>Ticket Token</span>
+                  <h1 style={{ margin: "4px 0", fontSize: "48px", color: "#4ade80", fontWeight: 900 }}>
+                    #{t.ticket_id}
+                  </h1>
+                  <span style={{ fontSize: "16px", color: "#f8fafc", fontWeight: 700 }}>{t.name}</span>
+                  <span style={{ fontSize: "13px", color: "#38bdf8", marginTop: "4px" }}>{t.service_category.toUpperCase()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* QR Code Scan Poster Box */}
+        <div style={kioskQrBoxStyle}>
+          <h3 style={{ margin: "0 0 12px 0", color: "#f8fafc", fontSize: "20px" }}>
+            📲 Scan for Mobile Token
+          </h3>
+          <p style={{ color: "#94a3b8", fontSize: "12px", margin: "0 0 16px 0" }}>
+            Point your smartphone camera to join queue on mobile
+          </p>
+
+          {kioskQrData ? (
+            <img
+              src={kioskQrData.qr_code_base64}
+              alt="Kiosk QR Poster"
+              style={{ width: "220px", height: "220px", borderRadius: "14px", background: "#fff", padding: "12px" }}
+            />
+          ) : (
+            <p style={{ color: "#64748b" }}>Generating QR...</p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1032,130 +1336,129 @@ function QRKioskScannerPage({ tenantId, kioskQrData, activeTicket, ticketQrData 
 // ===========================================================================
 // STYLES
 // ===========================================================================
-const containerStyle = {
+const appBgStyle = {
   minHeight: "100vh",
   background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
   color: "#f8fafc",
   fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-  padding: "24px 32px",
+  padding: "20px 28px",
 };
 
-const headerStyle = {
+const topHeaderStyle = {
   display: "flex",
-  justify: "space-between",
+  justifyContent: "space-between",
   alignItems: "center",
-  marginBottom: "20px",
+  marginBottom: "24px",
   paddingBottom: "16px",
   borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
 };
 
-const logoBadgeStyle = {
+const logoTagStyle = {
   padding: "8px 14px",
   borderRadius: "12px",
-  background: "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)",
+  background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
   color: "#fff",
   fontWeight: 800,
   fontSize: "14px",
-  boxShadow: "0 4px 14px rgba(56, 189, 248, 0.4)",
+  boxShadow: "0 4px 14px rgba(2, 132, 199, 0.4)",
 };
 
-const titleStyle = { margin: 0, fontSize: "20px", fontWeight: 800, color: "#f8fafc" };
-const subtitleStyle = { margin: 0, fontSize: "12px", color: "#94a3b8" };
-
-const navBarStyle = {
-  display: "flex",
-  gap: "10px",
-  marginBottom: "24px",
-  background: "rgba(15, 23, 42, 0.6)",
-  padding: "6px",
-  borderRadius: "12px",
-  border: "1px solid rgba(255, 255, 255, 0.08)",
-};
-
-const navTabStyle = (isActive, accentColor) => ({
-  flex: 1,
-  padding: "10px 14px",
-  borderRadius: "8px",
-  border: "none",
-  background: isActive ? accentColor : "transparent",
-  color: isActive ? "#fff" : "#94a3b8",
-  fontWeight: 700,
+const pageSelectStyle = {
+  padding: "8px 14px",
+  borderRadius: "10px",
+  background: "#0f172a",
+  color: "#f8fafc",
+  border: "1px solid #334155",
   fontSize: "13px",
+  fontWeight: 700,
   cursor: "pointer",
-  transition: "all 0.2s ease",
+};
+
+const connBadgeStyle = (online) => ({
+  padding: "6px 12px",
+  borderRadius: "20px",
+  background: online ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
+  color: online ? "#4ade80" : "#f87171",
+  fontSize: "11px",
+  fontWeight: 700,
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
 });
 
-const pageGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: "24px",
+const dotStyle = (online) => ({
+  width: "7px",
+  height: "7px",
+  borderRadius: "50%",
+  background: online ? "#4ade80" : "#f87171",
+});
+
+const mainContentStyle = {
+  minHeight: "75vh",
 };
 
-const panelStyle = {
+const hubCardStyle = {
   background: "rgba(30, 41, 59, 0.7)",
   backdropFilter: "blur(16px)",
-  borderRadius: "16px",
+  borderRadius: "18px",
+  border: "1px solid rgba(255, 255, 255, 0.1)",
+  padding: "28px",
+  cursor: "pointer",
+  transition: "all 0.2s ease",
+  boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
+};
+
+const hubIconStyle = {
+  fontSize: "36px",
+  marginBottom: "12px",
+};
+
+const standaloneCardStyle = {
+  background: "rgba(30, 41, 59, 0.7)",
+  backdropFilter: "blur(16px)",
+  borderRadius: "18px",
   border: "1px solid rgba(255, 255, 255, 0.1)",
   padding: "24px",
   boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
 };
 
-const selectStyle = {
-  padding: "8px 12px",
-  borderRadius: "8px",
-  background: "#0f172a",
-  color: "#f8fafc",
-  border: "1px solid #334155",
-  fontSize: "12px",
-  fontWeight: 600,
-  cursor: "pointer",
-};
+const fieldLabelStyle = { display: "block", fontSize: "12px", color: "#cbd5e1", marginBottom: "6px", fontWeight: 600 };
 
-const labelStyle = { display: "block", fontSize: "12px", color: "#cbd5e1", marginBottom: "6px", fontWeight: 600 };
-
-const inputStyle = {
+const fieldInputStyle = {
   width: "100%",
-  padding: "10px 14px",
-  borderRadius: "8px",
+  padding: "12px 14px",
+  borderRadius: "10px",
   border: "1px solid #334155",
   background: "#0f172a",
   color: "#f8fafc",
   fontSize: "13px",
 };
 
-const primaryBtnStyle = {
-  width: "100%",
+const triageBtnStyle = (active, accent) => ({
   padding: "12px",
   borderRadius: "10px",
+  border: active ? `2px solid ${accent}` : "1px solid #334155",
+  background: active ? `${accent}22` : "#0f172a",
+  color: active ? accent : "#94a3b8",
+  fontWeight: 700,
+  fontSize: "12px",
+  cursor: "pointer",
+});
+
+const patientSubmitBtnStyle = {
+  width: "100%",
+  padding: "14px",
+  borderRadius: "12px",
   border: "none",
   background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
   color: "#fff",
-  fontWeight: 700,
-  fontSize: "13px",
+  fontWeight: 800,
+  fontSize: "14px",
   cursor: "pointer",
   boxShadow: "0 4px 14px rgba(2, 132, 199, 0.4)",
 };
 
-const secondaryBtnStyle = {
-  padding: "12px",
-  borderRadius: "10px",
-  border: "none",
-  background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
-  color: "#fff",
-  fontWeight: 700,
-  fontSize: "13px",
-  cursor: "pointer",
-};
-
-const ticketCardStyle = {
-  background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-  borderRadius: "14px",
-  border: "1px solid rgba(56, 189, 248, 0.3)",
-  padding: "20px",
-  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-};
-
-const statusBadgeStyle = (status) => ({
+const passStatusBadgeStyle = (status) => ({
   padding: "3px 8px",
   borderRadius: "6px",
   fontSize: "11px",
@@ -1164,18 +1467,15 @@ const statusBadgeStyle = (status) => ({
   color: status === "serving" ? "#4ade80" : "#f59e0b",
 });
 
-const statCardStyle = {
+const staffStatCardStyle = {
   background: "rgba(30, 41, 59, 0.7)",
   backdropFilter: "blur(12px)",
   borderRadius: "14px",
   border: "1px solid rgba(255, 255, 255, 0.08)",
-  padding: "16px",
+  padding: "18px",
 };
 
-const statLabelStyle = { fontSize: "12px", color: "#94a3b8", fontWeight: 600, display: "block" };
-const statValStyle = { fontSize: "28px", fontWeight: 800, margin: "4px 0" };
-
-const counterBtnStyle = {
+const plusMinusBtnStyle = {
   width: "28px",
   height: "28px",
   borderRadius: "6px",
@@ -1186,43 +1486,43 @@ const counterBtnStyle = {
   cursor: "pointer",
 };
 
-const callNextBtnStyle = {
+const callPriorityBtnStyle = {
   padding: "10px 16px",
   borderRadius: "10px",
   border: "none",
   background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
   color: "#fff",
-  fontWeight: 700,
+  fontWeight: 800,
   fontSize: "12px",
   cursor: "pointer",
   boxShadow: "0 4px 12px rgba(5, 150, 105, 0.4)",
 };
 
-const servingItemStyle = {
+const staffServingRowStyle = {
   display: "flex",
-  justifyContent: "space-between",
+  justify: "space-between",
   alignItems: "center",
-  padding: "12px",
+  padding: "14px",
   background: "#0f172a",
-  borderRadius: "10px",
+  borderRadius: "12px",
   border: "1px solid #334155",
 };
 
-const completeBtnStyle = {
-  padding: "6px 12px",
-  borderRadius: "6px",
+const finishBtnStyle = {
+  padding: "8px 14px",
+  borderRadius: "8px",
   border: "none",
   background: "rgba(34, 197, 94, 0.2)",
   color: "#4ade80",
   fontWeight: 700,
-  fontSize: "11px",
+  fontSize: "12px",
   cursor: "pointer",
 };
 
-const tableStyle = { width: "100%", borderCollapse: "collapse", fontSize: "12px" };
-const thStyle = { padding: "10px", textAlign: "left", color: "#94a3b8", borderBottom: "1px solid #334155" };
-const tdStyle = { padding: "10px", borderBottom: "1px solid rgba(255, 255, 255, 0.05)" };
-const prioBadgeStyle = (bg) => ({
+const staffTableStyle = { width: "100%", borderCollapse: "collapse", fontSize: "12px" };
+const staffThStyle = { padding: "10px", textAlign: "left", color: "#94a3b8", borderBottom: "1px solid #334155" };
+const staffTdStyle = { padding: "10px", borderBottom: "1px solid rgba(255, 255, 255, 0.05)" };
+const badgePrioStyle = (bg) => ({
   padding: "2px 6px",
   borderRadius: "4px",
   background: `${bg}22`,
@@ -1231,39 +1531,465 @@ const prioBadgeStyle = (bg) => ({
   fontSize: "10px",
 });
 
-const modelHealthCardStyle = {
+const fileDropStyle = {
+  width: "100%",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "1px dashed rgba(255,255,255,0.2)",
+  background: "#0f172a",
+  color: "#94a3b8",
+  fontSize: "13px",
+  cursor: "pointer",
+  marginBottom: "16px",
+};
+
+const colBadgeStyle = {
+  padding: "4px 8px",
+  borderRadius: "6px",
+  background: "rgba(34, 197, 94, 0.15)",
+  color: "#4ade80",
+  fontSize: "11px",
+  fontWeight: 600,
+};
+
+const valSummaryStyle = {
+  padding: "14px",
+  borderRadius: "10px",
+  background: "rgba(15, 23, 42, 0.8)",
+  border: "1px solid #334155",
+  marginBottom: "16px",
+};
+
+const importBtnStyle = {
+  flex: 1,
+  padding: "12px",
+  borderRadius: "10px",
+  border: "none",
+  background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: "12px",
+  cursor: "pointer",
+};
+
+const trainBtnStyle = {
+  flex: 1,
+  padding: "12px",
+  borderRadius: "10px",
+  border: "none",
+  background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: "12px",
+  cursor: "pointer",
+};
+
+const mlStatusBoxStyle = {
+  marginTop: "16px",
+  padding: "12px",
+  borderRadius: "8px",
+  background: "rgba(15, 23, 42, 0.9)",
+  border: "1px solid #334155",
+  fontSize: "12px",
+  color: "#cbd5e1",
+};
+
+const modelRegBoxStyle = {
   padding: "18px",
   borderRadius: "12px",
   background: "#0f172a",
   border: "1px solid #334155",
 };
 
-const smallStatStyle = {
+const modelScopeTagStyle = (tenantSpecific) => ({
+  padding: "4px 10px",
+  borderRadius: "12px",
+  background: tenantSpecific ? "rgba(192, 132, 252, 0.2)" : "rgba(56, 189, 248, 0.2)",
+  color: tenantSpecific ? "#c084fc" : "#38bdf8",
+  fontSize: "11px",
+  fontWeight: 700,
+});
+
+const modelMetricBoxStyle = {
   padding: "10px",
   background: "#1e293b",
   borderRadius: "8px",
 };
 
-const codeBlockStyle = {
-  background: "#0f172a",
-  padding: "16px",
-  borderRadius: "10px",
-  border: "1px solid #334155",
-  fontSize: "12px",
-  color: "#38bdf8",
-  overflowX: "auto",
+const kioskServingBoxStyle = {
+  background: "rgba(30, 41, 59, 0.7)",
+  backdropFilter: "blur(16px)",
+  borderRadius: "18px",
+  border: "1px solid rgba(255, 255, 255, 0.1)",
+  padding: "32px",
+  textAlign: "center",
 };
 
-const copyBtnStyle = {
-  position: "absolute",
-  top: "10px",
-  right: "10px",
-  padding: "6px 12px",
-  borderRadius: "6px",
+const bigTokenBoxStyle = {
+  background: "#0f172a",
+  padding: "24px",
+  borderRadius: "14px",
+  border: "2px solid #4ade80",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+};
+
+const kioskQrBoxStyle = {
+  background: "rgba(30, 41, 59, 0.7)",
+  backdropFilter: "blur(16px)",
+  borderRadius: "18px",
+  border: "1px solid rgba(255, 255, 255, 0.1)",
+  padding: "32px",
+  textAlign: "center",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+// ===========================================================================
+// AUTHENTICATION & ACCESS CONTROL COMPONENTS
+// ===========================================================================
+function AuthPage({ onLoginSuccess }) {
+  const [isLogin, setIsLogin] = useState(true);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
+  const [role, setRole] = useState("user");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const endpoint = isLogin ? `${API_BASE}/api/v1/auth/login` : `${API_BASE}/api/v1/auth/signup`;
+    const payload = isLogin
+      ? { email, password }
+      : { email, username, password, role };
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== "success") {
+        throw new Error(data.detail || "Authentication failed. Please verify your details.");
+      }
+      onLoginSuccess(data.user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickDemo = async (demoEmail, demoPassword) => {
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: demoEmail, password: demoPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== "success") {
+        throw new Error(data.detail || "Demo login failed.");
+      }
+      onLoginSuccess(data.user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={authContainerStyle}>
+      <div style={authCardStyle}>
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
+          <div style={{ fontSize: "42px", marginBottom: "6px" }}>🏥</div>
+          <h2 style={{ fontSize: "24px", fontWeight: 800, color: "#f8fafc", margin: 0 }}>
+            City General Hospital
+          </h2>
+          <p style={{ color: "#94a3b8", fontSize: "13px", marginTop: "6px" }}>
+            AI-Powered Smart Queue Management System
+          </p>
+        </div>
+
+        {/* Tab Switcher */}
+        <div style={authTabContainerStyle}>
+          <button
+            type="button"
+            style={authTabStyle(isLogin)}
+            onClick={() => { setIsLogin(true); setError(null); }}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            style={authTabStyle(!isLogin)}
+            onClick={() => { setIsLogin(false); setError(null); }}
+          >
+            Create Account
+          </button>
+        </div>
+
+        {error && <div style={authErrorStyle}>{error}</div>}
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          {!isLogin && (
+            <div>
+              <label style={authLabelStyle}>Full Name / Username</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Priya Sharma or Dr. Robert"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                style={authInputStyle}
+              />
+            </div>
+          )}
+
+          <div>
+            <label style={authLabelStyle}>Email Address</label>
+            <input
+              type="email"
+              required
+              placeholder="e.g. user@hospital.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={authInputStyle}
+            />
+          </div>
+
+          <div>
+            <label style={authLabelStyle}>Password</label>
+            <input
+              type="password"
+              required
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={authInputStyle}
+            />
+          </div>
+
+          {!isLogin && (
+            <div>
+              <label style={authLabelStyle}>Account Role</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() => setRole("user")}
+                  style={roleOptionBtnStyle(role === "user")}
+                >
+                  <span style={{ fontSize: "18px" }}>👤</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "13px" }}>Patient / User</div>
+                    <div style={{ fontSize: "10px", opacity: 0.8 }}>Patient Check-in & TV View</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole("admin")}
+                  style={roleOptionBtnStyle(role === "admin")}
+                >
+                  <span style={{ fontSize: "18px" }}>🛡️</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: "13px" }}>Staff / Admin</div>
+                    <div style={{ fontSize: "10px", opacity: 0.8 }}>Desk Control & ML Studio</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} style={authSubmitBtnStyle}>
+            {loading ? "Authenticating..." : isLogin ? "Sign In to Hospital Portal" : "Register & Sign In"}
+          </button>
+        </form>
+
+        {/* Quick Demo Login Section */}
+        <div style={{ marginTop: "24px", paddingTop: "20px", borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
+          <p style={{ textAlign: "center", fontSize: "11px", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 12px 0", fontWeight: 700 }}>
+            ⚡ Instant Demo Login
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            <button
+              type="button"
+              onClick={() => handleQuickDemo("patient@hospital.com", "user123")}
+              style={demoUserBtnStyle}
+            >
+              <div style={{ fontWeight: 700, color: "#38bdf8", fontSize: "13px" }}>👤 Patient Demo</div>
+              <div style={{ fontSize: "10px", color: "#94a3b8" }}>User Specified Pages</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDemo("admin@hospital.com", "admin123")}
+              style={demoAdminBtnStyle}
+            >
+              <div style={{ fontWeight: 700, color: "#4ade80", fontSize: "13px" }}>🛡️ Admin Demo</div>
+              <div style={{ fontSize: "10px", color: "#94a3b8" }}>Admin Specified Pages</div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccessRestrictedPage({ currentUser, navigateTo, onLogout }) {
+  return (
+    <div style={{ maxWidth: "600px", margin: "60px auto", padding: "36px", background: "rgba(30, 41, 59, 0.85)", borderRadius: "24px", border: "1px solid #ef4444", textAlign: "center", backdropFilter: "blur(16px)" }}>
+      <div style={{ fontSize: "54px", marginBottom: "16px" }}>🔒</div>
+      <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#f87171", margin: "0 0 10px 0" }}>
+        Admin Access Restricted
+      </h2>
+      <p style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.6", margin: "0 0 24px 0" }}>
+        You are currently signed in as <strong>{currentUser?.username || currentUser?.email}</strong> with the <strong>Patient (User)</strong> role.
+        This page is reserved strictly for Hospital Doctors, Nurses, and Staff Admins.
+      </p>
+
+      <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+        <button
+          onClick={() => navigateTo("patient")}
+          style={{ padding: "12px 20px", borderRadius: "12px", background: "#0284c7", color: "#fff", border: "none", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+        >
+          📱 Return to Patient Portal
+        </button>
+        <button
+          onClick={onLogout}
+          style={{ padding: "12px 20px", borderRadius: "12px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", border: "1px solid #ef4444", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+        >
+          🔑 Switch to Admin Account
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AUTHENTICATION STYLES
+// ---------------------------------------------------------------------------
+const authContainerStyle = {
+  minHeight: "75vh",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "20px 0",
+};
+
+const authCardStyle = {
+  width: "100%",
+  maxWidth: "460px",
+  background: "rgba(15, 23, 42, 0.85)",
+  backdropFilter: "blur(20px)",
+  borderRadius: "24px",
+  border: "1px solid rgba(255, 255, 255, 0.12)",
+  padding: "36px",
+  boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+};
+
+const authTabContainerStyle = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  background: "#1e293b",
+  padding: "4px",
+  borderRadius: "12px",
+  marginBottom: "20px",
+};
+
+const authTabStyle = (active) => ({
+  padding: "10px",
+  borderRadius: "8px",
   border: "none",
-  background: "#0284c7",
-  color: "#fff",
-  fontSize: "11px",
+  background: active ? "#0284c7" : "transparent",
+  color: active ? "#ffffff" : "#94a3b8",
   fontWeight: 700,
+  fontSize: "13px",
   cursor: "pointer",
+  transition: "all 0.2s ease",
+});
+
+const authLabelStyle = {
+  fontSize: "12px",
+  fontWeight: 600,
+  color: "#cbd5e1",
+  display: "block",
+  marginBottom: "4px",
+};
+
+const authInputStyle = {
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: "10px",
+  background: "#1e293b",
+  border: "1px solid #334155",
+  color: "#f8fafc",
+  fontSize: "14px",
+  boxSizing: "border-box",
+  outline: "none",
+};
+
+const roleOptionBtnStyle = (selected) => ({
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  padding: "10px 12px",
+  borderRadius: "10px",
+  border: selected ? "2px solid #38bdf8" : "1px solid #334155",
+  background: selected ? "rgba(56, 189, 248, 0.15)" : "#1e293b",
+  color: selected ? "#38bdf8" : "#94a3b8",
+  cursor: "pointer",
+  textAlign: "left",
+});
+
+const authSubmitBtnStyle = {
+  width: "100%",
+  padding: "14px",
+  borderRadius: "12px",
+  border: "none",
+  background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+  color: "#ffffff",
+  fontWeight: 700,
+  fontSize: "14px",
+  cursor: "pointer",
+  marginTop: "10px",
+  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
+};
+
+const authErrorStyle = {
+  padding: "12px",
+  borderRadius: "10px",
+  background: "rgba(239, 68, 68, 0.15)",
+  border: "1px solid #ef4444",
+  color: "#f87171",
+  fontSize: "12px",
+  marginBottom: "16px",
+  textAlign: "center",
+};
+
+const demoUserBtnStyle = {
+  padding: "12px",
+  borderRadius: "12px",
+  background: "rgba(56, 189, 248, 0.1)",
+  border: "1px solid rgba(56, 189, 248, 0.3)",
+  cursor: "pointer",
+  textAlign: "center",
+};
+
+const demoAdminBtnStyle = {
+  padding: "12px",
+  borderRadius: "12px",
+  background: "rgba(74, 222, 128, 0.1)",
+  border: "1px solid rgba(74, 222, 128, 0.3)",
+  cursor: "pointer",
+  textAlign: "center",
 };

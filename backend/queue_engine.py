@@ -18,6 +18,7 @@ import time
 import os
 import json
 import sqlite3
+import hashlib
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
 import joblib
@@ -42,6 +43,7 @@ class Ticket:
     name: str
     priority_level: int
     join_timestamp: float
+    user_email: str = ""
     status: str = "waiting"
     predicted_service_minutes: float = 0.0
     estimated_wait_minutes: float = 0.0
@@ -58,6 +60,7 @@ class Ticket:
             "service_category": self.service_category,
             "name": self.name,
             "priority_level": self.priority_level,
+            "user_email": self.user_email,
             "status": self.status,
             "predicted_service_minutes": round(self.predicted_service_minutes, 1),
             "estimated_wait_minutes": round(self.estimated_wait_minutes, 1),
@@ -148,22 +151,52 @@ class PluginQueueEngine:
                     is_peak_hour INTEGER NOT NULL,
                     imported_at REAL NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE NOT NULL,
+                    username TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'user',
+                    phone TEXT DEFAULT '',
+                    gender TEXT DEFAULT '',
+                    age INTEGER DEFAULT 0,
+                    medical_id TEXT DEFAULT '',
+                    created_at REAL NOT NULL
+                );
             """)
+
+            # Run safe column migration check for existing sqlite database
+            user_cols = [row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()]
+            if "phone" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''")
+            if "gender" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN gender TEXT DEFAULT ''")
+            if "age" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN age INTEGER DEFAULT 0")
+            if "medical_id" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN medical_id TEXT DEFAULT ''")
+
+            ticket_cols = [row[1] for row in conn.execute("PRAGMA table_info(tickets)").fetchall()]
+            if "user_email" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN user_email TEXT DEFAULT ''")
+
+        self._seed_default_users()
 
     def _save_ticket_db(self, ticket: Ticket):
         with self._get_db() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO tickets (
                     ticket_id, tenant_id, consumer_type, service_category, name,
-                    priority_level, join_timestamp, status, predicted_service_minutes,
+                    priority_level, join_timestamp, user_email, status, predicted_service_minutes,
                     estimated_wait_minutes, position, serve_start_time, serve_end_time,
                     actual_service_minutes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ticket.ticket_id, ticket.tenant_id, ticket.consumer_type, ticket.service_category,
-                ticket.name, ticket.priority_level, ticket.join_timestamp, ticket.status,
-                ticket.predicted_service_minutes, ticket.estimated_wait_minutes, ticket.position,
-                ticket.serve_start_time, ticket.serve_end_time, ticket.actual_service_minutes
+                ticket.name, ticket.priority_level, ticket.join_timestamp, getattr(ticket, 'user_email', ''),
+                ticket.status, ticket.predicted_service_minutes, ticket.estimated_wait_minutes,
+                ticket.position, ticket.serve_start_time, ticket.serve_end_time, ticket.actual_service_minutes
             ))
 
     def _log_completed_service_db(self, ticket: Ticket, queue_length: int, active_counters: int):
@@ -245,6 +278,7 @@ class PluginQueueEngine:
                     name=r["name"],
                     priority_level=r["priority_level"],
                     join_timestamp=r["join_timestamp"],
+                    user_email=r["user_email"] if "user_email" in r.keys() and r["user_email"] else "",
                     status=r["status"],
                     predicted_service_minutes=r["predicted_service_minutes"] or 10.0,
                     estimated_wait_minutes=r["estimated_wait_minutes"] or 0.0,
@@ -380,6 +414,7 @@ class PluginQueueEngine:
         service_category: str,
         name: str,
         priority_level: Optional[int] = None,
+        user_email: str = "",
     ) -> Ticket:
         tenant = self._get_tenant(tenant_id)
         if priority_level is None:
@@ -405,6 +440,7 @@ class PluginQueueEngine:
             service_category=service_category,
             name=name,
             priority_level=priority_level,
+            user_email=user_email,
             join_timestamp=join_ts,
             predicted_service_minutes=predicted_mins,
         )
@@ -614,5 +650,120 @@ class PluginQueueEngine:
             del self._models_cache[tenant_id]
         else:
             self._models_cache.clear()
+
+    # ------------------------------------------------------------------
+    # User Authentication & Role Management
+    # ------------------------------------------------------------------
+    def _hash_password(self, password: str) -> str:
+        return hashlib.sha256((password + "ai_queue_secret_salt_2026").encode('utf-8')).hexdigest()
+
+    def _seed_default_users(self):
+        with self._get_db() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            if count == 0:
+                admin_pwd = self._hash_password("admin123")
+                user_pwd = self._hash_password("user123")
+                now = time.time()
+                conn.execute(
+                    "INSERT INTO users (email, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
+                    ("admin@hospital.com", "Dr. Admin", admin_pwd, "admin", now)
+                )
+                conn.execute(
+                    "INSERT INTO users (email, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
+                    ("patient@hospital.com", "Patient Priya", user_pwd, "user", now)
+                )
+
+    def register_user(self, email: str, username: str, password: str, role: str = "user") -> dict:
+        email_clean = email.strip().lower()
+        role_clean = role.strip().lower()
+        if role_clean not in ("user", "admin"):
+            role_clean = "user"
+        
+        with self._get_db() as conn:
+            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email_clean,)).fetchone()
+            if existing:
+                raise ValueError("User with this email address already exists.")
+            
+            pwd_hash = self._hash_password(password)
+            now = time.time()
+            cursor = conn.execute(
+                "INSERT INTO users (email, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
+                (email_clean, username.strip(), pwd_hash, role_clean, now)
+            )
+            user_id = cursor.lastrowid
+            
+        token = f"token-{user_id}-{int(now)}"
+        return {
+            "id": user_id,
+            "email": email_clean,
+            "username": username.strip(),
+            "role": role_clean,
+            "token": token
+        }
+
+    def authenticate_user(self, email: str, password: str) -> dict:
+        email_clean = email.strip().lower()
+        pwd_hash = self._hash_password(password)
+        
+        with self._get_db() as conn:
+            user = conn.execute(
+                "SELECT id, email, username, password_hash, role FROM users WHERE email = ?", 
+                (email_clean,)
+            ).fetchone()
+            
+            if not user or user["password_hash"] != pwd_hash:
+                raise ValueError("Invalid email or password.")
+            
+            token = f"token-{user['id']}-{int(time.time())}"
+            return {
+                "id": user["id"],
+                "email": user["email"],
+                "username": user["username"],
+                "role": user["role"],
+                "token": token
+            }
+
+    def get_user_by_email(self, email: str) -> Optional[dict]:
+        with self._get_db() as conn:
+            user = conn.execute(
+                "SELECT id, email, username, role, phone, gender, age, medical_id, created_at FROM users WHERE email = ?",
+                (email.lower(),)
+            ).fetchone()
+            return dict(user) if user else None
+
+    def update_user_profile(
+        self, email: str, username: str, phone: str = "", gender: str = "", age: int = 0, medical_id: str = ""
+    ) -> dict:
+        email_clean = email.strip().lower()
+        with self._get_db() as conn:
+            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email_clean,)).fetchone()
+            if not existing:
+                raise ValueError("User account not found in database.")
+
+            conn.execute("""
+                UPDATE users
+                SET username = ?, phone = ?, gender = ?, age = ?, medical_id = ?
+                WHERE email = ?
+            """, (username.strip(), phone.strip(), gender.strip(), age, medical_id.strip(), email_clean))
+
+        return self.get_user_by_email(email_clean)
+
+    def get_all_users(self) -> List[dict]:
+        with self._get_db() as conn:
+            rows = conn.execute("""
+                SELECT id, email, username, role, phone, gender, age, medical_id, created_at
+                FROM users ORDER BY id DESC
+            """).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_user_tickets(self, user_email: str) -> List[dict]:
+        email_clean = user_email.strip().lower()
+        with self._get_db() as conn:
+            rows = conn.execute("""
+                SELECT * FROM tickets
+                WHERE user_email = ? OR LOWER(name) = (SELECT LOWER(username) FROM users WHERE email = ?)
+                ORDER BY join_timestamp DESC
+            """, (email_clean, email_clean)).fetchall()
+            return [dict(r) for r in rows]
 
 engine = PluginQueueEngine()

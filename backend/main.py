@@ -50,6 +50,7 @@ class JoinRequest(BaseModel):
     service_category: str = Field(..., json_schema_extra={"example": "consultation"})
     name: str = Field(..., json_schema_extra={"example": "Priya Sharma"})
     urgency: Optional[str] = Field(None, description="'emergency' | 'routine'")
+    user_email: Optional[str] = None
 
 class ServeNextRequest(BaseModel):
     tenant_id: str
@@ -65,6 +66,24 @@ class CounterUpdateRequest(BaseModel):
 
 class TrainTenantRequest(BaseModel):
     tenant_id: str = "global"
+
+class SignupRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+    role: Optional[str] = "user"
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+class UpdateProfileRequest(BaseModel):
+    email: str
+    username: str
+    phone: Optional[str] = ""
+    gender: Optional[str] = ""
+    age: Optional[int] = 0
+    medical_id: Optional[str] = ""
 
 def _urgency_to_priority(consumer_type: str, urgency: Optional[str]) -> int:
     if consumer_type != "hospital":
@@ -98,6 +117,7 @@ async def join_queue(payload: JoinRequest):
         service_category=payload.service_category,
         name=payload.name,
         priority_level=priority,
+        user_email=payload.user_email or "",
     )
     engine.recalculate_wait_times(payload.tenant_id)
     await _broadcast_queue_update(payload.tenant_id)
@@ -316,6 +336,73 @@ async def train_historical_model(payload: TrainTenantRequest):
 async def get_model_status(tenant_id: str):
     return get_tenant_model_info(tenant_id)
 
+# ---------------------------------------------------------------------------
+# Authentication & Role Management Endpoints
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/auth/signup")
+async def signup(payload: SignupRequest):
+    try:
+        user_data = engine.register_user(
+            email=payload.email,
+            username=payload.username,
+            password=payload.password,
+            role=payload.role or "user"
+        )
+        return {"status": "success", "user": user_data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Registration error: {str(e)}")
+
+@app.post("/api/v1/auth/login")
+async def login(payload: LoginRequest):
+    try:
+        user_data = engine.authenticate_user(
+            email=payload.email,
+            password=payload.password
+        )
+        return {"status": "success", "user": user_data}
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
+
+@app.get("/api/v1/auth/me")
+async def get_current_user(email: Optional[str] = None):
+    if not email:
+        raise HTTPException(status_code=400, detail="Email query parameter is required")
+    user = engine.get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"status": "success", "user": user}
+
+@app.put("/api/v1/auth/profile")
+async def update_profile(payload: UpdateProfileRequest):
+    try:
+        updated = engine.update_user_profile(
+            email=payload.email,
+            username=payload.username,
+            phone=payload.phone or "",
+            gender=payload.gender or "",
+            age=payload.age or 0,
+            medical_id=payload.medical_id or ""
+        )
+        return {"status": "success", "user": updated}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/auth/users")
+async def get_all_users():
+    users = engine.get_all_users()
+    return {"status": "success", "users": users}
+
+@app.get("/api/v1/auth/user-history/{email}")
+async def get_user_history(email: str):
+    tickets = engine.get_user_tickets(email)
+    return {"status": "success", "tickets": tickets}
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "2.5.0"}
@@ -348,6 +435,7 @@ async def join_queue(sid, data):
         service_category=data["service_category"],
         name=data["name"],
         priority_level=priority,
+        user_email=data.get("user_email", ""),
     )
     engine.recalculate_wait_times(tenant_id)
 
