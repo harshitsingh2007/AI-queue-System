@@ -1,0 +1,329 @@
+/**
+ * App.jsx
+ * -------
+ * Clean Top-Level Router & Real-Time Socket.IO Provider.
+ * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
+ */
+
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { io } from "socket.io-client";
+import { API_BASE, WS_URL, HOSPITAL_CONFIG } from "./config/hospitalConfig";
+
+// Modular Components & Pages
+import Header from "./components/Header";
+import AuthModal from "./components/AuthModal";
+import AccessDeniedGuard from "./components/AccessDeniedGuard";
+import MandatoryAuthScreen from "./components/MandatoryAuthScreen";
+import QueuePluginWidget from "./components/QueuePluginWidget";
+
+import HubPage from "./pages/HubPage";
+import PatientPage from "./pages/PatientPage";
+import StaffPage from "./pages/StaffPage";
+import MLAdminPage from "./pages/MLAdminPage";
+import DatabaseInspectorPage from "./pages/DatabaseInspectorPage";
+import KioskPage from "./pages/KioskPage";
+
+function getInitialPage() {
+  const params = new URLSearchParams(window.location.search);
+  const pageParam = params.get("page") || params.get("view");
+  if (pageParam) return pageParam.toLowerCase();
+
+  const path = window.location.pathname.toLowerCase();
+  if (path.includes("patient")) return "patient";
+  if (path.includes("staff") || path.includes("doctor")) return "staff";
+  if (path.includes("admin") || path.includes("ml")) return "admin";
+  if (path.includes("db") || path.includes("database")) return "db";
+  if (path.includes("kiosk") || path.includes("tv")) return "kiosk";
+
+  return "hub";
+}
+
+export default function App() {
+  const [activePage, setActivePage] = useState(getInitialPage);
+  const tenantId = HOSPITAL_CONFIG.tenantId;
+
+  // User Authentication State
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("ai_queue_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState("login");
+
+  const handleLoginSuccess = (userData) => {
+    setCurrentUser(userData);
+    setShowAuthModal(false);
+    try {
+      localStorage.setItem("ai_queue_user", JSON.stringify(userData));
+    } catch (e) {}
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem("ai_queue_user");
+    } catch (e) {}
+  };
+
+  // Real-time Queue State
+  const [analytics, setAnalytics] = useState(null);
+  const [queueSnapshot, setQueueSnapshot] = useState([]);
+  const [servingTickets, setServingTickets] = useState([]);
+  const [activeTicket, setActiveTicket] = useState(null);
+  const [ticketQrData, setTicketQrData] = useState(null);
+  const [kioskQrData, setKioskQrData] = useState(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const socketRef = useRef(null);
+
+  // Sync page state when URL changes
+  useEffect(() => {
+    const handlePopState = () => setActivePage(getInitialPage());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigateTo = (page) => {
+    setActivePage(page);
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", page);
+    window.history.pushState({}, "", url.toString());
+  };
+
+  // Socket.IO Connection Setup
+  useEffect(() => {
+    const socket = io(WS_URL, { transports: ["websocket", "polling"] });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      setSocketConnected(true);
+      socket.emit("join_room", { tenant_id: tenantId });
+    });
+
+    socket.on("disconnect", () => setSocketConnected(false));
+
+    socket.on("queue_updated", (data) => {
+      if (data.analytics) setAnalytics(data.analytics);
+      if (data.snapshot) setQueueSnapshot(data.snapshot);
+      if (data.serving) setServingTickets(data.serving);
+    });
+
+    socket.on("now_serving", (data) => {
+      if (data.ticket && activeTicket && data.ticket.ticket_id === activeTicket.ticket_id) {
+        setActiveTicket(data.ticket);
+        playChimeSound();
+      }
+    });
+
+    return () => socket.disconnect();
+  }, [tenantId, activeTicket]);
+
+  // Fetch Queue & Analytics
+  const refreshData = useCallback(() => {
+    fetch(`${API_BASE}/api/v1/plugin/analytics/${tenantId}`)
+      .then((r) => r.json())
+      .then((d) => setAnalytics(d))
+      .catch((e) => console.log("Analytics error:", e));
+
+    fetch(`${API_BASE}/api/v1/plugin/queue/${tenantId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setQueueSnapshot(d.snapshot || []);
+        setServingTickets(d.serving || []);
+      })
+      .catch((e) => console.log("Queue error:", e));
+
+    fetch(`${API_BASE}/api/v1/plugin/qr/${tenantId}`)
+      .then((r) => r.json())
+      .then((d) => setKioskQrData(d))
+      .catch((e) => console.log("QR error:", e));
+  }, [tenantId]);
+
+  useEffect(() => {
+    refreshData();
+    const timer = setInterval(refreshData, 4000);
+    return () => clearInterval(timer);
+  }, [refreshData]);
+
+  // Audio Chime
+  const playChimeSound = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.6);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.6);
+    } catch (e) {
+      console.log("Audio play error:", e);
+    }
+  };
+
+  // Staff Desk Actions
+  const handleServeNext = async () => {
+    if (socketRef.current) socketRef.current.emit("serve_next", { tenant_id: tenantId });
+  };
+
+  const handleCompleteTicket = async (ticketId) => {
+    if (socketRef.current) socketRef.current.emit("complete_ticket", { tenant_id: tenantId, ticket_id: ticketId });
+  };
+
+  const handleCounterChange = async (delta) => {
+    const current = analytics ? analytics.active_counters : 2;
+    const next = Math.max(1, current + delta);
+    if (socketRef.current) socketRef.current.emit("set_counters", { tenant_id: tenantId, active_counters: next });
+  };
+
+  const isAdmin = currentUser && currentUser.role === "admin";
+
+  return (
+    <div style={appBgStyle}>
+      {/* Top Navigation Header Bar */}
+      <Header
+        currentUser={currentUser}
+        activePage={activePage}
+        navigateTo={navigateTo}
+        handleLogout={handleLogout}
+        setShowAuthModal={setShowAuthModal}
+        socketConnected={socketConnected}
+      />
+
+      {/* Main Content Router */}
+      <main style={mainContentStyle}>
+        {!currentUser && activePage !== "kiosk" ? (
+          <MandatoryAuthScreen
+            onLoginSuccess={(user) => {
+              handleLoginSuccess(user);
+              if (user.role === "admin") {
+                navigateTo("staff");
+              } else {
+                navigateTo("patient");
+              }
+            }}
+          />
+        ) : (
+          <>
+            {activePage === "hub" && (
+              <HubPage navigateTo={navigateTo} currentUser={currentUser} />
+            )}
+
+            {activePage === "patient" && (
+              isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="user"
+                  pageName="Patient Check-in Portal (Consumer)"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <PatientPage
+                  tenantId={tenantId}
+                  currentUser={currentUser}
+                  activeTicket={activeTicket}
+                  setActiveTicket={setActiveTicket}
+                  ticketQrData={ticketQrData}
+                  setTicketQrData={setTicketQrData}
+                  refreshData={refreshData}
+                />
+              )
+            )}
+
+            {activePage === "staff" && (
+              !isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="admin"
+                  pageName="Doctor & Staff Desk Dashboard"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <StaffPage
+                  tenantId={tenantId}
+                  analytics={analytics}
+                  queueSnapshot={queueSnapshot}
+                  servingTickets={servingTickets}
+                  handleServeNext={handleServeNext}
+                  handleCompleteTicket={handleCompleteTicket}
+                  handleCounterChange={handleCounterChange}
+                />
+              )
+            )}
+
+            {activePage === "admin" && (
+              !isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="admin"
+                  pageName="Hospital ML Studio & Training"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <MLAdminPage tenantId={tenantId} />
+              )
+            )}
+
+            {activePage === "db" && (
+              !isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="admin"
+                  pageName="SQLite Database Inspector"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <DatabaseInspectorPage />
+              )
+            )}
+
+            {activePage === "kiosk" && (
+              <KioskPage
+                tenantId={tenantId}
+                servingTickets={servingTickets}
+                queueSnapshot={queueSnapshot}
+                kioskQrData={kioskQrData}
+              />
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Auth Modal Overlay */}
+      {showAuthModal && (
+        <AuthModal
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          onClose={() => setShowAuthModal(false)}
+          onLoginSuccess={handleLoginSuccess}
+        />
+      )}
+
+      {/* Floating Glassmorphism Plugin Widget */}
+      <QueuePluginWidget tenantId={tenantId} domainKey="hospital" />
+    </div>
+  );
+}
+
+// Global Soft Green Clinical Theme Styles
+const appBgStyle = {
+  minHeight: "100vh",
+  background: "linear-gradient(135deg, #F4F9F5 0%, #EBF4EE 100%)",
+  color: "#0F172A",
+  fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+  padding: "20px 28px",
+};
+
+const mainContentStyle = { minHeight: "75vh" };
