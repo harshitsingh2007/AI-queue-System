@@ -766,4 +766,19 @@ class PluginQueueEngine:
             """, (email_clean, email_clean)).fetchall()
             return [dict(r) for r in rows]
 
+    def get_database_overview(self) -> dict:
+        with self._get_db() as conn:
+            tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
+            result = {}
+            for table in tables:
+                schema = [dict(col) for col in conn.execute(f"PRAGMA table_info('{table}');").fetchall()]
+                count = conn.execute(f"SELECT COUNT(*) FROM '{table}';").fetchone()[0]
+                rows = [dict(r) for r in conn.execute(f"SELECT * FROM '{table}' ORDER BY 1 DESC LIMIT 100;").fetchall()]
+                result[table] = {
+                    "count": count,
+                    "schema": schema,
+                    "rows": rows
+                }
+            return result
+
 engine = PluginQueueEngine()

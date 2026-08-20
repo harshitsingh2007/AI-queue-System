@@ -403,6 +403,15 @@ async def get_user_history(email: str):
     tickets = engine.get_user_tickets(email)
     return {"status": "success", "tickets": tickets}
 
+@app.get("/api/v1/admin/db-overview")
+async def get_db_overview():
+    try:
+        from database import get_db_info
+        data = engine.get_database_overview()
+        return {"status": "success", "db_info": get_db_info(), "database": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "2.5.0"}

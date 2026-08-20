@@ -1,14 +1,14 @@
 /**
  * App.jsx
  * --------
- * Decoupled Multi-Page Architecture for AI-Powered Hospital Queue System.
+ * Decoupled Multi-Page Architecture for AI-Powered Hospital Queue System with Role-Based Auth.
  *
- * Dedicated Independent Pages (Not Inter-linked):
- * 1. 📱 Patient Check-in Portal (`?page=patient` or `/patient`)
- * 2. 🛡️ Doctor & Staff Desk Dashboard (`?page=staff` or `/staff`)
- * 3. 📊 Hospital ML Studio & Dataset Trainer (`?page=admin` or `/admin`)
- * 4. 📺 Waiting Room Kiosk TV Display (`?page=kiosk` or `/kiosk`)
- * 5. 🏠 Hospital Launchpad Portal Hub (`?page=hub` or `/`)
+ * Role Access Control:
+ * 1. 📱 Patient / Consumer View (`?page=patient`): Accessible by Consumers & Guests.
+ * 2. 🛡️ Staff / Doctor Desk Dashboard (`?page=staff`): Strictly Protected — ADMIN ONLY.
+ * 3. 📊 Hospital ML Studio & Training (`?page=admin`): Strictly Protected — ADMIN ONLY.
+ * 4. 📺 Waiting Room Kiosk TV Banner (`?page=kiosk`): Public Kiosk View.
+ * 5. 🏠 Hospital Launchpad Portal Hub (`?page=hub`): Navigation Hub with Role Badges.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -31,7 +31,6 @@ const HOSPITAL_CONFIG = {
   ],
 };
 
-// Determine active page from URL query params or path
 function getInitialPage() {
   const params = new URLSearchParams(window.location.search);
   const pageParam = params.get("page") || params.get("view");
@@ -43,7 +42,7 @@ function getInitialPage() {
   if (path.includes("admin") || path.includes("ml")) return "admin";
   if (path.includes("kiosk") || path.includes("tv")) return "kiosk";
 
-  return "hub"; // Default to Launchpad Hub
+  return "hub";
 }
 
 export default function App() {
@@ -60,8 +59,12 @@ export default function App() {
     }
   });
 
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState("login"); // "login" | "signup"
+
   const handleLoginSuccess = (userData) => {
     setCurrentUser(userData);
+    setShowAuthModal(false);
     try {
       localStorage.setItem("ai_queue_user", JSON.stringify(userData));
     } catch (e) {}
@@ -188,8 +191,8 @@ export default function App() {
     if (socketRef.current) socketRef.current.emit("set_counters", { tenant_id: tenantId, active_counters: next });
   };
 
-  const isUserRole = currentUser?.role === "user";
-  const isRestrictedPage = isUserRole && (activePage === "staff" || activePage === "admin");
+  const isAdmin = currentUser && currentUser.role === "admin";
+  const isConsumer = currentUser && currentUser.role === "user";
 
   return (
     <div style={appBgStyle}>
@@ -201,61 +204,59 @@ export default function App() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          {currentUser && (
-            <>
-              {/* Quick Page Switcher Dropdown (Role Specified) */}
-              <select
-                value={activePage}
-                onChange={(e) => navigateTo(e.target.value)}
-                style={pageSelectStyle}
+          {/* User Auth Badge / Login Button */}
+          {currentUser ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "12px",
+                  background: isAdmin ? "rgba(192, 132, 252, 0.2)" : "rgba(56, 189, 248, 0.2)",
+                  color: isAdmin ? "#c084fc" : "#38bdf8",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  border: isAdmin ? "1px solid #a855f7" : "1px solid #0284c7",
+                }}
               >
-                <option value="hub">🏠 Portal Hub</option>
-                <option value="patient">📱 Standalone Patient Portal</option>
-                {currentUser.role === "admin" && (
-                  <>
-                    <option value="staff">🛡️ Standalone Doctor/Staff Desk</option>
-                    <option value="admin">📊 Standalone ML Data Studio</option>
-                  </>
-                )}
-                <option value="kiosk">📺 Standalone Waiting Room Kiosk</option>
-              </select>
-
-              {/* User Profile Pill */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(30, 41, 59, 0.8)", padding: "4px 12px", borderRadius: "20px", border: "1px solid #334155" }}>
-                <span style={{ fontSize: "13px" }}>{currentUser.role === "admin" ? "🛡️" : "👤"}</span>
-                <span style={{ fontSize: "12px", fontWeight: 700, color: "#f8fafc" }}>{currentUser.username || currentUser.email}</span>
-                <span style={{
-                  fontSize: "10px",
-                  fontWeight: 800,
-                  padding: "2px 8px",
-                  borderRadius: "10px",
-                  background: currentUser.role === "admin" ? "rgba(74, 222, 128, 0.25)" : "rgba(56, 189, 248, 0.25)",
-                  color: currentUser.role === "admin" ? "#4ade80" : "#38bdf8",
-                  textTransform: "uppercase"
-                }}>
-                  {currentUser.role === "admin" ? "ADMIN" : "USER"}
-                </span>
-                <button
-                  onClick={handleLogout}
-                  style={{
-                    background: "rgba(239, 68, 68, 0.2)",
-                    color: "#f87171",
-                    border: "1px solid rgba(239, 68, 68, 0.4)",
-                    borderRadius: "10px",
-                    padding: "3px 8px",
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    marginLeft: "4px"
-                  }}
-                >
-                  Sign Out
-                </button>
-              </div>
-            </>
+                {isAdmin ? "🛡️ Admin:" : "📱 Patient:"} {currentUser.username}
+              </span>
+              <button onClick={handleLogout} style={logoutBtnStyle}>
+                Logout
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setShowAuthModal(true)} style={authTriggerBtnStyle}>
+              🔐 Login / Signup
+            </button>
           )}
 
-          {/* Connection Status Indicator */}
+          {/* Role-Based Page Switcher Dropdown */}
+          <select
+            value={activePage}
+            onChange={(e) => navigateTo(e.target.value)}
+            style={pageSelectStyle}
+            disabled={!currentUser && activePage !== "kiosk"}
+          >
+            <option value="hub">🏠 Portal Hub</option>
+            
+            {/* Strictly Hide Consumer Pages from Admins */}
+            {(isConsumer || !currentUser) && (
+              <option value="patient">📱 Patient Portal (Consumer)</option>
+            )}
+
+            {/* Strictly Hide Admin Pages from Consumers */}
+            {isAdmin && (
+              <>
+                <option value="staff">🛡️ Doctor Desk (Admin Only)</option>
+                <option value="admin">📊 ML Studio (Admin Only)</option>
+                <option value="db">🗄️ Database Inspector (Admin Only)</option>
+              </>
+            )}
+
+            <option value="kiosk">📺 Waiting Room Kiosk TV</option>
+          </select>
+
+          {/* Socket Connection Badge */}
           <span style={connBadgeStyle(socketConnected)}>
             <span style={dotStyle(socketConnected)} />
             {socketConnected ? "Live Socket.IO" : "Offline"}
@@ -263,38 +264,93 @@ export default function App() {
         </div>
       </header>
 
-      {/* RENDER DECOUPLED STANDALONE PAGE */}
+      {/* RENDER DECOUPLED STANDALONE PAGES WITH STRICT MANDATORY AUTH & ACCESS GUARDS */}
       <main style={mainContentStyle}>
-        {!currentUser ? (
-          <AuthPage onLoginSuccess={handleLoginSuccess} />
-        ) : isRestrictedPage ? (
-          <AccessRestrictedPage currentUser={currentUser} navigateTo={navigateTo} onLogout={handleLogout} />
+        {!currentUser && activePage !== "kiosk" ? (
+          <MandatoryAuthScreen onLoginSuccess={(user) => {
+            handleLoginSuccess(user);
+            if (user.role === "admin") {
+              navigateTo("staff");
+            } else {
+              navigateTo("patient");
+            }
+          }} />
         ) : (
           <>
-            {activePage === "hub" && <HospitalHubPage navigateTo={navigateTo} currentUser={currentUser} onLogout={handleLogout} />}
+            {activePage === "hub" && <HospitalHubPage navigateTo={navigateTo} currentUser={currentUser} />}
+            
             {activePage === "patient" && (
-              <StandalonePatientPage
-                tenantId={tenantId}
-                currentUser={currentUser}
-                activeTicket={activeTicket}
-                setActiveTicket={setActiveTicket}
-                ticketQrData={ticketQrData}
-                setTicketQrData={setTicketQrData}
-                refreshData={refreshData}
-              />
+              isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="user"
+                  pageName="Patient Check-in Portal (Consumer)"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <StandalonePatientPage
+                  tenantId={tenantId}
+                  currentUser={currentUser}
+                  activeTicket={activeTicket}
+                  setActiveTicket={setActiveTicket}
+                  ticketQrData={ticketQrData}
+                  setTicketQrData={setTicketQrData}
+                  refreshData={refreshData}
+                />
+              )
             )}
+
             {activePage === "staff" && (
-              <StandaloneStaffPage
-                tenantId={tenantId}
-                analytics={analytics}
-                queueSnapshot={queueSnapshot}
-                servingTickets={servingTickets}
-                handleServeNext={handleServeNext}
-                handleCompleteTicket={handleCompleteTicket}
-                handleCounterChange={handleCounterChange}
-              />
+              !isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="admin"
+                  pageName="Doctor & Staff Desk Dashboard"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <StandaloneStaffPage
+                  tenantId={tenantId}
+                  analytics={analytics}
+                  queueSnapshot={queueSnapshot}
+                  servingTickets={servingTickets}
+                  handleServeNext={handleServeNext}
+                  handleCompleteTicket={handleCompleteTicket}
+                  handleCounterChange={handleCounterChange}
+                />
+              )
             )}
-            {activePage === "admin" && <StandaloneMLAdminPage tenantId={tenantId} currentUser={currentUser} />}
+
+            {activePage === "admin" && (
+              !isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="admin"
+                  pageName="Hospital ML Studio & Training"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <StandaloneMLAdminPage tenantId={tenantId} />
+              )
+            )}
+
+            {activePage === "db" && (
+              !isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="admin"
+                  pageName="SQLite Database Inspector"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <StandaloneDatabaseInspectorPage />
+              )
+            )}
+
             {activePage === "kiosk" && (
               <StandaloneKioskPage
                 tenantId={tenantId}
@@ -307,6 +363,23 @@ export default function App() {
         )}
       </main>
 
+      {/* AUTH MODAL OVERLAY */}
+      {showAuthModal && (
+        <AuthModal
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          onClose={() => setShowAuthModal(false)}
+          onLoginSuccess={(user) => {
+            handleLoginSuccess(user);
+            if (user.role === "admin") {
+              navigateTo("staff");
+            } else {
+              navigateTo("patient");
+            }
+          }}
+        />
+      )}
+
       {/* Floating Glassmorphism Plugin Widget */}
       <QueuePluginWidget tenantId={tenantId} domainKey="hospital" />
     </div>
@@ -314,132 +387,596 @@ export default function App() {
 }
 
 // ===========================================================================
-// 0. LANDING LAUNCHPAD HUB (Switch to any role-allowed standalone page)
+// AUTHENTICATION MODAL (Signup & Login)
 // ===========================================================================
-function HospitalHubPage({ navigateTo, currentUser, onLogout }) {
-  const isAdmin = currentUser?.role === "admin";
+function AuthModal({ authMode, setAuthMode, onClose, onLoginSuccess }) {
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("user"); // "user" (consumer) | "admin"
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setLoading(true);
+
+    const endpoint = authMode === "login" ? "/api/v1/auth/login" : "/api/v1/auth/signup";
+    const payload =
+      authMode === "login"
+        ? { email, password }
+        : { email, username, password, role };
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      setLoading(false);
+
+      if (res.ok && data.status === "success") {
+        onLoginSuccess(data.user);
+      } else {
+        setErrorMsg(data.detail || "Authentication failed. Please check credentials.");
+      }
+    } catch (err) {
+      setLoading(false);
+      setErrorMsg(`Server connection error: ${err.message}`);
+    }
+  };
+
+  const handleQuickLogin = (demoRole) => {
+    if (demoRole === "admin") {
+      setEmail("admin@hospital.com");
+      setPassword("admin123");
+    } else {
+      setEmail("patient@hospital.com");
+      setPassword("user123");
+    }
+  };
+
+  return (
+    <div style={modalBackdropStyle}>
+      <div style={modalCardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+          <h2 style={{ margin: 0, fontSize: "22px", color: "#f8fafc" }}>
+            {authMode === "login" ? "🔐 Login to Account" : "📝 Create Account"}
+          </h2>
+          <button onClick={onClose} style={modalCloseBtnStyle}>✕</button>
+        </div>
+
+        {/* Auth Mode Tabs */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "20px", background: "#0f172a", padding: "4px", borderRadius: "10px" }}>
+          <button
+            type="button"
+            onClick={() => setAuthMode("login")}
+            style={modalTabBtnStyle(authMode === "login")}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => setAuthMode("signup")}
+            style={modalTabBtnStyle(authMode === "signup")}
+          >
+            Register Signup
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: "16px" }}>
+            <label style={fieldLabelStyle}>Email Address</label>
+            <input
+              type="email"
+              placeholder="user@hospital.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={fieldInputStyle}
+            />
+          </div>
+
+          {authMode === "signup" && (
+            <div style={{ marginBottom: "16px" }}>
+              <label style={fieldLabelStyle}>Full Name / Display Name</label>
+              <input
+                type="text"
+                placeholder="Dr. Sarah / Patient John"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                style={fieldInputStyle}
+              />
+            </div>
+          )}
+
+          <div style={{ marginBottom: "16px" }}>
+            <label style={fieldLabelStyle}>Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={fieldInputStyle}
+            />
+          </div>
+
+          {authMode === "signup" && (
+            <div style={{ marginBottom: "20px" }}>
+              <label style={fieldLabelStyle}>Select Account Role</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setRole("user")}
+                  style={roleOptionBtnStyle(role === "user", "#38bdf8")}
+                >
+                  📱 Patient / Consumer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole("admin")}
+                  style={roleOptionBtnStyle(role === "admin", "#c084fc")}
+                >
+                  🛡️ Staff / Doctor Admin
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} style={modalSubmitBtnStyle}>
+            {loading ? "Authenticating..." : authMode === "login" ? "🚀 Login Now" : "🎉 Register Account"}
+          </button>
+        </form>
+
+        {errorMsg && (
+          <div style={{ marginTop: "14px", padding: "10px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid #ef4444", color: "#f87171", fontSize: "12px", textAlign: "center" }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Demo Quick Logins */}
+        <div style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #334155", textAlign: "center" }}>
+          <span style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginBottom: "8px" }}>Quick Demo Credentials:</span>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+            <button type="button" onClick={() => handleQuickLogin("admin")} style={quickBtnStyle}>
+              🛡️ Quick Staff Admin Login
+            </button>
+            <button type="button" onClick={() => handleQuickLogin("user")} style={quickBtnStyle}>
+              📱 Quick Consumer Login
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// MANDATORY AUTHENTICATION SCREEN (Rendered when no user is logged in)
+// ===========================================================================
+function MandatoryAuthScreen({ onLoginSuccess }) {
+  const [authMode, setAuthMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("user");
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    setLoading(true);
+
+    const endpoint = authMode === "login" ? "/api/v1/auth/login" : "/api/v1/auth/signup";
+    const payload =
+      authMode === "login"
+        ? { email, password }
+        : { email, username, password, role };
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      setLoading(false);
+
+      if (res.ok && data.status === "success") {
+        onLoginSuccess(data.user);
+      } else {
+        setErrorMsg(data.detail || "Authentication failed. Please check credentials.");
+      }
+    } catch (err) {
+      setLoading(false);
+      setErrorMsg(`Server connection error: ${err.message}`);
+    }
+  };
+
+  const handleQuickLogin = (demoRole) => {
+    if (demoRole === "admin") {
+      setEmail("admin@hospital.com");
+      setPassword("admin123");
+    } else {
+      setEmail("patient@hospital.com");
+      setPassword("user123");
+    }
+  };
+
+  return (
+    <div style={{ maxWidth: "480px", margin: "40px auto", textAlign: "center" }}>
+      <div style={standaloneCardStyle}>
+        <div style={{ fontSize: "44px", marginBottom: "12px" }}>🔐</div>
+        <h2 style={{ margin: "0 0 8px 0", color: "#f8fafc", fontSize: "24px", fontWeight: 800 }}>
+          Authentication Required
+        </h2>
+        <p style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.5", marginBottom: "20px" }}>
+          Welcome to City General Hospital AI Queue System. Authentication is necessary to access portal features.
+        </p>
+
+        {/* Auth Mode Tabs */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "20px", background: "#0f172a", padding: "4px", borderRadius: "10px" }}>
+          <button
+            type="button"
+            onClick={() => setAuthMode("login")}
+            style={modalTabBtnStyle(authMode === "login")}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => setAuthMode("signup")}
+            style={modalTabBtnStyle(authMode === "signup")}
+          >
+            Register Account
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ textAlign: "left" }}>
+          <div style={{ marginBottom: "16px" }}>
+            <label style={fieldLabelStyle}>Email Address</label>
+            <input
+              type="email"
+              placeholder="user@hospital.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={fieldInputStyle}
+            />
+          </div>
+
+          {authMode === "signup" && (
+            <div style={{ marginBottom: "16px" }}>
+              <label style={fieldLabelStyle}>Full Name / Display Name</label>
+              <input
+                type="text"
+                placeholder="Dr. Sarah / Patient John"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                style={fieldInputStyle}
+              />
+            </div>
+          )}
+
+          <div style={{ marginBottom: "16px" }}>
+            <label style={fieldLabelStyle}>Password</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={fieldInputStyle}
+            />
+          </div>
+
+          {authMode === "signup" && (
+            <div style={{ marginBottom: "20px" }}>
+              <label style={fieldLabelStyle}>Select Account Role</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setRole("user")}
+                  style={roleOptionBtnStyle(role === "user", "#38bdf8")}
+                >
+                  📱 Patient / Consumer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole("admin")}
+                  style={roleOptionBtnStyle(role === "admin", "#c084fc")}
+                >
+                  🛡️ Staff / Doctor Admin
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button type="submit" disabled={loading} style={modalSubmitBtnStyle}>
+            {loading ? "Authenticating..." : authMode === "login" ? "🚀 Sign In & Enter" : "🎉 Register Account"}
+          </button>
+        </form>
+
+        {errorMsg && (
+          <div style={{ marginTop: "14px", padding: "10px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid #ef4444", color: "#f87171", fontSize: "12px", textAlign: "center" }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {/* Demo Quick Logins */}
+        <div style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #334155", textAlign: "center" }}>
+          <span style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginBottom: "8px" }}>Quick Demo 1-Click Login:</span>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+            <button type="button" onClick={() => handleQuickLogin("admin")} style={quickBtnStyle}>
+              🛡️ Quick Staff Admin Login
+            </button>
+            <button type="button" onClick={() => handleQuickLogin("user")} style={quickBtnStyle}>
+              📱 Quick Consumer Login
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// STRICT ACCESS DENIED SHIELD (Protects Admin Pages & Consumer Pages)
+// ===========================================================================
+function AccessDeniedGuard({ requiredRole, pageName, currentUser, onLoginSuccess, navigateTo }) {
+  const isTargetAdmin = requiredRole === "admin";
+  const titleText = isTargetAdmin ? "Access Denied — Admin Required" : "Access Restricted — Consumer Portal Only";
+  const bodyText = isTargetAdmin
+    ? `The ${pageName} is strictly protected for Hospital Staff and Doctor Admins. As a Consumer/Patient user, you cannot view or access administrative desk controls.`
+    : `The ${pageName} is designated for Consumer/Patient check-in. Staff Admin accounts cannot access or check in via the Patient Portal.`;
+
+  return (
+    <div style={{ maxWidth: "550px", margin: "40px auto", textAlign: "center" }}>
+      <div style={standaloneCardStyle}>
+        <span style={{ fontSize: "48px", display: "block", marginBottom: "12px" }}>⛔</span>
+        <h2 style={{ margin: "0 0 10px 0", color: "#f87171", fontSize: "24px" }}>
+          {titleText}
+        </h2>
+        <p style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.6", marginBottom: "20px" }}>
+          {bodyText}
+        </p>
+
+        {currentUser ? (
+          <div style={{ padding: "14px", borderRadius: "10px", background: "#0f172a", border: "1px solid #334155", marginBottom: "20px" }}>
+            <p style={{ margin: "0 0 10px 0", color: "#94a3b8", fontSize: "13px" }}>
+              Currently logged in as: <strong style={{ color: currentUser.role === "admin" ? "#c084fc" : "#38bdf8" }}>{currentUser.username} ({currentUser.email})</strong> — Role: <span style={{ color: currentUser.role === "admin" ? "#c084fc" : "#f87171", fontWeight: 700 }}>{currentUser.role === "admin" ? "Staff Admin" : "Consumer Patient"}</span>.
+            </p>
+            {navigateTo && (
+              <button
+                onClick={() => navigateTo(currentUser.role === "admin" ? "staff" : "patient")}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: currentUser.role === "admin"
+                    ? "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)"
+                    : "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                {currentUser.role === "admin" ? "🛡️ Switch to Doctor Desk Dashboard" : "📱 Switch to Patient Check-in Portal"}
+              </button>
+            )}
+          </div>
+        ) : null}
+
+        {isTargetAdmin && <AuthModalInline onLoginSuccess={onLoginSuccess} defaultRole="admin" />}
+      </div>
+    </div>
+  );
+}
+
+// Inline Admin Login Component for Access Denied Shield
+function AuthModalInline({ onLoginSuccess, defaultRole }) {
+  const [email, setEmail] = useState("admin@hospital.com");
+  const [password, setPassword] = useState("admin123");
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      setLoading(false);
+      if (res.ok && data.status === "success") {
+        if (data.user.role !== "admin") {
+          setErrorMsg("Login failed: Account is not a Staff Admin.");
+          return;
+        }
+        onLoginSuccess(data.user);
+      } else {
+        setErrorMsg(data.detail || "Invalid Staff Admin credentials.");
+      }
+    } catch (err) {
+      setLoading(false);
+      setErrorMsg(`Server error: ${err.message}`);
+    }
+  };
+
+  return (
+    <div style={{ textAlign: "left", background: "#0f172a", padding: "18px", borderRadius: "12px", border: "1px solid #334155" }}>
+      <h4 style={{ margin: "0 0 12px 0", color: "#c084fc", fontSize: "14px" }}>
+        🛡️ Sign In with Staff Admin Credentials:
+      </h4>
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: "12px" }}>
+          <label style={fieldLabelStyle}>Admin Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            style={fieldInputStyle}
+          />
+        </div>
+        <div style={{ marginBottom: "14px" }}>
+          <label style={fieldLabelStyle}>Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            style={fieldInputStyle}
+          />
+        </div>
+        <button type="submit" disabled={loading} style={primaryBtnStyle}>
+          {loading ? "Verifying..." : "🔑 Authenticate as Staff Admin"}
+        </button>
+      </form>
+      {errorMsg && <p style={{ color: "#f87171", fontSize: "12px", marginTop: "10px", margin: 0 }}>{errorMsg}</p>}
+    </div>
+  );
+}
+
+// ===========================================================================
+// 0. LANDING LAUNCHPAD HUB (Switch to any standalone page)
+// ===========================================================================
+function HospitalHubPage({ navigateTo, currentUser }) {
+  const isAdmin = currentUser && currentUser.role === "admin";
+  const isConsumer = currentUser && currentUser.role === "user";
 
   return (
     <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "20px 0" }}>
       <div style={{ textAlign: "center", marginBottom: "36px" }}>
         <h1 style={{ fontSize: "28px", fontWeight: 800, color: "#f8fafc", margin: "0 0 10px 0" }}>
-          🏥 City Hospital — Dedicated Application Hub
+          🏥 City Hospital — Portal Launchpad
         </h1>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "10px", background: "rgba(30, 41, 59, 0.8)", padding: "6px 16px", borderRadius: "20px", border: "1px solid #334155" }}>
-          <span style={{ color: "#94a3b8", fontSize: "13px" }}>Identified Account:</span>
-          <span style={{ color: "#f8fafc", fontSize: "13px", fontWeight: 700 }}>{currentUser?.username} ({currentUser?.email})</span>
-          <span style={{
-            fontSize: "11px",
-            fontWeight: 800,
-            padding: "2px 10px",
-            borderRadius: "12px",
-            background: isAdmin ? "rgba(74, 222, 128, 0.2)" : "rgba(56, 189, 248, 0.2)",
-            color: isAdmin ? "#4ade80" : "#38bdf8",
-            textTransform: "uppercase"
-          }}>
-            {isAdmin ? "🛡️ ADMIN ROLE" : "👤 USER ROLE"}
-          </span>
-        </div>
+        <p style={{ color: "#94a3b8", fontSize: "14px", margin: "0 0 12px 0" }}>
+          {isAdmin
+            ? "🛡️ Logged in as Staff Admin — Full access to Doctor Desk, ML Studio, and Waiting Room Kiosk."
+            : "📱 Logged in as Consumer Patient — Full access to Patient Check-in and Waiting Room Kiosk."}
+        </p>
+        {isConsumer && (
+          <div style={{ display: "inline-block", padding: "6px 14px", borderRadius: "20px", background: "rgba(56, 189, 248, 0.15)", border: "1px solid #0284c7", color: "#38bdf8", fontSize: "12px", fontWeight: 600 }}>
+            ℹ️ Admin pages (Doctor Desk & ML Studio) are hidden from Consumer accounts.
+          </div>
+        )}
+        {isAdmin && (
+          <div style={{ display: "inline-block", padding: "6px 14px", borderRadius: "20px", background: "rgba(192, 132, 252, 0.15)", border: "1px solid #a855f7", color: "#c084fc", fontSize: "12px", fontWeight: 600 }}>
+            ℹ️ Consumer Check-in page is hidden from Staff Admin accounts.
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-        {/* Patient Portal Card (User & Admin) */}
-        <div style={hubCardStyle} onClick={() => navigateTo("patient")}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        {/* Patient Portal Card (Only for Consumer) */}
+        {isConsumer ? (
+          <div style={hubCardStyle} onClick={() => navigateTo("patient")}>
             <div style={hubIconStyle}>📱</div>
-            <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", fontWeight: 700 }}>
-              USER PAGE
-            </span>
+            <h3 style={{ margin: "0 0 8px 0", color: "#38bdf8", fontSize: "20px" }}>
+              1. Patient Check-in Portal (Consumer)
+            </h3>
+            <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
+              Standalone mobile/kiosk check-in page for patients. Department selection, triage emergency toggle, position countdown, audio chimes, and digital QR ticket pass.
+            </p>
           </div>
-          <h3 style={{ margin: "12px 0 8px 0", color: "#38bdf8", fontSize: "20px" }}>
-            1. Patient Check-in Portal
-          </h3>
-          <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
-            Mobile/kiosk check-in page for patients. Category selection, Emergency triage, live position countdown, audio chimes, and digital QR ticket pass.
-          </p>
-        </div>
+        ) : (
+          <div style={{ ...hubCardStyle, opacity: 0.5, cursor: "not-allowed" }}>
+            <div style={hubIconStyle}>🔒</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: "0 0 8px 0", color: "#64748b", fontSize: "20px" }}>
+                1. Patient Check-in Portal (Consumer)
+              </h3>
+              <span style={{ padding: "4px 8px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", fontSize: "10px", fontWeight: 700 }}>
+                CONSUMER ONLY (RESTRICTED)
+              </span>
+            </div>
+            <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
+              Patient check-in portal is restricted to Consumer accounts and not accessible by Staff Admin accounts.
+            </p>
+          </div>
+        )}
 
-        {/* Doctor & Staff Desk Card (Admin Only or Restricted) */}
+        {/* Doctor & Staff Desk Card (Only for Admin) */}
         {isAdmin ? (
           <div style={hubCardStyle} onClick={() => navigateTo("staff")}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={hubIconStyle}>🛡️</div>
-              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(74, 222, 128, 0.2)", color: "#4ade80", fontWeight: 700 }}>
-                ADMIN PAGE
-              </span>
+            <div style={hubIconStyle}>🛡️</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: "0 0 8px 0", color: "#4ade80", fontSize: "20px" }}>
+                2. Doctor & Staff Desk Dashboard
+              </h3>
+              <span style={roleBadgeStyle(true)}>UNLOCKED</span>
             </div>
-            <h3 style={{ margin: "12px 0 8px 0", color: "#4ade80", fontSize: "20px" }}>
-              2. Doctor & Staff Desk Dashboard
-            </h3>
             <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
-              Desk control panel for doctors & nurses. Active counter adjusters, <strong>Call Next Priority Ticket</strong>, now-serving monitor, and live queue line.
+              Standalone desk control panel for doctors & nurses. Active counter adjusters, <strong>Call Next Priority Ticket</strong>, now-serving monitor, and live queue line.
             </p>
           </div>
         ) : (
-          <div style={{ ...hubCardStyle, opacity: 0.65, border: "1px dashed #ef4444", cursor: "default" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={hubIconStyle}>🔒</div>
-              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", fontWeight: 700 }}>
-                ADMIN ONLY
+          <div style={{ ...hubCardStyle, opacity: 0.5, cursor: "not-allowed" }}>
+            <div style={hubIconStyle}>🔒</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: "0 0 8px 0", color: "#64748b", fontSize: "20px" }}>
+                2. Doctor & Staff Desk Dashboard
+              </h3>
+              <span style={{ padding: "4px 8px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", fontSize: "10px", fontWeight: 700 }}>
+                ADMIN ONLY (RESTRICTED)
               </span>
             </div>
-            <h3 style={{ margin: "12px 0 8px 0", color: "#94a3b8", fontSize: "20px" }}>
-              2. Doctor & Staff Desk Dashboard
-            </h3>
             <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
-              Restricted to Hospital Doctors & Staff. Sign in with an Admin account to manage queue counters and call tickets.
+              Staff desk control panel is restricted to Staff Admin accounts and not accessible by Consumer accounts.
             </p>
-            <button
-              onClick={onLogout}
-              style={{ marginTop: "10px", padding: "6px 12px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", border: "1px solid #ef4444", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}
-            >
-              Sign In as Admin
-            </button>
           </div>
         )}
 
-        {/* ML Studio & Dataset Trainer Card (Admin Only or Restricted) */}
+        {/* ML Studio & Dataset Trainer Card (Only for Admin) */}
         {isAdmin ? (
           <div style={hubCardStyle} onClick={() => navigateTo("admin")}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={hubIconStyle}>📊</div>
-              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(192, 132, 252, 0.2)", color: "#c084fc", fontWeight: 700 }}>
-                ADMIN PAGE
-              </span>
+            <div style={hubIconStyle}>📊</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: "0 0 8px 0", color: "#c084fc", fontSize: "20px" }}>
+                3. Hospital ML Studio & Training
+              </h3>
+              <span style={roleBadgeStyle(true)}>UNLOCKED</span>
             </div>
-            <h3 style={{ margin: "12px 0 8px 0", color: "#c084fc", fontSize: "20px" }}>
-              3. Hospital ML Studio & Training
-            </h3>
             <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
-              Dataset ingestion & AI training studio. Upload historical hospital CSV/Excel files, column auto-mapping badges, and multi-model ensemble trainer.
+              Standalone dataset ingestion & AI training studio. Upload historical hospital CSV/Excel files, column auto-mapping badges, and multi-model ensemble trainer.
             </p>
           </div>
         ) : (
-          <div style={{ ...hubCardStyle, opacity: 0.65, border: "1px dashed #ef4444", cursor: "default" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={hubIconStyle}>🔒</div>
-              <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", fontWeight: 700 }}>
-                ADMIN ONLY
+          <div style={{ ...hubCardStyle, opacity: 0.5, cursor: "not-allowed" }}>
+            <div style={hubIconStyle}>🔒</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: "0 0 8px 0", color: "#64748b", fontSize: "20px" }}>
+                3. Hospital ML Studio & Training
+              </h3>
+              <span style={{ padding: "4px 8px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", fontSize: "10px", fontWeight: 700 }}>
+                ADMIN ONLY (RESTRICTED)
               </span>
             </div>
-            <h3 style={{ margin: "12px 0 8px 0", color: "#64748b", fontSize: "20px" }}>
-              3. Hospital ML Studio & Training
-            </h3>
             <p style={{ color: "#64748b", fontSize: "13px", lineHeight: "1.5" }}>
-              Restricted to Data Admins. Sign in with an Admin account to upload training datasets and configure AI models.
+              AI training studio is restricted to Staff Admin accounts and not accessible by Consumer accounts.
             </p>
           </div>
         )}
 
-        {/* Waiting Room Kiosk TV Card (User & Admin) */}
+        {/* Waiting Room Kiosk TV Card */}
         <div style={hubCardStyle} onClick={() => navigateTo("kiosk")}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div style={hubIconStyle}>📺</div>
-            <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "10px", background: "rgba(245, 158, 11, 0.2)", color: "#f59e0b", fontWeight: 700 }}>
-              USER & ADMIN PAGE
-            </span>
-          </div>
-          <h3 style={{ margin: "12px 0 8px 0", color: "#f59e0b", fontSize: "20px" }}>
+          <div style={hubIconStyle}>📺</div>
+          <h3 style={{ margin: "0 0 8px 0", color: "#f59e0b", fontSize: "20px" }}>
             4. Waiting Room Kiosk TV Display
           </h3>
           <p style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
@@ -452,7 +989,7 @@ function HospitalHubPage({ navigateTo, currentUser, onLogout }) {
 }
 
 // ===========================================================================
-// 1. STANDALONE PATIENT CHECK-IN PORTAL (No staff buttons, 100% Patient View)
+// 1. STANDALONE PATIENT CHECK-IN PORTAL (Consumer View)
 // ===========================================================================
 function StandalonePatientPage({
   tenantId,
@@ -463,81 +1000,14 @@ function StandalonePatientPage({
   setTicketQrData,
   refreshData,
 }) {
-  const [name, setName] = useState(currentUser?.username || "");
+  const [name, setName] = useState(currentUser ? currentUser.username : "");
   const [category, setCategory] = useState("consultation");
   const [priority, setPriority] = useState(2);
   const [statusMsg, setStatusMsg] = useState(null);
 
-  // Real Database Profile State
-  const [phone, setPhone] = useState("");
-  const [gender, setGender] = useState("Male");
-  const [age, setAge] = useState("");
-  const [medicalId, setMedicalId] = useState("");
-  const [profileStatus, setProfileStatus] = useState(null);
-  const [userDbTickets, setUserDbTickets] = useState([]);
-
-  // Fetch real user profile & database history
-  const fetchUserDbData = useCallback(() => {
-    if (!currentUser?.email) return;
-    
-    // Fetch profile
-    fetch(`${API_BASE}/api/v1/auth/me?email=${encodeURIComponent(currentUser.email)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.status === "success" && data.user) {
-          if (data.user.phone) setPhone(data.user.phone);
-          if (data.user.gender) setGender(data.user.gender);
-          if (data.user.age) setAge(data.user.age);
-          if (data.user.medical_id) setMedicalId(data.user.medical_id);
-          if (data.user.username && !name) setName(data.user.username);
-        }
-      })
-      .catch((e) => console.log("Profile fetch error:", e));
-
-    // Fetch user ticket history from database
-    fetch(`${API_BASE}/api/v1/auth/user-history/${encodeURIComponent(currentUser.email)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.status === "success" && data.tickets) {
-          setUserDbTickets(data.tickets);
-        }
-      })
-      .catch((e) => console.log("User history fetch error:", e));
-  }, [currentUser, name]);
-
   useEffect(() => {
-    fetchUserDbData();
-  }, [fetchUserDbData]);
-
-  const handleSaveProfile = async (e) => {
-    e.preventDefault();
-    if (!currentUser?.email) return;
-    setProfileStatus("Saving profile to SQLite database...");
-
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/auth/profile`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: currentUser.email,
-          username: name || currentUser.username,
-          phone: phone,
-          gender: gender,
-          age: Number(age) || 0,
-          medical_id: medicalId,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setProfileStatus("✓ Profile successfully stored in SQLite database!");
-        setTimeout(() => setProfileStatus(null), 3500);
-      } else {
-        setProfileStatus(`❌ ${data.detail}`);
-      }
-    } catch (err) {
-      setProfileStatus(`❌ Profile save error: ${err.message}`);
-    }
-  };
+    if (currentUser) setName(currentUser.username);
+  }, [currentUser]);
 
   const handleJoinQueue = async (e) => {
     e.preventDefault();
@@ -554,7 +1024,7 @@ function StandalonePatientPage({
           service_category: category,
           name: name,
           priority_level: Number(priority),
-          user_email: currentUser?.email || "",
+          user_email: currentUser ? currentUser.email : "",
         }),
       });
 
@@ -562,7 +1032,7 @@ function StandalonePatientPage({
         const data = await res.json();
         const t = data.ticket;
         setActiveTicket(t);
-        setStatusMsg(`✓ Ticket #${t.ticket_id} Issued & Saved to Database!`);
+        setStatusMsg(`✓ Ticket #${t.ticket_id} Issued Successfully!`);
 
         // Fetch Ticket QR Code
         fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${t.ticket_id}`)
@@ -571,7 +1041,6 @@ function StandalonePatientPage({
           .catch((e) => console.log("QR error:", e));
 
         refreshData();
-        fetchUserDbData();
       } else {
         const err = await res.json();
         setStatusMsg(`❌ Error: ${err.detail}`);
@@ -582,8 +1051,13 @@ function StandalonePatientPage({
   };
 
   return (
-    <div style={{ maxWidth: "680px", margin: "0 auto" }}>
-      {/* Patient Check-in Card */}
+    <div style={{ maxWidth: "600px", margin: "0 auto" }}>
+      {currentUser && currentUser.role === "admin" && (
+        <div style={{ padding: "10px 14px", borderRadius: "10px", background: "rgba(192, 132, 252, 0.15)", border: "1px solid #a855f7", color: "#c084fc", fontSize: "12px", marginBottom: "16px", textAlign: "center" }}>
+          💡 <strong>Staff Admin Mode:</strong> You are logged in as Staff Admin (<em>{currentUser.username}</em>). Test patient check-ins created here will enter the live queue line.
+        </div>
+      )}
+
       <div style={standaloneCardStyle}>
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
           <span style={{ fontSize: "42px", display: "block", marginBottom: "8px" }}>📱</span>
@@ -711,98 +1185,12 @@ function StandalonePatientPage({
           )}
         </div>
       )}
-
-      {/* Real SQLite Database User Profile Card */}
-      {currentUser && (
-        <div style={{ ...standaloneCardStyle, marginTop: "24px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
-            <span style={{ fontSize: "24px" }}>💾</span>
-            <div>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#f8fafc" }}>Real Database User Profile</h3>
-              <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>
-                Persisted in SQLite Database (<code style={{ color: "#38bdf8" }}>queue_system.db</code>)
-              </p>
-            </div>
-          </div>
-
-          <form onSubmit={handleSaveProfile} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-            <div>
-              <label style={fieldLabelStyle}>Account Email (Unique Key)</label>
-              <input type="text" disabled value={currentUser.email} style={{ ...fieldInputStyle, opacity: 0.7 }} />
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>Full Name</label>
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} required style={fieldInputStyle} />
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>Phone Number</label>
-              <input type="text" placeholder="+1 (555) 019-2834" value={phone} onChange={(e) => setPhone(e.target.value)} style={fieldInputStyle} />
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>Medical Card / Health ID</label>
-              <input type="text" placeholder="HC-94021" value={medicalId} onChange={(e) => setMedicalId(e.target.value)} style={fieldInputStyle} />
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>Gender</label>
-              <select value={gender} onChange={(e) => setGender(e.target.value)} style={fieldInputStyle}>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div>
-              <label style={fieldLabelStyle}>Age</label>
-              <input type="number" placeholder="32" value={age} onChange={(e) => setAge(e.target.value)} style={fieldInputStyle} />
-            </div>
-
-            <div style={{ gridColumn: "span 2", marginTop: "6px" }}>
-              <button type="submit" style={{ ...patientSubmitBtnStyle, background: "linear-gradient(135deg, #10b981 0%, #059669 100%)" }}>
-                💾 Save Profile to Database
-              </button>
-            </div>
-          </form>
-
-          {profileStatus && (
-            <div style={{ marginTop: "12px", padding: "10px", borderRadius: "8px", background: "#0f172a", border: "1px solid #334155", color: "#38bdf8", fontSize: "12px", textAlign: "center" }}>
-              {profileStatus}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* User Real Database Queue Tickets History */}
-      {currentUser && (
-        <div style={{ ...standaloneCardStyle, marginTop: "24px" }}>
-          <h3 style={{ margin: "0 0 14px 0", fontSize: "18px", color: "#f8fafc" }}>
-            📜 Your Saved Database Tickets History ({userDbTickets.length})
-          </h3>
-
-          {userDbTickets.length === 0 ? (
-            <p style={{ color: "#64748b", fontSize: "13px", margin: 0 }}>No past tickets recorded in database yet.</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {userDbTickets.map((t) => (
-                <div key={t.ticket_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px", background: "#0f172a", borderRadius: "10px", border: "1px solid #334155" }}>
-                  <div>
-                    <span style={{ fontWeight: 800, color: "#38bdf8", fontSize: "16px" }}>#{t.ticket_id}</span>
-                    <span style={{ marginLeft: "10px", color: "#cbd5e1", fontSize: "13px" }}>{t.service_category.toUpperCase()}</span>
-                    <span style={{ display: "block", fontSize: "11px", color: "#64748b", marginTop: "2px" }}>
-                      Joined: {new Date(t.join_timestamp * 1000).toLocaleString()}
-                    </span>
-                  </div>
-                  <span style={passStatusBadgeStyle(t.status)}>{t.status.toUpperCase()}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
 // ===========================================================================
-// 2. STANDALONE DOCTOR & STAFF DESK DASHBOARD (No patient form, 100% Staff View)
+// 2. STANDALONE DOCTOR & STAFF DESK DASHBOARD (Admin Only)
 // ===========================================================================
 function StandaloneStaffPage({
   tenantId,
@@ -815,7 +1203,6 @@ function StandaloneStaffPage({
 }) {
   return (
     <div>
-      {/* Top Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
         <div style={staffStatCardStyle}>
           <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Patients Waiting</span>
@@ -853,7 +1240,6 @@ function StandaloneStaffPage({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-        {/* Desk Call Control & Serving Monitor */}
         <div style={standaloneCardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
             <div>
@@ -893,7 +1279,6 @@ function StandaloneStaffPage({
           )}
         </div>
 
-        {/* Live Patient Waiting Line Table */}
         <div style={standaloneCardStyle}>
           <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", color: "#f8fafc" }}>
             📊 Waiting Line Snapshot ({queueSnapshot.length})
@@ -946,7 +1331,7 @@ function StandaloneStaffPage({
 }
 
 // ===========================================================================
-// 3. STANDALONE HOSPITAL ML DATA STUDIO & TRAINING (100% ML Admin View)
+// 3. STANDALONE HOSPITAL ML DATA STUDIO & TRAINING (Admin Only)
 // ===========================================================================
 function StandaloneMLAdminPage({ tenantId }) {
   const [file, setFile] = useState(null);
@@ -1050,7 +1435,6 @@ function StandaloneMLAdminPage({ tenantId }) {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-      {/* Dataset Upload & Standardization Box */}
       <div style={standaloneCardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
           <div>
@@ -1106,7 +1490,6 @@ function StandaloneMLAdminPage({ tenantId }) {
         {statusMsg && <div style={mlStatusBoxStyle}>{statusMsg}</div>}
       </div>
 
-      {/* Active Model Health Card */}
       <div style={standaloneCardStyle}>
         <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", color: "#f8fafc" }}>
           🤖 Active Hospital AI Model Registry
@@ -1165,110 +1548,12 @@ function StandaloneMLAdminPage({ tenantId }) {
           </div>
         )}
       </div>
-
-      {/* Real SQLite Database Users Directory (Admin View) */}
-      <AdminDbUsersDirectory />
-    </div>
-  );
-}
-
-function AdminDbUsersDirectory() {
-  const [dbUsers, setDbUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchUsers = () => {
-    setLoading(true);
-    fetch(`${API_BASE}/api/v1/auth/users`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.status === "success" && data.users) {
-          setDbUsers(data.users);
-        }
-      })
-      .catch((e) => console.log("Fetch DB users error:", e))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  return (
-    <div style={{ ...standaloneCardStyle, marginTop: "28px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "24px" }}>👥</span>
-          <div>
-            <h3 style={{ margin: 0, fontSize: "18px", color: "#f8fafc" }}>Registered Database Users Directory</h3>
-            <p style={{ margin: 0, fontSize: "12px", color: "#94a3b8" }}>
-              Real User Accounts Persisted in SQLite Database (<code style={{ color: "#38bdf8" }}>queue_system.db</code>)
-            </p>
-          </div>
-        </div>
-
-        <button onClick={fetchUsers} style={{ padding: "6px 14px", borderRadius: "8px", background: "#1e293b", border: "1px solid #334155", color: "#38bdf8", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>
-          🔄 Refresh DB Table
-        </button>
-      </div>
-
-      <div style={{ overflowX: "auto" }}>
-        <table style={staffTableStyle}>
-          <thead>
-            <tr>
-              <th style={staffThStyle}>ID</th>
-              <th style={staffThStyle}>Username</th>
-              <th style={staffThStyle}>Email Address</th>
-              <th style={staffThStyle}>Role</th>
-              <th style={staffThStyle}>Phone</th>
-              <th style={staffThStyle}>Medical ID</th>
-              <th style={staffThStyle}>Created At</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan="7" style={{ ...staffTdStyle, textAlign: "center", color: "#94a3b8" }}>Loading user records from SQLite database...</td>
-              </tr>
-            ) : dbUsers.length === 0 ? (
-              <tr>
-                <td colSpan="7" style={{ ...staffTdStyle, textAlign: "center", color: "#64748b" }}>No users registered in database.</td>
-              </tr>
-            ) : (
-              dbUsers.map((u) => (
-                <tr key={u.id}>
-                  <td style={{ ...staffTdStyle, fontWeight: 700 }}>#{u.id}</td>
-                  <td style={{ ...staffTdStyle, color: "#f8fafc", fontWeight: 600 }}>{u.username}</td>
-                  <td style={{ ...staffTdStyle, color: "#38bdf8" }}>{u.email}</td>
-                  <td style={staffTdStyle}>
-                    <span style={{
-                      fontSize: "10px",
-                      fontWeight: 800,
-                      padding: "2px 8px",
-                      borderRadius: "10px",
-                      background: u.role === "admin" ? "rgba(74, 222, 128, 0.25)" : "rgba(56, 189, 248, 0.25)",
-                      color: u.role === "admin" ? "#4ade80" : "#38bdf8",
-                      textTransform: "uppercase"
-                    }}>
-                      {u.role.toUpperCase()}
-                    </span>
-                  </td>
-                  <td style={staffTdStyle}>{u.phone || "—"}</td>
-                  <td style={staffTdStyle}>{u.medical_id || "—"}</td>
-                  <td style={{ ...staffTdStyle, fontSize: "11px", color: "#64748b" }}>
-                    {u.created_at ? new Date(u.created_at * 1000).toLocaleDateString() : "System Default"}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }
 
 // ===========================================================================
-// 4. STANDALONE WAITING ROOM KIOSK TV DISPLAY (100% Kiosk View)
+// 4. STANDALONE WAITING ROOM KIOSK TV DISPLAY
 // ===========================================================================
 function StandaloneKioskPage({ tenantId, servingTickets, queueSnapshot, kioskQrData }) {
   return (
@@ -1283,7 +1568,6 @@ function StandaloneKioskPage({ tenantId, servingTickets, queueSnapshot, kioskQrD
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px" }}>
-        {/* Big Now Serving Banner */}
         <div style={kioskServingBoxStyle}>
           <h2 style={{ margin: "0 0 20px 0", color: "#4ade80", fontSize: "28px" }}>
             🔔 NOW SERVING AT DOCTOR DESKS
@@ -1309,7 +1593,6 @@ function StandaloneKioskPage({ tenantId, servingTickets, queueSnapshot, kioskQrD
           )}
         </div>
 
-        {/* QR Code Scan Poster Box */}
         <div style={kioskQrBoxStyle}>
           <h3 style={{ margin: "0 0 12px 0", color: "#f8fafc", fontSize: "20px" }}>
             📲 Scan for Mobile Token
@@ -1328,6 +1611,248 @@ function StandaloneKioskPage({ tenantId, servingTickets, queueSnapshot, kioskQrD
             <p style={{ color: "#64748b" }}>Generating QR...</p>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// 5. STANDALONE SQLITE DATABASE INSPECTOR (Admin Only)
+// ===========================================================================
+function StandaloneDatabaseInspectorPage() {
+  const [dbData, setDbData] = useState(null);
+  const [dbInfo, setDbInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTable, setActiveTable] = useState("users");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [errorMsg, setErrorMsg] = useState(null);
+
+  const fetchDbOverview = useCallback(() => {
+    setLoading(true);
+    fetch(`${API_BASE}/api/v1/admin/db-overview`)
+      .then((r) => r.json())
+      .then((res) => {
+        setLoading(false);
+        if (res.status === "success") {
+          setDbData(res.database);
+          if (res.db_info) setDbInfo(res.db_info);
+          if (res.database && !res.database[activeTable]) {
+            const firstTable = Object.keys(res.database)[0];
+            if (firstTable) setActiveTable(firstTable);
+          }
+        } else {
+          setErrorMsg("Failed to load database overview.");
+        }
+      })
+      .catch((e) => {
+        setLoading(false);
+        setErrorMsg(`Connection error: ${e.message}`);
+      });
+  }, [activeTable]);
+
+  useEffect(() => {
+    fetchDbOverview();
+  }, [fetchDbOverview]);
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 20px", color: "#94a3b8" }}>
+        <span style={{ fontSize: "36px", display: "block", marginBottom: "12px" }}>🗄️</span>
+        Connecting to SQL Database & Loading tables...
+      </div>
+    );
+  }
+
+  if (errorMsg || !dbData) {
+    return (
+      <div style={{ textAlign: "center", padding: "60px 20px", color: "#f87171" }}>
+        <span style={{ fontSize: "36px", display: "block", marginBottom: "12px" }}>❌</span>
+        {errorMsg || "Database not accessible."}
+      </div>
+    );
+  }
+
+  const tableNames = Object.keys(dbData);
+  const currentTableData = dbData[activeTable] || { count: 0, schema: [], rows: [] };
+  const rows = currentTableData.rows || [];
+  const schema = currentTableData.schema || [];
+
+  // Filter rows based on search term
+  const filteredRows = rows.filter((row) => {
+    if (!searchTerm.trim()) return true;
+    return Object.values(row).some((val) =>
+      String(val).toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  });
+
+  const columns = schema.length > 0 ? schema.map((s) => s.name) : rows.length > 0 ? Object.keys(rows[0]) : [];
+
+  return (
+    <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <h2 style={{ margin: "0 0 4px 0", fontSize: "24px", color: "#f8fafc" }}>
+              🗄️ Database Inspector
+            </h2>
+            {dbInfo && (
+              <span
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "12px",
+                  background: dbInfo.is_cloud ? "rgba(74, 222, 128, 0.2)" : "rgba(56, 189, 248, 0.2)",
+                  color: dbInfo.is_cloud ? "#4ade80" : "#38bdf8",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  border: dbInfo.is_cloud ? "1px solid #22c55e" : "1px solid #0284c7",
+                }}
+              >
+                {dbInfo.is_cloud ? "☁️ " : "📁 "} {dbInfo.db_type}
+              </span>
+            )}
+          </div>
+          <span style={{ fontSize: "12px", color: "#94a3b8" }}>
+            Target Connection: <code style={{ color: "#38bdf8" }}>{dbInfo ? dbInfo.connection_url : "queue_system.db"}</code>
+          </span>
+        </div>
+
+        <button onClick={fetchDbOverview} style={callPriorityBtnStyle}>
+          🔄 Refresh DB Tables
+        </button>
+      </div>
+
+      {/* Table Selector Tabs */}
+      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", overflowX: "auto", paddingBottom: "6px" }}>
+        {tableNames.map((tName) => {
+          const tInfo = dbData[tName];
+          const active = activeTable === tName;
+          return (
+            <button
+              key={tName}
+              onClick={() => {
+                setActiveTable(tName);
+                setSearchTerm("");
+              }}
+              style={{
+                padding: "10px 16px",
+                borderRadius: "12px",
+                border: active ? "2px solid #38bdf8" : "1px solid #334155",
+                background: active ? "rgba(56, 189, 248, 0.15)" : "#0f172a",
+                color: active ? "#38bdf8" : "#94a3b8",
+                fontWeight: 700,
+                fontSize: "13px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span>📋 {tName}</span>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "10px",
+                  background: active ? "#0284c7" : "#334155",
+                  color: "#fff",
+                  fontSize: "11px",
+                }}
+              >
+                {tInfo.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main Table Inspector Card */}
+      <div style={standaloneCardStyle}>
+        {/* Table Meta Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+          <div>
+            <h3 style={{ margin: 0, color: "#4ade80", fontSize: "18px" }}>
+              Table: <span style={{ color: "#f8fafc" }}>{activeTable}</span>
+            </h3>
+            <span style={{ fontSize: "12px", color: "#94a3b8" }}>
+              Total Records: <strong>{currentTableData.count}</strong> | Displaying Recent: <strong>{filteredRows.length}</strong>
+            </span>
+          </div>
+
+          <input
+            type="text"
+            placeholder="🔍 Search across fields..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{
+              padding: "8px 14px",
+              borderRadius: "10px",
+              border: "1px solid #334155",
+              background: "#0f172a",
+              color: "#f8fafc",
+              fontSize: "12px",
+              width: "240px",
+            }}
+          />
+        </div>
+
+        {/* Schema Breakdown Badges */}
+        <div style={{ marginBottom: "16px", padding: "12px", borderRadius: "10px", background: "#0f172a", border: "1px solid #334155" }}>
+          <span style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginBottom: "6px", fontWeight: 600 }}>
+            PRAGMA Column Schema:
+          </span>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {schema.map((col) => (
+              <span key={col.name} style={{ padding: "3px 8px", borderRadius: "6px", background: "rgba(192, 132, 252, 0.15)", color: "#c084fc", fontSize: "11px", border: "1px solid rgba(168, 85, 247, 0.3)" }}>
+                <code>{col.name}</code> <span style={{ color: "#94a3b8" }}>({col.type})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Data Table */}
+        {filteredRows.length === 0 ? (
+          <div style={{ padding: "40px", textAlign: "center", color: "#64748b", fontSize: "13px" }}>
+            No records found in table <strong>{activeTable}</strong>.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto", maxHeight: "550px", overflowY: "auto" }}>
+            <table style={staffTableStyle}>
+              <thead>
+                <tr>
+                  {columns.map((col) => (
+                    <th key={col} style={{ ...staffThStyle, sticky: "top", background: "#1e293b", zIndex: 2 }}>
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((row, rIdx) => (
+                  <tr key={rIdx} style={{ background: rIdx % 2 === 0 ? "rgba(15, 23, 42, 0.4)" : "transparent" }}>
+                    {columns.map((col) => {
+                      const val = row[col];
+                      const isJson = typeof val === "string" && (val.startsWith("{") || val.startsWith("["));
+                      return (
+                        <td key={col} style={staffTdStyle}>
+                          {isJson ? (
+                            <code style={{ fontSize: "10px", color: "#38bdf8", background: "#0f172a", padding: "2px 6px", borderRadius: "4px" }}>
+                              {val}
+                            </code>
+                          ) : typeof val === "number" && String(val).includes(".") ? (
+                            val.toFixed(2)
+                          ) : (
+                            String(val ?? "")
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1363,6 +1888,29 @@ const logoTagStyle = {
   boxShadow: "0 4px 14px rgba(2, 132, 199, 0.4)",
 };
 
+const authTriggerBtnStyle = {
+  padding: "7px 14px",
+  borderRadius: "10px",
+  border: "none",
+  background: "linear-gradient(135deg, #a855f7 0%, #7e22ce 100%)",
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: "12px",
+  cursor: "pointer",
+  boxShadow: "0 4px 12px rgba(168, 85, 247, 0.4)",
+};
+
+const logoutBtnStyle = {
+  padding: "4px 10px",
+  borderRadius: "8px",
+  border: "1px solid #475569",
+  background: "transparent",
+  color: "#94a3b8",
+  fontSize: "11px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
 const pageSelectStyle = {
   padding: "8px 14px",
   borderRadius: "10px",
@@ -1393,9 +1941,7 @@ const dotStyle = (online) => ({
   background: online ? "#4ade80" : "#f87171",
 });
 
-const mainContentStyle = {
-  minHeight: "75vh",
-};
+const mainContentStyle = { minHeight: "75vh" };
 
 const hubCardStyle = {
   background: "rgba(30, 41, 59, 0.7)",
@@ -1408,10 +1954,16 @@ const hubCardStyle = {
   boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
 };
 
-const hubIconStyle = {
-  fontSize: "36px",
-  marginBottom: "12px",
-};
+const hubIconStyle = { fontSize: "36px", marginBottom: "12px" };
+
+const roleBadgeStyle = (unlocked) => ({
+  padding: "3px 8px",
+  borderRadius: "6px",
+  fontSize: "10px",
+  fontWeight: 800,
+  background: unlocked ? "rgba(74, 222, 128, 0.2)" : "rgba(239, 68, 68, 0.2)",
+  color: unlocked ? "#4ade80" : "#f87171",
+});
 
 const standaloneCardStyle = {
   background: "rgba(30, 41, 59, 0.7)",
@@ -1610,11 +2162,7 @@ const modelScopeTagStyle = (tenantSpecific) => ({
   fontWeight: 700,
 });
 
-const modelMetricBoxStyle = {
-  padding: "10px",
-  background: "#1e293b",
-  borderRadius: "8px",
-};
+const modelMetricBoxStyle = { padding: "10px", background: "#1e293b", borderRadius: "8px" };
 
 const kioskServingBoxStyle = {
   background: "rgba(30, 41, 59, 0.7)",
@@ -1648,348 +2196,80 @@ const kioskQrBoxStyle = {
   justifyContent: "center",
 };
 
-// ===========================================================================
-// AUTHENTICATION & ACCESS CONTROL COMPONENTS
-// ===========================================================================
-function AuthPage({ onLoginSuccess }) {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [username, setUsername] = useState("");
-  const [role, setRole] = useState("user");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    const endpoint = isLogin ? `${API_BASE}/api/v1/auth/login` : `${API_BASE}/api/v1/auth/signup`;
-    const payload = isLogin
-      ? { email, password }
-      : { email, username, password, role };
-
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok || data.status !== "success") {
-        throw new Error(data.detail || "Authentication failed. Please verify your details.");
-      }
-      onLoginSuccess(data.user);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleQuickDemo = async (demoEmail, demoPassword) => {
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: demoEmail, password: demoPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.status !== "success") {
-        throw new Error(data.detail || "Demo login failed.");
-      }
-      onLoginSuccess(data.user);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div style={authContainerStyle}>
-      <div style={authCardStyle}>
-        <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <div style={{ fontSize: "42px", marginBottom: "6px" }}>🏥</div>
-          <h2 style={{ fontSize: "24px", fontWeight: 800, color: "#f8fafc", margin: 0 }}>
-            City General Hospital
-          </h2>
-          <p style={{ color: "#94a3b8", fontSize: "13px", marginTop: "6px" }}>
-            AI-Powered Smart Queue Management System
-          </p>
-        </div>
-
-        {/* Tab Switcher */}
-        <div style={authTabContainerStyle}>
-          <button
-            type="button"
-            style={authTabStyle(isLogin)}
-            onClick={() => { setIsLogin(true); setError(null); }}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            style={authTabStyle(!isLogin)}
-            onClick={() => { setIsLogin(false); setError(null); }}
-          >
-            Create Account
-          </button>
-        </div>
-
-        {error && <div style={authErrorStyle}>{error}</div>}
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {!isLogin && (
-            <div>
-              <label style={authLabelStyle}>Full Name / Username</label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Priya Sharma or Dr. Robert"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                style={authInputStyle}
-              />
-            </div>
-          )}
-
-          <div>
-            <label style={authLabelStyle}>Email Address</label>
-            <input
-              type="email"
-              required
-              placeholder="e.g. user@hospital.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={authInputStyle}
-            />
-          </div>
-
-          <div>
-            <label style={authLabelStyle}>Password</label>
-            <input
-              type="password"
-              required
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={authInputStyle}
-            />
-          </div>
-
-          {!isLogin && (
-            <div>
-              <label style={authLabelStyle}>Account Role</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "6px" }}>
-                <button
-                  type="button"
-                  onClick={() => setRole("user")}
-                  style={roleOptionBtnStyle(role === "user")}
-                >
-                  <span style={{ fontSize: "18px" }}>👤</span>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: "13px" }}>Patient / User</div>
-                    <div style={{ fontSize: "10px", opacity: 0.8 }}>Patient Check-in & TV View</div>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("admin")}
-                  style={roleOptionBtnStyle(role === "admin")}
-                >
-                  <span style={{ fontSize: "18px" }}>🛡️</span>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: "13px" }}>Staff / Admin</div>
-                    <div style={{ fontSize: "10px", opacity: 0.8 }}>Desk Control & ML Studio</div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          )}
-
-          <button type="submit" disabled={loading} style={authSubmitBtnStyle}>
-            {loading ? "Authenticating..." : isLogin ? "Sign In to Hospital Portal" : "Register & Sign In"}
-          </button>
-        </form>
-
-        {/* Quick Demo Login Section */}
-        <div style={{ marginTop: "24px", paddingTop: "20px", borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
-          <p style={{ textAlign: "center", fontSize: "11px", color: "#94a3b8", textTransform: "uppercase", letterSpacing: "1px", margin: "0 0 12px 0", fontWeight: 700 }}>
-            ⚡ Instant Demo Login
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo("patient@hospital.com", "user123")}
-              style={demoUserBtnStyle}
-            >
-              <div style={{ fontWeight: 700, color: "#38bdf8", fontSize: "13px" }}>👤 Patient Demo</div>
-              <div style={{ fontSize: "10px", color: "#94a3b8" }}>User Specified Pages</div>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemo("admin@hospital.com", "admin123")}
-              style={demoAdminBtnStyle}
-            >
-              <div style={{ fontWeight: 700, color: "#4ade80", fontSize: "13px" }}>🛡️ Admin Demo</div>
-              <div style={{ fontSize: "10px", color: "#94a3b8" }}>Admin Specified Pages</div>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AccessRestrictedPage({ currentUser, navigateTo, onLogout }) {
-  return (
-    <div style={{ maxWidth: "600px", margin: "60px auto", padding: "36px", background: "rgba(30, 41, 59, 0.85)", borderRadius: "24px", border: "1px solid #ef4444", textAlign: "center", backdropFilter: "blur(16px)" }}>
-      <div style={{ fontSize: "54px", marginBottom: "16px" }}>🔒</div>
-      <h2 style={{ fontSize: "22px", fontWeight: 800, color: "#f87171", margin: "0 0 10px 0" }}>
-        Admin Access Restricted
-      </h2>
-      <p style={{ color: "#cbd5e1", fontSize: "14px", lineHeight: "1.6", margin: "0 0 24px 0" }}>
-        You are currently signed in as <strong>{currentUser?.username || currentUser?.email}</strong> with the <strong>Patient (User)</strong> role.
-        This page is reserved strictly for Hospital Doctors, Nurses, and Staff Admins.
-      </p>
-
-      <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
-        <button
-          onClick={() => navigateTo("patient")}
-          style={{ padding: "12px 20px", borderRadius: "12px", background: "#0284c7", color: "#fff", border: "none", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
-        >
-          📱 Return to Patient Portal
-        </button>
-        <button
-          onClick={onLogout}
-          style={{ padding: "12px 20px", borderRadius: "12px", background: "rgba(239, 68, 68, 0.2)", color: "#f87171", border: "1px solid #ef4444", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
-        >
-          🔑 Switch to Admin Account
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// AUTHENTICATION STYLES
-// ---------------------------------------------------------------------------
-const authContainerStyle = {
-  minHeight: "75vh",
+const modalBackdropStyle = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  width: "100vw",
+  height: "100vh",
+  background: "rgba(15, 23, 42, 0.8)",
+  backdropFilter: "blur(8px)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "20px 0",
+  zIndex: 9999,
 };
 
-const authCardStyle = {
+const modalCardStyle = {
   width: "100%",
   maxWidth: "460px",
-  background: "rgba(15, 23, 42, 0.85)",
-  backdropFilter: "blur(20px)",
-  borderRadius: "24px",
-  border: "1px solid rgba(255, 255, 255, 0.12)",
-  padding: "36px",
-  boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
-};
-
-const authTabContainerStyle = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr",
   background: "#1e293b",
-  padding: "4px",
-  borderRadius: "12px",
-  marginBottom: "20px",
+  border: "1px solid rgba(255, 255, 255, 0.15)",
+  borderRadius: "20px",
+  padding: "28px",
+  boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
 };
 
-const authTabStyle = (active) => ({
+const modalCloseBtnStyle = {
+  background: "transparent",
+  border: "none",
+  color: "#94a3b8",
+  fontSize: "18px",
+  cursor: "pointer",
+};
+
+const modalTabBtnStyle = (active) => ({
+  flex: 1,
   padding: "10px",
   borderRadius: "8px",
   border: "none",
   background: active ? "#0284c7" : "transparent",
-  color: active ? "#ffffff" : "#94a3b8",
+  color: active ? "#fff" : "#94a3b8",
   fontWeight: 700,
+  fontSize: "12px",
+  cursor: "pointer",
+});
+
+const roleOptionBtnStyle = (active, accent) => ({
+  padding: "10px",
+  borderRadius: "8px",
+  border: active ? `2px solid ${accent}` : "1px solid #334155",
+  background: active ? `${accent}22` : "#0f172a",
+  color: active ? accent : "#94a3b8",
+  fontWeight: 700,
+  fontSize: "11px",
+  cursor: "pointer",
+});
+
+const modalSubmitBtnStyle = {
+  width: "100%",
+  padding: "12px",
+  borderRadius: "10px",
+  border: "none",
+  background: "linear-gradient(135deg, #a855f7 0%, #7e22ce 100%)",
+  color: "#fff",
+  fontWeight: 800,
   fontSize: "13px",
   cursor: "pointer",
-  transition: "all 0.2s ease",
-});
-
-const authLabelStyle = {
-  fontSize: "12px",
-  fontWeight: 600,
-  color: "#cbd5e1",
-  display: "block",
-  marginBottom: "4px",
+  boxShadow: "0 4px 14px rgba(168, 85, 247, 0.4)",
 };
 
-const authInputStyle = {
-  width: "100%",
-  padding: "12px 14px",
-  borderRadius: "10px",
-  background: "#1e293b",
+const quickBtnStyle = {
+  padding: "6px 10px",
+  borderRadius: "6px",
   border: "1px solid #334155",
-  color: "#f8fafc",
-  fontSize: "14px",
-  boxSizing: "border-box",
-  outline: "none",
-};
-
-const roleOptionBtnStyle = (selected) => ({
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  padding: "10px 12px",
-  borderRadius: "10px",
-  border: selected ? "2px solid #38bdf8" : "1px solid #334155",
-  background: selected ? "rgba(56, 189, 248, 0.15)" : "#1e293b",
-  color: selected ? "#38bdf8" : "#94a3b8",
+  background: "#0f172a",
+  color: "#cbd5e1",
+  fontSize: "10px",
   cursor: "pointer",
-  textAlign: "left",
-});
-
-const authSubmitBtnStyle = {
-  width: "100%",
-  padding: "14px",
-  borderRadius: "12px",
-  border: "none",
-  background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
-  color: "#ffffff",
-  fontWeight: 700,
-  fontSize: "14px",
-  cursor: "pointer",
-  marginTop: "10px",
-  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
-};
-
-const authErrorStyle = {
-  padding: "12px",
-  borderRadius: "10px",
-  background: "rgba(239, 68, 68, 0.15)",
-  border: "1px solid #ef4444",
-  color: "#f87171",
-  fontSize: "12px",
-  marginBottom: "16px",
-  textAlign: "center",
-};
-
-const demoUserBtnStyle = {
-  padding: "12px",
-  borderRadius: "12px",
-  background: "rgba(56, 189, 248, 0.1)",
-  border: "1px solid rgba(56, 189, 248, 0.3)",
-  cursor: "pointer",
-  textAlign: "center",
-};
-
-const demoAdminBtnStyle = {
-  padding: "12px",
-  borderRadius: "12px",
-  background: "rgba(74, 222, 128, 0.1)",
-  border: "1px solid rgba(74, 222, 128, 0.3)",
-  cursor: "pointer",
-  textAlign: "center",
 };
