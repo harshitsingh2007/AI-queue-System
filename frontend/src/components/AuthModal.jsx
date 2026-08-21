@@ -13,6 +13,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("user"); // "user" (consumer) | "admin"
+  const [department, setDepartment] = useState("consultation");
   const [errorMsg, setErrorMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -25,7 +26,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
     const payload =
       authMode === "login"
         ? { email, password }
-        : { email, username, password, role };
+        : { email, username, password, role, department: role === "admin" ? department : "all" };
 
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -128,7 +129,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
           {authMode === "signup" && (
             <div style={{ marginBottom: "20px" }}>
               <label style={fieldLabelStyle}>Select Account Role</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: role === "admin" ? "14px" : "0" }}>
                 <button
                   type="button"
                   onClick={() => setRole("user")}
@@ -144,6 +145,26 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
                   🛡️ Staff / Doctor Admin
                 </button>
               </div>
+
+              {role === "admin" && (
+                <div>
+                  <label style={fieldLabelStyle}>Assign Staff Department (Required)</label>
+                  <select
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    style={fieldInputStyle}
+                    required
+                  >
+                    <option value="consultation">OPD / Doctor Consultation</option>
+                    <option value="pharmacy">Pharmacy & Medication</option>
+                    <option value="emergency">Emergency Triage</option>
+                    <option value="laboratory">Pathology & Laboratory</option>
+                    <option value="radiology">Radiology & Imaging</option>
+                    <option value="billing">Billing & Accounts</option>
+                    <option value="all">All Departments (Super Admin)</option>
+                  </select>
+                </div>
+              )}
             </div>
           )}
 

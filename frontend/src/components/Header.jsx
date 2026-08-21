@@ -40,7 +40,7 @@ export default function Header({
                 border: isAdmin ? "1px solid #10B981" : "1px solid #38BDF8",
               }}
             >
-              {isAdmin ? "🛡️ Admin:" : "📱 Patient:"} {currentUser.username}
+              {isAdmin ? "🛡️ Admin:" : "📱 Patient:"} {currentUser.username} {isAdmin && currentUser.department ? `[${currentUser.department.toUpperCase()}]` : ""}
             </span>
             <button onClick={handleLogout} style={logoutBtnStyle}>
               Logout
@@ -59,8 +59,6 @@ export default function Header({
           style={pageSelectStyle}
           disabled={!currentUser && activePage !== "kiosk"}
         >
-          <option value="hub">🏠 Portal Hub</option>
-
           {/* Hide Consumer Pages from Admins */}
           {(isConsumer || !currentUser) && (
             <option value="patient">📱 Patient Portal (Consumer)</option>

@@ -14,19 +14,17 @@ import Header from "./components/Header";
 import AuthModal from "./components/AuthModal";
 import AccessDeniedGuard from "./components/AccessDeniedGuard";
 import MandatoryAuthScreen from "./components/MandatoryAuthScreen";
-import QueuePluginWidget from "./components/QueuePluginWidget";
 
-import HubPage from "./pages/HubPage";
 import PatientPage from "./pages/PatientPage";
 import StaffPage from "./pages/StaffPage";
 import MLAdminPage from "./pages/MLAdminPage";
 import DatabaseInspectorPage from "./pages/DatabaseInspectorPage";
 import KioskPage from "./pages/KioskPage";
 
-function getInitialPage() {
+function getInitialPage(user) {
   const params = new URLSearchParams(window.location.search);
   const pageParam = params.get("page") || params.get("view");
-  if (pageParam) return pageParam.toLowerCase();
+  if (pageParam && pageParam.toLowerCase() !== "hub") return pageParam.toLowerCase();
 
   const path = window.location.pathname.toLowerCase();
   if (path.includes("patient")) return "patient";
@@ -35,13 +33,11 @@ function getInitialPage() {
   if (path.includes("db") || path.includes("database")) return "db";
   if (path.includes("kiosk") || path.includes("tv")) return "kiosk";
 
-  return "hub";
+  if (user && user.role === "admin") return "staff";
+  return "patient";
 }
 
 export default function App() {
-  const [activePage, setActivePage] = useState(getInitialPage);
-  const tenantId = HOSPITAL_CONFIG.tenantId;
-
   // User Authentication State
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -51,6 +47,9 @@ export default function App() {
       return null;
     }
   });
+
+  const [activePage, setActivePage] = useState(() => getInitialPage(currentUser));
+  const tenantId = HOSPITAL_CONFIG.tenantId;
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState("login");
@@ -122,14 +121,19 @@ export default function App() {
     return () => socket.disconnect();
   }, [tenantId, activeTicket]);
 
-  // Fetch Queue & Analytics
+  const isAdmin = currentUser && currentUser.role === "admin";
+  const adminDepartment = isAdmin ? (currentUser.department || "all") : "all";
+
+  // Fetch Queue & Analytics with Department Security Boundary
   const refreshData = useCallback(() => {
-    fetch(`${API_BASE}/api/v1/plugin/analytics/${tenantId}`)
+    const deptQuery = adminDepartment && adminDepartment !== "all" ? `?department=${encodeURIComponent(adminDepartment)}` : "";
+
+    fetch(`${API_BASE}/api/v1/plugin/analytics/${tenantId}${deptQuery}`)
       .then((r) => r.json())
       .then((d) => setAnalytics(d))
       .catch((e) => console.log("Analytics error:", e));
 
-    fetch(`${API_BASE}/api/v1/plugin/queue/${tenantId}`)
+    fetch(`${API_BASE}/api/v1/plugin/queue/${tenantId}${deptQuery}`)
       .then((r) => r.json())
       .then((d) => {
         setQueueSnapshot(d.snapshot || []);
@@ -141,7 +145,7 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => setKioskQrData(d))
       .catch((e) => console.log("QR error:", e));
-  }, [tenantId]);
+  }, [tenantId, adminDepartment]);
 
   useEffect(() => {
     refreshData();
@@ -171,7 +175,10 @@ export default function App() {
 
   // Staff Desk Actions
   const handleServeNext = async () => {
-    if (socketRef.current) socketRef.current.emit("serve_next", { tenant_id: tenantId });
+    if (socketRef.current) {
+      const dept = adminDepartment && adminDepartment !== "all" ? adminDepartment : undefined;
+      socketRef.current.emit("serve_next", { tenant_id: tenantId, service_category: dept });
+    }
   };
 
   const handleCompleteTicket = async (ticketId) => {
@@ -183,8 +190,6 @@ export default function App() {
     const next = Math.max(1, current + delta);
     if (socketRef.current) socketRef.current.emit("set_counters", { tenant_id: tenantId, active_counters: next });
   };
-
-  const isAdmin = currentUser && currentUser.role === "admin";
 
   return (
     <div style={appBgStyle}>
@@ -213,10 +218,6 @@ export default function App() {
           />
         ) : (
           <>
-            {activePage === "hub" && (
-              <HubPage navigateTo={navigateTo} currentUser={currentUser} />
-            )}
-
             {activePage === "patient" && (
               isAdmin ? (
                 <AccessDeniedGuard
@@ -251,6 +252,7 @@ export default function App() {
               ) : (
                 <StaffPage
                   tenantId={tenantId}
+                  currentUser={currentUser}
                   analytics={analytics}
                   queueSnapshot={queueSnapshot}
                   servingTickets={servingTickets}
@@ -310,9 +312,6 @@ export default function App() {
           onLoginSuccess={handleLoginSuccess}
         />
       )}
-
-      {/* Floating Glassmorphism Plugin Widget */}
-      <QueuePluginWidget tenantId={tenantId} domainKey="hospital" />
     </div>
   );
 }

@@ -164,6 +164,20 @@ class PluginQueueEngine:
                     medical_id TEXT DEFAULT '',
                     created_at REAL NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS appointments (
+                    appointment_id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    consumer_type TEXT NOT NULL,
+                    service_category TEXT NOT NULL,
+                    patient_name TEXT NOT NULL,
+                    user_email TEXT NOT NULL,
+                    appointment_date TEXT NOT NULL,
+                    time_slot TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    ticket_id TEXT
+                );
             """)
 
             # Run safe column migration check for existing sqlite database
@@ -176,6 +190,8 @@ class PluginQueueEngine:
                 conn.execute("ALTER TABLE users ADD COLUMN age INTEGER DEFAULT 0")
             if "medical_id" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN medical_id TEXT DEFAULT ''")
+            if "department" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN department TEXT DEFAULT 'all'")
 
             ticket_cols = [row[1] for row in conn.execute("PRAGMA table_info(tickets)").fetchall()]
             if "user_email" not in ticket_cols:
@@ -570,15 +586,21 @@ class PluginQueueEngine:
     # ------------------------------------------------------------------
     # Snapshots & Turn Alerts
     # ------------------------------------------------------------------
-    def get_queue_snapshot(self, tenant_id: str) -> List[dict]:
+    def get_queue_snapshot(self, tenant_id: str, department: Optional[str] = None) -> List[dict]:
         tenant = self._get_tenant(tenant_id)
         waiting = [t for t in tenant["tickets"].values() if t.status == "waiting"]
+        if department and department.strip().lower() != "all":
+            dept_clean = department.strip().lower()
+            waiting = [t for t in waiting if t.service_category.strip().lower() == dept_clean]
         waiting.sort(key=lambda t: (t.priority_level, t.join_timestamp))
         return [t.to_dict() for t in waiting]
 
-    def get_serving_tickets(self, tenant_id: str) -> List[dict]:
+    def get_serving_tickets(self, tenant_id: str, department: Optional[str] = None) -> List[dict]:
         tenant = self._get_tenant(tenant_id)
         serving = [t for t in tenant["tickets"].values() if t.status == "serving"]
+        if department and department.strip().lower() != "all":
+            dept_clean = department.strip().lower()
+            serving = [t for t in serving if t.service_category.strip().lower() == dept_clean]
         return [t.to_dict() for t in serving]
 
     def get_tickets_needing_turn_alert(self, tenant_id: str) -> List[dict]:
@@ -588,26 +610,43 @@ class PluginQueueEngine:
     # ------------------------------------------------------------------
     # Analytics Engine
     # ------------------------------------------------------------------
-    def get_tenant_analytics(self, tenant_id: str) -> dict:
+    def get_tenant_analytics(self, tenant_id: str, department: Optional[str] = None) -> dict:
         tenant = self._get_tenant(tenant_id)
-        snapshot = self.get_queue_snapshot(tenant_id)
-        serving = self.get_serving_tickets(tenant_id)
+        snapshot = self.get_queue_snapshot(tenant_id, department=department)
+        serving = self.get_serving_tickets(tenant_id, department=department)
+        dept_clean = department.strip().lower() if department and department.strip().lower() != "all" else None
 
         with self._get_db() as conn:
-            completed_row = conn.execute(
-                "SELECT COUNT(*) as count, AVG(service_duration_minutes) as avg_duration FROM service_logs WHERE tenant_id = ?",
-                (tenant_id,)
-            ).fetchone()
+            if dept_clean:
+                completed_row = conn.execute(
+                    "SELECT COUNT(*) as count, AVG(service_duration_minutes) as avg_duration FROM service_logs WHERE tenant_id = ? AND LOWER(service_category) = ?",
+                    (tenant_id, dept_clean)
+                ).fetchone()
 
-            total_tickets_today = conn.execute(
-                "SELECT COUNT(*) as count FROM tickets WHERE tenant_id = ?",
-                (tenant_id,)
-            ).fetchone()["count"]
+                total_tickets_today = conn.execute(
+                    "SELECT COUNT(*) as count FROM tickets WHERE tenant_id = ? AND LOWER(service_category) = ?",
+                    (tenant_id, dept_clean)
+                ).fetchone()["count"]
 
-            hourly_rows = conn.execute(
-                "SELECT hour_of_day, COUNT(*) as cnt FROM service_logs WHERE tenant_id = ? GROUP BY hour_of_day ORDER BY hour_of_day",
-                (tenant_id,)
-            ).fetchall()
+                hourly_rows = conn.execute(
+                    "SELECT hour_of_day, COUNT(*) as cnt FROM service_logs WHERE tenant_id = ? AND LOWER(service_category) = ? GROUP BY hour_of_day ORDER BY hour_of_day",
+                    (tenant_id, dept_clean)
+                ).fetchall()
+            else:
+                completed_row = conn.execute(
+                    "SELECT COUNT(*) as count, AVG(service_duration_minutes) as avg_duration FROM service_logs WHERE tenant_id = ?",
+                    (tenant_id,)
+                ).fetchone()
+
+                total_tickets_today = conn.execute(
+                    "SELECT COUNT(*) as count FROM tickets WHERE tenant_id = ?",
+                    (tenant_id,)
+                ).fetchone()["count"]
+
+                hourly_rows = conn.execute(
+                    "SELECT hour_of_day, COUNT(*) as cnt FROM service_logs WHERE tenant_id = ? GROUP BY hour_of_day ORDER BY hour_of_day",
+                    (tenant_id,)
+                ).fetchall()
 
         completed_count = completed_row["count"] if completed_row else 0
         avg_service = round(completed_row["avg_duration"], 1) if (completed_row and completed_row["avg_duration"]) else 12.4
@@ -673,9 +712,10 @@ class PluginQueueEngine:
                     ("patient@hospital.com", "Patient Priya", user_pwd, "user", now)
                 )
 
-    def register_user(self, email: str, username: str, password: str, role: str = "user") -> dict:
+    def register_user(self, email: str, username: str, password: str, role: str = "user", department: str = "all") -> dict:
         email_clean = email.strip().lower()
         role_clean = role.strip().lower()
+        dept_clean = department.strip().lower() if department else "all"
         if role_clean not in ("user", "admin"):
             role_clean = "user"
         
@@ -687,8 +727,8 @@ class PluginQueueEngine:
             pwd_hash = self._hash_password(password)
             now = time.time()
             cursor = conn.execute(
-                "INSERT INTO users (email, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
-                (email_clean, username.strip(), pwd_hash, role_clean, now)
+                "INSERT INTO users (email, username, password_hash, role, department, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (email_clean, username.strip(), pwd_hash, role_clean, dept_clean, now)
             )
             user_id = cursor.lastrowid
             
@@ -698,6 +738,7 @@ class PluginQueueEngine:
             "email": email_clean,
             "username": username.strip(),
             "role": role_clean,
+            "department": dept_clean,
             "token": token
         }
 
@@ -707,7 +748,7 @@ class PluginQueueEngine:
         
         with self._get_db() as conn:
             user = conn.execute(
-                "SELECT id, email, username, password_hash, role FROM users WHERE email = ?", 
+                "SELECT id, email, username, password_hash, role, department FROM users WHERE email = ?", 
                 (email_clean,)
             ).fetchone()
             
@@ -715,24 +756,26 @@ class PluginQueueEngine:
                 raise ValueError("Invalid email or password.")
             
             token = f"token-{user['id']}-{int(time.time())}"
+            dept = user["department"] if "department" in user.keys() and user["department"] else "all"
             return {
                 "id": user["id"],
                 "email": user["email"],
                 "username": user["username"],
                 "role": user["role"],
+                "department": dept,
                 "token": token
             }
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
         with self._get_db() as conn:
             user = conn.execute(
-                "SELECT id, email, username, role, phone, gender, age, medical_id, created_at FROM users WHERE email = ?",
+                "SELECT id, email, username, role, department, phone, gender, age, medical_id, created_at FROM users WHERE email = ?",
                 (email.lower(),)
             ).fetchone()
             return dict(user) if user else None
 
     def update_user_profile(
-        self, email: str, username: str, phone: str = "", gender: str = "", age: int = 0, medical_id: str = ""
+        self, email: str, username: str, phone: str = "", gender: str = "", age: int = 0, medical_id: str = "", department: str = ""
     ) -> dict:
         email_clean = email.strip().lower()
         with self._get_db() as conn:
@@ -740,18 +783,25 @@ class PluginQueueEngine:
             if not existing:
                 raise ValueError("User account not found in database.")
 
-            conn.execute("""
-                UPDATE users
-                SET username = ?, phone = ?, gender = ?, age = ?, medical_id = ?
-                WHERE email = ?
-            """, (username.strip(), phone.strip(), gender.strip(), age, medical_id.strip(), email_clean))
+            if department:
+                conn.execute("""
+                    UPDATE users
+                    SET username = ?, phone = ?, gender = ?, age = ?, medical_id = ?, department = ?
+                    WHERE email = ?
+                """, (username.strip(), phone.strip(), gender.strip(), age, medical_id.strip(), department.strip().lower(), email_clean))
+            else:
+                conn.execute("""
+                    UPDATE users
+                    SET username = ?, phone = ?, gender = ?, age = ?, medical_id = ?
+                    WHERE email = ?
+                """, (username.strip(), phone.strip(), gender.strip(), age, medical_id.strip(), email_clean))
 
         return self.get_user_by_email(email_clean)
 
     def get_all_users(self) -> List[dict]:
         with self._get_db() as conn:
             rows = conn.execute("""
-                SELECT id, email, username, role, phone, gender, age, medical_id, created_at
+                SELECT id, email, username, role, department, phone, gender, age, medical_id, created_at
                 FROM users ORDER BY id DESC
             """).fetchall()
             return [dict(r) for r in rows]
@@ -780,5 +830,108 @@ class PluginQueueEngine:
                     "rows": rows
                 }
             return result
+
+    # ------------------------------------------------------------------
+    # Hybrid Queueing: Slot Booking & Pre-scheduled Check-in
+    # ------------------------------------------------------------------
+    def book_appointment(
+        self,
+        tenant_id: str,
+        consumer_type: str,
+        service_category: str,
+        patient_name: str,
+        user_email: str,
+        appointment_date: str,
+        time_slot: str
+    ) -> dict:
+        import random
+        apt_id = f"APT-{random.randint(1000, 9999)}"
+        now = time.time()
+        email_clean = user_email.strip().lower()
+
+        with self._get_db() as conn:
+            conn.execute("""
+                INSERT INTO appointments (
+                    appointment_id, tenant_id, consumer_type, service_category,
+                    patient_name, user_email, appointment_date, time_slot, status, created_at, ticket_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, '')
+            """, (apt_id, tenant_id, consumer_type, service_category, patient_name.strip(), email_clean, appointment_date, time_slot, now))
+
+        return {
+            "appointment_id": apt_id,
+            "tenant_id": tenant_id,
+            "consumer_type": consumerType if 'consumerType' in locals() else consumer_type,
+            "service_category": service_category,
+            "patient_name": patient_name.strip(),
+            "user_email": email_clean,
+            "appointment_date": appointment_date,
+            "time_slot": time_slot,
+            "status": "scheduled",
+            "created_at": now
+        }
+
+    def check_in_appointment(self, appointment_id: str) -> dict:
+        apt_clean = appointment_id.strip().upper()
+        with self._get_db() as conn:
+            apt = conn.execute("SELECT * FROM appointments WHERE UPPER(appointment_id) = ?", (apt_clean,)).fetchone()
+            if not apt:
+                raise ValueError("Appointment code not found.")
+            
+            apt_dict = dict(apt)
+            if apt_dict["status"] == "checked_in" and apt_dict["ticket_id"]:
+                # Already checked in, return existing ticket
+                tenant = self._get_tenant(apt_dict["tenant_id"])
+                existing_t = tenant["tickets"].get(apt_dict["ticket_id"])
+                if existing_t:
+                    return {"appointment": apt_dict, "ticket": existing_t.to_dict()}
+
+        # Join the live priority queue line with Priority 1.5 (Pre-scheduled Appointment priority merge ahead of walk-in routine tickets)
+        ticket = self.join_queue(
+            tenant_id=apt_dict["tenant_id"],
+            consumer_type=apt_dict["consumer_type"],
+            service_category=apt_dict["service_category"],
+            name=f"{apt_dict['patient_name']} (Appt: {apt_dict['time_slot']})",
+            priority_level=1, # Priority appointment jump
+            user_email=apt_dict["user_email"]
+        )
+
+        with self._get_db() as conn:
+            conn.execute("""
+                UPDATE appointments
+                SET status = 'checked_in', ticket_id = ?
+                WHERE UPPER(appointment_id) = ?
+            """, (ticket.ticket_id, apt_clean))
+
+        apt_dict["status"] = "checked_in"
+        apt_dict["ticket_id"] = ticket.ticket_id
+
+        return {"appointment": apt_dict, "ticket": ticket.to_dict()}
+
+    def get_user_appointments(self, user_email: str) -> List[dict]:
+        email_clean = user_email.strip().lower()
+        with self._get_db() as conn:
+            rows = conn.execute("""
+                SELECT * FROM appointments
+                WHERE user_email = ? OR LOWER(patient_name) = (SELECT LOWER(username) FROM users WHERE email = ?)
+                ORDER BY created_at DESC
+            """, (email_clean, email_clean)).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_tenant_appointments(self, tenant_id: str, department: Optional[str] = None) -> List[dict]:
+        with self._get_db() as conn:
+            if department and department.strip().lower() != "all":
+                dept_clean = department.strip().lower()
+                rows = conn.execute("""
+                    SELECT * FROM appointments
+                    WHERE tenant_id = ? AND LOWER(service_category) = ?
+                    ORDER BY created_at DESC
+                """, (tenant_id, dept_clean)).fetchall()
+            else:
+                rows = conn.execute("""
+                    SELECT * FROM appointments
+                    WHERE tenant_id = ?
+                    ORDER BY created_at DESC
+                """, (tenant_id,)).fetchall()
+            return [dict(r) for r in rows]
 
 engine = PluginQueueEngine()

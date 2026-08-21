@@ -72,6 +72,7 @@ class SignupRequest(BaseModel):
     username: str
     password: str
     role: Optional[str] = "user"
+    department: Optional[str] = "all"
 
 class LoginRequest(BaseModel):
     email: str
@@ -84,6 +85,19 @@ class UpdateProfileRequest(BaseModel):
     gender: Optional[str] = ""
     age: Optional[int] = 0
     medical_id: Optional[str] = ""
+    department: Optional[str] = "all"
+
+class BookAppointmentRequest(BaseModel):
+    tenant_id: str
+    consumer_type: Optional[str] = "hospital"
+    service_category: str
+    patient_name: str
+    user_email: Optional[str] = ""
+    appointment_date: str
+    time_slot: str
+
+class CheckInAppointmentRequest(BaseModel):
+    appointment_id: str
 
 def _urgency_to_priority(consumer_type: str, urgency: Optional[str]) -> int:
     if consumer_type != "hospital":
@@ -108,21 +122,25 @@ async def _broadcast_queue_update(tenant_id: str):
 # Core Queue & Counter Endpoints
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/plugin/join")
-async def join_queue(payload: JoinRequest):
-    priority = _urgency_to_priority(payload.consumer_type, payload.urgency)
+async def join_queue_http_endpoint(req: JoinRequest):
+    priority = _urgency_to_priority(req.consumer_type, req.urgency)
 
     ticket = engine.join_queue(
-        tenant_id=payload.tenant_id,
-        consumer_type=payload.consumer_type,
-        service_category=payload.service_category,
-        name=payload.name,
+        tenant_id=req.tenant_id,
+        consumer_type=req.consumer_type,
+        service_category=req.service_category,
+        name=req.name,
         priority_level=priority,
-        user_email=payload.user_email or "",
+        user_email=req.user_email or "",
     )
-    engine.recalculate_wait_times(payload.tenant_id)
-    await _broadcast_queue_update(payload.tenant_id)
+    engine.recalculate_wait_times(req.tenant_id)
+    await _broadcast_queue_update(req.tenant_id)
 
-    return {"success": True, "ticket": ticket.to_dict()}
+    return {"status": "success", "ticket": ticket.to_dict()}
+
+@app.post("/api/v1/plugin/queue/join")
+async def join_queue_alt_endpoint(req: JoinRequest):
+    return await join_queue_http_endpoint(req)
 
 @app.post("/api/v1/plugin/serve-next")
 async def serve_next(payload: ServeNextRequest):
@@ -164,14 +182,14 @@ async def set_counters(payload: CounterUpdateRequest):
     return {"success": True, "active_counters": new_count}
 
 @app.get("/api/v1/plugin/analytics/{tenant_id}")
-async def get_analytics(tenant_id: str):
-    return engine.get_tenant_analytics(tenant_id)
+async def get_analytics(tenant_id: str, department: Optional[str] = None):
+    return engine.get_tenant_analytics(tenant_id, department=department)
 
 @app.get("/api/v1/plugin/queue/{tenant_id}")
-async def get_queue(tenant_id: str):
+async def get_queue(tenant_id: str, department: Optional[str] = None):
     return {
-        "snapshot": engine.get_queue_snapshot(tenant_id),
-        "serving": engine.get_serving_tickets(tenant_id)
+        "snapshot": engine.get_queue_snapshot(tenant_id, department=department),
+        "serving": engine.get_serving_tickets(tenant_id, department=department)
     }
 
 @app.get("/api/v1/plugin/qr/{tenant_id}")
@@ -346,7 +364,8 @@ async def signup(payload: SignupRequest):
             email=payload.email,
             username=payload.username,
             password=payload.password,
-            role=payload.role or "user"
+            role=payload.role or "user",
+            department=payload.department or "all"
         )
         return {"status": "success", "user": user_data}
     except ValueError as e:
@@ -417,7 +436,44 @@ async def health():
     return {"status": "ok", "version": "2.5.0"}
 
 # ---------------------------------------------------------------------------
-# Socket.IO Layer
+# Hybrid Slot Booking & Pre-scheduled Appointment Check-in Endpoints
+# ---------------------------------------------------------------------------
+@app.post("/api/v1/plugin/appointments/book")
+async def book_appointment(req: BookAppointmentRequest):
+    try:
+        res = engine.book_appointment(
+            tenant_id=req.tenant_id,
+            consumer_type=req.consumer_type or "hospital",
+            service_category=req.service_category,
+            patient_name=req.patient_name,
+            user_email=req.user_email or "",
+            appointment_date=req.appointment_date,
+            time_slot=req.time_slot
+        )
+        return {"status": "success", "appointment": res}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/v1/plugin/appointments/check-in")
+async def check_in_appointment(req: CheckInAppointmentRequest):
+    try:
+        res = engine.check_in_appointment(req.appointment_id)
+        tenant_id = res["appointment"]["tenant_id"]
+        await _broadcast_queue_update(tenant_id)
+        return {"status": "success", "appointment": res["appointment"], "ticket": res["ticket"]}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/v1/plugin/appointments/user/{email}")
+def get_user_appointments(email: str):
+    return {"appointments": engine.get_user_appointments(email)}
+
+@app.get("/api/v1/plugin/appointments/tenant/{tenant_id}")
+def get_tenant_appointments(tenant_id: str, department: Optional[str] = None):
+    return {"appointments": engine.get_tenant_appointments(tenant_id, department=department)}
+
+# ---------------------------------------------------------------------------
+# Socket.IO Event Handlers
 # ---------------------------------------------------------------------------
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
