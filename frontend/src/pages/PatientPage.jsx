@@ -1,13 +1,14 @@
 /**
  * PatientPage.jsx
  * ---------------
- * 📱 Patient Self-Checkin & Pre-scheduled Appointment Booking Kiosk.
- * Features Hybrid Queueing: Slot Booking + Instant Priority QR Check-in Merge!
+ * Patient Self-Checkin & Pre-scheduled Appointment Booking Kiosk.
  * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
+ * Professional Healthcare Vector Styling.
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
+import { t } from "../utils/i18n";
 
 export default function PatientPage({
   tenantId,
@@ -17,9 +18,15 @@ export default function PatientPage({
   ticketQrData,
   setTicketQrData,
   refreshData,
+  language = "en",
+  setLanguage,
 }) {
   const [activeTab, setActiveTab] = useState("walkin"); // 'walkin' | 'book' | 'my_apts'
   const [name, setName] = useState(currentUser ? currentUser.username : "");
+  const [age, setAge] = useState(currentUser && currentUser.age ? currentUser.age : 35);
+  const [gender, setGender] = useState(currentUser && currentUser.gender ? currentUser.gender.toLowerCase() : "male");
+  const [medicalCondition, setMedicalCondition] = useState("general_checkup");
+  const [preExistingCondition, setPreExistingCondition] = useState("none");
   const [category, setCategory] = useState("consultation");
   const [priority, setPriority] = useState(2);
   const [statusMsg, setStatusMsg] = useState(null);
@@ -49,7 +56,11 @@ export default function PatientPage({
   }, [currentUser, name]);
 
   useEffect(() => {
-    if (currentUser) setName(currentUser.username);
+    if (currentUser) {
+      setName(currentUser.username);
+      if (currentUser.age) setAge(currentUser.age);
+      if (currentUser.gender) setGender(currentUser.gender.toLowerCase());
+    }
     fetchUserAppointments();
   }, [currentUser, fetchUserAppointments]);
 
@@ -57,7 +68,7 @@ export default function PatientPage({
   const handleJoinQueue = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
-    setStatusMsg("Issuing your AI priority ticket...");
+    setStatusMsg("Calculating AI clinical complexity & predicting wait time...");
 
     try {
       const res = await fetch(`${API_BASE}/api/v1/plugin/join`, {
@@ -70,6 +81,10 @@ export default function PatientPage({
           name: name,
           priority_level: Number(priority),
           user_email: currentUser ? currentUser.email : "",
+          age: Number(age) || 30,
+          gender: gender,
+          medical_condition: medicalCondition,
+          pre_existing_condition: preExistingCondition,
         }),
       });
 
@@ -77,7 +92,7 @@ export default function PatientPage({
         const data = await res.json();
         const t = data.ticket;
         setActiveTicket(t);
-        setStatusMsg(`✓ Ticket #${t.ticket_id} Issued Successfully!`);
+        setStatusMsg(`Ticket #${t.ticket_id} Issued. AI Service Estimate: ${t.predicted_service_minutes} min.`);
 
         fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${t.ticket_id}`)
           .then((r) => r.json())
@@ -87,10 +102,10 @@ export default function PatientPage({
         refreshData();
       } else {
         const err = await res.json();
-        setStatusMsg(`❌ Error: ${err.detail}`);
+        setStatusMsg(`Error: ${err.detail}`);
       }
     } catch (err) {
-      setStatusMsg(`❌ Join failed: ${err.message}`);
+      setStatusMsg(`Join failed: ${err.message}`);
     }
   };
 
@@ -98,7 +113,7 @@ export default function PatientPage({
   const handleBookSlot = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
-    setStatusMsg("Reserving your hospital appointment slot...");
+    setStatusMsg("Reserving hospital appointment slot...");
 
     try {
       const res = await fetch(`${API_BASE}/api/v1/plugin/appointments/book`, {
@@ -118,13 +133,13 @@ export default function PatientPage({
       const data = await res.json();
       if (res.ok && data.status === "success") {
         setBookedAppointment(data.appointment);
-        setStatusMsg(`🎉 Appointment Reserved! Code: ${data.appointment.appointment_id}`);
+        setStatusMsg(`Appointment Reserved. Code: ${data.appointment.appointment_id}`);
         fetchUserAppointments();
       } else {
-        setStatusMsg(`❌ Booking failed: ${data.detail}`);
+        setStatusMsg(`Booking failed: ${data.detail}`);
       }
     } catch (err) {
-      setStatusMsg(`❌ Booking failed: ${err.message}`);
+      setStatusMsg(`Booking failed: ${err.message}`);
     }
   };
 
@@ -133,7 +148,7 @@ export default function PatientPage({
     const targetId = aptId || checkInCode;
     if (!targetId.trim()) return;
 
-    setStatusMsg(`Merging Appointment ${targetId} into Live Priority Queue...`);
+    setStatusMsg(`Checking in appointment ${targetId}...`);
 
     try {
       const res = await fetch(`${API_BASE}/api/v1/plugin/appointments/check-in`, {
@@ -146,7 +161,7 @@ export default function PatientPage({
       if (res.ok && data.status === "success") {
         const t = data.ticket;
         setActiveTicket(t);
-        setStatusMsg(`✓ Appointment Checked In! Merged into Priority Line as Token #${t.ticket_id}`);
+        setStatusMsg(`Appointment Checked In. Merged into Priority Line as Token #${t.ticket_id}`);
 
         fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${t.ticket_id}`)
           .then((r) => r.json())
@@ -156,10 +171,10 @@ export default function PatientPage({
         fetchUserAppointments();
         refreshData();
       } else {
-        setStatusMsg(`❌ Check-in error: ${data.detail}`);
+        setStatusMsg(`Check-in error: ${data.detail}`);
       }
     } catch (err) {
-      setStatusMsg(`❌ Check-in error: ${err.message}`);
+      setStatusMsg(`Check-in error: ${err.message}`);
     }
   };
 
@@ -172,21 +187,24 @@ export default function PatientPage({
           onClick={() => setActiveTab("walkin")}
           style={tabBtnStyle(activeTab === "walkin")}
         >
-          🎫 Instant Walk-In Ticket
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z"/><line x1="13" y1="5" x2="13" y2="19"/></svg>
+          {t("instantWalkin", language)}
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("book")}
           style={tabBtnStyle(activeTab === "book")}
         >
-          🗓️ Book Time Slot
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          {t("bookSlot", language)}
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("my_apts")}
           style={tabBtnStyle(activeTab === "my_apts")}
         >
-          📋 My Appointments ({userAppointments.length})
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          {t("myAppointments", language)} ({userAppointments.length})
         </button>
       </div>
 
@@ -195,53 +213,118 @@ export default function PatientPage({
         {activeTab === "walkin" && (
           <div>
             <div style={{ textAlign: "center", marginBottom: "24px" }}>
-              <span style={{ fontSize: "38px", display: "block", marginBottom: "6px" }}>🎫</span>
+              <div style={headerIconContainerStyle}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z"/>
+                  <line x1="13" y1="5" x2="13" y2="19"/>
+                </svg>
+              </div>
               <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
-                Instant Walk-In Patient Token
+                {t("instantWalkin", language)}
               </h2>
               <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-                City General Hospital — Instant Ticket Token & Real-Time Wait Countdown
+                City General Hospital — Instant Ticket Token & Real-Time Wait Tracker
               </p>
             </div>
 
             <form onSubmit={handleJoinQueue}>
-              <div style={{ marginBottom: "16px" }}>
-                <label style={fieldLabelStyle}>Patient Full Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Rahul Verma"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  style={fieldInputStyle}
-                />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
+                <div>
+                  <label style={fieldLabelStyle}>{t("patientNameLabel", language)}</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Rahul Verma"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                    style={fieldInputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={fieldLabelStyle}>{t("patientAgeGenderLabel", language)}</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <input
+                      type="number"
+                      placeholder="Age"
+                      value={age}
+                      onChange={(e) => setAge(e.target.value)}
+                      required
+                      min="1"
+                      max="120"
+                      style={fieldInputStyle}
+                    />
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
+                      style={fieldInputStyle}
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
+                <div>
+                  <label style={fieldLabelStyle}>{t("medicalDeptLabel", language)}</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    style={fieldInputStyle}
+                  >
+                    {HOSPITAL_CONFIG.categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={fieldLabelStyle}>{t("primarySymptomLabel", language)}</label>
+                  <select
+                    value={medicalCondition}
+                    onChange={(e) => setMedicalCondition(e.target.value)}
+                    style={fieldInputStyle}
+                  >
+                    <option value="general_checkup">{t("symptomGeneral", language)}</option>
+                    <option value="cardiac_chest_pain">{t("symptomCardiac", language)}</option>
+                    <option value="high_fever_infection">{t("symptomFever", language)}</option>
+                    <option value="trauma_injury">{t("symptomTrauma", language)}</option>
+                    <option value="respiratory_distress">{t("symptomAsthma", language)}</option>
+                    <option value="routine_followup">{t("symptomFollowup", language)}</option>
+                    <option value="lab_blood_test">{t("symptomLab", language)}</option>
+                  </select>
+                </div>
               </div>
 
               <div style={{ marginBottom: "16px" }}>
-                <label style={fieldLabelStyle}>Medical Department</label>
+                <label style={fieldLabelStyle}>{t("preExistingLabel", language)}</label>
                 <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  value={preExistingCondition}
+                  onChange={(e) => setPreExistingCondition(e.target.value)}
                   style={fieldInputStyle}
                 >
-                  {HOSPITAL_CONFIG.categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
+                  <option value="none">{t("riskNone", language)}</option>
+                  <option value="diabetes">{t("riskDiabetes", language)}</option>
+                  <option value="hypertension">{t("riskBP", language)}</option>
+                  <option value="cardiovascular">{t("riskHeart", language)}</option>
+                  <option value="asthma">{t("riskLung", language)}</option>
                 </select>
               </div>
 
               <div style={{ marginBottom: "20px" }}>
-                <label style={fieldLabelStyle}>Urgency / Triage Level</label>
+                <label style={fieldLabelStyle}>{t("urgencyLabel", language)}</label>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <button
                     type="button"
                     onClick={() => setPriority(2)}
                     style={triageBtnStyle(priority === 2, "#047857")}
                   >
-                    📋 Routine Checkup
-                    <span style={{ display: "block", fontSize: "10px", opacity: 0.8, marginTop: "2px" }}>Standard Queue Order</span>
+                    {t("routineCheckup", language)}
+                    <span style={{ display: "block", fontSize: "10px", opacity: 0.8, marginTop: "2px" }}>{t("standardOrder", language)}</span>
                   </button>
 
                   <button
@@ -249,14 +332,14 @@ export default function PatientPage({
                     onClick={() => setPriority(1)}
                     style={triageBtnStyle(priority === 1, "#DC2626")}
                   >
-                    🚨 Emergency Case
-                    <span style={{ display: "block", fontSize: "10px", opacity: 0.8, marginTop: "2px" }}>Priority Queue Jump</span>
+                    {t("emergencyCase", language)}
+                    <span style={{ display: "block", fontSize: "10px", opacity: 0.8, marginTop: "2px" }}>{t("priorityJump", language)}</span>
                   </button>
                 </div>
               </div>
 
               <button type="submit" style={patientSubmitBtnStyle}>
-                🎫 Get Digital Walk-In Ticket
+                {t("getTicketBtn", language)}
               </button>
             </form>
           </div>
@@ -265,12 +348,19 @@ export default function PatientPage({
         {activeTab === "book" && (
           <div>
             <div style={{ textAlign: "center", marginBottom: "24px" }}>
-              <span style={{ fontSize: "38px", display: "block", marginBottom: "6px" }}>🗓️</span>
+              <div style={headerIconContainerStyle}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="16" y1="2" x2="16" y2="6"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/>
+                  <line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+              </div>
               <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
                 Book Pre-Scheduled Time Slot
               </h2>
               <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-                Reserve a future appointment slot. Scan code upon arrival to merge into priority queue line!
+                Reserve a future appointment slot. Scan code upon arrival to merge into priority queue line.
               </p>
             </div>
 
@@ -340,14 +430,14 @@ export default function PatientPage({
               </div>
 
               <button type="submit" style={patientSubmitBtnStyle}>
-                📅 Reserve Appointment Slot
+                Reserve Appointment Slot
               </button>
             </form>
 
             {bookedAppointment && (
               <div style={aptConfirmationBoxStyle}>
                 <span style={{ fontSize: "11px", color: "#047857", fontWeight: 700, textTransform: "uppercase" }}>
-                  ✓ APPOINTMENT CONFIRMED
+                  APPOINTMENT CONFIRMED
                 </span>
                 <h3 style={{ margin: "4px 0", color: "#064E3B", fontSize: "22px", fontWeight: 900 }}>
                   Code: {bookedAppointment.appointment_id}
@@ -361,7 +451,7 @@ export default function PatientPage({
                     onClick={() => handleAppointmentCheckIn(bookedAppointment.appointment_id)}
                     style={checkInNowBtnStyle}
                   >
-                    🚀 I'm at Hospital! Check In & Join Live Line Now
+                    Check In & Join Live Line Now
                   </button>
                 </div>
               </div>
@@ -373,7 +463,7 @@ export default function PatientPage({
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
               <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                📋 My Scheduled Appointments
+                My Scheduled Appointments
               </h3>
               <div style={{ display: "flex", gap: "6px" }}>
                 <input
@@ -391,7 +481,7 @@ export default function PatientPage({
 
             {userAppointments.length === 0 ? (
               <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
-                No scheduled appointments found. Click "Book Time Slot" above.
+                No scheduled appointments found. Select "Book Time Slot" above.
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -399,14 +489,14 @@ export default function PatientPage({
                   <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span style={{ fontSize: "16px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
+                        <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
                         <span style={aptStatusBadgeStyle(apt.status)}>{apt.status.toUpperCase()}</span>
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14px" }}>
                         {apt.patient_name} — {apt.service_category.toUpperCase()}
                       </p>
                       <span style={{ fontSize: "12px", color: "#64748B" }}>
-                        📅 {apt.appointment_date} at ⏰ {apt.time_slot}
+                        Date: {apt.appointment_date} | Time: {apt.time_slot}
                       </span>
                     </div>
 
@@ -416,11 +506,11 @@ export default function PatientPage({
                           onClick={() => handleAppointmentCheckIn(apt.appointment_id)}
                           style={checkInNowBtnStyle}
                         >
-                          🟢 Check In & Join Line
+                          Check In & Join Line
                         </button>
                       ) : (
                         <span style={{ fontSize: "12px", color: "#047857", fontWeight: 700 }}>
-                          ✓ Merged (Token #{apt.ticket_id})
+                          Merged (Token #{apt.ticket_id})
                         </span>
                       )}
                     </div>
@@ -443,39 +533,67 @@ export default function PatientPage({
         <div style={{ ...standaloneCardStyle, marginTop: "24px", border: "2px solid #059669" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #D8E8DD", paddingBottom: "14px", marginBottom: "16px" }}>
             <div>
-              <span style={{ fontSize: "11px", color: "#64748B", textTransform: "uppercase" }}>Your Live Queue Token</span>
+              <span style={{ fontSize: "11px", color: "#64748B", textTransform: "uppercase", fontWeight: 600 }}>{t("livePassTitle", language)}</span>
               <h2 style={{ margin: 0, fontSize: "32px", color: "#047857", fontWeight: 800 }}>
                 #{activeTicket.ticket_id}
               </h2>
             </div>
             <div style={{ textAlign: "right" }}>
-              <span style={{ fontSize: "11px", color: "#64748B" }}>Current Status</span>
+              <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>Current Status</span>
               <span style={passStatusBadgeStyle(activeTicket.status)}>{activeTicket.status.toUpperCase()}</span>
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
             <div>
-              <span style={{ fontSize: "11px", color: "#64748B" }}>Patient Name</span>
-              <p style={{ margin: "2px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>{activeTicket.name}</p>
+              <span style={{ fontSize: "11px", color: "#64748B" }}>{t("patientDemographics", language)}</span>
+              <p style={{ margin: "2px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>
+                {activeTicket.name} ({activeTicket.age || 30} yrs, {(activeTicket.gender || "male").toUpperCase()})
+              </p>
             </div>
             <div>
-              <span style={{ fontSize: "11px", color: "#64748B" }}>Department</span>
+              <span style={{ fontSize: "11px", color: "#64748B" }}>{t("deptCategory", language)}</span>
               <p style={{ margin: "2px 0 0 0", color: "#047857", fontWeight: 700, fontSize: "15px" }}>{activeTicket.service_category.toUpperCase()}</p>
             </div>
             <div>
-              <span style={{ fontSize: "11px", color: "#64748B" }}>Queue Position</span>
+              <span style={{ fontSize: "11px", color: "#64748B" }}>{t("symptomRisk", language)}</span>
+              <p style={{ margin: "2px 0 0 0", color: "#0284C7", fontWeight: 700, fontSize: "13px" }}>
+                {(activeTicket.medical_condition || "general_checkup").replace(/_/g, " ").toUpperCase()} • Risk: {(activeTicket.pre_existing_condition || "none").toUpperCase()}
+              </p>
+            </div>
+            <div>
+              <span style={{ fontSize: "11px", color: "#64748B" }}>{t("aiComplexity", language)}</span>
+              <p style={{ margin: "2px 0 0 0", color: "#D97706", fontWeight: 800, fontSize: "15px" }}>
+                {activeTicket.complexity_score || 1.0}x Case Complexity Multiplier
+              </p>
+            </div>
+            <div>
+              <span style={{ fontSize: "11px", color: "#64748B" }}>{t("pos", language)}</span>
               <p style={{ margin: "2px 0 0 0", color: "#D97706", fontWeight: 800, fontSize: "24px" }}>
                 #{activeTicket.position}
               </p>
             </div>
             <div>
-              <span style={{ fontSize: "11px", color: "#64748B" }}>Estimated Wait</span>
+              <span style={{ fontSize: "11px", color: "#64748B" }}>{t("estWait", language)}</span>
               <p style={{ margin: "2px 0 0 0", color: "#059669", fontWeight: 800, fontSize: "24px" }}>
                 {activeTicket.estimated_wait_minutes} min
               </p>
             </div>
           </div>
+
+          {activeTicket.prescription_notes && (
+            <div style={{ padding: "12px 16px", borderRadius: "12px", background: "#ECFDF5", border: "1px solid #A7F3D0", marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                <span style={{ fontSize: "14px" }}>💊</span>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: "#047857" }}>
+                  E-Prescription Attached {activeTicket.transferred_from_dept ? `(Transferred from ${activeTicket.transferred_from_dept.toUpperCase()})` : ""}
+                </span>
+              </div>
+              <p style={{ margin: 0, fontSize: "13px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
+                "{activeTicket.prescription_notes}"
+              </p>
+            </div>
+          )}
 
           {ticketQrData && (
             <div style={{ textAlign: "center", borderTop: "1px solid #D8E8DD", paddingTop: "18px" }}>
@@ -485,7 +603,7 @@ export default function PatientPage({
                 style={{ width: "150px", height: "150px", borderRadius: "12px", background: "#fff", padding: "8px", border: "1px solid #CBD5E1" }}
               />
               <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#64748B" }}>
-                Scan code at doctor desk scanner when your ticket number is called
+                {t("scanQrHint", language)}
               </p>
             </div>
           )}
@@ -496,6 +614,18 @@ export default function PatientPage({
 }
 
 // Soft Green Clinical Theme Styles
+const headerIconContainerStyle = {
+  width: "56px",
+  height: "56px",
+  borderRadius: "50%",
+  background: "#ECFDF5",
+  border: "1px solid #A7F3D0",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: "12px",
+};
+
 const tabBtnStyle = (active) => ({
   flex: 1,
   padding: "10px 12px",
@@ -506,6 +636,10 @@ const tabBtnStyle = (active) => ({
   fontWeight: 700,
   fontSize: "12px",
   cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "6px",
 });
 
 const standaloneCardStyle = {
@@ -595,7 +729,7 @@ const aptCardRowStyle = (status) => ({
 });
 
 const aptStatusBadgeStyle = (status) => ({
-  padding: "2px 6px",
+  padding: "3px 8px",
   borderRadius: "4px",
   fontSize: "10px",
   fontWeight: 800,

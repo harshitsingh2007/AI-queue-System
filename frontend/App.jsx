@@ -129,14 +129,20 @@ export default function App() {
     return () => socket.disconnect();
   }, [tenantId, activeTicket]);
 
-  // Fetch Queue & Analytics
+  // Fetch Queue & Analytics — scoped to admin's department when the current user is an admin.
+  // This ensures backend returns only the relevant dept's data, not global stats.
   const refreshData = useCallback(() => {
-    fetch(`${API_BASE}/api/v1/plugin/analytics/${tenantId}`)
+    const dept = currentUser && currentUser.role === "admin" && currentUser.department
+      ? currentUser.department.toLowerCase()
+      : null;
+    const deptQuery = dept && dept !== "all" ? `?department=${encodeURIComponent(dept)}` : "";
+
+    fetch(`${API_BASE}/api/v1/plugin/analytics/${tenantId}${deptQuery}`)
       .then((r) => r.json())
       .then((d) => setAnalytics(d))
       .catch((e) => console.log("Analytics error:", e));
 
-    fetch(`${API_BASE}/api/v1/plugin/queue/${tenantId}`)
+    fetch(`${API_BASE}/api/v1/plugin/queue/${tenantId}${deptQuery}`)
       .then((r) => r.json())
       .then((d) => {
         setQueueSnapshot(d.snapshot || []);
@@ -148,7 +154,7 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => setKioskQrData(d))
       .catch((e) => console.log("QR error:", e));
-  }, [tenantId]);
+  }, [tenantId, currentUser]);
 
   useEffect(() => {
     refreshData();
@@ -176,13 +182,29 @@ export default function App() {
     }
   };
 
-  // Staff Desk Actions
+  // Staff Desk Actions — include admin's department in all queue-mutation events
+  // so the backend can enforce department ownership (see queue_engine.py).
+  const adminDept = currentUser && currentUser.department
+    ? currentUser.department.toLowerCase()
+    : "all";
+
   const handleServeNext = async () => {
-    if (socketRef.current) socketRef.current.emit("serve_next", { tenant_id: tenantId });
+    if (socketRef.current) {
+      socketRef.current.emit("serve_next", {
+        tenant_id: tenantId,
+        department: adminDept !== "all" ? adminDept : undefined,
+      });
+    }
   };
 
   const handleCompleteTicket = async (ticketId) => {
-    if (socketRef.current) socketRef.current.emit("complete_ticket", { tenant_id: tenantId, ticket_id: ticketId });
+    if (socketRef.current) {
+      socketRef.current.emit("complete_ticket", {
+        tenant_id: tenantId,
+        ticket_id: ticketId,
+        department: adminDept !== "all" ? adminDept : undefined,
+      });
+    }
   };
 
   const handleCounterChange = async (delta) => {
@@ -313,6 +335,7 @@ export default function App() {
               ) : (
                 <StandaloneStaffPage
                   tenantId={tenantId}
+                  currentUser={currentUser}
                   analytics={analytics}
                   queueSnapshot={queueSnapshot}
                   servingTickets={servingTickets}
@@ -1194,6 +1217,7 @@ function StandalonePatientPage({
 // ===========================================================================
 function StandaloneStaffPage({
   tenantId,
+  currentUser,
   analytics,
   queueSnapshot,
   servingTickets,
@@ -1201,37 +1225,109 @@ function StandaloneStaffPage({
   handleCompleteTicket,
   handleCounterChange,
 }) {
+  const [reservedSlots, setReservedSlots] = React.useState([]);
+  const [apptHistory, setApptHistory] = React.useState([]);
+
+  const adminDept = currentUser && currentUser.department
+    ? currentUser.department.toLowerCase()
+    : "all";
+
+  const fetchAppointments = React.useCallback(() => {
+    const deptParam = adminDept && adminDept !== "all"
+      ? `department=${encodeURIComponent(adminDept)}&`
+      : "";
+
+    // Reserved Slots: only active appointments (scheduled / checked_in)
+    fetch(`${API_BASE}/api/v1/plugin/appointments/tenant/${tenantId}?${deptParam}active_only=true`)
+      .then((r) => r.json())
+      .then((d) => setReservedSlots(d.appointments || []))
+      .catch((e) => console.log("Reserved slots error:", e));
+
+    // History: all appointments so we can show completed/cancelled below
+    fetch(`${API_BASE}/api/v1/plugin/appointments/tenant/${tenantId}?${deptParam}active_only=false`)
+      .then((r) => r.json())
+      .then((d) => {
+        const hist = (d.appointments || []).filter(
+          (a) => !["scheduled", "checked_in"].includes(a.status)
+        );
+        setApptHistory(hist);
+      })
+      .catch((e) => console.log("Appt history error:", e));
+  }, [tenantId, adminDept]);
+
+  React.useEffect(() => {
+    fetchAppointments();
+    const iv = setInterval(fetchAppointments, 5000);
+    return () => clearInterval(iv);
+  }, [fetchAppointments]);
+
+  const deptLabel = adminDept === "all" ? "ALL DEPARTMENTS" : adminDept.toUpperCase();
+
+  const apptBadgeStyle = (status) => {
+    const map = {
+      scheduled:   { bg: "rgba(56,189,248,0.15)",  color: "#38bdf8", border: "#0284c7" },
+      checked_in:  { bg: "rgba(74,222,128,0.15)",  color: "#4ade80", border: "#16a34a" },
+      serving:     { bg: "rgba(251,191,36,0.15)",   color: "#fbbf24", border: "#d97706" },
+      completed:   { bg: "rgba(192,132,252,0.15)", color: "#c084fc", border: "#a855f7" },
+      cancelled:   { bg: "rgba(239,68,68,0.15)",   color: "#f87171", border: "#ef4444" },
+      no_show:     { bg: "rgba(100,116,139,0.15)", color: "#94a3b8", border: "#475569" },
+      transferred: { bg: "rgba(251,146,60,0.15)",  color: "#fb923c", border: "#ea580c" },
+    };
+    const c = map[status] || map.no_show;
+    return { display:"inline-block", padding:"2px 8px", borderRadius:"8px",
+             background:c.bg, color:c.color, border:`1px solid ${c.border}`,
+             fontSize:"11px", fontWeight:700, textTransform:"uppercase" };
+  };
+
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
+      {/* Department isolation banner */}
+      <div style={{ display:"flex", alignItems:"center", gap:"10px", padding:"10px 16px",
+                    borderRadius:"10px", marginBottom:"20px",
+                    background:"rgba(74,222,128,0.08)", border:"1px solid rgba(74,222,128,0.25)" }}>
+        <span style={{ fontSize:"18px" }}>🛡️</span>
+        <div>
+          <strong style={{ color:"#4ade80", fontSize:"13px" }}>
+            Department Isolation: <span style={{ color:"#f8fafc" }}>{deptLabel}</span>
+          </strong>
+          <span style={{ display:"block", fontSize:"11px", color:"#94a3b8" }}>
+            {adminDept === "all"
+              ? "Super Admin — viewing all department data."
+              : `Strict boundary — queue, stats & appointments scoped to ${deptLabel} only.`}
+          </span>
+        </div>
+      </div>
+
+      {/* Analytics Cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"16px", marginBottom:"24px" }}>
         <div style={staffStatCardStyle}>
-          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Patients Waiting</span>
-          <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#38bdf8", margin: "4px 0" }}>
+          <span style={{ fontSize:"12px", color:"#94a3b8", fontWeight:600 }}>Patients Waiting</span>
+          <h2 style={{ fontSize:"32px", fontWeight:800, color:"#38bdf8", margin:"4px 0" }}>
             {analytics ? analytics.currently_waiting : 0}
           </h2>
-          <span style={{ fontSize: "11px", color: "#64748b" }}>In Waiting Queue Line</span>
+          <span style={{ fontSize:"11px", color:"#64748b" }}>In {deptLabel} Queue</span>
         </div>
         <div style={staffStatCardStyle}>
-          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Currently Serving</span>
-          <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#4ade80", margin: "4px 0" }}>
+          <span style={{ fontSize:"12px", color:"#94a3b8", fontWeight:600 }}>Currently Serving</span>
+          <h2 style={{ fontSize:"32px", fontWeight:800, color:"#4ade80", margin:"4px 0" }}>
             {analytics ? analytics.currently_serving : 0}
           </h2>
-          <span style={{ fontSize: "11px", color: "#64748b" }}>At Doctor Desks</span>
+          <span style={{ fontSize:"11px", color:"#64748b" }}>At {deptLabel} Desks</span>
         </div>
         <div style={staffStatCardStyle}>
-          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Completed Today</span>
-          <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#c084fc", margin: "4px 0" }}>
+          <span style={{ fontSize:"12px", color:"#94a3b8", fontWeight:600 }}>Completed Today</span>
+          <h2 style={{ fontSize:"32px", fontWeight:800, color:"#c084fc", margin:"4px 0" }}>
             {analytics ? analytics.total_completed : 0}
           </h2>
-          <span style={{ fontSize: "11px", color: "#64748b" }}>Total Patients Consulted</span>
+          <span style={{ fontSize:"11px", color:"#64748b" }}>{deptLabel} Patients</span>
         </div>
         <div style={staffStatCardStyle}>
-          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: 600 }}>Active Doctor Desks</span>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px" }}>
-            <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#f59e0b", margin: 0 }}>
+          <span style={{ fontSize:"12px", color:"#94a3b8", fontWeight:600 }}>Active Desks</span>
+          <div style={{ display:"flex", alignItems:"center", gap:"12px", marginTop:"4px" }}>
+            <h2 style={{ fontSize:"32px", fontWeight:800, color:"#f59e0b", margin:0 }}>
               {analytics ? analytics.active_counters : 2}
             </h2>
-            <div style={{ display: "flex", gap: "6px" }}>
+            <div style={{ display:"flex", gap:"6px" }}>
               <button onClick={() => handleCounterChange(-1)} style={plusMinusBtnStyle}>-</button>
               <button onClick={() => handleCounterChange(1)} style={plusMinusBtnStyle}>+</button>
             </div>
@@ -1239,39 +1335,35 @@ function StandaloneStaffPage({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+      {/* Serving + Waiting Queue */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"24px", marginBottom:"24px" }}>
         <div style={standaloneCardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"18px" }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: "20px", color: "#f8fafc" }}>
-                🛡️ Doctor Desk Operations
-              </h3>
-              <span style={{ fontSize: "12px", color: "#94a3b8" }}>Priority Call Control</span>
+              <h3 style={{ margin:0, fontSize:"20px", color:"#f8fafc" }}>🛡️ {deptLabel} Desk</h3>
+              <span style={{ fontSize:"12px", color:"#94a3b8" }}>Department Priority Call Control</span>
             </div>
-
             <button onClick={handleServeNext} style={callPriorityBtnStyle}>
-              🚨 Call Next Priority Ticket
+              🚨 Call Next {deptLabel} Ticket
             </button>
           </div>
-
-          <h4 style={{ margin: "0 0 12px 0", color: "#cbd5e1", fontSize: "13px" }}>Now Serving at Doctor Desks:</h4>
-
+          <h4 style={{ margin:"0 0 12px 0", color:"#cbd5e1", fontSize:"13px" }}>Now Serving:</h4>
           {servingTickets.length === 0 ? (
-            <div style={{ padding: "30px", textAlign: "center", background: "#0f172a", borderRadius: "12px", border: "1px solid #334155", color: "#64748b", fontSize: "13px" }}>
-              No patients currently at doctor desks. Click "Call Next Priority Ticket" above.
+            <div style={{ padding:"30px", textAlign:"center", background:"#0f172a", borderRadius:"12px",
+                          border:"1px solid #334155", color:"#64748b", fontSize:"13px" }}>
+              No patients currently at {deptLabel} desks.
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
               {servingTickets.map((t) => (
                 <div key={t.ticket_id} style={staffServingRowStyle}>
                   <div>
-                    <span style={{ fontSize: "20px", fontWeight: 800, color: "#4ade80" }}>#{t.ticket_id}</span>
-                    <span style={{ marginLeft: "12px", color: "#f8fafc", fontWeight: 700, fontSize: "15px" }}>{t.name}</span>
-                    <span style={{ marginLeft: "10px", fontSize: "11px", color: "#38bdf8" }}>({t.service_category.toUpperCase()})</span>
+                    <span style={{ fontSize:"20px", fontWeight:800, color:"#4ade80" }}>#{t.ticket_id}</span>
+                    <span style={{ marginLeft:"12px", color:"#f8fafc", fontWeight:700, fontSize:"15px" }}>{t.name}</span>
+                    <span style={{ marginLeft:"10px", fontSize:"11px", color:"#38bdf8" }}>({t.service_category.toUpperCase()})</span>
                   </div>
-
                   <button onClick={() => handleCompleteTicket(t.ticket_id)} style={finishBtnStyle}>
-                    ✓ Mark Consultation Complete
+                    ✓ Mark Complete
                   </button>
                 </div>
               ))}
@@ -1280,11 +1372,10 @@ function StandaloneStaffPage({
         </div>
 
         <div style={standaloneCardStyle}>
-          <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", color: "#f8fafc" }}>
-            📊 Waiting Line Snapshot ({queueSnapshot.length})
+          <h3 style={{ margin:"0 0 16px 0", fontSize:"20px", color:"#f8fafc" }}>
+            📊 {deptLabel} Waiting Line ({queueSnapshot.length})
           </h3>
-
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX:"auto" }}>
             <table style={staffTableStyle}>
               <thead>
                 <tr>
@@ -1299,25 +1390,23 @@ function StandaloneStaffPage({
               <tbody>
                 {queueSnapshot.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ ...staffTdStyle, textAlign: "center", color: "#64748b" }}>
-                      Waiting queue is currently empty.
+                    <td colSpan="6" style={{ ...staffTdStyle, textAlign:"center", color:"#64748b" }}>
+                      {deptLabel} waiting queue is empty.
                     </td>
                   </tr>
                 ) : (
                   queueSnapshot.map((t) => (
                     <tr key={t.ticket_id}>
                       <td style={staffTdStyle}>#{t.position}</td>
-                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#38bdf8" }}>#{t.ticket_id}</td>
-                      <td style={{ ...staffTdStyle, fontWeight: 600 }}>{t.name}</td>
+                      <td style={{ ...staffTdStyle, fontWeight:800, color:"#38bdf8" }}>#{t.ticket_id}</td>
+                      <td style={{ ...staffTdStyle, fontWeight:600 }}>{t.name}</td>
                       <td style={staffTdStyle}>{t.service_category}</td>
                       <td style={staffTdStyle}>
-                        {t.priority_level === 1 ? (
-                          <span style={badgePrioStyle("#ef4444")}>🚨 Emergency</span>
-                        ) : (
-                          <span style={badgePrioStyle("#3b82f6")}>📋 Routine</span>
-                        )}
+                        {t.priority_level === 1
+                          ? <span style={badgePrioStyle("#ef4444")}>🚨 Emergency</span>
+                          : <span style={badgePrioStyle("#3b82f6")}>📋 Routine</span>}
                       </td>
-                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#4ade80" }}>{t.estimated_wait_minutes} min</td>
+                      <td style={{ ...staffTdStyle, fontWeight:800, color:"#4ade80" }}>{t.estimated_wait_minutes} min</td>
                     </tr>
                   ))
                 )}
@@ -1326,6 +1415,96 @@ function StandaloneStaffPage({
           </div>
         </div>
       </div>
+
+      {/* ── Reserved Slots (ACTIVE ONLY: scheduled + checked_in) ── */}
+      <div style={{ ...standaloneCardStyle, marginBottom:"24px" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"16px" }}>
+          <div>
+            <h3 style={{ margin:0, fontSize:"20px", color:"#f8fafc" }}>
+              📅 Reserved Slots — {deptLabel} ({reservedSlots.length})
+            </h3>
+            <span style={{ fontSize:"12px", color:"#94a3b8" }}>
+              Active upcoming appointments only. Completed &amp; cancelled are excluded here.
+            </span>
+          </div>
+          <button onClick={fetchAppointments} style={finishBtnStyle}>↻ Refresh</button>
+        </div>
+        {reservedSlots.length === 0 ? (
+          <div style={{ padding:"30px", textAlign:"center", background:"#0f172a", borderRadius:"12px",
+                        border:"1px solid #334155", color:"#64748b", fontSize:"13px" }}>
+            No active reserved slots for {deptLabel}. All appointments have been completed or cancelled.
+          </div>
+        ) : (
+          <div style={{ overflowX:"auto" }}>
+            <table style={staffTableStyle}>
+              <thead>
+                <tr>
+                  <th style={staffThStyle}>Appt Code</th>
+                  <th style={staffThStyle}>Patient</th>
+                  <th style={staffThStyle}>Dept</th>
+                  <th style={staffThStyle}>Reserved Slot</th>
+                  <th style={staffThStyle}>Status</th>
+                  <th style={staffThStyle}>Merged Token</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reservedSlots.map((apt) => (
+                  <tr key={apt.appointment_id}>
+                    <td style={{ ...staffTdStyle, fontWeight:800, color:"#38bdf8" }}>{apt.appointment_id}</td>
+                    <td style={{ ...staffTdStyle, fontWeight:700 }}>{apt.patient_name}</td>
+                    <td style={{ ...staffTdStyle, color:"#94a3b8" }}>{apt.service_category.toUpperCase()}</td>
+                    <td style={{ ...staffTdStyle, color:"#f59e0b" }}>{apt.appointment_date} @ {apt.time_slot}</td>
+                    <td style={staffTdStyle}><span style={apptBadgeStyle(apt.status)}>{apt.status}</span></td>
+                    <td style={{ ...staffTdStyle, color:"#4ade80", fontWeight:800 }}>
+                      {apt.ticket_id ? `#${apt.ticket_id}` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Appointment History (completed, cancelled, etc.) ── */}
+      {apptHistory.length > 0 && (
+        <div style={standaloneCardStyle}>
+          <div style={{ marginBottom:"16px" }}>
+            <h3 style={{ margin:0, fontSize:"20px", color:"#f8fafc" }}>
+              📋 Appointment History — {deptLabel} ({apptHistory.length})
+            </h3>
+            <span style={{ fontSize:"12px", color:"#94a3b8" }}>
+              Completed, cancelled, transferred, and no-show records.
+            </span>
+          </div>
+          <div style={{ overflowX:"auto" }}>
+            <table style={staffTableStyle}>
+              <thead>
+                <tr>
+                  <th style={staffThStyle}>Appt Code</th>
+                  <th style={staffThStyle}>Patient</th>
+                  <th style={staffThStyle}>Dept</th>
+                  <th style={staffThStyle}>Slot</th>
+                  <th style={staffThStyle}>Final Status</th>
+                  <th style={staffThStyle}>Merged Token</th>
+                </tr>
+              </thead>
+              <tbody>
+                {apptHistory.map((apt) => (
+                  <tr key={apt.appointment_id}>
+                    <td style={{ ...staffTdStyle, fontWeight:800, color:"#64748b" }}>{apt.appointment_id}</td>
+                    <td style={{ ...staffTdStyle, fontWeight:700 }}>{apt.patient_name}</td>
+                    <td style={{ ...staffTdStyle, color:"#94a3b8" }}>{apt.service_category.toUpperCase()}</td>
+                    <td style={{ ...staffTdStyle, color:"#64748b" }}>{apt.appointment_date} @ {apt.time_slot}</td>
+                    <td style={staffTdStyle}><span style={apptBadgeStyle(apt.status)}>{apt.status}</span></td>
+                    <td style={{ ...staffTdStyle, color:"#64748b" }}>{apt.ticket_id ? `#${apt.ticket_id}` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,7 @@
 /**
  * AuthModal.jsx
  * -------------
- * Interactive Authentication Modal for Login & Signup.
- * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
+ * Interactive Authentication Modal with Professional Healthcare Styling.
  */
 
 import React, { useState } from "react";
@@ -63,10 +62,18 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
     <div style={modalBackdropStyle}>
       <div style={modalCardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-          <h2 style={{ margin: 0, fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
-            {authMode === "login" ? "🔐 Login to Account" : "📝 Create Account"}
-          </h2>
-          <button onClick={onClose} style={modalCloseBtnStyle}>✕</button>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <h2 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
+              {authMode === "login" ? "Account Sign In" : "Register Account"}
+            </h2>
+          </div>
+          <button onClick={onClose} style={modalCloseBtnStyle}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </div>
 
         {/* Auth Mode Tabs */}
@@ -83,7 +90,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
             onClick={() => setAuthMode("signup")}
             style={modalTabBtnStyle(authMode === "signup")}
           >
-            Register Signup
+            Register Account
           </button>
         </div>
 
@@ -135,14 +142,16 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
                   onClick={() => setRole("user")}
                   style={roleOptionBtnStyle(role === "user", "#0284C7")}
                 >
-                  📱 Patient / Consumer
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Patient / Consumer
                 </button>
                 <button
                   type="button"
                   onClick={() => setRole("admin")}
                   style={roleOptionBtnStyle(role === "admin", "#047857")}
                 >
-                  🛡️ Staff / Doctor Admin
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  Staff / Doctor Admin
                 </button>
               </div>
 
@@ -169,7 +178,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
           )}
 
           <button type="submit" disabled={loading} style={modalSubmitBtnStyle}>
-            {loading ? "Authenticating..." : authMode === "login" ? "🚀 Login Now" : "🎉 Register Account"}
+            {loading ? "Authenticating..." : authMode === "login" ? "Sign In Now" : "Register Account"}
           </button>
         </form>
 
@@ -184,10 +193,10 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
           <span style={{ fontSize: "11px", color: "#64748B", display: "block", marginBottom: "8px", fontWeight: 600 }}>Quick Demo Credentials:</span>
           <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
             <button type="button" onClick={() => handleQuickLogin("admin")} style={quickBtnStyle}>
-              🛡️ Quick Staff Admin Login
+              Quick Staff Admin Login
             </button>
             <button type="button" onClick={() => handleQuickLogin("user")} style={quickBtnStyle}>
-              📱 Quick Consumer Login
+              Quick Patient Login
             </button>
           </div>
         </div>
@@ -225,8 +234,10 @@ const modalCloseBtnStyle = {
   background: "transparent",
   border: "none",
   color: "#64748B",
-  fontSize: "18px",
   cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 const modalTabBtnStyle = (active) => ({
@@ -262,6 +273,10 @@ const roleOptionBtnStyle = (active, accent) => ({
   fontWeight: 700,
   fontSize: "11px",
   cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "6px",
 });
 
 const modalSubmitBtnStyle = {

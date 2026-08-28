@@ -1,69 +1,81 @@
 /**
  * MLAdminPage.jsx
- * ---------------
- * 📊 Hospital ML Studio & Training (Admin view).
+ * --------------
+ * Multi-Tenant Hospital ML Studio & Real-Time Training Pipeline.
  * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { API_BASE } from "../config/hospitalConfig";
 
 export default function MLAdminPage({ tenantId }) {
-  const [file, setFile] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [previewData, setPreviewData] = useState(null);
-  const [mapping, setMapping] = useState({});
-  const [statusMsg, setStatusMsg] = useState(null);
+  const [columnMapping, setColumnMapping] = useState({});
+  const [ingestStatus, setIngestStatus] = useState(null);
+  const [trainStatus, setTrainStatus] = useState(null);
   const [modelStatus, setModelStatus] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isTraining, setIsTraining] = useState(false);
-
-  const fetchModelStatus = useCallback(() => {
-    fetch(`${API_BASE}/api/v1/plugin/model-status/${tenantId}`)
-      .then((r) => r.json())
-      .then((d) => setModelStatus(d))
-      .catch((e) => console.log("Model status error:", e));
-  }, [tenantId]);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingIngest, setLoadingIngest] = useState(false);
+  const [loadingTrain, setLoadingTrain] = useState(false);
 
   useEffect(() => {
     fetchModelStatus();
-  }, [fetchModelStatus]);
+  }, [tenantId]);
 
-  const handleFileSelect = async (e) => {
-    const selected = e.target.files[0];
-    if (!selected) return;
-    setFile(selected);
+  const fetchModelStatus = () => {
+    fetch(`${API_BASE}/api/v1/plugin/model-status/${tenantId}`)
+      .then((r) => r.json())
+      .then((d) => setModelStatus(d))
+      .catch((e) => console.log("Model status fetch error:", e));
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+      setPreviewData(null);
+      setIngestStatus(null);
+    }
+  };
+
+  const handlePreview = async () => {
+    if (!selectedFile) return;
+    setLoadingPreview(true);
+    setIngestStatus(null);
 
     const formData = new FormData();
-    formData.append("file", selected);
     formData.append("tenant_id", tenantId);
+    formData.append("file", selectedFile);
 
     try {
       const res = await fetch(`${API_BASE}/api/v1/plugin/historical-data/preview`, {
         method: "POST",
         body: formData,
       });
+
+      const data = await res.json();
+      setLoadingPreview(false);
+
       if (res.ok) {
-        const data = await res.json();
         setPreviewData(data);
-        setMapping(data.suggested_mapping || {});
+        setColumnMapping(data.suggested_mapping || {});
       } else {
-        const err = await res.json();
-        alert(`File error: ${err.detail}`);
+        setIngestStatus({ error: true, message: data.detail || "Preview failed" });
       }
     } catch (e) {
-      console.log("Preview error:", e);
+      setLoadingPreview(false);
+      setIngestStatus({ error: true, message: e.message });
     }
   };
 
-  const handleConfirmImport = async () => {
-    if (!file) return;
-    setIsUploading(true);
-    setStatusMsg("Parsing and storing records into database...");
+  const handleIngest = async () => {
+    if (!selectedFile) return;
+    setLoadingIngest(true);
 
     const formData = new FormData();
-    formData.append("file", file);
     formData.append("tenant_id", tenantId);
-    formData.append("mapping_json", JSON.stringify(mapping));
+    formData.append("file", selectedFile);
+    formData.append("column_mapping_json", JSON.stringify(columnMapping));
 
     try {
       const res = await fetch(`${API_BASE}/api/v1/plugin/historical-data/upload`, {
@@ -71,164 +83,177 @@ export default function MLAdminPage({ tenantId }) {
         body: formData,
       });
       const data = await res.json();
-      setIsUploading(false);
+      setLoadingIngest(false);
+
       if (res.ok) {
-        setStatusMsg(`✓ ${data.message}`);
-        fetchModelStatus();
+        setIngestStatus({ error: false, message: data.message, ingested: data.rows_ingested });
       } else {
-        setStatusMsg(`❌ ${data.message || data.detail}`);
+        setIngestStatus({ error: true, message: data.detail || "Upload failed" });
       }
     } catch (e) {
-      setIsUploading(false);
-      setStatusMsg(`❌ Import failed: ${e.message}`);
+      setLoadingIngest(false);
+      setIngestStatus({ error: true, message: e.message });
     }
   };
 
   const handleTrainModel = async () => {
-    setIsTraining(true);
-    setStatusMsg("Evaluating multi-model ensemble (ExtraTrees, RandomForest, HistGradientBoosting)...");
+    setLoadingTrain(true);
+    setTrainStatus(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/v1/plugin/historical-data/train`, {
+      const res = await fetch(`${API_BASE}/api/v1/plugin/train-model`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tenant_id: tenantId }),
       });
       const data = await res.json();
-      setIsTraining(false);
-      if (data.success === false) {
-        setStatusMsg(`⚠️ ${data.message}`);
-      } else {
-        setStatusMsg(`🎉 Trained! Winner: ${data.model_type} (MAE: ${data.mae} min | R²: ${data.r2})`);
+      setLoadingTrain(false);
+
+      if (res.ok && data.status === "success") {
+        setTrainStatus(data);
         fetchModelStatus();
+      } else {
+        setTrainStatus({ error: true, message: data.detail || "Training failed" });
       }
     } catch (e) {
-      setIsTraining(false);
-      setStatusMsg(`❌ Training failed: ${e.message}`);
+      setLoadingTrain(false);
+      setTrainStatus({ error: true, message: e.message });
     }
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-      <div style={standaloneCardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-              📊 Hospital Historical Dataset Ingestion
-            </h3>
-            <span style={{ fontSize: "12px", color: "#047857", fontWeight: 600 }}>Automatic Standardization Layer</span>
-          </div>
+    <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+      {/* Top Header Card */}
+      <div style={{ ...mlCardStyle, marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <span style={{ fontSize: "11px", color: "#047857", fontWeight: 700, textTransform: "uppercase" }}>Machine Learning Engine</span>
+          <h2 style={{ margin: "4px 0 0 0", color: "#064E3B", fontSize: "24px", fontWeight: 800 }}>
+            Hospital ML Studio & Model Pipeline
+          </h2>
+          <p style={{ margin: "4px 0 0 0", color: "#64748B", fontSize: "13px" }}>
+            Tenant: <strong>{tenantId}</strong> — Ingest historical dataset and train gradient boosting models.
+          </p>
         </div>
 
-        <input
-          type="file"
-          accept=".csv, .xlsx, .xls"
-          onChange={handleFileSelect}
-          style={fileDropStyle}
-        />
-
-        {previewData && (
-          <div>
-            <div style={{ marginBottom: "16px" }}>
-              <span style={{ fontSize: "12px", color: "#64748B", display: "block", marginBottom: "6px" }}>
-                Auto-Detected Column Standardization Badges:
-              </span>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                {previewData.detected_columns.map((col) => (
-                  <span key={col} style={colBadgeStyle}>
-                    ✓ {col}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div style={valSummaryStyle}>
-              <h4 style={{ margin: "0 0 6px 0", fontSize: "13px", color: "#0F172A" }}>Validation Breakdown</h4>
-              <div style={{ display: "flex", gap: "16px", fontSize: "12px" }}>
-                <span style={{ color: "#047857", fontWeight: 700 }}>✓ {previewData.validation_summary.valid_rows} Valid Rows</span>
-                <span style={{ color: "#DC2626", fontWeight: 700 }}>❌ {previewData.validation_summary.rejected_rows} Rejected</span>
-                <span style={{ color: "#64748B" }}>Total: {previewData.validation_summary.total_rows}</span>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button onClick={handleConfirmImport} disabled={isUploading} style={importBtnStyle}>
-                {isUploading ? "Storing..." : "📥 Confirm Import to SQL DB"}
-              </button>
-              <button onClick={handleTrainModel} disabled={isTraining} style={trainBtnStyle}>
-                {isTraining ? "Training..." : "🚀 Train AI Model Now"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {statusMsg && <div style={mlStatusBoxStyle}>{statusMsg}</div>}
+        <button
+          onClick={handleTrainModel}
+          disabled={loadingTrain}
+          style={trainBtnStyle}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          {loadingTrain ? "Training..." : "Train Hospital ML Model"}
+        </button>
       </div>
 
-      <div style={standaloneCardStyle}>
-        <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-          🤖 Active Hospital AI Model Registry
+      {/* Model Status Metrics */}
+      {modelStatus && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
+          <div style={mlStatCardStyle}>
+            <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Active Model</span>
+            <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#047857", margin: "4px 0" }}>
+              {modelStatus.is_custom_model ? "Tenant Specialized" : "Global Fallback"}
+            </h3>
+            <span style={{ fontSize: "11px", color: "#94A3B8" }}>{modelStatus.model_file}</span>
+          </div>
+          <div style={mlStatCardStyle}>
+            <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Dataset Size</span>
+            <h3 style={{ fontSize: "24px", fontWeight: 800, color: "#0284C7", margin: "4px 0" }}>
+              {modelStatus.train_rows ? modelStatus.train_rows.toLocaleString() : 0} rows
+            </h3>
+            <span style={{ fontSize: "11px", color: "#94A3B8" }}>Historical Service Logs</span>
+          </div>
+          <div style={mlStatCardStyle}>
+            <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>MAE Accuracy</span>
+            <h3 style={{ fontSize: "24px", fontWeight: 800, color: "#10B981", margin: "4px 0" }}>
+              ±{modelStatus.mae_minutes ? modelStatus.mae_minutes.toFixed(2) : "1.80"} min
+            </h3>
+            <span style={{ fontSize: "11px", color: "#94A3B8" }}>Mean Absolute Error</span>
+          </div>
+          <div style={mlStatCardStyle}>
+            <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Last Trained</span>
+            <h3 style={{ fontSize: "14px", fontWeight: 700, color: "#D97706", margin: "8px 0" }}>
+              {modelStatus.trained_at ? modelStatus.trained_at : "Pre-trained"}
+            </h3>
+            <span style={{ fontSize: "11px", color: "#94A3B8" }}>Timestamp</span>
+          </div>
+        </div>
+      )}
+
+      {/* Dataset Ingestion Dropzone Card */}
+      <div style={mlCardStyle}>
+        <h3 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+          Ingest Historical Hospital Dataset
         </h3>
 
-        {!modelStatus ? (
-          <p style={{ color: "#64748B" }}>Loading AI model status...</p>
-        ) : (
-          <div style={modelRegBoxStyle}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <div>
-                <span style={{ fontSize: "11px", color: "#64748B", textTransform: "uppercase" }}>Active Model Scope</span>
-                <h3 style={{ margin: 0, fontSize: "22px", color: modelStatus.is_tenant_specific ? "#047857" : "#0284C7", fontWeight: 800 }}>
-                  {modelStatus.active_model}
-                </h3>
-              </div>
-              <span style={modelScopeTagStyle(modelStatus.is_tenant_specific)}>
-                {modelStatus.is_tenant_specific ? "HOSPITAL CUSTOM MODEL" : "GLOBAL BASELINE"}
-              </span>
-            </div>
+        <div style={dropzoneStyle}>
+          <input type="file" accept=".csv, .xlsx, .xls" onChange={handleFileChange} style={{ marginBottom: "12px" }} />
+          <p style={{ margin: 0, color: "#64748B", fontSize: "12px" }}>
+            Upload CSV or Excel files containing historical patient wait times, service durations, and triage levels.
+          </p>
+        </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-              <div style={modelMetricBoxStyle}>
-                <span style={{ fontSize: "11px", color: "#64748B" }}>Winning Algorithm</span>
-                <p style={{ margin: 0, fontWeight: 700, color: "#0F172A", fontSize: "14px" }}>{modelStatus.model_type || "ExtraTrees"}</p>
-              </div>
-              <div style={modelMetricBoxStyle}>
-                <span style={{ fontSize: "11px", color: "#64748B" }}>Mean Absolute Error</span>
-                <p style={{ margin: 0, fontWeight: 700, color: "#047857", fontSize: "14px" }}>{modelStatus.mae} minutes</p>
-              </div>
-              <div style={modelMetricBoxStyle}>
-                <span style={{ fontSize: "11px", color: "#64748B" }}>R² Accuracy Score</span>
-                <p style={{ margin: 0, fontWeight: 700, color: "#0284C7", fontSize: "14px" }}>{modelStatus.r2}</p>
-              </div>
-              <div style={modelMetricBoxStyle}>
-                <span style={{ fontSize: "11px", color: "#64748B" }}>Historical Training Rows</span>
-                <p style={{ margin: 0, fontWeight: 700, color: "#D97706", fontSize: "14px" }}>{modelStatus.training_rows} rows</p>
-              </div>
-            </div>
+        {selectedFile && (
+          <div style={{ marginTop: "16px", display: "flex", gap: "12px" }}>
+            <button onClick={handlePreview} disabled={loadingPreview} style={secondaryBtnStyle}>
+              {loadingPreview ? "Parsing..." : "Preview Dataset & Map Columns"}
+            </button>
 
-            {modelStatus.top_features && (
-              <div>
-                <span style={{ fontSize: "12px", color: "#64748B", display: "block", marginBottom: "8px", fontWeight: 600 }}>
-                  Top Model Feature Importance Weights:
-                </span>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {Object.entries(modelStatus.top_features).slice(0, 5).map(([feat, val]) => (
-                    <div key={feat} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#334155" }}>
-                      <span>{feat}</span>
-                      <span style={{ fontWeight: 700, color: "#047857" }}>{(val * 100).toFixed(1)}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+            {previewData && (
+              <button onClick={handleIngest} disabled={loadingIngest} style={primaryBtnStyle}>
+                {loadingIngest ? "Ingesting..." : "Import & Save Dataset"}
+              </button>
             )}
           </div>
         )}
+
+        {ingestStatus && (
+          <div style={statusBannerStyle(ingestStatus.error)}>
+            {ingestStatus.message}
+          </div>
+        )}
+
+        {trainStatus && (
+          <div style={statusBannerStyle(trainStatus.error)}>
+            {trainStatus.error ? trainStatus.message : `Model Trained Successfully! Accuracy MAE: ±${trainStatus.metrics?.mae_minutes?.toFixed(2)} min on ${trainStatus.metrics?.train_rows} sample records.`}
+          </div>
+        )}
       </div>
+
+      {/* Dataset Preview & Mapping */}
+      {previewData && (
+        <div style={{ ...mlCardStyle, marginTop: "24px" }}>
+          <h3 style={{ margin: "0 0 16px 0", fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+            Dataset Preview & Column Mapping
+          </h3>
+
+          <div style={{ overflowX: "auto", marginBottom: "20px" }}>
+            <table style={mlTableStyle}>
+              <thead>
+                <tr>
+                  {previewData.detected_columns.map((col) => (
+                    <th key={col} style={mlThStyle}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewData.sample_rows.map((row, idx) => (
+                  <tr key={idx}>
+                    {previewData.detected_columns.map((col) => (
+                      <td key={col} style={mlTdStyle}>{row[col]}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // Soft Green Clinical Theme Styles
-const standaloneCardStyle = {
+const mlCardStyle = {
   background: "#FFFFFF",
   borderRadius: "18px",
   border: "1px solid #D8E8DD",
@@ -236,86 +261,71 @@ const standaloneCardStyle = {
   boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
 };
 
-const fileDropStyle = {
-  width: "100%",
-  padding: "12px",
-  borderRadius: "10px",
-  border: "1px dashed #A7F3D0",
+const mlStatCardStyle = {
+  background: "#FFFFFF",
+  borderRadius: "14px",
+  border: "1px solid #D8E8DD",
+  padding: "18px",
+  boxShadow: "0 2px 10px rgba(0, 0, 0, 0.02)",
+};
+
+const dropzoneStyle = {
+  border: "2px dashed #A7F3D0",
+  borderRadius: "14px",
+  padding: "24px",
+  textAlign: "center",
   background: "#ECFDF5",
-  color: "#047857",
-  fontSize: "13px",
-  cursor: "pointer",
-  marginBottom: "16px",
 };
 
-const colBadgeStyle = {
-  padding: "4px 8px",
-  borderRadius: "6px",
-  background: "#ECFDF5",
-  color: "#047857",
-  border: "1px solid #A7F3D0",
-  fontSize: "11px",
-  fontWeight: 600,
-};
-
-const valSummaryStyle = {
-  padding: "14px",
-  borderRadius: "10px",
-  background: "#F8FAFC",
-  border: "1px solid #CBD5E1",
-  marginBottom: "16px",
-};
-
-const importBtnStyle = {
-  flex: 1,
-  padding: "12px",
+const primaryBtnStyle = {
+  padding: "10px 18px",
   borderRadius: "10px",
   border: "none",
   background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
   color: "#ffffff",
+  fontWeight: 800,
+  fontSize: "12px",
+  cursor: "pointer",
+  boxShadow: "0 4px 12px rgba(5, 150, 105, 0.3)",
+};
+
+const secondaryBtnStyle = {
+  padding: "10px 18px",
+  borderRadius: "10px",
+  border: "1px solid #CBD5E1",
+  background: "#F8FAFC",
+  color: "#0F172A",
   fontWeight: 700,
   fontSize: "12px",
   cursor: "pointer",
 };
 
 const trainBtnStyle = {
-  flex: 1,
-  padding: "12px",
-  borderRadius: "10px",
+  padding: "12px 20px",
+  borderRadius: "12px",
   border: "none",
-  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
   color: "#ffffff",
-  fontWeight: 700,
-  fontSize: "12px",
+  fontWeight: 800,
+  fontSize: "13px",
   cursor: "pointer",
+  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.3)",
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
 };
 
-const mlStatusBoxStyle = {
+const statusBannerStyle = (isError) => ({
   marginTop: "16px",
   padding: "12px",
-  borderRadius: "8px",
-  background: "#ECFDF5",
-  border: "1px solid #A7F3D0",
-  fontSize: "12px",
-  color: "#047857",
+  borderRadius: "10px",
+  background: isError ? "#FEF2F2" : "#ECFDF5",
+  border: isError ? "1px solid #FECACA" : "1px solid #A7F3D0",
+  color: isError ? "#DC2626" : "#047857",
+  fontSize: "13px",
   fontWeight: 600,
-};
-
-const modelRegBoxStyle = {
-  padding: "18px",
-  borderRadius: "12px",
-  background: "#F8FAFC",
-  border: "1px solid #CBD5E1",
-};
-
-const modelScopeTagStyle = (tenantSpecific) => ({
-  padding: "4px 10px",
-  borderRadius: "12px",
-  background: tenantSpecific ? "#ECFDF5" : "#E0F2FE",
-  color: tenantSpecific ? "#047857" : "#0284C7",
-  border: tenantSpecific ? "1px solid #A7F3D0" : "1px solid #BAE6FD",
-  fontSize: "11px",
-  fontWeight: 700,
 });
 
-const modelMetricBoxStyle = { padding: "10px", background: "#FFFFFF", borderRadius: "8px", border: "1px solid #CBD5E1" };
+const mlTableStyle = { width: "100%", borderCollapse: "collapse", fontSize: "12px" };
+const mlThStyle = { padding: "10px", textAlign: "left", color: "#64748B", borderBottom: "1px solid #D8E8DD" };
+const mlTdStyle = { padding: "10px", borderBottom: "1px solid #F1F5F9" };

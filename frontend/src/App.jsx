@@ -21,6 +21,8 @@ import MLAdminPage from "./pages/MLAdminPage";
 import DatabaseInspectorPage from "./pages/DatabaseInspectorPage";
 import KioskPage from "./pages/KioskPage";
 
+import { announceTicketVoice } from "./utils/voiceSynthesizer";
+
 function getInitialPage(user) {
   const params = new URLSearchParams(window.location.search);
   const pageParam = params.get("page") || params.get("view");
@@ -77,7 +79,18 @@ export default function App() {
   const [ticketQrData, setTicketQrData] = useState(null);
   const [kioskQrData, setKioskQrData] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [language, setLanguage] = useState("en"); // 'en' | 'hi'
   const socketRef = useRef(null);
+  const languageRef = useRef(language);
+  const activeTicketRef = useRef(activeTicket);
+
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
+
+  useEffect(() => {
+    activeTicketRef.current = activeTicket;
+  }, [activeTicket]);
 
   // Sync page state when URL changes
   useEffect(() => {
@@ -93,9 +106,20 @@ export default function App() {
     window.history.pushState({}, "", url.toString());
   };
 
+  const isAdmin = currentUser && currentUser.role === "admin";
+  const adminDepartment = isAdmin ? (currentUser.department ? currentUser.department.toLowerCase() : "all") : "all";
+  const adminDeptRef = useRef(adminDepartment);
+
+  useEffect(() => {
+    adminDeptRef.current = adminDepartment;
+  }, [adminDepartment]);
+
   // Socket.IO Connection Setup
   useEffect(() => {
-    const socket = io(WS_URL, { transports: ["websocket", "polling"] });
+    const socket = io(WS_URL, {
+      transports: ["websocket", "polling"],
+      auth: { tenant_id: tenantId }
+    });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -105,24 +129,58 @@ export default function App() {
 
     socket.on("disconnect", () => setSocketConnected(false));
 
+    socket.on("queue_update", (data) => {
+      const dept = adminDeptRef.current;
+      if (data.snapshot) {
+        setQueueSnapshot(dept && dept !== "all" ? data.snapshot.filter(t => (t.service_category || "").toLowerCase() === dept) : data.snapshot);
+      }
+      if (data.serving) {
+        setServingTickets(dept && dept !== "all" ? data.serving.filter(t => (t.service_category || "").toLowerCase() === dept) : data.serving);
+      }
+    });
+
     socket.on("queue_updated", (data) => {
+      const dept = adminDeptRef.current;
       if (data.analytics) setAnalytics(data.analytics);
-      if (data.snapshot) setQueueSnapshot(data.snapshot);
-      if (data.serving) setServingTickets(data.serving);
+      if (data.snapshot) {
+        setQueueSnapshot(dept && dept !== "all" ? data.snapshot.filter(t => (t.service_category || "").toLowerCase() === dept) : data.snapshot);
+      }
+      if (data.serving) {
+        setServingTickets(dept && dept !== "all" ? data.serving.filter(t => (t.service_category || "").toLowerCase() === dept) : data.serving);
+      }
+    });
+
+    socket.on("analytics_update", (data) => {
+      if (data) setAnalytics(data);
+    });
+
+    socket.on("ticket_transferred", (data) => {
+      if (data && data.new_ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && (cur.ticket_id === data.original_ticket?.ticket_id || cur.ticket_id === data.new_ticket?.ticket_id)) {
+          setActiveTicket(data.new_ticket);
+          fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${data.new_ticket.ticket_id}`)
+            .then((r) => r.json())
+            .then((qr) => setTicketQrData(qr))
+            .catch((e) => console.log("QR fetch error:", e));
+        }
+      }
+      refreshData();
     });
 
     socket.on("now_serving", (data) => {
-      if (data.ticket && activeTicket && data.ticket.ticket_id === activeTicket.ticket_id) {
-        setActiveTicket(data.ticket);
+      if (data && data.ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && data.ticket.ticket_id === cur.ticket_id) {
+          setActiveTicket(data.ticket);
+        }
         playChimeSound();
+        announceTicketVoice(data.ticket, languageRef.current || "en");
       }
     });
 
     return () => socket.disconnect();
-  }, [tenantId, activeTicket]);
-
-  const isAdmin = currentUser && currentUser.role === "admin";
-  const adminDepartment = isAdmin ? (currentUser.department || "all") : "all";
+  }, [tenantId]);
 
   // Fetch Queue & Analytics with Department Security Boundary
   const refreshData = useCallback(() => {
@@ -177,12 +235,15 @@ export default function App() {
   const handleServeNext = async () => {
     if (socketRef.current) {
       const dept = adminDepartment && adminDepartment !== "all" ? adminDepartment : undefined;
-      socketRef.current.emit("serve_next", { tenant_id: tenantId, service_category: dept });
+      socketRef.current.emit("serve_next", { tenant_id: tenantId, department: dept, service_category: dept });
     }
   };
 
   const handleCompleteTicket = async (ticketId) => {
-    if (socketRef.current) socketRef.current.emit("complete_ticket", { tenant_id: tenantId, ticket_id: ticketId });
+    if (socketRef.current) {
+      const dept = adminDepartment && adminDepartment !== "all" ? adminDepartment : undefined;
+      socketRef.current.emit("complete_ticket", { tenant_id: tenantId, ticket_id: ticketId, department: dept });
+    }
   };
 
   const handleCounterChange = async (delta) => {
@@ -201,6 +262,8 @@ export default function App() {
         handleLogout={handleLogout}
         setShowAuthModal={setShowAuthModal}
         socketConnected={socketConnected}
+        language={language}
+        setLanguage={setLanguage}
       />
 
       {/* Main Content Router */}
@@ -236,6 +299,8 @@ export default function App() {
                   ticketQrData={ticketQrData}
                   setTicketQrData={setTicketQrData}
                   refreshData={refreshData}
+                  language={language}
+                  setLanguage={setLanguage}
                 />
               )
             )}
@@ -259,6 +324,8 @@ export default function App() {
                   handleServeNext={handleServeNext}
                   handleCompleteTicket={handleCompleteTicket}
                   handleCounterChange={handleCounterChange}
+                  refreshData={refreshData}
+                  language={language}
                 />
               )
             )}
@@ -297,6 +364,8 @@ export default function App() {
                 servingTickets={servingTickets}
                 queueSnapshot={queueSnapshot}
                 kioskQrData={kioskQrData}
+                language={language}
+                setLanguage={setLanguage}
               />
             )}
           </>

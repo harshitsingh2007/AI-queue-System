@@ -14,9 +14,15 @@ export default function AccessDeniedGuard({ requiredRole, pageName, currentUser,
   return (
     <div style={{ maxWidth: "550px", margin: "40px auto", textAlign: "center" }}>
       <div style={standaloneCardStyle}>
-        <span style={{ fontSize: "48px", display: "block", marginBottom: "12px" }}>⛔</span>
-        <h2 style={{ margin: "0 0 10px 0", color: "#DC2626", fontSize: "24px", fontWeight: 800 }}>
-          Access Denied — {isTargetingAdmin ? "Staff Admin Required" : "Consumer View"}
+        <div style={shieldIconCircleStyle}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+
+        <h2 style={{ margin: "0 0 10px 0", color: "#DC2626", fontSize: "22px", fontWeight: 800 }}>
+          Restricted Access — {isTargetingAdmin ? "Staff Admin Required" : "Consumer View"}
         </h2>
         <p style={{ color: "#475569", fontSize: "14px", lineHeight: "1.6", marginBottom: "20px" }}>
           {isTargetingAdmin ? (
@@ -38,7 +44,7 @@ export default function AccessDeniedGuard({ requiredRole, pageName, currentUser,
           <AuthModalInline onLoginSuccess={onLoginSuccess} defaultRole="admin" />
         ) : (
           <button onClick={() => navigateTo("staff")} style={primaryBtnStyle}>
-            🛡️ Switch to Doctor Desk Dashboard
+            Switch to Doctor Desk Dashboard
           </button>
         )}
       </div>
@@ -83,7 +89,7 @@ function AuthModalInline({ onLoginSuccess, defaultRole }) {
   return (
     <div style={{ textAlign: "left", background: "#F8FAFC", padding: "18px", borderRadius: "12px", border: "1px solid #CBD5E1" }}>
       <h4 style={{ margin: "0 0 12px 0", color: "#047857", fontSize: "14px", fontWeight: 700 }}>
-        🛡️ Sign In with Staff Admin Credentials:
+        Sign In with Staff Admin Credentials:
       </h4>
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: "12px" }}>
@@ -107,7 +113,7 @@ function AuthModalInline({ onLoginSuccess, defaultRole }) {
           />
         </div>
         <button type="submit" disabled={loading} style={primaryBtnStyle}>
-          {loading ? "Verifying..." : "🔑 Authenticate as Staff Admin"}
+          {loading ? "Verifying..." : "Authenticate as Staff Admin"}
         </button>
       </form>
       {errorMsg && <p style={{ color: "#DC2626", fontSize: "12px", marginTop: "10px", margin: 0, fontWeight: 600 }}>{errorMsg}</p>}
@@ -119,8 +125,20 @@ const standaloneCardStyle = {
   background: "#FFFFFF",
   borderRadius: "18px",
   border: "1px solid #D8E8DD",
-  padding: "24px",
+  padding: "28px",
   boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+};
+
+const shieldIconCircleStyle = {
+  width: "60px",
+  height: "60px",
+  borderRadius: "50%",
+  background: "#FEF2F2",
+  border: "1px solid #FECACA",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: "16px",
 };
 
 const fieldLabelStyle = { display: "block", fontSize: "12px", color: "#475569", marginBottom: "6px", fontWeight: 600 };

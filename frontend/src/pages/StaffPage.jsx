@@ -1,13 +1,14 @@
 /**
  * StaffPage.jsx
  * -------------
- * 🛡️ Doctor & Staff Desk Dashboard (Admin view).
+ * Doctor & Staff Desk Dashboard (Admin View).
  * Features Multi-Department Ticket Classification & Security Routing!
  * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE } from "../config/hospitalConfig";
+import { announceTicketVoice } from "../utils/voiceSynthesizer";
 
 export default function StaffPage({
   tenantId,
@@ -18,13 +19,87 @@ export default function StaffPage({
   handleServeNext,
   handleCompleteTicket,
   handleCounterChange,
+  refreshData,
+  language = "en",
 }) {
   const [appointments, setAppointments] = useState([]);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [targetDept, setTargetDept] = useState("pharmacy");
+  const [rxNotes, setRxNotes] = useState("");
+  const [transferStatusMsg, setTransferStatusMsg] = useState("");
   const adminDept = currentUser && currentUser.department ? currentUser.department.toLowerCase() : "all";
 
+  const handleStaffCheckInAppt = async (appointmentId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/plugin/appointments/check-in`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appointment_id: appointmentId }),
+      });
+      if (res.ok) {
+        fetchTenantAppointments();
+        if (refreshData) refreshData();
+      }
+    } catch (e) {
+      console.log("Check-in error:", e);
+    }
+  };
+
+  const handleOpenTransferModal = (ticket) => {
+    setSelectedTicket(ticket);
+    setRxNotes("");
+    setTargetDept("pharmacy");
+    setTransferStatusMsg("");
+    setShowTransferModal(true);
+  };
+
+  const handleExecuteTransfer = async (e) => {
+    e.preventDefault();
+    if (!selectedTicket) return;
+    setTransferStatusMsg("Transmitting E-Prescription & Queueing Patient...");
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/plugin/transfer-ticket`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          ticket_id: selectedTicket.ticket_id,
+          target_department: targetDept,
+          prescription_notes: rxNotes,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTransferStatusMsg(`✓ Transferred #${selectedTicket.ticket_id} -> #${data.new_ticket.ticket_id} in ${targetDept.toUpperCase()}!`);
+        if (refreshData) refreshData();
+        fetchTenantAppointments();
+        setTimeout(() => {
+          setShowTransferModal(false);
+          setSelectedTicket(null);
+          setTransferStatusMsg("");
+          if (refreshData) refreshData();
+        }, 1200);
+      } else {
+        setTransferStatusMsg(`Transfer error: ${data.detail || data.message || "Failed to transfer ticket"}`);
+      }
+    } catch (err) {
+      setTransferStatusMsg(`Transfer error: ${err.message}`);
+    }
+  };
+
   const fetchTenantAppointments = useCallback(() => {
-    const deptQuery = adminDept && adminDept !== "all" ? `?department=${encodeURIComponent(adminDept)}` : "";
-    fetch(`${API_BASE}/api/v1/plugin/appointments/tenant/${tenantId}${deptQuery}`)
+    const params = new URLSearchParams();
+    if (adminDept && adminDept !== "all") {
+      params.set("department", adminDept);
+    }
+    // active_only=true: only fetch scheduled + checked_in appointments (not completed/cancelled)
+    // so the Reserved Slots roster only shows genuinely active reservations.
+    params.set("active_only", "true");
+
+    fetch(`${API_BASE}/api/v1/plugin/appointments/tenant/${tenantId}?${params.toString()}`)
       .then((r) => r.json())
       .then((d) => setAppointments(d.appointments || []))
       .catch((e) => console.log("Fetch tenant appointments error:", e));
@@ -41,7 +116,11 @@ export default function StaffPage({
       {/* Department Security Boundary Banner */}
       <div style={deptBannerStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "18px" }}>🛡️</span>
+          <div style={shieldIconBadgeStyle}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
           <div>
             <strong style={{ fontSize: "14px", color: "#064E3B" }}>
               Department Isolation: <span style={{ color: "#047857", textTransform: "uppercase" }}>{adminDept}</span>
@@ -49,7 +128,7 @@ export default function StaffPage({
             <span style={{ display: "block", fontSize: "11px", color: "#64748B" }}>
               {adminDept === "all"
                 ? "Super Admin Mode — Managing tickets across ALL hospital departments."
-                : `Strict Security Boundary Active — You are managing tickets & queue ONLY for the ${adminDept.toUpperCase()} department.`}
+                : `Strict Security Boundary Active — Managing tickets & queue ONLY for ${adminDept.toUpperCase()} department.`}
             </span>
           </div>
         </div>
@@ -102,13 +181,14 @@ export default function StaffPage({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
             <div>
               <h3 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-                🛡️ {adminDept.toUpperCase()} Desk Operations
+                {adminDept.toUpperCase()} Desk Operations
               </h3>
               <span style={{ fontSize: "12px", color: "#64748B" }}>Department Call Control</span>
             </div>
 
             <button onClick={handleServeNext} style={callPriorityBtnStyle}>
-              🚨 Call Next {adminDept.toUpperCase()} Ticket
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              Call Next {adminDept.toUpperCase()} Ticket
             </button>
           </div>
 
@@ -116,21 +196,63 @@ export default function StaffPage({
 
           {servingTickets.length === 0 ? (
             <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
-              No patients currently being served. Click "Call Next {adminDept.toUpperCase()} Ticket" above.
+              No patients currently being served. Click "Call Next Ticket" above.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               {servingTickets.map((t) => (
-                <div key={t.ticket_id} style={staffServingRowStyle}>
-                  <div>
-                    <span style={{ fontSize: "20px", fontWeight: 800, color: "#047857" }}>#{t.ticket_id}</span>
-                    <span style={{ marginLeft: "12px", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>{t.name}</span>
-                    <span style={{ marginLeft: "10px", fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>({t.service_category.toUpperCase()})</span>
+                <div key={t.ticket_id} style={{ ...staffServingRowStyle, flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <span style={{ fontSize: "20px", fontWeight: 800, color: "#047857" }}>#{t.ticket_id}</span>
+                      <span style={{ marginLeft: "12px", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>{t.name}</span>
+                      <span style={{ marginLeft: "10px", fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>({t.service_category.toUpperCase()})</span>
+                      {t.transferred_from_dept && (
+                        <span style={{ marginLeft: "8px", padding: "2px 8px", borderRadius: "6px", background: "#FEF3C7", color: "#B45309", fontSize: "10px", fontWeight: 700, border: "1px solid #FDE68A" }}>
+                          Transferred from {t.transferred_from_dept.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        onClick={() => announceTicketVoice(t, language)}
+                        style={announceBtnStyle}
+                        title="Announce patient token over hospital audio speakers"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                        Re-Announce
+                      </button>
+
+                      <button
+                        onClick={() => handleOpenTransferModal(t)}
+                        style={transferTriggerBtnStyle}
+                        title="Write E-Prescription & Transfer Patient to Pharmacy/Lab"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                        Rx & Transfer
+                      </button>
+
+                      <button onClick={() => handleCompleteTicket(t.ticket_id)} style={finishBtnStyle}>
+                        Mark Complete
+                      </button>
+                    </div>
                   </div>
 
-                  <button onClick={() => handleCompleteTicket(t.ticket_id)} style={finishBtnStyle}>
-                    ✓ Mark Complete
-                  </button>
+                  {/* Attached E-Prescription Display Banner */}
+                  {t.prescription_notes && (
+                    <div style={{ padding: "10px 14px", background: "#ECFDF5", borderRadius: "8px", border: "1px solid #A7F3D0" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                        <span style={{ fontSize: "14px" }}>💊</span>
+                        <strong style={{ fontSize: "12px", color: "#064E3B" }}>
+                          Attached E-Prescription / Doctor Orders {t.transferred_from_dept ? `(from ${t.transferred_from_dept.toUpperCase()})` : ""}:
+                        </strong>
+                      </div>
+                      <p style={{ margin: 0, fontSize: "13px", color: "#047857", fontWeight: 600 }}>
+                        "{t.prescription_notes}"
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -140,7 +262,7 @@ export default function StaffPage({
         {/* Live Department Queue Snapshot */}
         <div style={standaloneCardStyle}>
           <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-            📊 {adminDept.toUpperCase()} Waiting Line ({queueSnapshot.length})
+            {adminDept.toUpperCase()} Waiting Line ({queueSnapshot.length})
           </h3>
 
           <div style={{ overflowX: "auto" }}>
@@ -149,9 +271,9 @@ export default function StaffPage({
                 <tr>
                   <th style={staffThStyle}>Pos</th>
                   <th style={staffThStyle}>Token ID</th>
-                  <th style={staffThStyle}>Patient Name</th>
-                  <th style={staffThStyle}>Dept</th>
-                  <th style={staffThStyle}>Triage</th>
+                  <th style={staffThStyle}>Patient (Age/Sex)</th>
+                  <th style={staffThStyle}>Symptom & Risk</th>
+                  <th style={staffThStyle}>AI Complexity</th>
                   <th style={staffThStyle}>Est Wait</th>
                 </tr>
               </thead>
@@ -166,15 +288,30 @@ export default function StaffPage({
                   queueSnapshot.map((t) => (
                     <tr key={t.ticket_id}>
                       <td style={staffTdStyle}>#{t.position}</td>
-                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#047857" }}>#{t.ticket_id}</td>
-                      <td style={{ ...staffTdStyle, fontWeight: 600 }}>{t.name}</td>
-                      <td style={{ ...staffTdStyle, fontWeight: 700, color: "#0284C7" }}>{t.service_category.toUpperCase()}</td>
-                      <td style={staffTdStyle}>
-                        {t.priority_level === 1 ? (
-                          <span style={badgePrioStyle("#DC2626")}>🚨 Emergency / Appt</span>
-                        ) : (
-                          <span style={badgePrioStyle("#0284C7")}>📋 Routine</span>
+                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#047857" }}>
+                        #{t.ticket_id}
+                        {t.transferred_from_dept && (
+                          <span style={{ display: "block", fontSize: "9px", color: "#D97706", fontWeight: 700 }}>
+                            (via {t.transferred_from_dept.toUpperCase()})
+                          </span>
                         )}
+                      </td>
+                      <td style={{ ...staffTdStyle, fontWeight: 600 }}>
+                        {t.name} <span style={{ fontSize: "11px", color: "#64748B" }}>({t.age || 30}y, {(t.gender || 'M').charAt(0).toUpperCase()})</span>
+                      </td>
+                      <td style={{ ...staffTdStyle, fontWeight: 600, fontSize: "11px", color: "#0284C7" }}>
+                        {(t.medical_condition || 'general_checkup').replace(/_/g, ' ').toUpperCase()}
+                        <span style={{ display: "block", fontSize: "10px", color: "#64748B" }}>Risk: {(t.pre_existing_condition || 'none').toUpperCase()}</span>
+                        {t.prescription_notes && (
+                          <span style={{ display: "inline-block", marginTop: "2px", padding: "1px 6px", borderRadius: "4px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 700, border: "1px solid #A7F3D0" }} title={t.prescription_notes}>
+                            💊 Rx: {t.prescription_notes.length > 25 ? `${t.prescription_notes.substring(0, 25)}...` : t.prescription_notes}
+                          </span>
+                        )}
+                      </td>
+                      <td style={staffTdStyle}>
+                        <span style={badgePrioStyle(t.complexity_score > 1.4 ? "#DC2626" : "#0284C7")}>
+                          {t.complexity_score || 1.0}x Risk
+                        </span>
                       </td>
                       <td style={{ ...staffTdStyle, fontWeight: 800, color: "#059669" }}>{t.estimated_wait_minutes} min</td>
                     </tr>
@@ -191,15 +328,15 @@ export default function StaffPage({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
           <div>
             <h3 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-              🗓️ {adminDept.toUpperCase()} Appointments Roster ({appointments.length})
+              {adminDept.toUpperCase()} Appointments Roster ({appointments.length})
             </h3>
             <span style={{ fontSize: "12px", color: "#64748B" }}>
-              Strict Department Routing — Only displaying pre-scheduled appointments for {adminDept.toUpperCase()}
+              Strict Department Routing — Displaying pre-scheduled appointments for {adminDept.toUpperCase()}
             </span>
           </div>
 
           <button onClick={fetchTenantAppointments} style={refreshBtnStyle}>
-            🔄 Refresh Roster
+            Refresh Roster
           </button>
         </div>
 
@@ -218,6 +355,7 @@ export default function StaffPage({
                   <th style={staffThStyle}>Reserved Slot</th>
                   <th style={staffThStyle}>Status</th>
                   <th style={staffThStyle}>Merged Token ID</th>
+                  <th style={staffThStyle}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -237,6 +375,21 @@ export default function StaffPage({
                     <td style={{ ...staffTdStyle, fontWeight: 800, color: "#D97706" }}>
                       {apt.ticket_id ? `#${apt.ticket_id}` : "—"}
                     </td>
+                    <td style={staffTdStyle}>
+                      {apt.status === "scheduled" ? (
+                        <button
+                          onClick={() => handleStaffCheckInAppt(apt.appointment_id)}
+                          style={checkInRosterBtnStyle}
+                          title="Check in patient and issue priority token into active queue"
+                        >
+                          Check-In & Queue
+                        </button>
+                      ) : (
+                        <span style={{ fontSize: "11px", color: "#94A3B8" }}>
+                          {apt.status === "completed" ? "Done" : "Queued"}
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -244,6 +397,111 @@ export default function StaffPage({
           </div>
         )}
       </div>
+
+      {/* Doctor E-Prescription & Inter-Department Transfer Modal */}
+      {showTransferModal && selectedTicket && (
+        <div style={modalOverlayStyle}>
+          <div style={modalBoxStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", borderBottom: "1px solid #D8E8DD", paddingBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={modalHeaderIconStyle}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+                    E-Prescription & Department Transfer
+                  </h3>
+                  <span style={{ fontSize: "12px", color: "#64748B" }}>
+                    Patient: <strong>{selectedTicket.name}</strong> (#{selectedTicket.ticket_id})
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => setShowTransferModal(false)} style={closeModalBtnStyle}>×</button>
+            </div>
+
+            <form onSubmit={handleExecuteTransfer}>
+              <div style={{ marginBottom: "16px" }}>
+                <label style={fieldLabelStyle}>Target Department Transfer</label>
+                <select
+                  value={targetDept}
+                  onChange={(e) => setTargetDept(e.target.value)}
+                  style={modalInputStyle}
+                >
+                  <option value="pharmacy">💊 Pharmacy / Medicine Dispensary</option>
+                  <option value="laboratory">🔬 Pathology Lab & Blood Test</option>
+                  <option value="radiology">🦴 Radiology & X-Ray Imaging</option>
+                  <option value="consultation">📋 OPD / General Consultation</option>
+                  <option value="emergency">🚨 Emergency Triage</option>
+                  <option value="billing">💳 Central Billing & Accounts</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={fieldLabelStyle}>E-Prescription & Clinical Orders</label>
+                <textarea
+                  rows="3"
+                  placeholder="Enter prescribed medicines, dosage, or lab tests (e.g. Tab. Paracetamol 650mg 1-0-1, Blood CBC Test)..."
+                  value={rxNotes}
+                  onChange={(e) => setRxNotes(e.target.value)}
+                  style={modalTextareaStyle}
+                />
+              </div>
+
+              {/* Quick Prescription Preset Chips */}
+              <div style={{ marginBottom: "20px" }}>
+                <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700, display: "block", marginBottom: "6px" }}>
+                  Quick Rx Presets:
+                </span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setRxNotes("Tab. Paracetamol 650mg (1-0-1), Syrup Cetirizine 5ml")}
+                    style={presetChipStyle}
+                  >
+                    💊 General Fever RX
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRxNotes("Tab. Amoxicillin 500mg (1-0-1), Tab. Pantoprazole 40mg")}
+                    style={presetChipStyle}
+                  >
+                    🦠 Antibiotic RX
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRxNotes("Complete Blood Count (CBC), Fasting Blood Glucose")}
+                    style={presetChipStyle}
+                  >
+                    🔬 Pathology Lab Order
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRxNotes("Chest X-Ray PA View, Orthopedic Consult")}
+                    style={presetChipStyle}
+                  >
+                    🦴 X-Ray Order
+                  </button>
+                </div>
+              </div>
+
+              {transferStatusMsg && (
+                <div style={{ marginBottom: "16px", padding: "10px", borderRadius: "8px", background: "#ECFDF5", color: "#047857", fontSize: "12px", textAlign: "center", fontWeight: 700 }}>
+                  {transferStatusMsg}
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button type="button" onClick={() => setShowTransferModal(false)} style={cancelModalBtnStyle}>
+                  Cancel
+                </button>
+                <button type="submit" style={submitTransferBtnStyle}>
+                  Send E-Prescription & Auto-Transfer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -258,6 +516,17 @@ const deptBannerStyle = {
   background: "#ECFDF5",
   border: "1px solid #A7F3D0",
   marginBottom: "20px",
+};
+
+const shieldIconBadgeStyle = {
+  width: "32px",
+  height: "32px",
+  borderRadius: "8px",
+  background: "#FFFFFF",
+  border: "1px solid #A7F3D0",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 const deptTagStyle = {
@@ -307,6 +576,9 @@ const callPriorityBtnStyle = {
   fontSize: "12px",
   cursor: "pointer",
   boxShadow: "0 4px 12px rgba(5, 150, 105, 0.3)",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
 };
 
 const refreshBtnStyle = {
@@ -328,6 +600,20 @@ const staffServingRowStyle = {
   background: "#ECFDF5",
   borderRadius: "12px",
   border: "1px solid #A7F3D0",
+};
+
+const announceBtnStyle = {
+  padding: "8px 12px",
+  borderRadius: "8px",
+  border: "1px solid #BAE6FD",
+  background: "#E0F2FE",
+  color: "#0284C7",
+  fontWeight: 700,
+  fontSize: "11px",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
 };
 
 const finishBtnStyle = {
@@ -354,12 +640,134 @@ const badgePrioStyle = (bg) => ({
   border: bg === "#DC2626" ? "1px solid #FECACA" : "1px solid #BAE6FD",
 });
 
-const aptStatusBadgeStyle = (status) => ({
-  padding: "3px 8px",
+const aptStatusBadgeStyle = (status) => {
+  const s = (status || "").toLowerCase();
+  if (s === "completed") return { padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1" };
+  if (s === "transferred") return { padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, background: "#E0F2FE", color: "#0284C7", border: "1px solid #BAE6FD" };
+  if (s === "serving") return { padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, background: "#FEF3C7", color: "#D97706", border: "1px solid #FDE68A" };
+  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" };
+  return { padding: "3px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: 700, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
+};
+
+const checkInRosterBtnStyle = {
+  padding: "4px 10px",
   borderRadius: "6px",
-  fontSize: "11px",
+  border: "1px solid #A7F3D0",
+  background: "#ECFDF5",
+  color: "#047857",
   fontWeight: 700,
-  background: status === "checked_in" ? "#ECFDF5" : "#FEF3C7",
-  color: status === "checked_in" ? "#047857" : "#D97706",
-  border: status === "checked_in" ? "1px solid #A7F3D0" : "1px solid #FDE68A",
-});
+  fontSize: "11px",
+  cursor: "pointer",
+};
+
+const transferTriggerBtnStyle = {
+  padding: "8px 12px",
+  borderRadius: "8px",
+  border: "1px solid #A7F3D0",
+  background: "#047857",
+  color: "#FFFFFF",
+  fontWeight: 700,
+  fontSize: "11px",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: "4px",
+};
+
+const modalOverlayStyle = {
+  position: "fixed",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  background: "rgba(15, 23, 42, 0.5)",
+  backdropFilter: "blur(4px)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+  padding: "16px",
+};
+
+const modalBoxStyle = {
+  background: "#FFFFFF",
+  borderRadius: "20px",
+  width: "100%",
+  maxWidth: "520px",
+  padding: "24px",
+  boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)",
+  border: "1px solid #D8E8DD",
+};
+
+const modalHeaderIconStyle = {
+  width: "38px",
+  height: "38px",
+  borderRadius: "10px",
+  background: "#ECFDF5",
+  border: "1px solid #A7F3D0",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const closeModalBtnStyle = {
+  background: "none",
+  border: "none",
+  fontSize: "24px",
+  color: "#94A3B8",
+  cursor: "pointer",
+};
+
+const modalInputStyle = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "10px",
+  border: "1px solid #CBD5E1",
+  fontSize: "13px",
+  fontWeight: 600,
+  color: "#0F172A",
+};
+
+const modalTextareaStyle = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: "10px",
+  border: "1px solid #CBD5E1",
+  fontSize: "13px",
+  fontFamily: "inherit",
+  resize: "vertical",
+};
+
+const presetChipStyle = {
+  padding: "4px 8px",
+  borderRadius: "6px",
+  border: "1px solid #A7F3D0",
+  background: "#ECFDF5",
+  color: "#047857",
+  fontSize: "10px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const cancelModalBtnStyle = {
+  padding: "10px 16px",
+  borderRadius: "10px",
+  border: "1px solid #CBD5E1",
+  background: "#FFFFFF",
+  color: "#475569",
+  fontSize: "13px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const submitTransferBtnStyle = {
+  padding: "10px 18px",
+  borderRadius: "10px",
+  border: "none",
+  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  color: "#FFFFFF",
+  fontSize: "13px",
+  fontWeight: 800,
+  cursor: "pointer",
+  boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)",
+};

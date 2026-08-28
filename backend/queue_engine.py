@@ -34,6 +34,37 @@ PRIORITY_EMERGENCY = 1
 PRIORITY_ROUTINE = 2
 PRIORITY_STANDARD = 1
 
+def compute_clinical_complexity(age: int, gender: str, medical_condition: str, pre_existing_condition: str, priority_level: int) -> float:
+    score = 1.0
+
+    # 1. Age Factor (Pediatric < 10 or Geriatric > 65 require longer consultation)
+    if age > 65:
+        score *= 1.35
+    elif age < 10:
+        score *= 1.25
+    elif age > 50:
+        score *= 1.15
+
+    # 2. Symptom / Medical Condition Complexity
+    cond = (medical_condition or "").strip().lower()
+    if cond in ("cardiac_chest_pain", "trauma_injury"):
+        score *= 1.65
+    elif cond in ("high_fever_infection", "respiratory_distress"):
+        score *= 1.40
+    elif cond in ("lab_blood_test", "routine_followup"):
+        score *= 0.75
+
+    # 3. Pre-existing Condition Risk
+    risk = (pre_existing_condition or "").strip().lower()
+    if risk not in ("none", "", "healthy"):
+        score *= 1.25
+
+    # 4. Emergency Priority Multiplier
+    if priority_level == PRIORITY_EMERGENCY:
+        score *= 1.30
+
+    return round(score, 2)
+
 @dataclass
 class Ticket:
     ticket_id: str
@@ -44,6 +75,14 @@ class Ticket:
     priority_level: int
     join_timestamp: float
     user_email: str = ""
+    age: int = 30
+    gender: str = "other"
+    medical_condition: str = "general_checkup"
+    pre_existing_condition: str = "none"
+    complexity_score: float = 1.0
+    prescription_notes: str = ""
+    parent_ticket_id: str = ""
+    transferred_from_dept: str = ""
     status: str = "waiting"
     predicted_service_minutes: float = 0.0
     estimated_wait_minutes: float = 0.0
@@ -61,6 +100,14 @@ class Ticket:
             "name": self.name,
             "priority_level": self.priority_level,
             "user_email": self.user_email,
+            "age": self.age,
+            "gender": self.gender,
+            "medical_condition": self.medical_condition,
+            "pre_existing_condition": self.pre_existing_condition,
+            "complexity_score": round(self.complexity_score, 2),
+            "prescription_notes": getattr(self, "prescription_notes", ""),
+            "parent_ticket_id": getattr(self, "parent_ticket_id", ""),
+            "transferred_from_dept": getattr(self, "transferred_from_dept", ""),
             "status": self.status,
             "predicted_service_minutes": round(self.predicted_service_minutes, 1),
             "estimated_wait_minutes": round(self.estimated_wait_minutes, 1),
@@ -196,6 +243,20 @@ class PluginQueueEngine:
             ticket_cols = [row[1] for row in conn.execute("PRAGMA table_info(tickets)").fetchall()]
             if "user_email" not in ticket_cols:
                 conn.execute("ALTER TABLE tickets ADD COLUMN user_email TEXT DEFAULT ''")
+            if "age" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN age INTEGER DEFAULT 30")
+            if "gender" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN gender TEXT DEFAULT 'other'")
+            if "medical_condition" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN medical_condition TEXT DEFAULT 'general_checkup'")
+            if "pre_existing_condition" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN pre_existing_condition TEXT DEFAULT 'none'")
+            if "prescription_notes" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN prescription_notes TEXT DEFAULT ''")
+            if "parent_ticket_id" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN parent_ticket_id TEXT DEFAULT ''")
+            if "transferred_from_dept" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN transferred_from_dept TEXT DEFAULT ''")
 
         self._seed_default_users()
 
@@ -204,16 +265,29 @@ class PluginQueueEngine:
             conn.execute("""
                 INSERT OR REPLACE INTO tickets (
                     ticket_id, tenant_id, consumer_type, service_category, name,
-                    priority_level, join_timestamp, user_email, status, predicted_service_minutes,
-                    estimated_wait_minutes, position, serve_start_time, serve_end_time,
-                    actual_service_minutes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    priority_level, join_timestamp, user_email, age, gender,
+                    medical_condition, pre_existing_condition, complexity_score,
+                    prescription_notes, parent_ticket_id, transferred_from_dept,
+                    status, predicted_service_minutes, estimated_wait_minutes,
+                    position, serve_start_time, serve_end_time, actual_service_minutes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ticket.ticket_id, ticket.tenant_id, ticket.consumer_type, ticket.service_category,
                 ticket.name, ticket.priority_level, ticket.join_timestamp, getattr(ticket, 'user_email', ''),
+                getattr(ticket, 'age', 30), getattr(ticket, 'gender', 'other'),
+                getattr(ticket, 'medical_condition', 'general_checkup'), getattr(ticket, 'pre_existing_condition', 'none'),
+                getattr(ticket, 'complexity_score', 1.0),
+                getattr(ticket, 'prescription_notes', ''), getattr(ticket, 'parent_ticket_id', ''),
+                getattr(ticket, 'transferred_from_dept', ''),
                 ticket.status, ticket.predicted_service_minutes, ticket.estimated_wait_minutes,
                 ticket.position, ticket.serve_start_time, ticket.serve_end_time, ticket.actual_service_minutes
             ))
+            if ticket.status in ("serving", "completed", "transferred", "no_show", "cancelled"):
+                conn.execute("""
+                    UPDATE appointments
+                    SET status = ?
+                    WHERE ticket_id = ? OR (ticket_id != '' AND ticket_id = ?)
+                """, (ticket.status, ticket.ticket_id, getattr(ticket, 'parent_ticket_id', '')))
 
     def _log_completed_service_db(self, ticket: Ticket, queue_length: int, active_counters: int):
         hour_of_day = int(time.strftime("%H", time.localtime(ticket.join_timestamp)))
@@ -230,7 +304,7 @@ class PluginQueueEngine:
             """, (
                 ticket.ticket_id, ticket.tenant_id, ticket.consumer_type, ticket.service_category,
                 hour_of_day, day_of_week, queue_length, active_counters, is_peak,
-                1.0, 1.0, ticket.actual_service_minutes, time.time()
+                getattr(ticket, 'complexity_score', 1.0), 1.0, ticket.actual_service_minutes, time.time()
             ))
 
     def save_tenant_mapping(self, tenant_id: str, mapping_dict: dict):
@@ -295,6 +369,14 @@ class PluginQueueEngine:
                     priority_level=r["priority_level"],
                     join_timestamp=r["join_timestamp"],
                     user_email=r["user_email"] if "user_email" in r.keys() and r["user_email"] else "",
+                    age=r["age"] if "age" in r.keys() and r["age"] else 30,
+                    gender=r["gender"] if "gender" in r.keys() and r["gender"] else "other",
+                    medical_condition=r["medical_condition"] if "medical_condition" in r.keys() and r["medical_condition"] else "general_checkup",
+                    pre_existing_condition=r["pre_existing_condition"] if "pre_existing_condition" in r.keys() and r["pre_existing_condition"] else "none",
+                    complexity_score=r["complexity_score"] if "complexity_score" in r.keys() and r["complexity_score"] else 1.0,
+                    prescription_notes=r["prescription_notes"] if "prescription_notes" in r.keys() and r["prescription_notes"] else "",
+                    parent_ticket_id=r["parent_ticket_id"] if "parent_ticket_id" in r.keys() and r["parent_ticket_id"] else "",
+                    transferred_from_dept=r["transferred_from_dept"] if "transferred_from_dept" in r.keys() and r["transferred_from_dept"] else "",
                     status=r["status"],
                     predicted_service_minutes=r["predicted_service_minutes"] or 10.0,
                     estimated_wait_minutes=r["estimated_wait_minutes"] or 0.0,
@@ -375,7 +457,8 @@ class PluginQueueEngine:
     # ------------------------------------------------------------------
     def _predict_service_minutes(
         self, tenant_id: str, consumer_type: str, service_category: str,
-        hour_of_day: int, day_of_week: int, queue_length: int, active_counters: int
+        hour_of_day: int, day_of_week: int, queue_length: int, active_counters: int,
+        complexity_score: float = 1.0, age: int = 30
     ) -> float:
         bundle = self._load_model_bundle(tenant_id)
         model = bundle.get("model")
@@ -383,7 +466,8 @@ class PluginQueueEngine:
 
         if model is None or not feature_columns:
             baselines = {"emergency": 25, "consultation": 15, "pharmacy": 6, "cash": 4, "loan": 20}
-            return float(baselines.get(service_category, 10))
+            base_mins = float(baselines.get(service_category, 10))
+            return round(base_mins * complexity_score, 1)
 
         row = {col: 0 for col in feature_columns}
         if "hour_of_day" in row: row["hour_of_day"] = hour_of_day
@@ -392,7 +476,7 @@ class PluginQueueEngine:
         if "active_staff_counters" in row: row["active_staff_counters"] = active_counters
         if "is_peak_hour" in row: row["is_peak_hour"] = 1 if hour_of_day in (9,10,11,14,15,16) and day_of_week < 5 else 0
         if "is_weekend" in row: row["is_weekend"] = 1 if day_of_week >= 5 else 0
-        if "complexity_score" in row: row["complexity_score"] = 1.0
+        if "complexity_score" in row: row["complexity_score"] = complexity_score
         if "historical_avg_speed" in row: row["historical_avg_speed"] = 1.0
 
         # Cyclical Features
@@ -405,7 +489,7 @@ class PluginQueueEngine:
         ac = max(1, active_counters)
         ql = max(0, queue_length)
         if "staff_load_ratio" in row: row["staff_load_ratio"] = ql / ac
-        if "effective_workload" in row: row["effective_workload"] = (ql * 1.0) / ac
+        if "effective_workload" in row: row["effective_workload"] = (ql * complexity_score) / ac
         if "counter_capacity_index" in row: row["counter_capacity_index"] = ac / (ql + 1.0)
 
         ct_col = f"consumer_type_{consumer_type}"
@@ -416,7 +500,7 @@ class PluginQueueEngine:
         X = pd.DataFrame([row])[feature_columns]
         try:
             pred = float(model.predict(X)[0])
-            return max(1.0, pred)
+            return max(1.0, round(pred * (complexity_score ** 0.5), 1))
         except Exception as e:
             return 10.0
 
@@ -431,6 +515,13 @@ class PluginQueueEngine:
         name: str,
         priority_level: Optional[int] = None,
         user_email: str = "",
+        age: int = 30,
+        gender: str = "other",
+        medical_condition: str = "general_checkup",
+        pre_existing_condition: str = "none",
+        prescription_notes: str = "",
+        parent_ticket_id: str = "",
+        transferred_from_dept: str = "",
     ) -> Ticket:
         tenant = self._get_tenant(tenant_id)
         if priority_level is None:
@@ -444,9 +535,11 @@ class PluginQueueEngine:
 
         queue_ahead = self._count_waiting(tenant_id, service_category, consumer_type)
 
+        complexity_score = compute_clinical_complexity(age, gender, medical_condition, pre_existing_condition, priority_level)
+
         predicted_mins = self._predict_service_minutes(
             tenant_id, consumer_type, service_category, hour_of_day, day_of_week,
-            queue_ahead, tenant["active_counters"]
+            queue_ahead, tenant["active_counters"], complexity_score=complexity_score, age=age
         )
 
         ticket = Ticket(
@@ -457,6 +550,14 @@ class PluginQueueEngine:
             name=name,
             priority_level=priority_level,
             user_email=user_email,
+            age=age,
+            gender=gender,
+            medical_condition=medical_condition,
+            pre_existing_condition=pre_existing_condition,
+            complexity_score=complexity_score,
+            prescription_notes=prescription_notes,
+            parent_ticket_id=parent_ticket_id,
+            transferred_from_dept=transferred_from_dept,
             join_timestamp=join_ts,
             predicted_service_minutes=predicted_mins,
         )
@@ -469,6 +570,79 @@ class PluginQueueEngine:
         self._save_ticket_db(ticket)
         return ticket
 
+    def transfer_ticket(
+        self,
+        tenant_id: str,
+        ticket_id: str,
+        target_department: str,
+        prescription_notes: str = "",
+    ) -> Tuple[Ticket, Ticket]:
+        tenant = self._get_tenant(tenant_id)
+        orig_ticket = tenant["tickets"].get(ticket_id)
+
+        if not orig_ticket:
+            with self._get_db() as conn:
+                r = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
+                if r:
+                    orig_ticket = Ticket(
+                        ticket_id=r["ticket_id"],
+                        tenant_id=r["tenant_id"],
+                        consumer_type=r["consumer_type"],
+                        service_category=r["service_category"],
+                        name=r["name"],
+                        priority_level=r["priority_level"],
+                        join_timestamp=r["join_timestamp"],
+                        user_email=r["user_email"] if "user_email" in r.keys() and r["user_email"] else "",
+                        age=r["age"] if "age" in r.keys() and r["age"] else 30,
+                        gender=r["gender"] if "gender" in r.keys() and r["gender"] else "other",
+                        medical_condition=r["medical_condition"] if "medical_condition" in r.keys() and r["medical_condition"] else "general_checkup",
+                        pre_existing_condition=r["pre_existing_condition"] if "pre_existing_condition" in r.keys() and r["pre_existing_condition"] else "none",
+                        complexity_score=r["complexity_score"] if "complexity_score" in r.keys() and r["complexity_score"] else 1.0,
+                        prescription_notes=r["prescription_notes"] if "prescription_notes" in r.keys() and r["prescription_notes"] else "",
+                        parent_ticket_id=r["parent_ticket_id"] if "parent_ticket_id" in r.keys() and r["parent_ticket_id"] else "",
+                        transferred_from_dept=r["transferred_from_dept"] if "transferred_from_dept" in r.keys() and r["transferred_from_dept"] else "",
+                        status=r["status"],
+                        predicted_service_minutes=r["predicted_service_minutes"] or 10.0,
+                        estimated_wait_minutes=r["estimated_wait_minutes"] or 0.0,
+                        position=r["position"] or 0,
+                    )
+
+        if not orig_ticket:
+            raise ValueError(f"Ticket #{ticket_id} not found.")
+
+        now = time.time()
+        orig_ticket.status = "transferred"
+        orig_ticket.serve_end_time = now
+        if orig_ticket.serve_start_time:
+            orig_ticket.actual_service_minutes = round((now - orig_ticket.serve_start_time) / 60.0, 1)
+        else:
+            orig_ticket.actual_service_minutes = 5.0
+
+        orig_ticket.prescription_notes = prescription_notes
+        self._save_ticket_db(orig_ticket)
+        self._log_completed_service_db(orig_ticket, queue_length=orig_ticket.position, active_counters=tenant["active_counters"])
+
+        if ticket_id in tenant["tickets"]:
+            del tenant["tickets"][ticket_id]
+
+        new_ticket = self.join_queue(
+            tenant_id=tenant_id,
+            consumer_type=orig_ticket.consumer_type,
+            service_category=target_department.strip().lower(),
+            name=orig_ticket.name,
+            priority_level=1,  # Expedited priority for in-hospital transferred patient with active Rx
+            user_email=orig_ticket.user_email,
+            age=orig_ticket.age,
+            gender=orig_ticket.gender,
+            medical_condition=orig_ticket.medical_condition,
+            pre_existing_condition=orig_ticket.pre_existing_condition,
+            prescription_notes=prescription_notes,
+            parent_ticket_id=orig_ticket.ticket_id,
+            transferred_from_dept=orig_ticket.service_category,
+        )
+
+        return orig_ticket, new_ticket
+
     def _count_waiting(self, tenant_id: str, service_category: str, consumer_type: str) -> int:
         tenant = self._get_tenant(tenant_id)
         count = 0
@@ -480,11 +654,20 @@ class PluginQueueEngine:
             count += 1
         return count
 
-    def serve_next(self, tenant_id: str, service_category: Optional[str] = None) -> Optional[Ticket]:
+    def serve_next(self, tenant_id: str, service_category: Optional[str] = None, department: Optional[str] = None) -> Optional[Ticket]:
+        """Serve the next waiting ticket. If department is given, only serve tickets from that department."""
         tenant = self._get_tenant(tenant_id)
         heap = tenant["heap"]
         skipped = []
         next_ticket = None
+
+        # Resolve effective department filter: explicit department arg takes priority,
+        # then fall back to service_category for backwards-compat.
+        dept_filter = None
+        if department and department.strip().lower() not in ("", "all"):
+            dept_filter = department.strip().lower()
+        elif service_category and service_category.strip().lower() not in ("", "all"):
+            dept_filter = service_category.strip().lower()
 
         while heap:
             priority_level, join_ts, seq, ticket_id = heapq.heappop(heap)
@@ -493,7 +676,7 @@ class PluginQueueEngine:
             if ticket is None or ticket.status != "waiting":
                 continue
 
-            if service_category and ticket.service_category != service_category:
+            if dept_filter and ticket.service_category.strip().lower() != dept_filter:
                 skipped.append((priority_level, join_ts, seq, ticket_id))
                 continue
 
@@ -510,7 +693,8 @@ class PluginQueueEngine:
 
         return next_ticket
 
-    def complete_ticket(self, tenant_id: str, ticket_id: str) -> Optional[Ticket]:
+    def complete_ticket(self, tenant_id: str, ticket_id: str, department: Optional[str] = None) -> Optional[Ticket]:
+        """Complete a ticket. If department is provided, verify the ticket belongs to that department."""
         tenant = self._get_tenant(tenant_id)
         ticket = tenant["tickets"].get(ticket_id)
 
@@ -526,6 +710,16 @@ class PluginQueueEngine:
                     )
 
         if ticket:
+            # Department ownership check — reject if ticket belongs to a different dept
+            if department and department.strip().lower() not in ("", "all"):
+                ticket_dept = ticket.service_category.strip().lower()
+                req_dept = department.strip().lower()
+                if ticket_dept != req_dept:
+                    raise PermissionError(
+                        f"Department mismatch: ticket #{ticket_id} belongs to '{ticket_dept}', "
+                        f"but the requesting admin is from '{req_dept}'."
+                    )
+
             ticket.status = "completed"
             ticket.serve_end_time = time.time()
 
@@ -587,6 +781,7 @@ class PluginQueueEngine:
     # Snapshots & Turn Alerts
     # ------------------------------------------------------------------
     def get_queue_snapshot(self, tenant_id: str, department: Optional[str] = None) -> List[dict]:
+        self._sync_all_appointment_statuses(tenant_id)
         tenant = self._get_tenant(tenant_id)
         waiting = [t for t in tenant["tickets"].values() if t.status == "waiting"]
         if department and department.strip().lower() != "all":
@@ -844,8 +1039,7 @@ class PluginQueueEngine:
         appointment_date: str,
         time_slot: str
     ) -> dict:
-        import random
-        apt_id = f"APT-{random.randint(1000, 9999)}"
+        apt_id = f"APT-{int(time.time()*1000) % 1000000:06d}"
         now = time.time()
         email_clean = user_email.strip().lower()
 
@@ -907,6 +1101,37 @@ class PluginQueueEngine:
 
         return {"appointment": apt_dict, "ticket": ticket.to_dict()}
 
+    def _sync_all_appointment_statuses(self, tenant_id: str):
+        with self._get_db() as conn:
+            conn.execute("""
+                UPDATE appointments
+                SET status = (
+                    SELECT status FROM tickets
+                    WHERE tickets.ticket_id = appointments.ticket_id
+                )
+                WHERE tenant_id = ?
+                  AND ticket_id IS NOT NULL AND ticket_id != ''
+                  AND EXISTS (
+                      SELECT 1 FROM tickets
+                      WHERE tickets.ticket_id = appointments.ticket_id
+                  )
+            """, (tenant_id,))
+
+    def auto_check_in_due_appointments(self, tenant_id: str):
+        self._sync_all_appointment_statuses(tenant_id)
+        with self._get_db() as conn:
+            rows = conn.execute("""
+                SELECT appointment_id FROM appointments
+                WHERE tenant_id = ? AND status = 'scheduled'
+            """, (tenant_id,)).fetchall()
+            apt_ids = [r["appointment_id"] for r in rows]
+
+        for apt_id in apt_ids:
+            try:
+                self.check_in_appointment(apt_id)
+            except Exception as e:
+                print(f"[Auto-Checkin] {apt_id}: {e}")
+
     def get_user_appointments(self, user_email: str) -> List[dict]:
         email_clean = user_email.strip().lower()
         with self._get_db() as conn:
@@ -917,21 +1142,65 @@ class PluginQueueEngine:
             """, (email_clean, email_clean)).fetchall()
             return [dict(r) for r in rows]
 
-    def get_tenant_appointments(self, tenant_id: str, department: Optional[str] = None) -> List[dict]:
+    def get_tenant_appointments(
+        self,
+        tenant_id: str,
+        department: Optional[str] = None,
+        active_only: bool = False,
+    ) -> List[dict]:
+        """Return appointments for a tenant.
+
+        Parameters
+        ----------
+        department : str, optional
+            When set (and not "all"), only return appointments whose
+            service_category matches this department.
+        active_only : bool, default False
+            When True, only return appointments that are still active
+            (status IN 'scheduled', 'checked_in'). Completed, cancelled,
+            transferred, no_show, etc. are excluded from the result.
+            Use this for the Reserved Slots view. Set to False for the
+            full appointment history view.
+        """
+        self.auto_check_in_due_appointments(tenant_id)
+        # First sync appointment statuses so stale "scheduled" rows that
+        # already have a completed/cancelled ticket get updated.
+        self._sync_all_appointment_statuses(tenant_id)
+
+        active_statuses = ("scheduled", "checked_in")
+
         with self._get_db() as conn:
-            if department and department.strip().lower() != "all":
-                dept_clean = department.strip().lower()
+            dept_filter = department and department.strip().lower() not in ("", "all")
+            dept_clean = department.strip().lower() if dept_filter else None
+
+            if dept_filter and active_only:
+                rows = conn.execute("""
+                    SELECT * FROM appointments
+                    WHERE tenant_id = ?
+                      AND LOWER(service_category) = ?
+                      AND status IN ('scheduled', 'checked_in')
+                    ORDER BY created_at DESC
+                """, (tenant_id, dept_clean)).fetchall()
+            elif dept_filter:
                 rows = conn.execute("""
                     SELECT * FROM appointments
                     WHERE tenant_id = ? AND LOWER(service_category) = ?
                     ORDER BY created_at DESC
                 """, (tenant_id, dept_clean)).fetchall()
+            elif active_only:
+                rows = conn.execute("""
+                    SELECT * FROM appointments
+                    WHERE tenant_id = ?
+                      AND status IN ('scheduled', 'checked_in')
+                    ORDER BY created_at DESC
+                """, (tenant_id,)).fetchall()
             else:
                 rows = conn.execute("""
                     SELECT * FROM appointments
                     WHERE tenant_id = ?
                     ORDER BY created_at DESC
                 """, (tenant_id,)).fetchall()
+
             return [dict(r) for r in rows]
 
 engine = PluginQueueEngine()

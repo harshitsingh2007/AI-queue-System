@@ -13,9 +13,10 @@ export const HOSPITAL_CONFIG = {
   consumerType: "hospital",
   categories: [
     { id: "consultation", label: "📋 General Consultation" },
-    { id: "emergency", label: "🚨 Emergency Triage" },
     { id: "pharmacy", label: "💊 Pharmacy & Medicine" },
+    { id: "laboratory", label: "🧪 Pathology & Lab Test" },
     { id: "radiology", label: "🩻 Radiology & X-Ray" },
-    { id: "lab_test", label: "🧪 Pathology & Lab Test" },
+    { id: "emergency", label: "🚨 Emergency Triage" },
+    { id: "billing", label: "💳 Central Billing" },
   ],
 };

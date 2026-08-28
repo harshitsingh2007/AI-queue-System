@@ -51,14 +51,26 @@ class JoinRequest(BaseModel):
     name: str = Field(..., json_schema_extra={"example": "Priya Sharma"})
     urgency: Optional[str] = Field(None, description="'emergency' | 'routine'")
     user_email: Optional[str] = None
+    age: Optional[int] = 30
+    gender: Optional[str] = "other"
+    medical_condition: Optional[str] = "general_checkup"
+    pre_existing_condition: Optional[str] = "none"
 
 class ServeNextRequest(BaseModel):
     tenant_id: str
     service_category: Optional[str] = None
+    department: Optional[str] = None  # Admin's department — enforces dept-scoped serving
 
 class TicketActionRequest(BaseModel):
     tenant_id: str
     ticket_id: str
+    department: Optional[str] = None  # Admin's department — enforces dept ownership check
+
+class TransferTicketRequest(BaseModel):
+    tenant_id: str
+    ticket_id: str
+    target_department: str
+    prescription_notes: Optional[str] = ""
 
 class CounterUpdateRequest(BaseModel):
     tenant_id: str
@@ -132,6 +144,10 @@ async def join_queue_http_endpoint(req: JoinRequest):
         name=req.name,
         priority_level=priority,
         user_email=req.user_email or "",
+        age=req.age or 30,
+        gender=req.gender or "other",
+        medical_condition=req.medical_condition or "general_checkup",
+        pre_existing_condition=req.pre_existing_condition or "none",
     )
     engine.recalculate_wait_times(req.tenant_id)
     await _broadcast_queue_update(req.tenant_id)
@@ -144,9 +160,11 @@ async def join_queue_alt_endpoint(req: JoinRequest):
 
 @app.post("/api/v1/plugin/serve-next")
 async def serve_next(payload: ServeNextRequest):
-    ticket = engine.serve_next(payload.tenant_id, payload.service_category)
+    # Resolve effective department: explicit department field takes priority.
+    effective_dept = payload.department or payload.service_category
+    ticket = engine.serve_next(payload.tenant_id, service_category=None, department=effective_dept)
     if not ticket:
-        raise HTTPException(status_code=404, detail="No waiting tickets in queue.")
+        raise HTTPException(status_code=404, detail="No waiting tickets in queue for this department.")
 
     engine.recalculate_wait_times(payload.tenant_id)
     await _broadcast_queue_update(payload.tenant_id)
@@ -156,10 +174,36 @@ async def serve_next(payload: ServeNextRequest):
 
 @app.post("/api/v1/plugin/complete")
 async def complete_ticket(payload: TicketActionRequest):
-    ticket = engine.complete_ticket(payload.tenant_id, payload.ticket_id)
-    engine.recalculate_wait_times(payload.tenant_id)
-    await _broadcast_queue_update(payload.tenant_id)
-    return {"success": True, "completed_ticket": ticket.to_dict() if ticket else None}
+    try:
+        ticket = engine.complete_ticket(payload.tenant_id, payload.ticket_id, department=payload.department)
+        engine.recalculate_wait_times(payload.tenant_id)
+        await _broadcast_queue_update(payload.tenant_id)
+        return {"success": True, "completed_ticket": ticket.to_dict() if ticket else None}
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+@app.post("/api/v1/plugin/transfer-ticket")
+async def transfer_ticket_endpoint(payload: TransferTicketRequest):
+    try:
+        orig_ticket, new_ticket = engine.transfer_ticket(
+            tenant_id=payload.tenant_id,
+            ticket_id=payload.ticket_id,
+            target_department=payload.target_department,
+            prescription_notes=payload.prescription_notes or "",
+        )
+        engine.recalculate_wait_times(payload.tenant_id)
+        await _broadcast_queue_update(payload.tenant_id)
+        await sio.emit("ticket_transferred", {
+            "original_ticket": orig_ticket.to_dict(),
+            "new_ticket": new_ticket.to_dict()
+        }, room=payload.tenant_id)
+        return {
+            "success": True,
+            "original_ticket": orig_ticket.to_dict(),
+            "new_ticket": new_ticket.to_dict()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/v1/plugin/no-show")
 async def mark_no_show(payload: TicketActionRequest):
@@ -469,8 +513,16 @@ def get_user_appointments(email: str):
     return {"appointments": engine.get_user_appointments(email)}
 
 @app.get("/api/v1/plugin/appointments/tenant/{tenant_id}")
-def get_tenant_appointments(tenant_id: str, department: Optional[str] = None):
-    return {"appointments": engine.get_tenant_appointments(tenant_id, department=department)}
+def get_tenant_appointments(
+    tenant_id: str,
+    department: Optional[str] = None,
+    active_only: bool = False,
+):
+    return {"appointments": engine.get_tenant_appointments(
+        tenant_id,
+        department=department,
+        active_only=active_only,
+    )}
 
 # ---------------------------------------------------------------------------
 # Socket.IO Event Handlers
@@ -488,6 +540,45 @@ async def connect(sid, environ, auth):
 
     await sio.emit("queue_update", {"snapshot": snapshot, "serving": serving}, to=sid)
     await sio.emit("analytics_update", analytics, to=sid)
+
+@sio.event
+async def join_room(sid, data):
+    tenant_id = data.get("tenant_id", "default")
+    await sio.enter_room(sid, tenant_id)
+
+    snapshot = engine.get_queue_snapshot(tenant_id)
+    serving = engine.get_serving_tickets(tenant_id)
+    analytics = engine.get_tenant_analytics(tenant_id)
+
+    await sio.emit("queue_update", {"snapshot": snapshot, "serving": serving}, to=sid)
+    await sio.emit("analytics_update", analytics, to=sid)
+
+@sio.event
+async def transfer_ticket(sid, data):
+    tenant_id = data.get("tenant_id", "default")
+    ticket_id = data.get("ticket_id")
+    target_department = data.get("target_department", "pharmacy")
+    prescription_notes = data.get("prescription_notes", "")
+
+    try:
+        orig_ticket, new_ticket = engine.transfer_ticket(
+            tenant_id=tenant_id,
+            ticket_id=ticket_id,
+            target_department=target_department,
+            prescription_notes=prescription_notes,
+        )
+        engine.recalculate_wait_times(tenant_id)
+        await _broadcast_queue_update(tenant_id)
+        await sio.emit("ticket_transferred", {
+            "original_ticket": orig_ticket.to_dict(),
+            "new_ticket": new_ticket.to_dict()
+        }, room=tenant_id)
+        await sio.emit("transfer_success", {
+            "original_ticket": orig_ticket.to_dict(),
+            "new_ticket": new_ticket.to_dict()
+        }, to=sid)
+    except Exception as e:
+        await sio.emit("error", {"message": f"Transfer failed: {str(e)}"}, to=sid)
 
 @sio.event
 async def join_queue(sid, data):
@@ -510,11 +601,12 @@ async def join_queue(sid, data):
 @sio.event
 async def serve_next(sid, data):
     tenant_id = data["tenant_id"]
-    service_category = data.get("service_category")
+    # Support both legacy 'service_category' and new 'department' field.
+    department = data.get("department") or data.get("service_category")
 
-    ticket = engine.serve_next(tenant_id, service_category)
+    ticket = engine.serve_next(tenant_id, service_category=None, department=department)
     if not ticket:
-        await sio.emit("error", {"message": "No waiting tickets in queue."}, to=sid)
+        await sio.emit("error", {"message": "No waiting tickets in queue for this department."}, to=sid)
         return
 
     engine.recalculate_wait_times(tenant_id)
@@ -525,7 +617,12 @@ async def serve_next(sid, data):
 async def complete_ticket(sid, data):
     tenant_id = data["tenant_id"]
     ticket_id = data["ticket_id"]
-    engine.complete_ticket(tenant_id, ticket_id)
+    department = data.get("department")  # Admin's department for ownership check
+    try:
+        engine.complete_ticket(tenant_id, ticket_id, department=department)
+    except PermissionError as e:
+        await sio.emit("error", {"message": str(e)}, to=sid)
+        return
     engine.recalculate_wait_times(tenant_id)
     await _broadcast_queue_update(tenant_id)
 
