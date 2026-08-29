@@ -19,17 +19,6 @@ export default function KioskPage({
   language = "en",
   setLanguage,
 }) {
-  const handleTestAudio = () => {
-    announceTicketVoice(
-      {
-        ticket_id: "T-105",
-        name: "Rahul Verma",
-        service_category: "Consultation",
-      },
-      language
-    );
-  };
-
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
       {/* Top TV Header Bar */}
@@ -68,15 +57,6 @@ export default function KioskPage({
               </button>
             </div>
           )}
-
-          <button
-            onClick={handleTestAudio}
-            style={kioskVoiceBtnStyle}
-            title="Test Automated Text-to-Speech Voice Announcement"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-            {t("testAudioBtn", language)} ({language === "hi" ? "हिंदी Voice" : "EN Voice"})
-          </button>
 
           <div style={{ textAlign: "right" }}>
             <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("estWait", language)}</span>

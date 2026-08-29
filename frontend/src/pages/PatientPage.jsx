@@ -64,6 +64,16 @@ export default function PatientPage({
     fetchUserAppointments();
   }, [currentUser, fetchUserAppointments]);
 
+  const activeAppointments = userAppointments.filter((apt) => {
+    const s = (apt.status || "").toLowerCase();
+    return s === "scheduled" || s === "checked_in" || s === "serving" || s === "waiting";
+  });
+
+  const historyAppointments = userAppointments.filter((apt) => {
+    const s = (apt.status || "").toLowerCase();
+    return s === "completed" || s === "transferred" || s === "cancelled" || s === "no_show";
+  });
+
   // 1. Instant Walk-In Ticket Checkin
   const handleJoinQueue = async (e) => {
     e.preventDefault();
@@ -204,7 +214,15 @@ export default function PatientPage({
           style={tabBtnStyle(activeTab === "my_apts")}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          {t("myAppointments", language)} ({userAppointments.length})
+          {t("myAppointments", language)} ({activeAppointments.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("history")}
+          style={tabBtnStyle(activeTab === "history")}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          {t("appointmentHistory", language)} ({historyAppointments.length})
         </button>
       </div>
 
@@ -462,9 +480,14 @@ export default function PatientPage({
         {activeTab === "my_apts" && (
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                My Scheduled Appointments
-              </h3>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+                  My Active Appointments
+                </h3>
+                <span style={{ fontSize: "12px", color: "#64748B" }}>
+                  Upcoming and in-progress hospital visits
+                </span>
+              </div>
               <div style={{ display: "flex", gap: "6px" }}>
                 <input
                   type="text"
@@ -479,13 +502,20 @@ export default function PatientPage({
               </div>
             </div>
 
-            {userAppointments.length === 0 ? (
+            {activeAppointments.length === 0 ? (
               <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
-                No scheduled appointments found. Select "Book Time Slot" above.
+                <p style={{ margin: "0 0 10px 0" }}>No active or upcoming appointments found.</p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("book")}
+                  style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#047857", color: "#FFFFFF", fontWeight: 700, fontSize: "12px", cursor: "pointer" }}
+                >
+                  Reserve Time Slot Now
+                </button>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {userAppointments.map((apt) => (
+                {activeAppointments.map((apt) => (
                   <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -509,10 +539,79 @@ export default function PatientPage({
                           Check In & Join Line
                         </button>
                       ) : (
-                        <span style={{ fontSize: "12px", color: "#047857", fontWeight: 700 }}>
-                          Merged (Token #{apt.ticket_id})
-                        </span>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ fontSize: "12px", color: "#047857", fontWeight: 800, display: "block" }}>
+                            Merged (Token #{apt.ticket_id})
+                          </span>
+                          <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
+                            Active in Live Queue
+                          </span>
+                        </div>
                       )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "history" && (
+          <div>
+            <div style={{ marginBottom: "18px" }}>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+                {t("appointmentHistory", language)}
+              </h3>
+              <span style={{ fontSize: "12px", color: "#64748B" }}>
+                All previous, completed, transferred, or cancelled hospital visits
+              </span>
+            </div>
+
+            {historyAppointments.length === 0 ? (
+              <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
+                No past appointment history found.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {historyAppointments.map((apt) => (
+                  <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
+                        <span style={aptStatusBadgeStyle(apt.status)}>{(apt.status || "COMPLETED").toUpperCase()}</span>
+                        {apt.ticket_id && (
+                          <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
+                            (Token #{apt.ticket_id})
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14px" }}>
+                        {apt.patient_name} — {apt.service_category.toUpperCase()}
+                      </p>
+                      <span style={{ fontSize: "12px", color: "#64748B" }}>
+                        Date: {apt.appointment_date} | Reserved Slot: {apt.time_slot}
+                      </span>
+
+                      {/* E-Prescription & Visit Notes */}
+                      {apt.prescription_notes && (
+                        <div style={{ marginTop: "8px", padding: "8px 12px", borderRadius: "8px", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", display: "block" }}>
+                            💊 E-Prescription / Doctor Notes:
+                          </span>
+                          <span style={{ fontSize: "12px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
+                            "{apt.prescription_notes}"
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ textAlign: "right", marginLeft: "12px" }}>
+                      <span style={{ fontSize: "12px", color: "#64748B", display: "block" }}>
+                        Final Visit Status
+                      </span>
+                      <span style={{ fontSize: "12px", fontWeight: 800, color: apt.status === "completed" ? "#047857" : "#0284C7" }}>
+                        {(apt.status || "completed").toUpperCase()}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -718,25 +817,50 @@ const quickCheckInBtnStyle = {
   cursor: "pointer",
 };
 
-const aptCardRowStyle = (status) => ({
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "14px",
-  background: status === "checked_in" ? "#ECFDF5" : "#F8FAFC",
-  borderRadius: "12px",
-  border: status === "checked_in" ? "1px solid #A7F3D0" : "1px solid #CBD5E1",
-});
+const aptCardRowStyle = (status) => {
+  const s = (status || "").toLowerCase();
+  if (s === "checked_in" || s === "serving") {
+    return {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "14px",
+      background: "#ECFDF5",
+      borderRadius: "12px",
+      border: "1px solid #A7F3D0",
+    };
+  }
+  if (s === "completed" || s === "transferred") {
+    return {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "14px",
+      background: "#FFFFFF",
+      borderRadius: "12px",
+      border: "1px solid #E2E8F0",
+    };
+  }
+  return {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "14px",
+    background: "#F8FAFC",
+    borderRadius: "12px",
+    border: "1px solid #CBD5E1",
+  };
+};
 
-const aptStatusBadgeStyle = (status) => ({
-  padding: "3px 8px",
-  borderRadius: "4px",
-  fontSize: "10px",
-  fontWeight: 800,
-  background: status === "checked_in" ? "#ECFDF5" : "#FEF3C7",
-  color: status === "checked_in" ? "#047857" : "#D97706",
-  border: status === "checked_in" ? "1px solid #A7F3D0" : "1px solid #FDE68A",
-});
+const aptStatusBadgeStyle = (status) => {
+  const s = (status || "").toLowerCase();
+  if (s === "completed") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1" };
+  if (s === "transferred") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#E0F2FE", color: "#0284C7", border: "1px solid #BAE6FD" };
+  if (s === "serving") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#FEF3C7", color: "#D97706", border: "1px solid #FDE68A" };
+  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" };
+  if (s === "cancelled" || s === "no_show") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" };
+  return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
+};
 
 const passStatusBadgeStyle = (status) => ({
   padding: "3px 8px",

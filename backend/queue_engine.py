@@ -1135,12 +1135,41 @@ class PluginQueueEngine:
     def get_user_appointments(self, user_email: str) -> List[dict]:
         email_clean = user_email.strip().lower()
         with self._get_db() as conn:
+            # Sync status from tickets table
+            conn.execute("""
+                UPDATE appointments
+                SET status = (
+                    SELECT status FROM tickets
+                    WHERE tickets.ticket_id = appointments.ticket_id
+                )
+                WHERE (user_email = ? OR LOWER(patient_name) = (SELECT LOWER(username) FROM users WHERE email = ?))
+                  AND ticket_id IS NOT NULL AND ticket_id != ''
+                  AND EXISTS (
+                      SELECT 1 FROM tickets
+                      WHERE tickets.ticket_id = appointments.ticket_id
+                  )
+            """, (email_clean, email_clean))
+
             rows = conn.execute("""
                 SELECT * FROM appointments
                 WHERE user_email = ? OR LOWER(patient_name) = (SELECT LOWER(username) FROM users WHERE email = ?)
                 ORDER BY created_at DESC
             """, (email_clean, email_clean)).fetchall()
-            return [dict(r) for r in rows]
+
+            result = []
+            for r in rows:
+                item = dict(r)
+                if item.get("ticket_id"):
+                    t_row = conn.execute("""
+                        SELECT prescription_notes, transferred_from_dept, actual_service_minutes
+                        FROM tickets WHERE ticket_id = ?
+                    """, (item["ticket_id"],)).fetchone()
+                    if t_row:
+                        item["prescription_notes"] = t_row["prescription_notes"] or ""
+                        item["transferred_from_dept"] = t_row["transferred_from_dept"] or ""
+                        item["actual_service_minutes"] = t_row["actual_service_minutes"]
+                result.append(item)
+            return result
 
     def get_tenant_appointments(
         self,

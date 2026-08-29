@@ -21,6 +21,7 @@ export default function StaffPage({
   handleCounterChange,
   refreshData,
   language = "en",
+  socketRef,
 }) {
   const [appointments, setAppointments] = useState([]);
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -28,7 +29,26 @@ export default function StaffPage({
   const [targetDept, setTargetDept] = useState("pharmacy");
   const [rxNotes, setRxNotes] = useState("");
   const [transferStatusMsg, setTransferStatusMsg] = useState("");
+  const [announceFeedbackMsg, setAnnounceFeedbackMsg] = useState("");
   const adminDept = currentUser && currentUser.department ? currentUser.department.toLowerCase() : "all";
+
+  const handleReAnnounce = async (ticket) => {
+    try {
+      if (socketRef && socketRef.current) {
+        socketRef.current.emit("re_announce", { tenant_id: tenantId, ticket });
+      } else {
+        await fetch(`${API_BASE}/api/v1/plugin/re-announce`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tenant_id: tenantId, ticket_id: ticket.ticket_id }),
+        });
+      }
+      setAnnounceFeedbackMsg(`📢 Broadcasted call for #${ticket.ticket_id} (${ticket.name}) to Patient Portal & Speakers!`);
+      setTimeout(() => setAnnounceFeedbackMsg(""), 3500);
+    } catch (e) {
+      console.log("Re-announce broadcast error:", e);
+    }
+  };
 
   const handleStaffCheckInAppt = async (appointmentId) => {
     try {
@@ -192,6 +212,12 @@ export default function StaffPage({
             </button>
           </div>
 
+          {announceFeedbackMsg && (
+            <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #10B981", color: "#047857", fontSize: "12px", fontWeight: 700, textAlign: "center" }}>
+              {announceFeedbackMsg}
+            </div>
+          )}
+
           <h4 style={{ margin: "0 0 12px 0", color: "#475569", fontSize: "13px" }}>Now Serving at {adminDept.toUpperCase()} Desks:</h4>
 
           {servingTickets.length === 0 ? (
@@ -216,9 +242,9 @@ export default function StaffPage({
 
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button
-                        onClick={() => announceTicketVoice(t, language)}
+                        onClick={() => handleReAnnounce(t)}
                         style={announceBtnStyle}
-                        title="Announce patient token over hospital audio speakers"
+                        title="Broadcast announcement to Patient Portal and Hospital speakers"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
                         Re-Announce

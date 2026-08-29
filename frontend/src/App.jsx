@@ -109,10 +109,14 @@ export default function App() {
   const isAdmin = currentUser && currentUser.role === "admin";
   const adminDepartment = isAdmin ? (currentUser.department ? currentUser.department.toLowerCase() : "all") : "all";
   const adminDeptRef = useRef(adminDepartment);
+  const activePageRef = useRef(activePage);
+  const isAdminRef = useRef(isAdmin);
 
   useEffect(() => {
     adminDeptRef.current = adminDepartment;
-  }, [adminDepartment]);
+    activePageRef.current = activePage;
+    isAdminRef.current = isAdmin;
+  }, [adminDepartment, activePage, isAdmin]);
 
   // Socket.IO Connection Setup
   useEffect(() => {
@@ -174,8 +178,13 @@ export default function App() {
         if (cur && data.ticket.ticket_id === cur.ticket_id) {
           setActiveTicket(data.ticket);
         }
-        playChimeSound();
-        announceTicketVoice(data.ticket, languageRef.current || "en");
+
+        // Only play audio chime & voice announcement on User/Patient Portal or Kiosk TV (NOT in Doctor/Admin portal)
+        const isCurrentAdmin = isAdminRef.current || ["staff", "admin", "db"].includes(activePageRef.current);
+        if (!isCurrentAdmin) {
+          playChimeSound();
+          announceTicketVoice(data.ticket, languageRef.current || "en");
+        }
       }
     });
 
@@ -326,6 +335,7 @@ export default function App() {
                   handleCounterChange={handleCounterChange}
                   refreshData={refreshData}
                   language={language}
+                  socketRef={socketRef}
                 />
               )
             )}

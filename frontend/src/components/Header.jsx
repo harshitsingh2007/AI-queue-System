@@ -109,7 +109,10 @@ export default function Header({
             </>
           )}
 
-          <option value="kiosk">{t("kioskMonitor", language)}</option>
+          {/* Hide Kiosk Monitor from Admin/Doctor portal */}
+          {!isAdmin && (
+            <option value="kiosk">{t("kioskMonitor", language)}</option>
+          )}
         </select>
 
         {/* Socket Connection Badge */}

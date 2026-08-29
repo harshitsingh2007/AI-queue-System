@@ -219,6 +219,22 @@ async def cancel_ticket(payload: TicketActionRequest):
     await _broadcast_queue_update(payload.tenant_id)
     return {"success": True}
 
+@app.post("/api/v1/plugin/re-announce")
+async def re_announce_ticket(payload: TicketActionRequest):
+    ticket = engine._get_tenant(payload.tenant_id)["tickets"].get(payload.ticket_id)
+    if not ticket:
+        with engine._get_db() as conn:
+            r = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (payload.ticket_id,)).fetchone()
+            if r:
+                ticket_dict = dict(r)
+            else:
+                raise HTTPException(status_code=404, detail=f"Ticket #{payload.ticket_id} not found.")
+    else:
+        ticket_dict = ticket.to_dict()
+
+    await sio.emit("now_serving", {"ticket": ticket_dict}, room=payload.tenant_id)
+    return {"success": True, "re_announced": ticket_dict}
+
 @app.post("/api/v1/plugin/counters")
 async def set_counters(payload: CounterUpdateRequest):
     new_count = engine.set_active_counters(payload.tenant_id, payload.active_counters)
@@ -579,6 +595,13 @@ async def transfer_ticket(sid, data):
         }, to=sid)
     except Exception as e:
         await sio.emit("error", {"message": f"Transfer failed: {str(e)}"}, to=sid)
+
+@sio.event
+async def re_announce(sid, data):
+    tenant_id = data.get("tenant_id", "default")
+    ticket = data.get("ticket")
+    if ticket:
+        await sio.emit("now_serving", {"ticket": ticket}, room=tenant_id)
 
 @sio.event
 async def join_queue(sid, data):

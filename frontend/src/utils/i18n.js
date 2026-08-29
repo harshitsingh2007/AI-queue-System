@@ -18,6 +18,7 @@ export const TRANSLATIONS = {
     instantWalkin: "Instant Walk-In Ticket",
     bookSlot: "Book Time Slot",
     myAppointments: "My Appointments",
+    appointmentHistory: "Appointment History",
     
     // Intake Form Labels
     patientNameLabel: "Patient Full Name",
@@ -84,6 +85,7 @@ export const TRANSLATIONS = {
     instantWalkin: "तत्काल वॉक-इन टोकन",
     bookSlot: "समय स्लॉट बुक करें",
     myAppointments: "मेरे अपॉइंटमेंट्स",
+    appointmentHistory: "अपॉइंटमेंट इतिहास",
     
     // Intake Form Labels
     patientNameLabel: "मरीज़ का पूरा नाम",
