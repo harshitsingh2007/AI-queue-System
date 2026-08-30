@@ -8,7 +8,8 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
-import { t } from "../utils/i18n";
+import { t, getCategoryLabel, getStatusLabel } from "../utils/i18n";
+import { printTokenPass, printAppointmentRecord } from "../utils/printPassHelper";
 
 export default function PatientPage({
   tenantId,
@@ -230,18 +231,17 @@ export default function PatientPage({
       <div style={standaloneCardStyle}>
         {activeTab === "walkin" && (
           <div>
-            <div style={{ textAlign: "center", marginBottom: "24px" }}>
-              <div style={headerIconContainerStyle}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z"/>
-                  <line x1="13" y1="5" x2="13" y2="19"/>
-                </svg>
+            <div style={{ marginBottom: "22px", paddingBottom: "16px", borderBottom: "1px solid #E2E8F0" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                <h2 style={{ margin: 0, fontSize: "20px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.2px" }}>
+                  {t("instantWalkin", language)}
+                </h2>
+                <span style={{ fontSize: "11px", fontWeight: 700, padding: "3px 9px", borderRadius: "6px", background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" }}>
+                  Walk-In
+                </span>
               </div>
-              <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
-                {t("instantWalkin", language)}
-              </h2>
               <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-                City General Hospital — Instant Ticket Token & Real-Time Wait Tracker
+                {t("walkinSubtitle", language)}
               </p>
             </div>
 
@@ -276,9 +276,9 @@ export default function PatientPage({
                       onChange={(e) => setGender(e.target.value)}
                       style={fieldInputStyle}
                     >
-                      <option value="male">Male</option>
-                      <option value="female">Female</option>
-                      <option value="other">Other</option>
+                      <option value="male">{t("male", language)}</option>
+                      <option value="female">{t("female", language)}</option>
+                      <option value="other">{t("other", language)}</option>
                     </select>
                   </div>
                 </div>
@@ -294,7 +294,7 @@ export default function PatientPage({
                   >
                     {HOSPITAL_CONFIG.categories.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.label}
+                        {getCategoryLabel(c.id, language)}
                       </option>
                     ))}
                   </select>
@@ -365,26 +365,23 @@ export default function PatientPage({
 
         {activeTab === "book" && (
           <div>
-            <div style={{ textAlign: "center", marginBottom: "24px" }}>
-              <div style={headerIconContainerStyle}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                  <line x1="16" y1="2" x2="16" y2="6"/>
-                  <line x1="8" y1="2" x2="8" y2="6"/>
-                  <line x1="3" y1="10" x2="21" y2="10"/>
-                </svg>
+            <div style={{ marginBottom: "22px", paddingBottom: "16px", borderBottom: "1px solid #E2E8F0" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                <h2 style={{ margin: 0, fontSize: "20px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.2px" }}>
+                  {t("bookSlotTitle", language)}
+                </h2>
+                <span style={{ fontSize: "11px", fontWeight: 700, padding: "3px 9px", borderRadius: "6px", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE" }}>
+                  Scheduled
+                </span>
               </div>
-              <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
-                Book Pre-Scheduled Time Slot
-              </h2>
               <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-                Reserve a future appointment slot. Scan code upon arrival to merge into priority queue line.
+                {t("bookSlotSubtitle", language)}
               </p>
             </div>
 
             <form onSubmit={handleBookSlot}>
               <div style={{ marginBottom: "16px" }}>
-                <label style={fieldLabelStyle}>Patient Full Name</label>
+                <label style={fieldLabelStyle}>{t("patientNameLabel", language)}</label>
                 <input
                   type="text"
                   placeholder="e.g. Rahul Verma"
@@ -397,7 +394,7 @@ export default function PatientPage({
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
                 <div>
-                  <label style={fieldLabelStyle}>Department</label>
+                  <label style={fieldLabelStyle}>{t("departmentLabel", language)}</label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
@@ -405,13 +402,13 @@ export default function PatientPage({
                   >
                     {HOSPITAL_CONFIG.categories.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.label}
+                        {getCategoryLabel(c.id, language)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label style={fieldLabelStyle}>Appointment Date</label>
+                  <label style={fieldLabelStyle}>{t("appointmentDateLabel", language)}</label>
                   <input
                     type="date"
                     value={aptDate}
@@ -423,7 +420,7 @@ export default function PatientPage({
               </div>
 
               <div style={{ marginBottom: "20px" }}>
-                <label style={fieldLabelStyle}>Select Available Time Slot</label>
+                <label style={fieldLabelStyle}>{t("selectTimeSlotLabel", language)}</label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px" }}>
                   {timeSlotOptions.map((slot) => (
                     <button
@@ -448,20 +445,20 @@ export default function PatientPage({
               </div>
 
               <button type="submit" style={patientSubmitBtnStyle}>
-                Reserve Appointment Slot
+                {t("bookSlotBtn", language)}
               </button>
             </form>
 
             {bookedAppointment && (
               <div style={aptConfirmationBoxStyle}>
                 <span style={{ fontSize: "11px", color: "#047857", fontWeight: 700, textTransform: "uppercase" }}>
-                  APPOINTMENT CONFIRMED
+                  {t("appointmentConfirmed", language)}
                 </span>
                 <h3 style={{ margin: "4px 0", color: "#064E3B", fontSize: "22px", fontWeight: 900 }}>
                   Code: {bookedAppointment.appointment_id}
                 </h3>
                 <p style={{ margin: 0, color: "#475569", fontSize: "13px" }}>
-                  {bookedAppointment.patient_name} • {bookedAppointment.service_category.toUpperCase()} • <strong>{bookedAppointment.appointment_date} @ {bookedAppointment.time_slot}</strong>
+                  {bookedAppointment.patient_name} • {getCategoryLabel(bookedAppointment.service_category, language)} • <strong>{bookedAppointment.appointment_date} @ {bookedAppointment.time_slot}</strong>
                 </p>
 
                 <div style={{ marginTop: "14px" }}>
@@ -469,7 +466,7 @@ export default function PatientPage({
                     onClick={() => handleAppointmentCheckIn(bookedAppointment.appointment_id)}
                     style={checkInNowBtnStyle}
                   >
-                    Check In & Join Live Line Now
+                    {t("checkInJoinLiveNow", language)}
                   </button>
                 </div>
               </div>
@@ -482,35 +479,35 @@ export default function PatientPage({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                  My Active Appointments
+                  {t("myActiveAppointments", language)}
                 </h3>
                 <span style={{ fontSize: "12px", color: "#64748B" }}>
-                  Upcoming and in-progress hospital visits
+                  {t("activeAptsSubtitle", language)}
                 </span>
               </div>
               <div style={{ display: "flex", gap: "6px" }}>
                 <input
                   type="text"
-                  placeholder="Enter Code (e.g. APT-9482)"
+                  placeholder={t("enterCodePlaceholder", language)}
                   value={checkInCode}
                   onChange={(e) => setCheckInCode(e.target.value)}
                   style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12px", width: "160px" }}
                 />
                 <button onClick={() => handleAppointmentCheckIn(checkInCode)} style={quickCheckInBtnStyle}>
-                  Check In
+                  {t("checkInBtn", language)}
                 </button>
               </div>
             </div>
 
             {activeAppointments.length === 0 ? (
               <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
-                <p style={{ margin: "0 0 10px 0" }}>No active or upcoming appointments found.</p>
+                <p style={{ margin: "0 0 10px 0" }}>{t("noActiveAptsMsg", language)}</p>
                 <button
                   type="button"
                   onClick={() => setActiveTab("book")}
                   style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#047857", color: "#FFFFFF", fontWeight: 700, fontSize: "12px", cursor: "pointer" }}
                 >
-                  Reserve Time Slot Now
+                  {t("reserveTimeSlotNow", language)}
                 </button>
               </div>
             ) : (
@@ -520,32 +517,54 @@ export default function PatientPage({
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
-                        <span style={aptStatusBadgeStyle(apt.status)}>{apt.status.toUpperCase()}</span>
+                        <span style={aptStatusBadgeStyle(apt.status)}>{getStatusLabel(apt.status, language)}</span>
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14px" }}>
-                        {apt.patient_name} — {apt.service_category.toUpperCase()}
+                        {apt.patient_name} — {getCategoryLabel(apt.service_category, language)}
                       </p>
                       <span style={{ fontSize: "12px", color: "#64748B" }}>
-                        Date: {apt.appointment_date} | Time: {apt.time_slot}
+                        {t("dateLabel", language)}: {apt.appointment_date} | {t("timeLabel", language)}: {apt.time_slot}
                       </span>
                     </div>
 
                     <div>
                       {apt.status === "scheduled" ? (
-                        <button
-                          onClick={() => handleAppointmentCheckIn(apt.appointment_id)}
-                          style={checkInNowBtnStyle}
-                        >
-                          Check In & Join Line
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <button
+                            type="button"
+                            onClick={() => printAppointmentRecord(apt, language)}
+                            style={historyPrintBtnStyle}
+                            title="Print appointment slip / PDF"
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                            {t("printPassBtn", language)}
+                          </button>
+                          <button
+                            onClick={() => handleAppointmentCheckIn(apt.appointment_id)}
+                            style={checkInNowBtnStyle}
+                          >
+                            {t("checkInJoinLine", language)}
+                          </button>
+                        </div>
                       ) : (
                         <div style={{ textAlign: "right" }}>
                           <span style={{ fontSize: "12px", color: "#047857", fontWeight: 800, display: "block" }}>
-                            Merged (Token #{apt.ticket_id})
+                            {t("mergedToken", language)} #{apt.ticket_id})
                           </span>
                           <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
-                            Active in Live Queue
+                            {t("activeInLiveQueue", language)}
                           </span>
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => printAppointmentRecord(apt, language)}
+                              style={historyPrintBtnStyle}
+                              title="Print appointment slip / PDF"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                              {t("printPassBtn", language)}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -563,13 +582,13 @@ export default function PatientPage({
                 {t("appointmentHistory", language)}
               </h3>
               <span style={{ fontSize: "12px", color: "#64748B" }}>
-                All previous, completed, transferred, or cancelled hospital visits
+                {t("historySubtitle", language)}
               </span>
             </div>
 
             {historyAppointments.length === 0 ? (
               <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
-                No past appointment history found.
+                {t("noHistoryMsg", language)}
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -578,25 +597,25 @@ export default function PatientPage({
                     <div style={{ flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
-                        <span style={aptStatusBadgeStyle(apt.status)}>{(apt.status || "COMPLETED").toUpperCase()}</span>
+                        <span style={aptStatusBadgeStyle(apt.status)}>{getStatusLabel(apt.status || "completed", language)}</span>
                         {apt.ticket_id && (
                           <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
-                            (Token #{apt.ticket_id})
+                            ({t("tokenLabel", language)} #{apt.ticket_id})
                           </span>
                         )}
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14px" }}>
-                        {apt.patient_name} — {apt.service_category.toUpperCase()}
+                        {apt.patient_name} — {getCategoryLabel(apt.service_category, language)}
                       </p>
                       <span style={{ fontSize: "12px", color: "#64748B" }}>
-                        Date: {apt.appointment_date} | Reserved Slot: {apt.time_slot}
+                        {t("dateLabel", language)}: {apt.appointment_date} | {t("reservedSlotLabel", language)}: {apt.time_slot}
                       </span>
 
                       {/* E-Prescription & Visit Notes */}
                       {apt.prescription_notes && (
                         <div style={{ marginTop: "8px", padding: "8px 12px", borderRadius: "8px", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
                           <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", display: "block" }}>
-                            💊 E-Prescription / Doctor Notes:
+                            {t("ePrescriptionLabel", language)}
                           </span>
                           <span style={{ fontSize: "12px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
                             "{apt.prescription_notes}"
@@ -605,13 +624,22 @@ export default function PatientPage({
                       )}
                     </div>
 
-                    <div style={{ textAlign: "right", marginLeft: "12px" }}>
+                    <div style={{ textAlign: "right", marginLeft: "12px", display: "flex", flexDirection: "column", alignItems: "flex-end", justifyContent: "center" }}>
                       <span style={{ fontSize: "12px", color: "#64748B", display: "block" }}>
-                        Final Visit Status
+                        {t("finalVisitStatus", language)}
                       </span>
                       <span style={{ fontSize: "12px", fontWeight: 800, color: apt.status === "completed" ? "#047857" : "#0284C7" }}>
-                        {(apt.status || "completed").toUpperCase()}
+                        {getStatusLabel(apt.status || "completed", language)}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => printAppointmentRecord(apt, language)}
+                        style={historyPrintBtnStyle}
+                        title="Print prescription / visit slip"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        {apt.prescription_notes ? t("printRxBtn", language) : t("printPassBtn", language)}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -637,9 +665,20 @@ export default function PatientPage({
                 #{activeTicket.ticket_id}
               </h2>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>Current Status</span>
-              <span style={passStatusBadgeStyle(activeTicket.status)}>{activeTicket.status.toUpperCase()}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => printTokenPass(activeTicket, ticketQrData ? ticketQrData.qr_code_base64 : null, language)}
+                style={printSlipBtnStyle}
+                title="Print ticket slip or download as PDF"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                {t("printPassBtn", language)}
+              </button>
+              <div style={{ textAlign: "right" }}>
+                <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("currentStatus", language)}</span>
+                <span style={passStatusBadgeStyle(activeTicket.status)}>{getStatusLabel(activeTicket.status, language)}</span>
+              </div>
             </div>
           </div>
 
@@ -647,23 +686,23 @@ export default function PatientPage({
             <div>
               <span style={{ fontSize: "11px", color: "#64748B" }}>{t("patientDemographics", language)}</span>
               <p style={{ margin: "2px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>
-                {activeTicket.name} ({activeTicket.age || 30} yrs, {(activeTicket.gender || "male").toUpperCase()})
+                {activeTicket.name} ({activeTicket.age || 30} {t("unit_yrs", language)}, {t(activeTicket.gender || "male", language)})
               </p>
             </div>
             <div>
               <span style={{ fontSize: "11px", color: "#64748B" }}>{t("deptCategory", language)}</span>
-              <p style={{ margin: "2px 0 0 0", color: "#047857", fontWeight: 700, fontSize: "15px" }}>{activeTicket.service_category.toUpperCase()}</p>
+              <p style={{ margin: "2px 0 0 0", color: "#047857", fontWeight: 700, fontSize: "15px" }}>{getCategoryLabel(activeTicket.service_category, language)}</p>
             </div>
             <div>
               <span style={{ fontSize: "11px", color: "#64748B" }}>{t("symptomRisk", language)}</span>
               <p style={{ margin: "2px 0 0 0", color: "#0284C7", fontWeight: 700, fontSize: "13px" }}>
-                {(activeTicket.medical_condition || "general_checkup").replace(/_/g, " ").toUpperCase()} • Risk: {(activeTicket.pre_existing_condition || "none").toUpperCase()}
+                {(activeTicket.medical_condition || "general_checkup").replace(/_/g, " ").toUpperCase()} • {t("riskLabel", language)}: {(activeTicket.pre_existing_condition || "none").toUpperCase()}
               </p>
             </div>
             <div>
               <span style={{ fontSize: "11px", color: "#64748B" }}>{t("aiComplexity", language)}</span>
               <p style={{ margin: "2px 0 0 0", color: "#D97706", fontWeight: 800, fontSize: "15px" }}>
-                {activeTicket.complexity_score || 1.0}x Case Complexity Multiplier
+                {activeTicket.complexity_score || 1.0}x {t("complexityMultiplier", language)}
               </p>
             </div>
             <div>
@@ -675,7 +714,7 @@ export default function PatientPage({
             <div>
               <span style={{ fontSize: "11px", color: "#64748B" }}>{t("estWait", language)}</span>
               <p style={{ margin: "2px 0 0 0", color: "#059669", fontWeight: 800, fontSize: "24px" }}>
-                {activeTicket.estimated_wait_minutes} min
+                {activeTicket.estimated_wait_minutes} {t("unit_min", language)}
               </p>
             </div>
           </div>
@@ -683,9 +722,9 @@ export default function PatientPage({
           {activeTicket.prescription_notes && (
             <div style={{ padding: "12px 16px", borderRadius: "12px", background: "#ECFDF5", border: "1px solid #A7F3D0", marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                <span style={{ fontSize: "14px" }}>💊</span>
+                <span style={{ padding: "1px 6px", borderRadius: "4px", background: "#D1FAE5", color: "#065F46", fontSize: "10px", fontWeight: 800 }}>Rx</span>
                 <span style={{ fontSize: "12px", fontWeight: 800, color: "#047857" }}>
-                  E-Prescription Attached {activeTicket.transferred_from_dept ? `(Transferred from ${activeTicket.transferred_from_dept.toUpperCase()})` : ""}
+                  {t("ePrescriptionAttached", language)} {activeTicket.transferred_from_dept ? `(${t("transferredFrom", language)} ${getCategoryLabel(activeTicket.transferred_from_dept, language)})` : ""}
                 </span>
               </div>
               <p style={{ margin: 0, fontSize: "13px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
@@ -694,18 +733,28 @@ export default function PatientPage({
             </div>
           )}
 
-          {ticketQrData && (
-            <div style={{ textAlign: "center", borderTop: "1px solid #D8E8DD", paddingTop: "18px" }}>
-              <img
-                src={ticketQrData.qr_code_base64}
-                alt="Ticket QR Code"
-                style={{ width: "150px", height: "150px", borderRadius: "12px", background: "#fff", padding: "8px", border: "1px solid #CBD5E1" }}
-              />
-              <p style={{ margin: "8px 0 0 0", fontSize: "12px", color: "#64748B" }}>
-                {t("scanQrHint", language)}
-              </p>
-            </div>
-          )}
+          <div style={{ textAlign: "center", borderTop: "1px solid #D8E8DD", paddingTop: "18px" }}>
+            {ticketQrData && (
+              <>
+                <img
+                  src={ticketQrData.qr_code_base64}
+                  alt="Ticket QR Code"
+                  style={{ width: "140px", height: "140px", borderRadius: "10px", background: "#fff", padding: "8px", border: "1px solid #CBD5E1" }}
+                />
+                <p style={{ margin: "8px 0 14px 0", fontSize: "12px", color: "#64748B" }}>
+                  {t("scanQrHint", language)}
+                </p>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => printTokenPass(activeTicket, ticketQrData ? ticketQrData.qr_code_base64 : null, language)}
+              style={fullPrintBtnStyle}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              {t("printPassBtn", language)}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -871,3 +920,52 @@ const passStatusBadgeStyle = (status) => ({
   color: status === "serving" ? "#047857" : "#D97706",
   border: status === "serving" ? "1px solid #A7F3D0" : "1px solid #FDE68A",
 });
+
+const printSlipBtnStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "6px 12px",
+  borderRadius: "8px",
+  border: "1px solid #10B981",
+  background: "#ECFDF5",
+  color: "#047857",
+  fontWeight: 700,
+  fontSize: "12px",
+  cursor: "pointer",
+  transition: "all 0.2s ease",
+};
+
+const fullPrintBtnStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "8px",
+  width: "100%",
+  maxWidth: "280px",
+  padding: "10px 18px",
+  borderRadius: "10px",
+  border: "1px solid #059669",
+  background: "#059669",
+  color: "#ffffff",
+  fontWeight: 700,
+  fontSize: "13px",
+  cursor: "pointer",
+  boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)",
+  transition: "all 0.2s ease",
+};
+
+const historyPrintBtnStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "5px",
+  marginTop: "6px",
+  padding: "4px 10px",
+  borderRadius: "6px",
+  border: "1px solid #CBD5E1",
+  background: "#F8FAFC",
+  color: "#0F172A",
+  fontWeight: 600,
+  fontSize: "11px",
+  cursor: "pointer",
+};

@@ -7,8 +7,9 @@
 
 import React, { useState } from "react";
 import { API_BASE } from "../config/hospitalConfig";
+import { t } from "../utils/i18n";
 
-export default function AccessDeniedGuard({ requiredRole, pageName, currentUser, onLoginSuccess, navigateTo }) {
+export default function AccessDeniedGuard({ requiredRole, pageName, currentUser, onLoginSuccess, navigateTo, language = "en" }) {
   const isTargetingAdmin = requiredRole === "admin";
 
   return (
@@ -22,11 +23,11 @@ export default function AccessDeniedGuard({ requiredRole, pageName, currentUser,
         </div>
 
         <h2 style={{ margin: "0 0 10px 0", color: "#DC2626", fontSize: "22px", fontWeight: 800 }}>
-          Restricted Access — {isTargetingAdmin ? "Staff Admin Required" : "Consumer View"}
+          {t("restrictedAccess", language)} — {isTargetingAdmin ? t("staffAdminRequired", language) : t("consumerOnly", language)}
         </h2>
         <p style={{ color: "#475569", fontSize: "14px", lineHeight: "1.6", marginBottom: "20px" }}>
           {isTargetingAdmin ? (
-            <>The <strong>{pageName}</strong> is strictly protected for Hospital Staff and Doctor Admins. Users registered as <strong>Consumers/Patients</strong> cannot open or access administrative desk controls.</>
+            <>The <strong>{pageName}</strong> {t("accessDeniedDesc", language)}</>
           ) : (
             <>You are currently logged in as a <strong>Staff Admin</strong>. Patient check-in controls are dedicated for patient self-service screens.</>
           )}
@@ -35,16 +36,16 @@ export default function AccessDeniedGuard({ requiredRole, pageName, currentUser,
         {currentUser && (
           <div style={{ padding: "14px", borderRadius: "10px", background: "#F8FAFC", border: "1px solid #CBD5E1", marginBottom: "20px" }}>
             <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-              Currently logged in as: <strong style={{ color: "#047857" }}>{currentUser.username} ({currentUser.email})</strong> — Role: <span style={{ color: "#DC2626", fontWeight: 700 }}>{currentUser.role.toUpperCase()}</span>.
+              {t("currentStatus", language)}: <strong style={{ color: "#047857" }}>{currentUser.username} ({currentUser.email})</strong> — {t("accountRole", language)}: <span style={{ color: "#DC2626", fontWeight: 700 }}>{currentUser.role.toUpperCase()}</span>.
             </p>
           </div>
         )}
 
         {isTargetingAdmin ? (
-          <AuthModalInline onLoginSuccess={onLoginSuccess} defaultRole="admin" />
+          <AuthModalInline onLoginSuccess={onLoginSuccess} defaultRole="admin" language={language} />
         ) : (
           <button onClick={() => navigateTo("staff")} style={primaryBtnStyle}>
-            Switch to Doctor Desk Dashboard
+            {t("switchToDesk", language)}
           </button>
         )}
       </div>
@@ -52,7 +53,7 @@ export default function AccessDeniedGuard({ requiredRole, pageName, currentUser,
   );
 }
 
-function AuthModalInline({ onLoginSuccess, defaultRole }) {
+function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
   const [email, setEmail] = useState("admin@hospital.com");
   const [password, setPassword] = useState("admin123");
   const [errorMsg, setErrorMsg] = useState(null);
@@ -89,11 +90,11 @@ function AuthModalInline({ onLoginSuccess, defaultRole }) {
   return (
     <div style={{ textAlign: "left", background: "#F8FAFC", padding: "18px", borderRadius: "12px", border: "1px solid #CBD5E1" }}>
       <h4 style={{ margin: "0 0 12px 0", color: "#047857", fontSize: "14px", fontWeight: 700 }}>
-        Sign In with Staff Admin Credentials:
+        {t("accountSignIn", language)}:
       </h4>
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: "12px" }}>
-          <label style={fieldLabelStyle}>Admin Email</label>
+          <label style={fieldLabelStyle}>{t("emailAddress", language)}</label>
           <input
             type="email"
             value={email}
@@ -103,7 +104,7 @@ function AuthModalInline({ onLoginSuccess, defaultRole }) {
           />
         </div>
         <div style={{ marginBottom: "14px" }}>
-          <label style={fieldLabelStyle}>Password</label>
+          <label style={fieldLabelStyle}>{t("password", language)}</label>
           <input
             type="password"
             value={password}
@@ -113,7 +114,7 @@ function AuthModalInline({ onLoginSuccess, defaultRole }) {
           />
         </div>
         <button type="submit" disabled={loading} style={primaryBtnStyle}>
-          {loading ? "Verifying..." : "Authenticate as Staff Admin"}
+          {loading ? "..." : t("authenticateBtn", language)}
         </button>
       </form>
       {errorMsg && <p style={{ color: "#DC2626", fontSize: "12px", marginTop: "10px", margin: 0, fontWeight: 600 }}>{errorMsg}</p>}

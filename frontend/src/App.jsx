@@ -279,6 +279,7 @@ export default function App() {
       <main style={mainContentStyle}>
         {!currentUser && activePage !== "kiosk" ? (
           <MandatoryAuthScreen
+            language={language}
             onLoginSuccess={(user) => {
               handleLoginSuccess(user);
               if (user.role === "admin") {
@@ -298,6 +299,7 @@ export default function App() {
                   currentUser={currentUser}
                   onLoginSuccess={handleLoginSuccess}
                   navigateTo={navigateTo}
+                  language={language}
                 />
               ) : (
                 <PatientPage
@@ -322,6 +324,7 @@ export default function App() {
                   currentUser={currentUser}
                   onLoginSuccess={handleLoginSuccess}
                   navigateTo={navigateTo}
+                  language={language}
                 />
               ) : (
                 <StaffPage
@@ -336,6 +339,7 @@ export default function App() {
                   refreshData={refreshData}
                   language={language}
                   socketRef={socketRef}
+                  navigateTo={navigateTo}
                 />
               )
             )}
@@ -348,6 +352,7 @@ export default function App() {
                   currentUser={currentUser}
                   onLoginSuccess={handleLoginSuccess}
                   navigateTo={navigateTo}
+                  language={language}
                 />
               ) : (
                 <MLAdminPage tenantId={tenantId} />
@@ -362,6 +367,7 @@ export default function App() {
                   currentUser={currentUser}
                   onLoginSuccess={handleLoginSuccess}
                   navigateTo={navigateTo}
+                  language={language}
                 />
               ) : (
                 <DatabaseInspectorPage />
@@ -369,14 +375,27 @@ export default function App() {
             )}
 
             {activePage === "kiosk" && (
-              <KioskPage
-                tenantId={tenantId}
-                servingTickets={servingTickets}
-                queueSnapshot={queueSnapshot}
-                kioskQrData={kioskQrData}
-                language={language}
-                setLanguage={setLanguage}
-              />
+              !isAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="admin"
+                  pageName="Hospital Waiting Room TV Display"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                  language={language}
+                />
+              ) : (
+                <KioskPage
+                  tenantId={tenantId}
+                  servingTickets={servingTickets}
+                  queueSnapshot={queueSnapshot}
+                  kioskQrData={kioskQrData}
+                  language={language}
+                  setLanguage={setLanguage}
+                  currentUser={currentUser}
+                  navigateTo={navigateTo}
+                />
+              )
             )}
           </>
         )}
@@ -389,6 +408,7 @@ export default function App() {
           setAuthMode={setAuthMode}
           onClose={() => setShowAuthModal(false)}
           onLoginSuccess={handleLoginSuccess}
+          language={language}
         />
       )}
     </div>

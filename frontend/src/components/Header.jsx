@@ -6,7 +6,7 @@
 
 import React from "react";
 import { HOSPITAL_CONFIG } from "../config/hospitalConfig";
-import { t } from "../utils/i18n";
+import { t, getCategoryLabel } from "../utils/i18n";
 
 export default function Header({
   currentUser,
@@ -31,7 +31,7 @@ export default function Header({
           </svg>
           <span style={{ fontWeight: 800, fontSize: "14px", letterSpacing: "0.2px" }}>{t("systemTitle", language)}</span>
         </div>
-        <span style={{ fontSize: "12px", color: "#475569", fontWeight: 600 }}>{HOSPITAL_CONFIG.name}</span>
+        <span style={{ fontSize: "12px", color: "#475569", fontWeight: 600 }}>{t("hospitalName", language)}</span>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
@@ -75,10 +75,10 @@ export default function Header({
               ) : (
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               )}
-              {isAdmin ? "Admin:" : "Patient:"} {currentUser.username} {isAdmin && currentUser.department ? `[${currentUser.department.toUpperCase()}]` : ""}
+              {isAdmin ? t("adminRole", language) : t("patientRole", language)} {currentUser.username} {isAdmin && currentUser.department ? `[${getCategoryLabel(currentUser.department, language)}]` : ""}
             </span>
             <button onClick={handleLogout} style={logoutBtnStyle}>
-              Logout
+              {t("logoutBtn", language)}
             </button>
           </div>
         ) : (
@@ -100,18 +100,14 @@ export default function Header({
             <option value="patient">{t("patientPortal", language)}</option>
           )}
 
-          {/* Hide Admin Pages from Consumers */}
+          {/* Admin Operational Portals */}
           {isAdmin && (
             <>
               <option value="staff">{t("staffDashboard", language)}</option>
               <option value="admin">{t("mlStudio", language)}</option>
               <option value="db">{t("dbInspector", language)}</option>
+              <option value="kiosk">{t("hospitalTvDisplay", language)}</option>
             </>
-          )}
-
-          {/* Hide Kiosk Monitor from Admin/Doctor portal */}
-          {!isAdmin && (
-            <option value="kiosk">{t("kioskMonitor", language)}</option>
           )}
         </select>
 

@@ -6,8 +6,9 @@
 
 import React, { useState } from "react";
 import { API_BASE } from "../config/hospitalConfig";
+import { t, getCategoryLabel } from "../utils/i18n";
 
-export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSuccess }) {
+export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSuccess, language = "en" }) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -68,7 +69,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
               <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
             <h2 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-              {authMode === "login" ? "Account Sign In" : "Register Account"}
+              {authMode === "login" ? t("accountSignIn", language) : t("registerAccount", language)}
             </h2>
           </div>
           <button onClick={onClose} style={modalCloseBtnStyle}>
@@ -83,20 +84,20 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
             onClick={() => setAuthMode("login")}
             style={modalTabBtnStyle(authMode === "login")}
           >
-            Sign In
+            {t("signIn", language)}
           </button>
           <button
             type="button"
             onClick={() => setAuthMode("signup")}
             style={modalTabBtnStyle(authMode === "signup")}
           >
-            Register Account
+            {t("registerAccount", language)}
           </button>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: "16px" }}>
-            <label style={fieldLabelStyle}>Email Address</label>
+            <label style={fieldLabelStyle}>{t("emailAddress", language)}</label>
             <input
               type="email"
               placeholder="user@hospital.com"
@@ -109,7 +110,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
 
           {authMode === "signup" && (
             <div style={{ marginBottom: "16px" }}>
-              <label style={fieldLabelStyle}>Full Name / Display Name</label>
+              <label style={fieldLabelStyle}>{t("fullName", language)}</label>
               <input
                 type="text"
                 placeholder="Dr. Sarah / Patient John"
@@ -122,7 +123,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
           )}
 
           <div style={{ marginBottom: "16px" }}>
-            <label style={fieldLabelStyle}>Password</label>
+            <label style={fieldLabelStyle}>{t("password", language)}</label>
             <input
               type="password"
               placeholder="••••••••"
@@ -135,7 +136,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
 
           {authMode === "signup" && (
             <div style={{ marginBottom: "20px" }}>
-              <label style={fieldLabelStyle}>Select Account Role</label>
+              <label style={fieldLabelStyle}>{t("accountRole", language)}</label>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: role === "admin" ? "14px" : "0" }}>
                 <button
                   type="button"
@@ -143,7 +144,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
                   style={roleOptionBtnStyle(role === "user", "#0284C7")}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  Patient / Consumer
+                  {t("patientConsumerOption", language)}
                 </button>
                 <button
                   type="button"
@@ -151,26 +152,26 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
                   style={roleOptionBtnStyle(role === "admin", "#047857")}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                  Staff / Doctor Admin
+                  {t("staffAdminOption", language)}
                 </button>
               </div>
 
               {role === "admin" && (
                 <div>
-                  <label style={fieldLabelStyle}>Assign Staff Department (Required)</label>
+                  <label style={fieldLabelStyle}>{t("assignedDept", language)}</label>
                   <select
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                     style={fieldInputStyle}
                     required
                   >
-                    <option value="consultation">OPD / Doctor Consultation</option>
-                    <option value="pharmacy">Pharmacy & Medication</option>
-                    <option value="emergency">Emergency Triage</option>
-                    <option value="laboratory">Pathology & Laboratory</option>
-                    <option value="radiology">Radiology & Imaging</option>
-                    <option value="billing">Billing & Accounts</option>
-                    <option value="all">All Departments (Super Admin)</option>
+                    <option value="consultation">{getCategoryLabel("consultation", language)}</option>
+                    <option value="pharmacy">{getCategoryLabel("pharmacy", language)}</option>
+                    <option value="emergency">{getCategoryLabel("emergency", language)}</option>
+                    <option value="laboratory">{getCategoryLabel("laboratory", language)}</option>
+                    <option value="radiology">{getCategoryLabel("radiology", language)}</option>
+                    <option value="billing">{getCategoryLabel("billing", language)}</option>
+                    <option value="all">{getCategoryLabel("all", language)}</option>
                   </select>
                 </div>
               )}
@@ -178,7 +179,7 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
           )}
 
           <button type="submit" disabled={loading} style={modalSubmitBtnStyle}>
-            {loading ? "Authenticating..." : authMode === "login" ? "Sign In Now" : "Register Account"}
+            {loading ? "..." : authMode === "login" ? t("signIn", language) : t("registerAccount", language)}
           </button>
         </form>
 
@@ -190,13 +191,13 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
 
         {/* Demo Quick Logins */}
         <div style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #E2E8F0", textAlign: "center" }}>
-          <span style={{ fontSize: "11px", color: "#64748B", display: "block", marginBottom: "8px", fontWeight: 600 }}>Quick Demo Credentials:</span>
+          <span style={{ fontSize: "11px", color: "#64748B", display: "block", marginBottom: "8px", fontWeight: 600 }}>Quick Demo:</span>
           <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
             <button type="button" onClick={() => handleQuickLogin("admin")} style={quickBtnStyle}>
-              Quick Staff Admin Login
+              {t("quickDemoAdmin", language)}
             </button>
             <button type="button" onClick={() => handleQuickLogin("user")} style={quickBtnStyle}>
-              Quick Patient Login
+              {t("quickDemoPatient", language)}
             </button>
           </div>
         </div>

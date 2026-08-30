@@ -7,8 +7,9 @@
 
 import React, { useState } from "react";
 import AuthModal from "./AuthModal";
+import { t } from "../utils/i18n";
 
-export default function MandatoryAuthScreen({ onLoginSuccess }) {
+export default function MandatoryAuthScreen({ onLoginSuccess, language = "en" }) {
   const [authMode, setAuthMode] = useState("login");
 
   return (
@@ -21,10 +22,10 @@ export default function MandatoryAuthScreen({ onLoginSuccess }) {
           </svg>
         </div>
         <h2 style={{ margin: "0 0 8px 0", fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
-          Authentication Required
+          {t("authRequiredTitle", language)}
         </h2>
         <p style={{ color: "#64748B", fontSize: "14px", lineHeight: "1.5", marginBottom: "24px" }}>
-          Please sign in to your <strong>Staff Admin</strong> or <strong>Patient/Consumer</strong> account to continue.
+          {t("authRequiredDesc", language)}
         </p>
 
         <AuthModal
@@ -32,6 +33,7 @@ export default function MandatoryAuthScreen({ onLoginSuccess }) {
           setAuthMode={setAuthMode}
           onClose={() => {}}
           onLoginSuccess={onLoginSuccess}
+          language={language}
         />
       </div>
     </div>

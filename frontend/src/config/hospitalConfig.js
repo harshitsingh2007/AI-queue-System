@@ -12,11 +12,11 @@ export const HOSPITAL_CONFIG = {
   name: "City General Hospital",
   consumerType: "hospital",
   categories: [
-    { id: "consultation", label: "📋 General Consultation" },
-    { id: "pharmacy", label: "💊 Pharmacy & Medicine" },
-    { id: "laboratory", label: "🧪 Pathology & Lab Test" },
-    { id: "radiology", label: "🩻 Radiology & X-Ray" },
-    { id: "emergency", label: "🚨 Emergency Triage" },
-    { id: "billing", label: "💳 Central Billing" },
+    { id: "consultation", label: "General Consultation" },
+    { id: "pharmacy", label: "Pharmacy & Medicine" },
+    { id: "laboratory", label: "Pathology & Lab Tests" },
+    { id: "radiology", label: "Radiology & Imaging" },
+    { id: "emergency", label: "Emergency Triage" },
+    { id: "billing", label: "Billing & Cashier" },
   ],
 };
