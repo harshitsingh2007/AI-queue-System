@@ -1,0 +1,16 @@
+[33mfd40114[m change color pattle and frontend
+ frontend/main.jsx                               |   2 [32m+[m[31m-[m
+ frontend/src/App.jsx                            | 329 [32m++++++++++++++[m
+ frontend/src/components/AccessDeniedGuard.jsx   | 149 [32m+++++++[m
+ frontend/src/components/AuthModal.jsx           | 268 [32m++++++++++++[m
+ frontend/src/components/Header.jsx              | 164 [32m+++++++[m
+ frontend/src/components/MandatoryAuthScreen.jsx |  42 [32m++[m
+ frontend/src/components/QueuePluginWidget.jsx   | 545 [32m++++++++++++++++++++++++[m
+ frontend/src/config/hospitalConfig.js           |  21 [32m+[m
+ frontend/src/pages/DatabaseInspectorPage.jsx    | 274 [32m++++++++++++[m
+ frontend/src/pages/HubPage.jsx                  | 208 [32m+++++++++[m
+ frontend/src/pages/KioskPage.jsx                | 102 [32m+++++[m
+ frontend/src/pages/MLAdminPage.jsx              | 321 [32m++++++++++++++[m
+ frontend/src/pages/PatientPage.jsx              | 262 [32m++++++++++++[m
+ frontend/src/pages/StaffPage.jsx                | 220 [32m++++++++++[m
+ 14 files changed, 2906 insertions(+), 1 deletion(-)
