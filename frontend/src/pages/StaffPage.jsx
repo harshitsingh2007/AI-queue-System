@@ -256,23 +256,23 @@ export default function StaffPage({
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {servingTickets.map((t) => (
-                <div key={t.ticket_id} style={{ ...staffServingRowStyle, flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
+              {servingTickets.map((ticket) => (
+                <div key={ticket.ticket_id} style={{ ...staffServingRowStyle, flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <span style={{ fontSize: "20px", fontWeight: 800, color: "#047857" }}>#{t.ticket_id}</span>
-                      <span style={{ marginLeft: "12px", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>{t.name}</span>
-                      <span style={{ marginLeft: "10px", fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>({getCategoryLabel(t.service_category, language)})</span>
-                      {t.transferred_from_dept && (
+                      <span style={{ fontSize: "20px", fontWeight: 800, color: "#047857" }}>#{ticket.ticket_id}</span>
+                      <span style={{ marginLeft: "12px", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>{ticket.name}</span>
+                      <span style={{ marginLeft: "10px", fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>({getCategoryLabel(ticket.service_category, language)})</span>
+                      {ticket.transferred_from_dept && (
                         <span style={{ marginLeft: "8px", padding: "2px 8px", borderRadius: "6px", background: "#FEF3C7", color: "#B45309", fontSize: "10px", fontWeight: 700, border: "1px solid #FDE68A" }}>
-                          {t("transferredFrom", language)} {getCategoryLabel(t.transferred_from_dept, language)}
+                          {t("transferredFrom", language)} {getCategoryLabel(ticket.transferred_from_dept, language)}
                         </span>
                       )}
                     </div>
 
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button
-                        onClick={() => handleReAnnounce(t)}
+                        onClick={() => handleReAnnounce(ticket)}
                         style={announceBtnStyle}
                         title="Broadcast announcement to Patient Portal and Hospital speakers"
                       >
@@ -281,7 +281,7 @@ export default function StaffPage({
                       </button>
 
                       <button
-                        onClick={() => handleOpenTransferModal(t)}
+                        onClick={() => handleOpenTransferModal(ticket)}
                         style={transferTriggerBtnStyle}
                         title="Write E-Prescription & Transfer Patient to Pharmacy/Lab"
                       >
@@ -289,23 +289,23 @@ export default function StaffPage({
                         {t("transferPrescribe", language)}
                       </button>
 
-                      <button onClick={() => handleCompleteTicket(t.ticket_id)} style={finishBtnStyle}>
+                      <button onClick={() => handleCompleteTicket(ticket.ticket_id)} style={finishBtnStyle}>
                         {t("completeBtn", language)}
                       </button>
                     </div>
                   </div>
 
                   {/* Attached E-Prescription Display Banner */}
-                  {t.prescription_notes && (
+                  {ticket.prescription_notes && (
                     <div style={{ padding: "10px 14px", background: "#ECFDF5", borderRadius: "8px", border: "1px solid #A7F3D0" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
                         <span style={{ padding: "1px 6px", borderRadius: "4px", background: "#D1FAE5", color: "#065F46", fontSize: "10px", fontWeight: 800 }}>Rx</span>
                         <strong style={{ fontSize: "12px", color: "#064E3B" }}>
-                          {t("ePrescriptionAttached", language)} {t.transferred_from_dept ? `(${t("transferredFrom", language)} ${getCategoryLabel(t.transferred_from_dept, language)})` : ""}:
+                          {t("ePrescriptionAttached", language)} {ticket.transferred_from_dept ? `(${t("transferredFrom", language)} ${getCategoryLabel(ticket.transferred_from_dept, language)})` : ""}:
                         </strong>
                       </div>
                       <p style={{ margin: 0, fontSize: "13px", color: "#047857", fontWeight: 600 }}>
-                        "{t.prescription_notes}"
+                        "{ticket.prescription_notes}"
                       </p>
                     </div>
                   )}
@@ -341,35 +341,35 @@ export default function StaffPage({
                     </td>
                   </tr>
                 ) : (
-                  queueSnapshot.map((t) => (
-                    <tr key={t.ticket_id}>
-                      <td style={staffTdStyle}>#{t.position}</td>
+                  queueSnapshot.map((ticket) => (
+                    <tr key={ticket.ticket_id}>
+                      <td style={staffTdStyle}>#{ticket.position}</td>
                       <td style={{ ...staffTdStyle, fontWeight: 800, color: "#047857" }}>
-                        #{t.ticket_id}
-                        {t.transferred_from_dept && (
+                        #{ticket.ticket_id}
+                        {ticket.transferred_from_dept && (
                           <span style={{ display: "block", fontSize: "9px", color: "#D97706", fontWeight: 700 }}>
-                            ({t("transferredFrom", language)} {getCategoryLabel(t.transferred_from_dept, language)})
+                            ({t("transferredFrom", language)} {getCategoryLabel(ticket.transferred_from_dept, language)})
                           </span>
                         )}
                       </td>
                       <td style={{ ...staffTdStyle, fontWeight: 600 }}>
-                        {t.name} <span style={{ fontSize: "11px", color: "#64748B" }}>({t.age || 30} {t("unit_yrs", language)}, {t(t.gender || 'male', language)})</span>
+                        {ticket.name} <span style={{ fontSize: "11px", color: "#64748B" }}>({ticket.age || 30} {t("unit_yrs", language)}, {t(ticket.gender || 'male', language)})</span>
                       </td>
                       <td style={{ ...staffTdStyle, fontWeight: 600, fontSize: "11px", color: "#0284C7" }}>
-                        {(t.medical_condition || 'general_checkup').replace(/_/g, ' ').toUpperCase()}
-                        <span style={{ display: "block", fontSize: "10px", color: "#64748B" }}>{t("riskLabel", language)}: {(t.pre_existing_condition || 'none').toUpperCase()}</span>
-                        {t.prescription_notes && (
-                          <span style={{ display: "inline-block", marginTop: "2px", padding: "1px 6px", borderRadius: "4px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 700, border: "1px solid #A7F3D0" }} title={t.prescription_notes}>
-                            Rx: {t.prescription_notes.length > 25 ? `${t.prescription_notes.substring(0, 25)}...` : t.prescription_notes}
+                        {(ticket.medical_condition || 'general_checkup').replace(/_/g, ' ').toUpperCase()}
+                        <span style={{ display: "block", fontSize: "10px", color: "#64748B" }}>{t("riskLabel", language)}: {(ticket.pre_existing_condition || 'none').toUpperCase()}</span>
+                        {ticket.prescription_notes && (
+                          <span style={{ display: "inline-block", marginTop: "2px", padding: "1px 6px", borderRadius: "4px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 700, border: "1px solid #A7F3D0" }} title={ticket.prescription_notes}>
+                            Rx: {ticket.prescription_notes.length > 25 ? `${ticket.prescription_notes.substring(0, 25)}...` : ticket.prescription_notes}
                           </span>
                         )}
                       </td>
                       <td style={staffTdStyle}>
-                        <span style={badgePrioStyle(t.complexity_score > 1.4 ? "#DC2626" : "#0284C7")}>
-                          {t.complexity_score || 1.0}x
+                        <span style={badgePrioStyle(ticket.complexity_score > 1.4 ? "#DC2626" : "#0284C7")}>
+                          {ticket.complexity_score || 1.0}x
                         </span>
                       </td>
-                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#059669" }}>{t.estimated_wait_minutes} {t("unit_min", language)}</td>
+                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#059669" }}>{ticket.estimated_wait_minutes} {t("unit_min", language)}</td>
                     </tr>
                   ))
                 )}

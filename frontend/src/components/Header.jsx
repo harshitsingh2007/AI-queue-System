@@ -19,7 +19,6 @@ export default function Header({
   setLanguage,
 }) {
   const isAdmin = currentUser && currentUser.role === "admin";
-  const isConsumer = currentUser && currentUser.role === "user";
 
   return (
     <header style={topHeaderStyle}>
@@ -88,28 +87,19 @@ export default function Header({
           </button>
         )}
 
-        {/* Role-Based Page Switcher Dropdown */}
-        <select
-          value={activePage}
-          onChange={(e) => navigateTo(e.target.value)}
-          style={pageSelectStyle}
-          disabled={!currentUser && activePage !== "kiosk"}
-        >
-          {/* Hide Consumer Pages from Admins */}
-          {(isConsumer || !currentUser) && (
-            <option value="patient">{t("patientPortal", language)}</option>
-          )}
-
-          {/* Admin Operational Portals */}
-          {isAdmin && (
-            <>
-              <option value="staff">{t("staffDashboard", language)}</option>
-              <option value="admin">{t("mlStudio", language)}</option>
-              <option value="db">{t("dbInspector", language)}</option>
-              <option value="kiosk">{t("hospitalTvDisplay", language)}</option>
-            </>
-          )}
-        </select>
+        {/* Role-Based Page Switcher Dropdown (Admin Only) */}
+        {isAdmin && (
+          <select
+            value={["staff", "admin", "db", "kiosk"].includes(activePage) ? activePage : "staff"}
+            onChange={(e) => navigateTo(e.target.value)}
+            style={pageSelectStyle}
+          >
+            <option value="staff">{t("staffDashboard", language)}</option>
+            <option value="admin">{t("mlStudio", language)}</option>
+            <option value="db">{t("dbInspector", language)}</option>
+            <option value="kiosk">{t("hospitalTvDisplay", language)}</option>
+          </select>
+        )}
 
         {/* Socket Connection Badge */}
         <span style={connBadgeStyle(socketConnected)}>

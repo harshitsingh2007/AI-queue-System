@@ -174,6 +174,20 @@ export const TRANSLATIONS = {
     presentedAtDesk: "Please present this slip or digital QR code at your assigned counter when your token is called.",
     hospitalFooterNote: "City General Hospital • Non-transferable official patient record",
 
+    // Live Queue Stepper Journey
+    stepQueueTracker: "Live Queue Journey",
+    stepOf: "Step",
+    stepCheckedIn: "Checked In",
+    stepInLine: "In Line",
+    stepConsultation: "Consultation Ready",
+    stepCompleted: "Visit Complete",
+    stepTokenIssued: "Token Issued",
+    stepAhead: "ahead",
+    stepNextInLine: "Next in Line",
+    stepProceedToDesk: "Proceed to Desk",
+    stepEstimatedWait: "est.",
+    stepFinished: "Consultation Done",
+
     // Kiosk TV
     kioskTitle: "Patient Queue Monitor",
     kioskSubtitle: "Hospital Waiting Room Queue & Patient Calling System",
@@ -384,6 +398,20 @@ export const TRANSLATIONS = {
     officialRxSlip: "आधिकारिक डॉक्टर प्रिस्क्रिप्शन पर्ची",
     presentedAtDesk: "टोकन नंबर बुलाए जाने पर यह पर्ची अथवा डिजिटल क्यूआर कोड संबंधित काउंटर पर दिखाएं।",
     hospitalFooterNote: "सिटी जनरल अस्पताल • अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड",
+
+    // Live Queue Stepper Journey
+    stepQueueTracker: "लाइव कतार प्रगति",
+    stepOf: "चरण",
+    stepCheckedIn: "चेक-इन पूर्ण",
+    stepInLine: "कतार में",
+    stepConsultation: "परामर्श हेतु तैयार",
+    stepCompleted: "विज़िट संपन्न",
+    stepTokenIssued: "टोकन जारी",
+    stepAhead: "आगे",
+    stepNextInLine: "अगला नंबर आपका",
+    stepProceedToDesk: "काउंटर पर जाएं",
+    stepEstimatedWait: "अनुमानित",
+    stepFinished: "परामर्श संपन्न",
 
     // Kiosk TV
     kioskTitle: "मरीज़ कतार मॉनिटर",

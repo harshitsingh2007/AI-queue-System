@@ -62,6 +62,12 @@ export default function App() {
     try {
       localStorage.setItem("ai_queue_user", JSON.stringify(userData));
     } catch (e) {}
+
+    if (userData && userData.role === "admin") {
+      navigateTo("staff");
+    } else {
+      navigateTo("patient");
+    }
   };
 
   const handleLogout = () => {
@@ -69,6 +75,7 @@ export default function App() {
     try {
       localStorage.removeItem("ai_queue_user");
     } catch (e) {}
+    navigateTo("patient");
   };
 
   // Real-time Queue State
@@ -94,10 +101,10 @@ export default function App() {
 
   // Sync page state when URL changes
   useEffect(() => {
-    const handlePopState = () => setActivePage(getInitialPage());
+    const handlePopState = () => setActivePage(getInitialPage(currentUser));
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [currentUser]);
 
   const navigateTo = (page) => {
     setActivePage(page);
@@ -105,6 +112,13 @@ export default function App() {
     url.searchParams.set("page", page);
     window.history.pushState({}, "", url.toString());
   };
+
+  // If user is admin but current page is patient, auto-navigate to staff
+  useEffect(() => {
+    if (currentUser && currentUser.role === "admin" && activePage === "patient") {
+      navigateTo("staff");
+    }
+  }, [currentUser, activePage]);
 
   const isAdmin = currentUser && currentUser.role === "admin";
   const adminDepartment = isAdmin ? (currentUser.department ? currentUser.department.toLowerCase() : "all") : "all";
@@ -172,6 +186,36 @@ export default function App() {
       refreshData();
     });
 
+    socket.on("ticket_completed", (data) => {
+      if (data && data.ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && (cur.ticket_id === data.ticket.ticket_id || cur.ticket_id === data.ticket.parent_ticket_id)) {
+          setActiveTicket({ ...cur, ...data.ticket, status: "completed" });
+        }
+      }
+      refreshData();
+    });
+
+    socket.on("ticket_cancelled", (data) => {
+      if (data && data.ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && (cur.ticket_id === data.ticket.ticket_id || cur.ticket_id === data.ticket.parent_ticket_id)) {
+          setActiveTicket({ ...cur, ...data.ticket, status: "cancelled" });
+        }
+      }
+      refreshData();
+    });
+
+    socket.on("ticket_updated", (data) => {
+      if (data && data.ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && cur.ticket_id === data.ticket.ticket_id) {
+          setActiveTicket({ ...cur, ...data.ticket });
+        }
+      }
+      refreshData();
+    });
+
     socket.on("now_serving", (data) => {
       if (data && data.ticket) {
         const cur = activeTicketRef.current;
@@ -212,6 +256,19 @@ export default function App() {
       .then((r) => r.json())
       .then((d) => setKioskQrData(d))
       .catch((e) => console.log("QR error:", e));
+
+    // Verify status of active ticket to ensure completion is reflected
+    const cur = activeTicketRef.current;
+    if (cur && cur.ticket_id && cur.status !== "completed") {
+      fetch(`${API_BASE}/api/v1/plugin/ticket/${cur.ticket_id}`)
+        .then((r) => r.json())
+        .then((res) => {
+          if (res && res.ticket && res.ticket.status && res.ticket.status !== cur.status) {
+            setActiveTicket((prev) => (prev ? { ...prev, ...res.ticket } : res.ticket));
+          }
+        })
+        .catch(() => {});
+    }
   }, [tenantId, adminDepartment]);
 
   useEffect(() => {
