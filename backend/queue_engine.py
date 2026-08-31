@@ -251,6 +251,8 @@ class PluginQueueEngine:
                 conn.execute("ALTER TABLE tickets ADD COLUMN medical_condition TEXT DEFAULT 'general_checkup'")
             if "pre_existing_condition" not in ticket_cols:
                 conn.execute("ALTER TABLE tickets ADD COLUMN pre_existing_condition TEXT DEFAULT 'none'")
+            if "complexity_score" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN complexity_score REAL DEFAULT 1.0")
             if "prescription_notes" not in ticket_cols:
                 conn.execute("ALTER TABLE tickets ADD COLUMN prescription_notes TEXT DEFAULT ''")
             if "parent_ticket_id" not in ticket_cols:

@@ -7,7 +7,7 @@
 import React, { useState } from "react";
 import { API_BASE } from "../config/hospitalConfig";
 
-export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSuccess }) {
+export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSuccess, isInline = false }) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -58,23 +58,24 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
     }
   };
 
-  return (
-    <div style={modalBackdropStyle}>
-      <div style={modalCardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            <h2 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-              {authMode === "login" ? "Account Sign In" : "Register Account"}
-            </h2>
-          </div>
+  const modalBody = (
+    <div style={isInline ? { width: "100%", textAlign: "left" } : modalCardStyle}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <h2 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
+            {authMode === "login" ? "Account Sign In" : "Register Account"}
+          </h2>
+        </div>
+        {!isInline && onClose && (
           <button onClick={onClose} style={modalCloseBtnStyle}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
-        </div>
+        )}
+      </div>
 
         {/* Auth Mode Tabs */}
         <div style={{ display: "flex", gap: "8px", marginBottom: "20px", background: "#F1F5F9", padding: "4px", borderRadius: "10px" }}>
@@ -201,6 +202,15 @@ export default function AuthModal({ authMode, setAuthMode, onClose, onLoginSucce
           </div>
         </div>
       </div>
+  );
+
+  if (isInline) {
+    return modalBody;
+  }
+
+  return (
+    <div style={modalBackdropStyle}>
+      {modalBody}
     </div>
   );
 }

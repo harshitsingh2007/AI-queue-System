@@ -3,12 +3,14 @@
  * ---------------
  * Patient Self-Checkin & Pre-scheduled Appointment Booking Kiosk.
  * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
- * Professional Healthcare Vector Styling.
+ * Professional Healthcare Vector Styling matching IMAGE 2.
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
 import { t } from "../utils/i18n";
+import HeroBanner from "../components/HeroBanner";
+import Footer from "../components/Footer";
 
 export default function PatientPage({
   tenantId,
@@ -20,8 +22,51 @@ export default function PatientPage({
   refreshData,
   language = "en",
   setLanguage,
+  navigateTo,
+  currentTab = "walkin",
 }) {
-  const [activeTab, setActiveTab] = useState("walkin"); // 'walkin' | 'book' | 'my_apts'
+  // Sync activeTab with currentTab prop & URL parameters
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    if (tabParam && ["walkin", "book", "my_apts", "history"].includes(tabParam.toLowerCase())) {
+      return tabParam.toLowerCase();
+    }
+    return currentTab || "walkin";
+  });
+
+  useEffect(() => {
+    if (currentTab && ["walkin", "book", "my_apts", "history"].includes(currentTab.toLowerCase())) {
+      setActiveTab(currentTab.toLowerCase());
+    }
+  }, [currentTab]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam && ["walkin", "book", "my_apts", "history"].includes(tabParam.toLowerCase())) {
+        setActiveTab(tabParam.toLowerCase());
+      } else {
+        setActiveTab("walkin");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const handleTabChange = (tabKey) => {
+    setActiveTab(tabKey);
+    if (navigateTo) {
+      navigateTo("patient", tabKey);
+    } else {
+      const url = new URL(window.location.href);
+      url.searchParams.set("page", "patient");
+      url.searchParams.set("tab", tabKey);
+      window.history.pushState({}, "", url.toString());
+    }
+  };
+
   const [name, setName] = useState(currentUser ? currentUser.username : "");
   const [age, setAge] = useState(currentUser && currentUser.age ? currentUser.age : 35);
   const [gender, setGender] = useState(currentUser && currentUser.gender ? currentUser.gender.toLowerCase() : "male");
@@ -89,6 +134,7 @@ export default function PatientPage({
           consumer_type: "hospital",
           service_category: category,
           name: name,
+          urgency: Number(priority) === 1 ? "emergency" : "routine",
           priority_level: Number(priority),
           user_email: currentUser ? currentUser.email : "",
           age: Number(age) || 30,
@@ -100,11 +146,11 @@ export default function PatientPage({
 
       if (res.ok) {
         const data = await res.json();
-        const t = data.ticket;
-        setActiveTicket(t);
-        setStatusMsg(`Ticket #${t.ticket_id} Issued. AI Service Estimate: ${t.predicted_service_minutes} min.`);
+        const tkt = data.ticket;
+        setActiveTicket(tkt);
+        setStatusMsg(`Ticket #${tkt.ticket_id} Issued. AI Service Estimate: ${tkt.predicted_service_minutes} min.`);
 
-        fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${t.ticket_id}`)
+        fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${tkt.ticket_id}`)
           .then((r) => r.json())
           .then((qr) => setTicketQrData(qr))
           .catch((e) => console.log("QR error:", e));
@@ -169,11 +215,11 @@ export default function PatientPage({
 
       const data = await res.json();
       if (res.ok && data.status === "success") {
-        const t = data.ticket;
-        setActiveTicket(t);
-        setStatusMsg(`Appointment Checked In. Merged into Priority Line as Token #${t.ticket_id}`);
+        const tkt = data.ticket;
+        setActiveTicket(tkt);
+        setStatusMsg(`Appointment Checked In. Merged into Priority Line as Token #${tkt.ticket_id}`);
 
-        fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${t.ticket_id}`)
+        fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${tkt.ticket_id}`)
           .then((r) => r.json())
           .then((qr) => setTicketQrData(qr))
           .catch((e) => console.log("QR error:", e));
@@ -189,92 +235,430 @@ export default function PatientPage({
   };
 
   return (
-    <div style={{ maxWidth: "680px", margin: "0 auto" }}>
-      {/* Top Header Mode Tabs */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", background: "#FFFFFF", padding: "6px", borderRadius: "14px", border: "1px solid #D8E8DD", boxShadow: "0 2px 8px rgba(0,0,0,0.02)" }}>
+    <div style={{ width: "100%", paddingBottom: "40px" }}>
+      <style>{`
+        .patient-tabs-bar {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          margin-bottom: 24px;
+          background: #FFFFFF;
+          padding: 8px;
+          border-radius: 16px;
+          border: 1px solid #E2E8F0;
+          box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03);
+        }
+
+        .tab-button-modern {
+          padding: 13px 14px;
+          border-radius: 12px;
+          border: 1px solid transparent;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          text-align: left;
+          width: 100%;
+          outline: none;
+          user-select: none;
+        }
+
+        .tab-button-modern.active {
+          background: #044E3B;
+          color: #FFFFFF;
+          border-color: #044E3B;
+          box-shadow: 0 4px 14px rgba(4, 78, 59, 0.28);
+        }
+
+        .tab-button-modern.inactive {
+          background: #FFFFFF;
+          color: #0F172A;
+          border-color: transparent;
+        }
+
+        .tab-button-modern.inactive:hover {
+          background: #F8FAFC;
+          border-color: #E2E8F0;
+          transform: translateY(-1px);
+        }
+
+        .tab-icon-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          transition: color 0.15s ease;
+        }
+
+        .tab-title-text {
+          font-size: 13.5px;
+          font-weight: 700;
+          line-height: 1.2;
+          display: block;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .tab-sub-text {
+          font-size: 11px;
+          display: block;
+          margin-top: 3px;
+          font-weight: 500;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .tab-count-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 5px;
+          border-radius: 9999px;
+          font-size: 10.5px;
+          font-weight: 800;
+          line-height: 1;
+          flex-shrink: 0;
+          margin-left: 6px;
+          transition: all 0.2s ease;
+        }
+
+        @media (max-width: 880px) {
+          .patient-tabs-bar {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 500px) {
+          .patient-tabs-bar {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .form-grid-2col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+
+        @media (max-width: 640px) {
+          .form-grid-2col {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .form-field-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12.5px;
+          color: #334155;
+          margin-bottom: 8px;
+          font-weight: 600;
+        }
+
+        .modern-form-input {
+          width: 100%;
+          padding: 12px 14px;
+          border-radius: 10px;
+          border: 1px solid #E2E8F0;
+          background: #FFFFFF;
+          color: #0F172A;
+          font-size: 13.5px;
+          outline: none;
+          transition: border-color 0.15s ease, box-shadow 0.15s ease;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+          font-family: inherit;
+          box-sizing: border-box;
+        }
+
+        .modern-form-input:focus {
+          border-color: #059669;
+          box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+        }
+
+        .modern-form-select {
+          appearance: none;
+          -webkit-appearance: none;
+          -moz-appearance: none;
+          background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+          background-repeat: no-repeat;
+          background-position: right 14px center;
+          background-size: 16px 16px;
+          padding-right: 40px !important;
+          cursor: pointer;
+        }
+
+        .modern-triage-card {
+          padding: 16px 18px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          cursor: pointer;
+          text-align: left;
+          width: 100%;
+          transition: all 0.15s ease;
+          outline: none;
+          user-select: none;
+          box-sizing: border-box;
+        }
+
+        .modern-triage-card.active-routine {
+          background: #ECFDF5;
+          border: 1.5px solid #059669;
+          box-shadow: 0 2px 8px rgba(5, 150, 105, 0.08);
+        }
+
+        .modern-triage-card.active-emergency {
+          background: #FEF2F2;
+          border: 1.5px solid #DC2626;
+          box-shadow: 0 2px 8px rgba(220, 38, 38, 0.08);
+        }
+
+        .modern-triage-card.inactive-triage {
+          background: #FFFFFF;
+          border: 1px solid #E2E8F0;
+        }
+
+        .modern-triage-card.inactive-triage:hover {
+          background: #F8FAFC;
+          border-color: #CBD5E1;
+        }
+
+        .modern-submit-btn {
+          width: 100%;
+          padding: 16px 20px;
+          border-radius: 12px;
+          border: none;
+          background: #044E3B;
+          color: #FFFFFF;
+          cursor: pointer;
+          box-shadow: 0 4px 14px rgba(4, 78, 59, 0.25);
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          outline: none;
+          box-sizing: border-box;
+        }
+
+        .modern-submit-btn:hover {
+          background: #033E2F;
+          box-shadow: 0 6px 18px rgba(4, 78, 59, 0.35);
+          transform: translateY(-1px);
+        }
+
+        .modern-submit-btn:active {
+          transform: translateY(0);
+        }
+      `}</style>
+
+      {/* 1. HERO SECTION (Matching Image 2 closely) */}
+      <HeroBanner
+        stats={{
+          patientsServed: "250+",
+          avgWaitTime: "15 min",
+          satisfaction: "98%",
+        }}
+      />
+
+      {/* 2. Top Header Navigation Mode Tabs / Quick Actions (Matching Image 2) */}
+      <div className="patient-tabs-bar">
+        {/* Tab 1: Instant Walk-In Ticket */}
         <button
           type="button"
-          onClick={() => setActiveTab("walkin")}
-          style={tabBtnStyle(activeTab === "walkin")}
+          onClick={() => handleTabChange("walkin")}
+          className={`tab-button-modern ${activeTab === "walkin" ? "active" : "inactive"}`}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z"/><line x1="13" y1="5" x2="13" y2="19"/></svg>
-          {t("instantWalkin", language)}
+          <div className="tab-icon-wrapper" style={{ color: activeTab === "walkin" ? "#FFFFFF" : "#1E293B" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z" />
+              <polygon points="12 8 13.2 11.4 16.8 11.4 13.9 13.5 15 16.9 12 14.8 9 16.9 10.1 13.5 7.2 11.4 10.8 11.4 12 8" />
+            </svg>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span className="tab-title-text" style={{ color: activeTab === "walkin" ? "#FFFFFF" : "#0F172A" }}>
+              {t("instantWalkin", language)}
+            </span>
+            <span className="tab-sub-text" style={{ color: activeTab === "walkin" ? "#A7F3D0" : "#64748B" }}>
+              {t("getTokenNow", language)}
+            </span>
+          </div>
         </button>
+
+        {/* Tab 2: Book Time Slot */}
         <button
           type="button"
-          onClick={() => setActiveTab("book")}
-          style={tabBtnStyle(activeTab === "book")}
+          onClick={() => handleTabChange("book")}
+          className={`tab-button-modern ${activeTab === "book" ? "active" : "inactive"}`}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          {t("bookSlot", language)}
+          <div className="tab-icon-wrapper" style={{ color: activeTab === "book" ? "#FFFFFF" : "#1E293B" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+              <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" strokeWidth="2.5" />
+            </svg>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span className="tab-title-text" style={{ color: activeTab === "book" ? "#FFFFFF" : "#0F172A" }}>
+              {t("bookSlot", language)}
+            </span>
+            <span className="tab-sub-text" style={{ color: activeTab === "book" ? "#A7F3D0" : "#64748B" }}>
+              {t("scheduleVisit", language)}
+            </span>
+          </div>
         </button>
+
+        {/* Tab 3: My Appointments */}
         <button
           type="button"
-          onClick={() => setActiveTab("my_apts")}
-          style={tabBtnStyle(activeTab === "my_apts")}
+          onClick={() => handleTabChange("my_apts")}
+          className={`tab-button-modern ${activeTab === "my_apts" ? "active" : "inactive"}`}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          {t("myAppointments", language)} ({activeAppointments.length})
+          <div className="tab-icon-wrapper" style={{ color: activeTab === "my_apts" ? "#FFFFFF" : "#1E293B" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+              <line x1="9" y1="12" x2="15" y2="12" />
+              <line x1="9" y1="16" x2="13" y2="16" />
+            </svg>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span className="tab-title-text" style={{ color: activeTab === "my_apts" ? "#FFFFFF" : "#0F172A" }}>
+                {t("myAppointments", language)}
+              </span>
+              <span
+                className="tab-count-badge"
+                style={{
+                  background: activeTab === "my_apts" ? "#34D399" : "#044E3B",
+                  color: activeTab === "my_apts" ? "#044E3B" : "#FFFFFF",
+                }}
+              >
+                {activeAppointments.length}
+              </span>
+            </div>
+            <span className="tab-sub-text" style={{ color: activeTab === "my_apts" ? "#A7F3D0" : "#64748B" }}>
+              {t("viewAndManage", language)}
+            </span>
+          </div>
         </button>
+
+        {/* Tab 4: Appointment History */}
         <button
           type="button"
-          onClick={() => setActiveTab("history")}
-          style={tabBtnStyle(activeTab === "history")}
+          onClick={() => handleTabChange("history")}
+          className={`tab-button-modern ${activeTab === "history" ? "active" : "inactive"}`}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          {t("appointmentHistory", language)} ({historyAppointments.length})
+          <div className="tab-icon-wrapper" style={{ color: activeTab === "history" ? "#FFFFFF" : "#1E293B" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            </svg>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span className="tab-title-text" style={{ color: activeTab === "history" ? "#FFFFFF" : "#0F172A" }}>
+                {t("appointmentHistory", language)}
+              </span>
+              <span
+                className="tab-count-badge"
+                style={{
+                  background: activeTab === "history" ? "#34D399" : "#044E3B",
+                  color: activeTab === "history" ? "#044E3B" : "#FFFFFF",
+                }}
+              >
+                {historyAppointments.length}
+              </span>
+            </div>
+            <span className="tab-sub-text" style={{ color: activeTab === "history" ? "#A7F3D0" : "#64748B" }}>
+              {t("pastRecords", language)}
+            </span>
+          </div>
         </button>
       </div>
 
-      {/* Main Tab Content */}
+      {/* 3. Main Form Card Container */}
       <div style={standaloneCardStyle}>
         {activeTab === "walkin" && (
           <div>
-            <div style={{ textAlign: "center", marginBottom: "24px" }}>
-              <div style={headerIconContainerStyle}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z"/>
-                  <line x1="13" y1="5" x2="13" y2="19"/>
-                </svg>
+            {/* Form Header with Walk-In Badge */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+              <div>
+                <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.4px" }}>
+                  {t("instantWalkin", language)}
+                </h2>
+                <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
+                  City General Hospital — Instant Token & Real-Time Wait Tracker
+                </p>
               </div>
-              <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
-                {t("instantWalkin", language)}
-              </h2>
-              <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-                City General Hospital — Instant Ticket Token & Real-Time Wait Tracker
-              </p>
+              <span
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: "6px",
+                  background: "#ECFDF5",
+                  color: "#047857",
+                  border: "1px solid #A7F3D0",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                }}
+              >
+                Walk-In
+              </span>
             </div>
 
             <form onSubmit={handleJoinQueue}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
+              {/* Row 1: Patient Full Name & Patient Age & Gender */}
+              <div className="form-grid-2col">
                 <div>
-                  <label style={fieldLabelStyle}>{t("patientNameLabel", language)}</label>
+                  <label className="form-field-label">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    {t("patientNameLabel", language)}
+                  </label>
                   <input
                     type="text"
-                    placeholder="e.g. Rahul Verma"
+                    placeholder="user"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
-                    style={fieldInputStyle}
+                    className="modern-form-input"
                   />
                 </div>
+
                 <div>
-                  <label style={fieldLabelStyle}>{t("patientAgeGenderLabel", language)}</label>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                  <label className="form-field-label">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    {t("patientAgeGenderLabel", language)}
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                     <input
                       type="number"
-                      placeholder="Age"
+                      placeholder="35"
                       value={age}
                       onChange={(e) => setAge(e.target.value)}
                       required
                       min="1"
                       max="120"
-                      style={fieldInputStyle}
+                      className="modern-form-input"
                     />
                     <select
                       value={gender}
                       onChange={(e) => setGender(e.target.value)}
-                      style={fieldInputStyle}
+                      className="modern-form-input modern-form-select"
                     >
                       <option value="male">Male</option>
                       <option value="female">Female</option>
@@ -284,13 +668,21 @@ export default function PatientPage({
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
+              {/* Row 2: Department / Location & Symptom / Medical Reason */}
+              <div className="form-grid-2col">
                 <div>
-                  <label style={fieldLabelStyle}>{t("medicalDeptLabel", language)}</label>
+                  <label className="form-field-label">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
+                      <path d="M9 22v-4h6v4" />
+                      <path d="M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01M8 14h.01M16 14h.01M12 14h.01" />
+                    </svg>
+                    {t("medicalDeptLabel", language)} / Location
+                  </label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    style={fieldInputStyle}
+                    className="modern-form-input modern-form-select"
                   >
                     {HOSPITAL_CONFIG.categories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -301,11 +693,19 @@ export default function PatientPage({
                 </div>
 
                 <div>
-                  <label style={fieldLabelStyle}>{t("primarySymptomLabel", language)}</label>
+                  <label className="form-field-label">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                      <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                      <line x1="9" y1="12" x2="15" y2="12" />
+                      <line x1="9" y1="16" x2="13" y2="16" />
+                    </svg>
+                    {t("primarySymptomLabel", language)}
+                  </label>
                   <select
                     value={medicalCondition}
                     onChange={(e) => setMedicalCondition(e.target.value)}
-                    style={fieldInputStyle}
+                    className="modern-form-input modern-form-select"
                   >
                     <option value="general_checkup">{t("symptomGeneral", language)}</option>
                     <option value="cardiac_chest_pain">{t("symptomCardiac", language)}</option>
@@ -318,12 +718,18 @@ export default function PatientPage({
                 </div>
               </div>
 
-              <div style={{ marginBottom: "16px" }}>
-                <label style={fieldLabelStyle}>{t("preExistingLabel", language)}</label>
+              {/* Row 3: Pre-Existing Chronic Conditions / Risk Factors */}
+              <div style={{ marginBottom: "18px" }}>
+                <label className="form-field-label">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                  </svg>
+                  {t("preExistingLabel", language)}
+                </label>
                 <select
                   value={preExistingCondition}
                   onChange={(e) => setPreExistingCondition(e.target.value)}
-                  style={fieldInputStyle}
+                  className="modern-form-input modern-form-select"
                 >
                   <option value="none">{t("riskNone", language)}</option>
                   <option value="diabetes">{t("riskDiabetes", language)}</option>
@@ -333,31 +739,106 @@ export default function PatientPage({
                 </select>
               </div>
 
-              <div style={{ marginBottom: "20px" }}>
-                <label style={fieldLabelStyle}>{t("urgencyLabel", language)}</label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              {/* Row 4: Urgency / Triage Level (2 Selectable Cards) */}
+              <div style={{ marginBottom: "22px" }}>
+                <label className="form-field-label">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  {t("urgencyLabel", language)}
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                  {/* Routine Checkup Option */}
                   <button
                     type="button"
                     onClick={() => setPriority(2)}
-                    style={triageBtnStyle(priority === 2, "#047857")}
+                    className={`modern-triage-card ${priority === 2 ? "active-routine" : "inactive-triage"}`}
                   >
-                    {t("routineCheckup", language)}
-                    <span style={{ display: "block", fontSize: "10px", opacity: 0.8, marginTop: "2px" }}>{t("standardOrder", language)}</span>
+                    <div
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        background: priority === 2 ? "#059669" : "transparent",
+                        border: priority === 2 ? "none" : "1.5px solid #CBD5E1",
+                        color: priority === 2 ? "#FFFFFF" : "#94A3B8",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: "13.5px", color: priority === 2 ? "#064E3B" : "#1E293B" }}>
+                        {t("routineCheckup", language)}
+                      </div>
+                      <div style={{ fontSize: "11.5px", color: priority === 2 ? "#047857" : "#64748B", marginTop: "2px", fontWeight: 500 }}>
+                        {t("standardOrder", language)}
+                      </div>
+                    </div>
                   </button>
 
+                  {/* Emergency Case Option */}
                   <button
                     type="button"
                     onClick={() => setPriority(1)}
-                    style={triageBtnStyle(priority === 1, "#DC2626")}
+                    className={`modern-triage-card ${priority === 1 ? "active-emergency" : "inactive-triage"}`}
                   >
-                    {t("emergencyCase", language)}
-                    <span style={{ display: "block", fontSize: "10px", opacity: 0.8, marginTop: "2px" }}>{t("priorityJump", language)}</span>
+                    <div
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        background: priority === 1 ? "#DC2626" : "transparent",
+                        color: priority === 1 ? "#FFFFFF" : "#64748B",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={priority === 1 ? "2.5" : "1.8"} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: "13.5px", color: priority === 1 ? "#991B1B" : "#1E293B" }}>
+                        {t("emergencyCase", language)}
+                      </div>
+                      <div style={{ fontSize: "11.5px", color: priority === 1 ? "#DC2626" : "#64748B", marginTop: "2px", fontWeight: 500 }}>
+                        {t("priorityJump", language)}
+                      </div>
+                    </div>
                   </button>
                 </div>
               </div>
 
-              <button type="submit" style={patientSubmitBtnStyle}>
-                {t("getTicketBtn", language)}
+              {/* Submit Primary Button */}
+              <button type="submit" className="modern-submit-btn">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "14px" }}>
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v2z" />
+                    <polygon points="12 8 13.2 11.4 16.8 11.4 13.9 13.5 15 16.9 12 14.8 9 16.9 10.1 13.5 7.2 11.4 10.8 11.4 12 8" fill="rgba(255,255,255,0.2)" />
+                  </svg>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: "14.5px", fontWeight: 800, letterSpacing: "-0.2px", color: "#FFFFFF", lineHeight: 1.2 }}>
+                      {t("getTicketBtn", language)}
+                    </div>
+                    <div style={{ fontSize: "11px", fontWeight: 500, color: "#A7F3D0", marginTop: "2px" }}>
+                      Generate Token & Join Queue
+                    </div>
+                  </div>
+                </div>
               </button>
             </form>
           </div>
@@ -365,16 +846,8 @@ export default function PatientPage({
 
         {activeTab === "book" && (
           <div>
-            <div style={{ textAlign: "center", marginBottom: "24px" }}>
-              <div style={headerIconContainerStyle}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                  <line x1="16" y1="2" x2="16" y2="6"/>
-                  <line x1="8" y1="2" x2="8" y2="6"/>
-                  <line x1="3" y1="10" x2="21" y2="10"/>
-                </svg>
-              </div>
-              <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
+            <div style={{ marginBottom: "24px" }}>
+              <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.3px" }}>
                 Book Pre-Scheduled Time Slot
               </h2>
               <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
@@ -384,24 +857,36 @@ export default function PatientPage({
 
             <form onSubmit={handleBookSlot}>
               <div style={{ marginBottom: "16px" }}>
-                <label style={fieldLabelStyle}>Patient Full Name</label>
+                <label className="form-field-label">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                  Patient Full Name
+                </label>
                 <input
                   type="text"
                   placeholder="e.g. Rahul Verma"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  style={fieldInputStyle}
+                  className="modern-form-input"
                 />
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", marginBottom: "16px" }}>
+              <div className="form-grid-2col">
                 <div>
-                  <label style={fieldLabelStyle}>Department</label>
+                  <label className="form-field-label">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
+                      <path d="M9 22v-4h6v4" />
+                    </svg>
+                    Department
+                  </label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    style={fieldInputStyle}
+                    className="modern-form-input modern-form-select"
                   >
                     {HOSPITAL_CONFIG.categories.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -411,19 +896,33 @@ export default function PatientPage({
                   </select>
                 </div>
                 <div>
-                  <label style={fieldLabelStyle}>Appointment Date</label>
+                  <label className="form-field-label">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8" y1="2" x2="8" y2="6" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                    Appointment Date
+                  </label>
                   <input
                     type="date"
                     value={aptDate}
                     onChange={(e) => setAptDate(e.target.value)}
                     required
-                    style={fieldInputStyle}
+                    className="modern-form-input"
                   />
                 </div>
               </div>
 
               <div style={{ marginBottom: "20px" }}>
-                <label style={fieldLabelStyle}>Select Available Time Slot</label>
+                <label className="form-field-label">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  Select Available Time Slot
+                </label>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px" }}>
                   {timeSlotOptions.map((slot) => (
                     <button
@@ -431,14 +930,15 @@ export default function PatientPage({
                       type="button"
                       onClick={() => setAptTimeSlot(slot)}
                       style={{
-                        padding: "8px 4px",
+                        padding: "10px 4px",
                         borderRadius: "8px",
                         border: aptTimeSlot === slot ? "2px solid #059669" : "1px solid #CBD5E1",
                         background: aptTimeSlot === slot ? "#ECFDF5" : "#F8FAFC",
                         color: aptTimeSlot === slot ? "#047857" : "#475569",
                         fontWeight: 700,
-                        fontSize: "11px",
+                        fontSize: "11.5px",
                         cursor: "pointer",
+                        transition: "all 0.15s ease",
                       }}
                     >
                       {slot}
@@ -447,7 +947,7 @@ export default function PatientPage({
                 </div>
               </div>
 
-              <button type="submit" style={patientSubmitBtnStyle}>
+              <button type="submit" className="modern-submit-btn">
                 Reserve Appointment Slot
               </button>
             </form>
@@ -494,7 +994,7 @@ export default function PatientPage({
                   placeholder="Enter Code (e.g. APT-9482)"
                   value={checkInCode}
                   onChange={(e) => setCheckInCode(e.target.value)}
-                  style={{ padding: "6px 10px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12px", width: "160px" }}
+                  style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12px", width: "180px" }}
                 />
                 <button onClick={() => handleAppointmentCheckIn(checkInCode)} style={quickCheckInBtnStyle}>
                   Check In
@@ -503,12 +1003,12 @@ export default function PatientPage({
             </div>
 
             {activeAppointments.length === 0 ? (
-              <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
-                <p style={{ margin: "0 0 10px 0" }}>No active or upcoming appointments found.</p>
+              <div style={{ padding: "36px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0", color: "#94A3B8", fontSize: "13px" }}>
+                <p style={{ margin: "0 0 12px 0", color: "#64748B", fontWeight: 600 }}>No active or upcoming appointments found.</p>
                 <button
                   type="button"
-                  onClick={() => setActiveTab("book")}
-                  style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#047857", color: "#FFFFFF", fontWeight: 700, fontSize: "12px", cursor: "pointer" }}
+                  onClick={() => handleTabChange("book")}
+                  style={{ padding: "8px 16px", borderRadius: "8px", border: "none", background: "#047857", color: "#FFFFFF", fontWeight: 700, fontSize: "12px", cursor: "pointer" }}
                 >
                   Reserve Time Slot Now
                 </button>
@@ -568,7 +1068,7 @@ export default function PatientPage({
             </div>
 
             {historyAppointments.length === 0 ? (
-              <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
+              <div style={{ padding: "36px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0", color: "#94A3B8", fontSize: "13px" }}>
                 No past appointment history found.
               </div>
             ) : (
@@ -627,7 +1127,7 @@ export default function PatientPage({
         )}
       </div>
 
-      {/* Digital Ticket Pass */}
+      {/* 4. Digital Ticket Pass Card */}
       {activeTicket && (
         <div style={{ ...standaloneCardStyle, marginTop: "24px", border: "2px solid #059669" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #D8E8DD", paddingBottom: "14px", marginBottom: "16px" }}>
@@ -708,81 +1208,55 @@ export default function PatientPage({
           )}
         </div>
       )}
+
+      {/* 6. Footer (Matching Image 2) */}
+      <Footer />
     </div>
   );
 }
 
-// Soft Green Clinical Theme Styles
-const headerIconContainerStyle = {
-  width: "56px",
-  height: "56px",
-  borderRadius: "50%",
-  background: "#ECFDF5",
-  border: "1px solid #A7F3D0",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  marginBottom: "12px",
-};
-
-const tabBtnStyle = (active) => ({
-  flex: 1,
-  padding: "10px 12px",
-  borderRadius: "10px",
-  border: "none",
-  background: active ? "#059669" : "transparent",
-  color: active ? "#ffffff" : "#64748B",
-  fontWeight: 700,
-  fontSize: "12px",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: "6px",
-});
-
+// Styling definitions
 const standaloneCardStyle = {
   background: "#FFFFFF",
-  borderRadius: "18px",
-  border: "1px solid #D8E8DD",
-  padding: "24px",
-  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+  borderRadius: "20px",
+  border: "1px solid #E2E8F0",
+  padding: "28px 32px",
+  boxShadow: "0 4px 20px -2px rgba(0, 0, 0, 0.03)",
 };
 
-const fieldLabelStyle = { display: "block", fontSize: "12px", color: "#475569", marginBottom: "6px", fontWeight: 600 };
+const fieldLabelWithIconStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  fontSize: "12.5px",
+  color: "#334155",
+  marginBottom: "8px",
+  fontWeight: 600,
+};
 
 const fieldInputStyle = {
   width: "100%",
   padding: "12px 14px",
   borderRadius: "10px",
-  border: "1px solid #CBD5E1",
-  background: "#F8FAFC",
+  border: "1px solid #E2E8F0",
+  background: "#FFFFFF",
   color: "#0F172A",
-  fontSize: "13px",
+  fontSize: "13.5px",
+  outline: "none",
+  transition: "border 0.2s ease, box-shadow 0.2s ease",
+  boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
 };
-
-const triageBtnStyle = (active, accent) => ({
-  padding: "12px",
-  borderRadius: "10px",
-  border: active ? `2px solid ${accent}` : "1px solid #CBD5E1",
-  background: active ? (accent === "#047857" ? "#ECFDF5" : "#FEF2F2") : "#F8FAFC",
-  color: active ? accent : "#64748B",
-  fontWeight: 700,
-  fontSize: "12px",
-  cursor: "pointer",
-});
 
 const patientSubmitBtnStyle = {
   width: "100%",
-  padding: "14px",
+  padding: "14px 20px",
   borderRadius: "12px",
   border: "none",
-  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  background: "#044E3B",
   color: "#ffffff",
-  fontWeight: 800,
-  fontSize: "14px",
   cursor: "pointer",
-  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.3)",
+  boxShadow: "0 4px 14px rgba(4, 78, 59, 0.25)",
+  transition: "all 0.2s ease",
 };
 
 const aptConfirmationBoxStyle = {
@@ -807,7 +1281,7 @@ const checkInNowBtnStyle = {
 };
 
 const quickCheckInBtnStyle = {
-  padding: "6px 12px",
+  padding: "8px 14px",
   borderRadius: "8px",
   border: "none",
   background: "#047857",
@@ -871,3 +1345,24 @@ const passStatusBadgeStyle = (status) => ({
   color: status === "serving" ? "#047857" : "#D97706",
   border: status === "serving" ? "1px solid #A7F3D0" : "1px solid #FDE68A",
 });
+
+const dashboardFooterStyle = {
+  marginTop: "36px",
+  paddingTop: "20px",
+  borderTop: "1px solid #D8E8DD",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: "16px",
+};
+
+const footerLogoIconStyle = {
+  width: "28px",
+  height: "28px",
+  borderRadius: "8px",
+  background: "#044E3B",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};

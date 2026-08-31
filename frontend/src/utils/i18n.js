@@ -14,11 +14,15 @@ export const TRANSLATIONS = {
     dbInspector: "SQL Database Inspector",
     kioskMonitor: "Waiting Room Kiosk Monitor",
     
-    // Patient Portal Tabs
+    // Patient Portal Tabs & Quick Actions
     instantWalkin: "Instant Walk-In Ticket",
+    getTokenNow: "Get Token Now",
     bookSlot: "Book Time Slot",
+    scheduleVisit: "Schedule Visit",
     myAppointments: "My Appointments",
+    viewAndManage: "View & Manage",
     appointmentHistory: "Appointment History",
+    pastRecords: "Past Records",
     
     // Intake Form Labels
     patientNameLabel: "Patient Full Name",
@@ -72,6 +76,16 @@ export const TRANSLATIONS = {
     testAudioBtn: "Test Audio Announcement",
     reAnnounceBtn: "Re-Announce",
     accountLogin: "Account Login",
+
+    // Feature Cards
+    feature1Title: "Live Queue Status",
+    feature1Desc: "Track your token in real-time and plan your time better.",
+    feature2Title: "Smart Notifications",
+    feature2Desc: "Get notified when your turn is near or it is your turn.",
+    feature3Title: "Transparent System",
+    feature3Desc: "Fair queue management with real-time updates for everyone.",
+    feature4Title: "Your Data is Safe",
+    feature4Desc: "We ensure complete privacy and security of your information.",
   },
   hi: {
     systemTitle: "अस्पताल कतार प्रणाली",
@@ -81,11 +95,15 @@ export const TRANSLATIONS = {
     dbInspector: "डेटाबेस निरीक्षक",
     kioskMonitor: "प्रतीक्षा कक्ष कियोस्क टीवी",
     
-    // Patient Portal Tabs
+    // Patient Portal Tabs & Quick Actions
     instantWalkin: "तत्काल वॉक-इन टोकन",
+    getTokenNow: "टोकन अभी लें",
     bookSlot: "समय स्लॉट बुक करें",
+    scheduleVisit: "विज़िट तय करें",
     myAppointments: "मेरे अपॉइंटमेंट्स",
+    viewAndManage: "देखें और प्रबंधित करें",
     appointmentHistory: "अपॉइंटमेंट इतिहास",
+    pastRecords: "पुराने रिकॉर्ड",
     
     // Intake Form Labels
     patientNameLabel: "मरीज़ का पूरा नाम",
@@ -139,6 +157,16 @@ export const TRANSLATIONS = {
     testAudioBtn: "ऑडियो घोषणा परीक्षण करें",
     reAnnounceBtn: "पुनः घोषणा करें",
     accountLogin: "खाता साइन इन",
+
+    // Feature Cards
+    feature1Title: "लाइव कतार स्थिति",
+    feature1Desc: "वास्तविक समय में अपने टोकन को ट्रैक करें और बेहतर योजना बनाएं।",
+    feature2Title: "स्मार्ट सूचनाएं",
+    feature2Desc: "जब आपकी बारी निकट हो या आपकी बारी हो तो तुरंत सूचना प्राप्त करें।",
+    feature3Title: "पारदर्शी प्रणाली",
+    feature3Desc: "सभी के लिए रीयल-टाइम अपडेट के साथ निष्पक्ष कतार प्रबंधन।",
+    feature4Title: "आपका डेटा सुरक्षित है",
+    feature4Desc: "हम आपकी जानकारी की पूर्ण गोपनीयता और सुरक्षा सुनिश्चित करते हैं।",
   }
 };
 

@@ -51,6 +51,10 @@ export default function App() {
   });
 
   const [activePage, setActivePage] = useState(() => getInitialPage(currentUser));
+  const [currentTab, setCurrentTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("tab") || "walkin";
+  });
   const tenantId = HOSPITAL_CONFIG.tenantId;
 
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -92,18 +96,32 @@ export default function App() {
     activeTicketRef.current = activeTicket;
   }, [activeTicket]);
 
-  // Sync page state when URL changes
+  // Sync page & tab state when URL changes
   useEffect(() => {
-    const handlePopState = () => setActivePage(getInitialPage());
+    const handlePopState = () => {
+      setActivePage(getInitialPage());
+      const params = new URLSearchParams(window.location.search);
+      setCurrentTab(params.get("tab") || "walkin");
+    };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const navigateTo = (page) => {
+  const navigateTo = (page, tab = null) => {
     setActivePage(page);
+    const effectiveTab = tab || (page === "patient" ? "walkin" : null);
+    if (effectiveTab) {
+      setCurrentTab(effectiveTab);
+    }
     const url = new URL(window.location.href);
     url.searchParams.set("page", page);
+    if (tab) {
+      url.searchParams.set("tab", tab);
+    } else if (page !== "patient") {
+      url.searchParams.delete("tab");
+    }
     window.history.pushState({}, "", url.toString());
+    window.dispatchEvent(new Event("popstate"));
   };
 
   const isAdmin = currentUser && currentUser.role === "admin";
@@ -263,20 +281,22 @@ export default function App() {
 
   return (
     <div style={appBgStyle}>
-      {/* Top Navigation Header Bar */}
-      <Header
-        currentUser={currentUser}
-        activePage={activePage}
-        navigateTo={navigateTo}
-        handleLogout={handleLogout}
-        setShowAuthModal={setShowAuthModal}
-        socketConnected={socketConnected}
-        language={language}
-        setLanguage={setLanguage}
-      />
+      <div style={{ maxWidth: activePage === "patient" ? "960px" : "1240px", margin: "0 auto", width: "100%" }}>
+        {/* Top Navigation Header Bar */}
+        <Header
+          currentUser={currentUser}
+          activePage={activePage}
+          navigateTo={navigateTo}
+          handleLogout={handleLogout}
+          setShowAuthModal={setShowAuthModal}
+          socketConnected={socketConnected}
+          language={language}
+          setLanguage={setLanguage}
+          currentTab={currentTab}
+        />
 
-      {/* Main Content Router */}
-      <main style={mainContentStyle}>
+        {/* Main Content Router */}
+        <main style={mainContentStyle}>
         {!currentUser && activePage !== "kiosk" ? (
           <MandatoryAuthScreen
             onLoginSuccess={(user) => {
@@ -310,6 +330,8 @@ export default function App() {
                   refreshData={refreshData}
                   language={language}
                   setLanguage={setLanguage}
+                  navigateTo={navigateTo}
+                  currentTab={currentTab}
                 />
               )
             )}
@@ -382,15 +404,16 @@ export default function App() {
         )}
       </main>
 
-      {/* Auth Modal Overlay */}
-      {showAuthModal && (
-        <AuthModal
-          authMode={authMode}
-          setAuthMode={setAuthMode}
-          onClose={() => setShowAuthModal(false)}
-          onLoginSuccess={handleLoginSuccess}
-        />
-      )}
+        {/* Auth Modal Overlay */}
+        {showAuthModal && (
+          <AuthModal
+            authMode={authMode}
+            setAuthMode={setAuthMode}
+            onClose={() => setShowAuthModal(false)}
+            onLoginSuccess={handleLoginSuccess}
+          />
+        )}
+      </div>
     </div>
   );
 }

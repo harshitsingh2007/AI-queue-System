@@ -50,6 +50,7 @@ class JoinRequest(BaseModel):
     service_category: str = Field(..., json_schema_extra={"example": "consultation"})
     name: str = Field(..., json_schema_extra={"example": "Priya Sharma"})
     urgency: Optional[str] = Field(None, description="'emergency' | 'routine'")
+    priority_level: Optional[int] = None
     user_email: Optional[str] = None
     age: Optional[int] = 30
     gender: Optional[str] = "other"
@@ -135,7 +136,10 @@ async def _broadcast_queue_update(tenant_id: str):
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/plugin/join")
 async def join_queue_http_endpoint(req: JoinRequest):
-    priority = _urgency_to_priority(req.consumer_type, req.urgency)
+    if req.priority_level is not None:
+        priority = req.priority_level
+    else:
+        priority = _urgency_to_priority(req.consumer_type, req.urgency)
 
     ticket = engine.join_queue(
         tenant_id=req.tenant_id,
@@ -159,7 +163,7 @@ async def join_queue_alt_endpoint(req: JoinRequest):
     return await join_queue_http_endpoint(req)
 
 @app.post("/api/v1/plugin/serve-next")
-async def serve_next(payload: ServeNextRequest):
+async def serve_next_http(payload: ServeNextRequest):
     # Resolve effective department: explicit department field takes priority.
     effective_dept = payload.department or payload.service_category
     ticket = engine.serve_next(payload.tenant_id, service_category=None, department=effective_dept)
@@ -173,7 +177,7 @@ async def serve_next(payload: ServeNextRequest):
     return {"success": True, "now_serving": ticket.to_dict()}
 
 @app.post("/api/v1/plugin/complete")
-async def complete_ticket(payload: TicketActionRequest):
+async def complete_ticket_http(payload: TicketActionRequest):
     try:
         ticket = engine.complete_ticket(payload.tenant_id, payload.ticket_id, department=payload.department)
         engine.recalculate_wait_times(payload.tenant_id)
@@ -206,21 +210,21 @@ async def transfer_ticket_endpoint(payload: TransferTicketRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/v1/plugin/no-show")
-async def mark_no_show(payload: TicketActionRequest):
+async def mark_no_show_http(payload: TicketActionRequest):
     engine.mark_no_show(payload.tenant_id, payload.ticket_id)
     engine.recalculate_wait_times(payload.tenant_id)
     await _broadcast_queue_update(payload.tenant_id)
     return {"success": True}
 
 @app.post("/api/v1/plugin/cancel")
-async def cancel_ticket(payload: TicketActionRequest):
+async def cancel_ticket_http(payload: TicketActionRequest):
     engine.cancel_ticket(payload.tenant_id, payload.ticket_id)
     engine.recalculate_wait_times(payload.tenant_id)
     await _broadcast_queue_update(payload.tenant_id)
     return {"success": True}
 
 @app.post("/api/v1/plugin/re-announce")
-async def re_announce_ticket(payload: TicketActionRequest):
+async def re_announce_ticket_http(payload: TicketActionRequest):
     ticket = engine._get_tenant(payload.tenant_id)["tickets"].get(payload.ticket_id)
     if not ticket:
         with engine._get_db() as conn:
@@ -236,7 +240,7 @@ async def re_announce_ticket(payload: TicketActionRequest):
     return {"success": True, "re_announced": ticket_dict}
 
 @app.post("/api/v1/plugin/counters")
-async def set_counters(payload: CounterUpdateRequest):
+async def set_counters_http(payload: CounterUpdateRequest):
     new_count = engine.set_active_counters(payload.tenant_id, payload.active_counters)
     await _broadcast_queue_update(payload.tenant_id)
     return {"success": True, "active_counters": new_count}

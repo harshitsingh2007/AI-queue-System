@@ -32,6 +32,7 @@ export default function MandatoryAuthScreen({ onLoginSuccess }) {
           setAuthMode={setAuthMode}
           onClose={() => {}}
           onLoginSuccess={onLoginSuccess}
+          isInline={true}
         />
       </div>
     </div>
