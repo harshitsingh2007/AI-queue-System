@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE } from "../config/hospitalConfig";
 import { announceTicketVoice } from "../utils/voiceSynthesizer";
+import { t, getCategoryLabel, getStatusLabel } from "../utils/i18n";
 
 export default function StaffPage({
   tenantId,
@@ -22,6 +23,7 @@ export default function StaffPage({
   refreshData,
   language = "en",
   socketRef,
+  navigateTo,
 }) {
   const [appointments, setAppointments] = useState([]);
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -143,46 +145,74 @@ export default function StaffPage({
           </div>
           <div>
             <strong style={{ fontSize: "14px", color: "#064E3B" }}>
-              Department Isolation: <span style={{ color: "#047857", textTransform: "uppercase" }}>{adminDept}</span>
+              {t("medicalDeptLabel", language)}: <span style={{ color: "#047857" }}>{getCategoryLabel(adminDept, language)}</span>
             </strong>
             <span style={{ display: "block", fontSize: "11px", color: "#64748B" }}>
               {adminDept === "all"
-                ? "Super Admin Mode — Managing tickets across ALL hospital departments."
-                : `Strict Security Boundary Active — Managing tickets & queue ONLY for ${adminDept.toUpperCase()} department.`}
+                ? (language === "hi" ? "सुपर एडमिन मोड — अस्पताल के सभी विभागों में टिकट प्रबंधन।" : "Super Admin Mode — Managing tickets across ALL hospital departments.")
+                : (language === "hi" ? `विभाग सीमा सक्रिय — केवल ${getCategoryLabel(adminDept, language)} हेतु कतार प्रबंधन।` : `Strict Security Boundary Active — Managing tickets & queue ONLY for ${getCategoryLabel(adminDept, language)}.`)}
             </span>
           </div>
         </div>
 
-        <span style={deptTagStyle}>
-          {adminDept === "all" ? "SUPER ADMIN" : `${adminDept.toUpperCase()} ADMIN`}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {navigateTo && (
+            <button
+              type="button"
+              onClick={() => navigateTo("kiosk")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 14px",
+                borderRadius: "10px",
+                border: "1px solid #10B981",
+                background: "#ECFDF5",
+                color: "#047857",
+                fontWeight: 800,
+                fontSize: "12px",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(16, 185, 129, 0.12)",
+                transition: "all 0.2s ease",
+              }}
+              title="Launch Fullscreen Waiting Room TV Screen"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+              {t("launchTvDisplayBtn", language)}
+            </button>
+          )}
+
+          <span style={deptTagStyle}>
+            {adminDept === "all" ? (language === "hi" ? "सुपर एडमिन" : "SUPER ADMIN") : `${getCategoryLabel(adminDept, language)}`}
+          </span>
+        </div>
       </div>
 
       {/* Analytics Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
         <div style={staffStatCardStyle}>
-          <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Patients Waiting</span>
+          <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>{t("patientsWaiting", language)}</span>
           <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#047857", margin: "4px 0" }}>
             {analytics ? analytics.currently_waiting : 0}
           </h2>
-          <span style={{ fontSize: "11px", color: "#94A3B8" }}>In {adminDept.toUpperCase()} Queue</span>
+          <span style={{ fontSize: "11px", color: "#94A3B8" }}>{t("inDeptQueue", language)} ({getCategoryLabel(adminDept, language)})</span>
         </div>
         <div style={staffStatCardStyle}>
-          <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Currently Serving</span>
+          <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>{t("currentlyServing", language)}</span>
           <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#10B981", margin: "4px 0" }}>
             {analytics ? analytics.currently_serving : 0}
           </h2>
-          <span style={{ fontSize: "11px", color: "#94A3B8" }}>At {adminDept.toUpperCase()} Desks</span>
+          <span style={{ fontSize: "11px", color: "#94A3B8" }}>{t("atDesks", language)} ({getCategoryLabel(adminDept, language)})</span>
         </div>
         <div style={staffStatCardStyle}>
-          <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Booked Slots Today</span>
+          <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>{t("bookedSlotsToday", language)}</span>
           <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#0284C7", margin: "4px 0" }}>
             {appointments.length}
           </h2>
-          <span style={{ fontSize: "11px", color: "#94A3B8" }}>{adminDept.toUpperCase()} Appointments</span>
+          <span style={{ fontSize: "11px", color: "#94A3B8" }}>{t("todayApts", language)}</span>
         </div>
         <div style={staffStatCardStyle}>
-          <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Active Doctor Desks</span>
+          <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>{t("activeDoctorDesks", language)}</span>
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px" }}>
             <h2 style={{ fontSize: "32px", fontWeight: 800, color: "#D97706", margin: 0 }}>
               {analytics ? analytics.active_counters : 2}
@@ -201,14 +231,14 @@ export default function StaffPage({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
             <div>
               <h3 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-                {adminDept.toUpperCase()} Desk Operations
+                {getCategoryLabel(adminDept, language)} {t("deskOperations", language)}
               </h3>
-              <span style={{ fontSize: "12px", color: "#64748B" }}>Department Call Control</span>
+              <span style={{ fontSize: "12px", color: "#64748B" }}>{t("departmentCallControl", language)}</span>
             </div>
 
             <button onClick={handleServeNext} style={callPriorityBtnStyle}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-              Call Next {adminDept.toUpperCase()} Ticket
+              {t("callNextTicket", language)}
             </button>
           </div>
 
@@ -218,64 +248,64 @@ export default function StaffPage({
             </div>
           )}
 
-          <h4 style={{ margin: "0 0 12px 0", color: "#475569", fontSize: "13px" }}>Now Serving at {adminDept.toUpperCase()} Desks:</h4>
+          <h4 style={{ margin: "0 0 12px 0", color: "#475569", fontSize: "13px" }}>{t("nowServingAt", language)} {getCategoryLabel(adminDept, language)}:</h4>
 
           {servingTickets.length === 0 ? (
             <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
-              No patients currently being served. Click "Call Next Ticket" above.
+              {t("noServingTickets", language)}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {servingTickets.map((t) => (
-                <div key={t.ticket_id} style={{ ...staffServingRowStyle, flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
+              {servingTickets.map((ticket) => (
+                <div key={ticket.ticket_id} style={{ ...staffServingRowStyle, flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <span style={{ fontSize: "20px", fontWeight: 800, color: "#047857" }}>#{t.ticket_id}</span>
-                      <span style={{ marginLeft: "12px", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>{t.name}</span>
-                      <span style={{ marginLeft: "10px", fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>({t.service_category.toUpperCase()})</span>
-                      {t.transferred_from_dept && (
+                      <span style={{ fontSize: "20px", fontWeight: 800, color: "#047857" }}>#{ticket.ticket_id}</span>
+                      <span style={{ marginLeft: "12px", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>{ticket.name}</span>
+                      <span style={{ marginLeft: "10px", fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>({getCategoryLabel(ticket.service_category, language)})</span>
+                      {ticket.transferred_from_dept && (
                         <span style={{ marginLeft: "8px", padding: "2px 8px", borderRadius: "6px", background: "#FEF3C7", color: "#B45309", fontSize: "10px", fontWeight: 700, border: "1px solid #FDE68A" }}>
-                          Transferred from {t.transferred_from_dept.toUpperCase()}
+                          {t("transferredFrom", language)} {getCategoryLabel(ticket.transferred_from_dept, language)}
                         </span>
                       )}
                     </div>
 
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button
-                        onClick={() => handleReAnnounce(t)}
+                        onClick={() => handleReAnnounce(ticket)}
                         style={announceBtnStyle}
                         title="Broadcast announcement to Patient Portal and Hospital speakers"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                        Re-Announce
+                        {t("reAnnounce", language)}
                       </button>
 
                       <button
-                        onClick={() => handleOpenTransferModal(t)}
+                        onClick={() => handleOpenTransferModal(ticket)}
                         style={transferTriggerBtnStyle}
                         title="Write E-Prescription & Transfer Patient to Pharmacy/Lab"
                       >
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                        Rx & Transfer
+                        {t("transferPrescribe", language)}
                       </button>
 
-                      <button onClick={() => handleCompleteTicket(t.ticket_id)} style={finishBtnStyle}>
-                        Mark Complete
+                      <button onClick={() => handleCompleteTicket(ticket.ticket_id)} style={finishBtnStyle}>
+                        {t("completeBtn", language)}
                       </button>
                     </div>
                   </div>
 
                   {/* Attached E-Prescription Display Banner */}
-                  {t.prescription_notes && (
+                  {ticket.prescription_notes && (
                     <div style={{ padding: "10px 14px", background: "#ECFDF5", borderRadius: "8px", border: "1px solid #A7F3D0" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-                        <span style={{ fontSize: "14px" }}>💊</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                        <span style={{ padding: "1px 6px", borderRadius: "4px", background: "#D1FAE5", color: "#065F46", fontSize: "10px", fontWeight: 800 }}>Rx</span>
                         <strong style={{ fontSize: "12px", color: "#064E3B" }}>
-                          Attached E-Prescription / Doctor Orders {t.transferred_from_dept ? `(from ${t.transferred_from_dept.toUpperCase()})` : ""}:
+                          {t("ePrescriptionAttached", language)} {ticket.transferred_from_dept ? `(${t("transferredFrom", language)} ${getCategoryLabel(ticket.transferred_from_dept, language)})` : ""}:
                         </strong>
                       </div>
                       <p style={{ margin: 0, fontSize: "13px", color: "#047857", fontWeight: 600 }}>
-                        "{t.prescription_notes}"
+                        "{ticket.prescription_notes}"
                       </p>
                     </div>
                   )}
@@ -288,58 +318,58 @@ export default function StaffPage({
         {/* Live Department Queue Snapshot */}
         <div style={standaloneCardStyle}>
           <h3 style={{ margin: "0 0 16px 0", fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-            {adminDept.toUpperCase()} Waiting Line ({queueSnapshot.length})
+            {getCategoryLabel(adminDept, language)} {t("waitingQueue", language)} ({queueSnapshot.length})
           </h3>
 
           <div style={{ overflowX: "auto" }}>
             <table style={staffTableStyle}>
               <thead>
                 <tr>
-                  <th style={staffThStyle}>Pos</th>
-                  <th style={staffThStyle}>Token ID</th>
-                  <th style={staffThStyle}>Patient (Age/Sex)</th>
-                  <th style={staffThStyle}>Symptom & Risk</th>
-                  <th style={staffThStyle}>AI Complexity</th>
-                  <th style={staffThStyle}>Est Wait</th>
+                  <th style={staffThStyle}>{t("pos", language)}</th>
+                  <th style={staffThStyle}>{t("tokenId", language)}</th>
+                  <th style={staffThStyle}>{t("patientDemographics", language)}</th>
+                  <th style={staffThStyle}>{t("symptomRisk", language)}</th>
+                  <th style={staffThStyle}>{t("aiComplexity", language)}</th>
+                  <th style={staffThStyle}>{t("estWaitCol", language)}</th>
                 </tr>
               </thead>
               <tbody>
                 {queueSnapshot.length === 0 ? (
                   <tr>
                     <td colSpan="6" style={{ ...staffTdStyle, textAlign: "center", color: "#94A3B8" }}>
-                      No waiting tickets in {adminDept.toUpperCase()} department.
+                      {t("noWaitingInDept", language)}
                     </td>
                   </tr>
                 ) : (
-                  queueSnapshot.map((t) => (
-                    <tr key={t.ticket_id}>
-                      <td style={staffTdStyle}>#{t.position}</td>
+                  queueSnapshot.map((ticket) => (
+                    <tr key={ticket.ticket_id}>
+                      <td style={staffTdStyle}>#{ticket.position}</td>
                       <td style={{ ...staffTdStyle, fontWeight: 800, color: "#047857" }}>
-                        #{t.ticket_id}
-                        {t.transferred_from_dept && (
+                        #{ticket.ticket_id}
+                        {ticket.transferred_from_dept && (
                           <span style={{ display: "block", fontSize: "9px", color: "#D97706", fontWeight: 700 }}>
-                            (via {t.transferred_from_dept.toUpperCase()})
+                            ({t("transferredFrom", language)} {getCategoryLabel(ticket.transferred_from_dept, language)})
                           </span>
                         )}
                       </td>
                       <td style={{ ...staffTdStyle, fontWeight: 600 }}>
-                        {t.name} <span style={{ fontSize: "11px", color: "#64748B" }}>({t.age || 30}y, {(t.gender || 'M').charAt(0).toUpperCase()})</span>
+                        {ticket.name} <span style={{ fontSize: "11px", color: "#64748B" }}>({ticket.age || 30} {t("unit_yrs", language)}, {t(ticket.gender || 'male', language)})</span>
                       </td>
                       <td style={{ ...staffTdStyle, fontWeight: 600, fontSize: "11px", color: "#0284C7" }}>
-                        {(t.medical_condition || 'general_checkup').replace(/_/g, ' ').toUpperCase()}
-                        <span style={{ display: "block", fontSize: "10px", color: "#64748B" }}>Risk: {(t.pre_existing_condition || 'none').toUpperCase()}</span>
-                        {t.prescription_notes && (
-                          <span style={{ display: "inline-block", marginTop: "2px", padding: "1px 6px", borderRadius: "4px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 700, border: "1px solid #A7F3D0" }} title={t.prescription_notes}>
-                            💊 Rx: {t.prescription_notes.length > 25 ? `${t.prescription_notes.substring(0, 25)}...` : t.prescription_notes}
+                        {(ticket.medical_condition || 'general_checkup').replace(/_/g, ' ').toUpperCase()}
+                        <span style={{ display: "block", fontSize: "10px", color: "#64748B" }}>{t("riskLabel", language)}: {(ticket.pre_existing_condition || 'none').toUpperCase()}</span>
+                        {ticket.prescription_notes && (
+                          <span style={{ display: "inline-block", marginTop: "2px", padding: "1px 6px", borderRadius: "4px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 700, border: "1px solid #A7F3D0" }} title={ticket.prescription_notes}>
+                            Rx: {ticket.prescription_notes.length > 25 ? `${ticket.prescription_notes.substring(0, 25)}...` : ticket.prescription_notes}
                           </span>
                         )}
                       </td>
                       <td style={staffTdStyle}>
-                        <span style={badgePrioStyle(t.complexity_score > 1.4 ? "#DC2626" : "#0284C7")}>
-                          {t.complexity_score || 1.0}x Risk
+                        <span style={badgePrioStyle(ticket.complexity_score > 1.4 ? "#DC2626" : "#0284C7")}>
+                          {ticket.complexity_score || 1.0}x
                         </span>
                       </td>
-                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#059669" }}>{t.estimated_wait_minutes} min</td>
+                      <td style={{ ...staffTdStyle, fontWeight: 800, color: "#059669" }}>{ticket.estimated_wait_minutes} {t("unit_min", language)}</td>
                     </tr>
                   ))
                 )}
@@ -354,33 +384,33 @@ export default function StaffPage({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
           <div>
             <h3 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-              {adminDept.toUpperCase()} Appointments Roster ({appointments.length})
+              {getCategoryLabel(adminDept, language)} {t("todayApts", language)} ({appointments.length})
             </h3>
             <span style={{ fontSize: "12px", color: "#64748B" }}>
-              Strict Department Routing — Displaying pre-scheduled appointments for {adminDept.toUpperCase()}
+              {t("scheduledAppointmentsToday", language)}
             </span>
           </div>
 
           <button onClick={fetchTenantAppointments} style={refreshBtnStyle}>
-            Refresh Roster
+            ↻
           </button>
         </div>
 
         {appointments.length === 0 ? (
           <div style={{ padding: "30px", textAlign: "center", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #CBD5E1", color: "#94A3B8", fontSize: "13px" }}>
-            No booked appointments for {adminDept.toUpperCase()} department yet.
+            {t("noActiveAptsMsg", language)}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={staffTableStyle}>
               <thead>
                 <tr>
-                  <th style={staffThStyle}>Appt Code</th>
-                  <th style={staffThStyle}>Patient Name</th>
-                  <th style={staffThStyle}>Department</th>
-                  <th style={staffThStyle}>Reserved Slot</th>
-                  <th style={staffThStyle}>Status</th>
-                  <th style={staffThStyle}>Merged Token ID</th>
+                  <th style={staffThStyle}>{t("tokenId", language)}</th>
+                  <th style={staffThStyle}>{t("patientDemographics", language)}</th>
+                  <th style={staffThStyle}>{t("departmentLabel", language)}</th>
+                  <th style={staffThStyle}>{t("reservedSlotLabel", language)}</th>
+                  <th style={staffThStyle}>{t("currentStatus", language)}</th>
+                  <th style={staffThStyle}>{t("mergedToken", language)} ID)</th>
                   <th style={staffThStyle}>Actions</th>
                 </tr>
               </thead>
@@ -389,13 +419,13 @@ export default function StaffPage({
                   <tr key={apt.appointment_id}>
                     <td style={{ ...staffTdStyle, fontWeight: 800, color: "#047857" }}>{apt.appointment_id}</td>
                     <td style={{ ...staffTdStyle, fontWeight: 700 }}>{apt.patient_name}</td>
-                    <td style={{ ...staffTdStyle, fontWeight: 700, color: "#0284C7" }}>{apt.service_category.toUpperCase()}</td>
+                    <td style={{ ...staffTdStyle, fontWeight: 700, color: "#0284C7" }}>{getCategoryLabel(apt.service_category, language)}</td>
                     <td style={{ ...staffTdStyle, fontWeight: 600, color: "#0284C7" }}>
                       {apt.appointment_date} @ {apt.time_slot}
                     </td>
                     <td style={staffTdStyle}>
                       <span style={aptStatusBadgeStyle(apt.status)}>
-                        {apt.status.toUpperCase()}
+                        {getStatusLabel(apt.status, language)}
                       </span>
                     </td>
                     <td style={{ ...staffTdStyle, fontWeight: 800, color: "#D97706" }}>
@@ -408,11 +438,11 @@ export default function StaffPage({
                           style={checkInRosterBtnStyle}
                           title="Check in patient and issue priority token into active queue"
                         >
-                          Check-In & Queue
+                          {t("checkInBtn", language)}
                         </button>
                       ) : (
                         <span style={{ fontSize: "11px", color: "#94A3B8" }}>
-                          {apt.status === "completed" ? "Done" : "Queued"}
+                          {getStatusLabel(apt.status, language)}
                         </span>
                       )}
                     </td>
@@ -435,10 +465,10 @@ export default function StaffPage({
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                    E-Prescription & Department Transfer
+                    {t("transferModalTitle", language)}
                   </h3>
                   <span style={{ fontSize: "12px", color: "#64748B" }}>
-                    Patient: <strong>{selectedTicket.name}</strong> (#{selectedTicket.ticket_id})
+                    {t("patientDemographics", language)}: <strong>{selectedTicket.name}</strong> (#{selectedTicket.ticket_id})
                   </span>
                 </div>
               </div>
@@ -447,26 +477,26 @@ export default function StaffPage({
 
             <form onSubmit={handleExecuteTransfer}>
               <div style={{ marginBottom: "16px" }}>
-                <label style={fieldLabelStyle}>Target Department Transfer</label>
+                <label style={fieldLabelStyle}>{t("selectTargetDept", language)}</label>
                 <select
                   value={targetDept}
                   onChange={(e) => setTargetDept(e.target.value)}
                   style={modalInputStyle}
                 >
-                  <option value="pharmacy">💊 Pharmacy / Medicine Dispensary</option>
-                  <option value="laboratory">🔬 Pathology Lab & Blood Test</option>
-                  <option value="radiology">🦴 Radiology & X-Ray Imaging</option>
-                  <option value="consultation">📋 OPD / General Consultation</option>
-                  <option value="emergency">🚨 Emergency Triage</option>
-                  <option value="billing">💳 Central Billing & Accounts</option>
+                  <option value="pharmacy">{getCategoryLabel("pharmacy", language)}</option>
+                  <option value="laboratory">{getCategoryLabel("laboratory", language)}</option>
+                  <option value="radiology">{getCategoryLabel("radiology", language)}</option>
+                  <option value="consultation">{getCategoryLabel("consultation", language)}</option>
+                  <option value="emergency">{getCategoryLabel("emergency", language)}</option>
+                  <option value="billing">{getCategoryLabel("billing", language)}</option>
                 </select>
               </div>
 
               <div style={{ marginBottom: "16px" }}>
-                <label style={fieldLabelStyle}>E-Prescription & Clinical Orders</label>
+                <label style={fieldLabelStyle}>{t("rxDoctorNotes", language)}</label>
                 <textarea
                   rows="3"
-                  placeholder="Enter prescribed medicines, dosage, or lab tests (e.g. Tab. Paracetamol 650mg 1-0-1, Blood CBC Test)..."
+                  placeholder="Enter prescribed medicines, dosage, or lab tests..."
                   value={rxNotes}
                   onChange={(e) => setRxNotes(e.target.value)}
                   style={modalTextareaStyle}
@@ -484,28 +514,28 @@ export default function StaffPage({
                     onClick={() => setRxNotes("Tab. Paracetamol 650mg (1-0-1), Syrup Cetirizine 5ml")}
                     style={presetChipStyle}
                   >
-                    💊 General Fever RX
+                    Antipyretic Protocol
                   </button>
                   <button
                     type="button"
                     onClick={() => setRxNotes("Tab. Amoxicillin 500mg (1-0-1), Tab. Pantoprazole 40mg")}
                     style={presetChipStyle}
                   >
-                    🦠 Antibiotic RX
+                    Antibiotic Protocol
                   </button>
                   <button
                     type="button"
                     onClick={() => setRxNotes("Complete Blood Count (CBC), Fasting Blood Glucose")}
                     style={presetChipStyle}
                   >
-                    🔬 Pathology Lab Order
+                    Pathology Order (CBC)
                   </button>
                   <button
                     type="button"
                     onClick={() => setRxNotes("Chest X-Ray PA View, Orthopedic Consult")}
                     style={presetChipStyle}
                   >
-                    🦴 X-Ray Order
+                    Radiology Order (X-Ray)
                   </button>
                 </div>
               </div>
@@ -518,10 +548,10 @@ export default function StaffPage({
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
                 <button type="button" onClick={() => setShowTransferModal(false)} style={cancelModalBtnStyle}>
-                  Cancel
+                  {t("cancelBtn", language)}
                 </button>
                 <button type="submit" style={submitTransferBtnStyle}>
-                  Send E-Prescription & Auto-Transfer
+                  {t("confirmTransferBtn", language)}
                 </button>
               </div>
             </form>

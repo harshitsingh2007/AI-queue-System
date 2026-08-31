@@ -50,7 +50,6 @@ class JoinRequest(BaseModel):
     service_category: str = Field(..., json_schema_extra={"example": "consultation"})
     name: str = Field(..., json_schema_extra={"example": "Priya Sharma"})
     urgency: Optional[str] = Field(None, description="'emergency' | 'routine'")
-    priority_level: Optional[int] = None
     user_email: Optional[str] = None
     age: Optional[int] = 30
     gender: Optional[str] = "other"
@@ -66,6 +65,16 @@ class TicketActionRequest(BaseModel):
     tenant_id: str
     ticket_id: str
     department: Optional[str] = None  # Admin's department — enforces dept ownership check
+
+class CancelTicketRequest(BaseModel):
+    tenant_id: Optional[str] = "city-hospital-01"
+    ticket_id: Optional[str] = None
+    reason: Optional[str] = "No longer available"
+
+class AdjustQueueRequest(BaseModel):
+    tenant_id: Optional[str] = "city-hospital-01"
+    ticket_id: Optional[str] = None
+    skip_positions: int = Field(1, ge=1, le=2)
 
 class TransferTicketRequest(BaseModel):
     tenant_id: str
@@ -136,10 +145,7 @@ async def _broadcast_queue_update(tenant_id: str):
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/plugin/join")
 async def join_queue_http_endpoint(req: JoinRequest):
-    if req.priority_level is not None:
-        priority = req.priority_level
-    else:
-        priority = _urgency_to_priority(req.consumer_type, req.urgency)
+    priority = _urgency_to_priority(req.consumer_type, req.urgency)
 
     ticket = engine.join_queue(
         tenant_id=req.tenant_id,
@@ -163,7 +169,7 @@ async def join_queue_alt_endpoint(req: JoinRequest):
     return await join_queue_http_endpoint(req)
 
 @app.post("/api/v1/plugin/serve-next")
-async def serve_next_http(payload: ServeNextRequest):
+async def serve_next(payload: ServeNextRequest):
     # Resolve effective department: explicit department field takes priority.
     effective_dept = payload.department or payload.service_category
     ticket = engine.serve_next(payload.tenant_id, service_category=None, department=effective_dept)
@@ -177,7 +183,7 @@ async def serve_next_http(payload: ServeNextRequest):
     return {"success": True, "now_serving": ticket.to_dict()}
 
 @app.post("/api/v1/plugin/complete")
-async def complete_ticket_http(payload: TicketActionRequest):
+async def complete_ticket(payload: TicketActionRequest):
     try:
         ticket = engine.complete_ticket(payload.tenant_id, payload.ticket_id, department=payload.department)
         engine.recalculate_wait_times(payload.tenant_id)
@@ -210,21 +216,78 @@ async def transfer_ticket_endpoint(payload: TransferTicketRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/v1/plugin/no-show")
-async def mark_no_show_http(payload: TicketActionRequest):
+async def mark_no_show(payload: TicketActionRequest):
     engine.mark_no_show(payload.tenant_id, payload.ticket_id)
     engine.recalculate_wait_times(payload.tenant_id)
     await _broadcast_queue_update(payload.tenant_id)
     return {"success": True}
 
 @app.post("/api/v1/plugin/cancel")
-async def cancel_ticket_http(payload: TicketActionRequest):
-    engine.cancel_ticket(payload.tenant_id, payload.ticket_id)
-    engine.recalculate_wait_times(payload.tenant_id)
-    await _broadcast_queue_update(payload.tenant_id)
-    return {"success": True}
+@app.post("/api/v1/plugin/tickets/{ticket_id}/cancel")
+async def cancel_ticket_api(payload: Optional[CancelTicketRequest] = None, ticket_id: Optional[str] = None):
+    tid = ticket_id or (payload.ticket_id if payload else None)
+    tenant_id = (payload.tenant_id if payload else None) or "city-hospital-01"
+    reason = (payload.reason if payload else None) or "No longer available"
+
+    if not tid:
+        raise HTTPException(status_code=400, detail="Ticket ID is required.")
+
+    try:
+        cancelled_t = engine.cancel_ticket(tenant_id, tid, reason=reason)
+        if cancelled_t:
+            await sio.emit("ticket_cancelled", {"ticket": cancelled_t.to_dict()}, room=tenant_id)
+        await _broadcast_queue_update(tenant_id)
+        return {"status": "success", "success": True, "ticket": cancelled_t.to_dict() if cancelled_t else None}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/v1/plugin/adjust-queue")
+@app.post("/api/v1/plugin/tickets/{ticket_id}/adjust-queue")
+async def adjust_queue_api(payload: Optional[AdjustQueueRequest] = None, ticket_id: Optional[str] = None):
+    tid = ticket_id or (payload.ticket_id if payload else None)
+    tenant_id = (payload.tenant_id if payload else None) or "city-hospital-01"
+    skip_pos = (payload.skip_positions if payload else 1) or 1
+
+    if not tid:
+        raise HTTPException(status_code=400, detail="Ticket ID is required.")
+
+    try:
+        res = engine.adjust_queue_position(tenant_id, tid, skip_positions=skip_pos)
+        await sio.emit("ticket_updated", {"ticket": res["ticket"]}, room=tenant_id)
+        await _broadcast_queue_update(tenant_id)
+        return {"status": "success", "success": True, **res}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/v1/plugin/complete")
+async def complete_ticket_rest(payload: TicketActionRequest):
+    try:
+        completed_t = engine.complete_ticket(payload.tenant_id, payload.ticket_id, department=payload.department)
+        engine.recalculate_wait_times(payload.tenant_id)
+        if completed_t:
+            await sio.emit("ticket_completed", {"ticket": completed_t.to_dict()}, room=payload.tenant_id)
+        await _broadcast_queue_update(payload.tenant_id)
+        return {"success": True, "ticket": completed_t.to_dict() if completed_t else None}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/v1/plugin/ticket/{ticket_id}")
+async def get_ticket_details(ticket_id: str, tenant_id: Optional[str] = "city-hospital-01"):
+    tenant = engine._get_tenant(tenant_id)
+    ticket = tenant["tickets"].get(ticket_id)
+    if ticket:
+        return {"status": "success", "ticket": ticket.to_dict()}
+    
+    with engine._get_db() as conn:
+        r = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
+        if r:
+            t_dict = dict(r)
+            return {"status": "success", "ticket": t_dict}
+            
+    raise HTTPException(status_code=404, detail=f"Ticket #{ticket_id} not found.")
 
 @app.post("/api/v1/plugin/re-announce")
-async def re_announce_ticket_http(payload: TicketActionRequest):
+async def re_announce_ticket(payload: TicketActionRequest):
     ticket = engine._get_tenant(payload.tenant_id)["tickets"].get(payload.ticket_id)
     if not ticket:
         with engine._get_db() as conn:
@@ -240,7 +303,7 @@ async def re_announce_ticket_http(payload: TicketActionRequest):
     return {"success": True, "re_announced": ticket_dict}
 
 @app.post("/api/v1/plugin/counters")
-async def set_counters_http(payload: CounterUpdateRequest):
+async def set_counters(payload: CounterUpdateRequest):
     new_count = engine.set_active_counters(payload.tenant_id, payload.active_counters)
     await _broadcast_queue_update(payload.tenant_id)
     return {"success": True, "active_counters": new_count}
@@ -392,6 +455,7 @@ async def upload_historical_data(
     }
 
 @app.post("/api/v1/plugin/historical-data/train")
+@app.post("/api/v1/plugin/train-model")
 async def train_historical_model(payload: TrainTenantRequest):
     tenant_id = payload.tenant_id
     records = engine.get_historical_records(tenant_id)
@@ -412,7 +476,12 @@ async def train_historical_model(payload: TrainTenantRequest):
     if "analytics_update" in dir(sio):
         await _broadcast_queue_update(tenant_id)
 
-    return meta
+    return {
+        "status": "success",
+        "message": f"Successfully trained model for tenant '{tenant_id}'",
+        "metrics": meta,
+        **meta
+    }
 
 @app.get("/api/v1/plugin/model-status/{tenant_id}")
 async def get_model_status(tenant_id: str):
@@ -646,11 +715,13 @@ async def complete_ticket(sid, data):
     ticket_id = data["ticket_id"]
     department = data.get("department")  # Admin's department for ownership check
     try:
-        engine.complete_ticket(tenant_id, ticket_id, department=department)
+        completed_t = engine.complete_ticket(tenant_id, ticket_id, department=department)
     except PermissionError as e:
         await sio.emit("error", {"message": str(e)}, to=sid)
         return
     engine.recalculate_wait_times(tenant_id)
+    if completed_t:
+        await sio.emit("ticket_completed", {"ticket": completed_t.to_dict()}, room=tenant_id)
     await _broadcast_queue_update(tenant_id)
 
 @sio.event
@@ -659,6 +730,32 @@ async def set_counters(sid, data):
     count = data["active_counters"]
     engine.set_active_counters(tenant_id, count)
     await _broadcast_queue_update(tenant_id)
+
+@sio.event
+async def cancel_ticket(sid, data):
+    tenant_id = data.get("tenant_id", "city-hospital-01")
+    ticket_id = data.get("ticket_id")
+    reason = data.get("reason", "User requested cancellation")
+    try:
+        cancelled_t = engine.cancel_ticket(tenant_id, ticket_id, reason=reason)
+        if cancelled_t:
+            await sio.emit("ticket_cancelled", {"ticket": cancelled_t.to_dict()}, room=tenant_id)
+        await _broadcast_queue_update(tenant_id)
+    except Exception as e:
+        await sio.emit("error", {"message": str(e)}, to=sid)
+
+@sio.event
+async def adjust_queue(sid, data):
+    tenant_id = data.get("tenant_id", "city-hospital-01")
+    ticket_id = data.get("ticket_id")
+    skip_positions = data.get("skip_positions", 1)
+    try:
+        res = engine.adjust_queue_position(tenant_id, ticket_id, skip_positions=skip_positions)
+        await sio.emit("ticket_updated", {"ticket": res["ticket"]}, room=tenant_id)
+        await _broadcast_queue_update(tenant_id)
+        await sio.emit("adjust_queue_success", res, to=sid)
+    except Exception as e:
+        await sio.emit("error", {"message": str(e)}, to=sid)
 
 @sio.event
 async def trigger_retrain(sid, data):

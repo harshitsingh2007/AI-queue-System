@@ -2,38 +2,38 @@
   "tenant_id": "city-hospital-01",
   "is_tenant_specific": true,
   "model_type": "ExtraTrees",
-  "training_rows": 2041,
-  "mae": 2.44,
-  "r2": 0.9122,
+  "training_rows": 2541,
+  "mae": 2.76,
+  "r2": 0.9071,
   "metrics": {
     "ExtraTrees": {
-      "MAE": 2.436,
-      "RMSE": 3.714,
-      "R2": 0.9122,
-      "Fit_Time_Sec": 0.269
+      "MAE": 2.765,
+      "RMSE": 3.875,
+      "R2": 0.9071,
+      "Fit_Time_Sec": 0.132
     },
     "HistGradientBoosting": {
-      "MAE": 3.108,
-      "RMSE": 4.284,
-      "R2": 0.8832,
-      "Fit_Time_Sec": 3.355
+      "MAE": 3.305,
+      "RMSE": 4.368,
+      "R2": 0.882,
+      "Fit_Time_Sec": 5.097
     },
     "RandomForest": {
-      "MAE": 2.743,
-      "RMSE": 3.932,
-      "R2": 0.9016,
-      "Fit_Time_Sec": 0.189
+      "MAE": 3.027,
+      "RMSE": 4.135,
+      "R2": 0.8942,
+      "Fit_Time_Sec": 0.099
     }
   },
   "top_features": {
-    "staff_load_ratio": 0.3295,
-    "effective_workload": 0.1384,
-    "counter_capacity_index": 0.0991,
-    "active_staff_counters": 0.0987,
-    "service_category_pharmacy": 0.051,
-    "service_category_Technical Support": 0.0388,
-    "queue_length": 0.0312,
-    "service_category_registration": 0.0279
+    "staff_load_ratio": 0.2822,
+    "effective_workload": 0.1427,
+    "active_staff_counters": 0.0839,
+    "counter_capacity_index": 0.079,
+    "service_category_Technical Support": 0.0557,
+    "service_category_pharmacy": 0.0466,
+    "queue_length": 0.0348,
+    "service_category_Healthcare": 0.0348
   },
   "feature_columns": [
     "queue_length",
@@ -72,5 +72,5 @@
   ],
   "feature_schema_version": "2.0_engineered",
   "data_source": "historical_upload",
-  "trained_at": "2026-08-18 21:40:38"
+  "trained_at": "2026-08-30 15:11:49"
 }

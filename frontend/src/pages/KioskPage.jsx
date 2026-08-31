@@ -5,10 +5,10 @@
  * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
  */
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { HOSPITAL_CONFIG } from "../config/hospitalConfig";
 import { announceTicketVoice } from "../utils/voiceSynthesizer";
-import { t } from "../utils/i18n";
+import { t, getCategoryLabel } from "../utils/i18n";
 
 export default function KioskPage({
   tenantId,
@@ -18,36 +18,82 @@ export default function KioskPage({
   kioskQrData,
   language = "en",
   setLanguage,
+  currentUser,
+  navigateTo,
 }) {
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const isAdmin = currentUser && currentUser.role === "admin";
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handleFsChange);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("fullscreenchange", handleFsChange);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => setIsFullscreen(true)).catch((err) => console.log(err));
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().then(() => setIsFullscreen(false)).catch((err) => console.log(err));
+      }
+    }
+  };
+
+  const formattedTime = currentTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+  const formattedDate = currentTime.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+    <div style={{ maxWidth: isFullscreen ? "100%" : "1280px", margin: "0 auto", padding: isFullscreen ? "20px 40px" : "0" }}>
       {/* Top TV Header Bar */}
       <div style={kioskHeaderStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
           <div style={kioskLogoBadgeStyle}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 6v12M6 12h12"/>
               <path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0z"/>
             </svg>
           </div>
           <div>
-            <h1 style={{ margin: 0, fontSize: "24px", color: "#064E3B", fontWeight: 900 }}>
-              {HOSPITAL_CONFIG.name} — Patient Queue Monitor
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <h1 style={{ margin: 0, fontSize: "24px", color: "#064E3B", fontWeight: 900 }}>
+                {t("hospitalName", language)}
+              </h1>
+              <span style={{ padding: "3px 10px", borderRadius: "20px", background: "#ECFDF5", color: "#047857", fontSize: "11px", fontWeight: 800, border: "1px solid #A7F3D0", display: "flex", alignItems: "center", gap: "5px" }}>
+                <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 8px #10B981" }} />
+                {t("liveTvDisplay", language)}
+              </span>
+            </div>
             <span style={{ fontSize: "12px", color: "#475569", fontWeight: 600 }}>
-              Real-Time AI Priority Queue & Live Counter Display
+              {t("kioskSubtitle", language)}
             </span>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        {/* Center Digital Clock */}
+        <div style={{ textAlign: "center", padding: "8px 18px", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
+          <div style={{ fontSize: "18px", fontWeight: 900, color: "#0F172A", letterSpacing: "1px" }}>
+            {formattedTime}
+          </div>
+          <div style={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>
+            {formattedDate}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          {/* Language Switcher */}
           {setLanguage && (
             <div style={kioskLangContainerStyle}>
               <button
                 onClick={() => setLanguage("en")}
                 style={kioskLangBtnStyle(language === "en")}
               >
-                English
+                EN
               </button>
               <button
                 onClick={() => setLanguage("hi")}
@@ -58,10 +104,42 @@ export default function KioskPage({
             </div>
           )}
 
+          {/* Fullscreen TV Mode Toggle */}
+          <button
+            onClick={toggleFullscreen}
+            style={kioskFullscreenBtnStyle}
+            title="Toggle Fullscreen for Hospital Wall TV"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              {isFullscreen ? (
+                <>
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+                </>
+              ) : (
+                <>
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+                </>
+              )}
+            </svg>
+            {isFullscreen ? t("exitTv", language) : t("fullscreenTv", language)}
+          </button>
+
+          {/* Admin Return Button */}
+          {isAdmin && navigateTo && (
+            <button
+              onClick={() => navigateTo("staff")}
+              style={kioskAdminReturnBtnStyle}
+              title="Return to Doctor Desk Dashboard"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              {t("doctorDesk", language)}
+            </button>
+          )}
+
           <div style={{ textAlign: "right" }}>
             <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("estWait", language)}</span>
             <span style={{ fontSize: "20px", fontWeight: 800, color: "#047857" }}>
-              {analytics ? analytics.avg_wait_minutes : 12} min
+              {analytics ? analytics.avg_wait_minutes : 12} {t("unit_min", language)}
             </span>
           </div>
 
@@ -70,7 +148,7 @@ export default function KioskPage({
               <img
                 src={kioskQrData.qr_code_base64}
                 alt="Scan to Join Queue"
-                style={{ width: "70px", height: "70px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
+                style={{ width: "64px", height: "64px", borderRadius: "8px", border: "1px solid #CBD5E1" }}
               />
               <span style={{ fontSize: "9px", color: "#64748B", display: "block", marginTop: "2px", fontWeight: 700 }}>
                 {t("scanToJoin", language)}
@@ -89,14 +167,14 @@ export default function KioskPage({
               {t("nowServing", language)}
             </h2>
             <span style={{ fontSize: "12px", color: "#64748B" }}>
-              Please proceed to your assigned doctor desk when your number is displayed below.
+              {t("servingNote", language)}
             </span>
           </div>
 
           {servingTickets.length === 0 ? (
             <div style={{ padding: "60px 20px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #CBD5E1", color: "#94A3B8" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#64748B" }}>All Desks Available</h3>
-              <p style={{ margin: "4px 0 0 0", fontSize: "13px" }}>Calling next ticket shortly...</p>
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#64748B" }}>{t("allDesksAvailable", language)}</h3>
+              <p style={{ margin: "4px 0 0 0", fontSize: "13px" }}>{t("callingNextShortly", language)}</p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -104,7 +182,7 @@ export default function KioskPage({
                 <div key={tItem.ticket_id} style={kioskServingBigCardStyle}>
                   <div>
                     <span style={{ fontSize: "12px", color: "#047857", fontWeight: 800, textTransform: "uppercase" }}>
-                      DESK COUNTER ASSIGNED
+                      {t("deskCounterAssigned", language)}
                     </span>
                     <h2 style={{ margin: "2px 0", fontSize: "42px", fontWeight: 900, color: "#047857" }}>
                       #{tItem.ticket_id}
@@ -113,7 +191,7 @@ export default function KioskPage({
                   </div>
 
                   <div style={{ textAlign: "right" }}>
-                    <span style={kioskDeptBadgeStyle}>{tItem.service_category.toUpperCase()}</span>
+                    <span style={kioskDeptBadgeStyle}>{getCategoryLabel(tItem.service_category, language)}</span>
                   </div>
                 </div>
               ))}
@@ -128,36 +206,36 @@ export default function KioskPage({
               {t("waitingQueue", language)} ({queueSnapshot.length})
             </h2>
             <span style={{ fontSize: "12px", color: "#64748B" }}>
-              Real-time sequence order calculated by AI priority algorithm.
+              {t("waitingQueueNote", language)}
             </span>
           </div>
 
           {queueSnapshot.length === 0 ? (
             <div style={{ padding: "60px 20px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #CBD5E1", color: "#94A3B8" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#64748B" }}>No Waiting Patients</h3>
-              <p style={{ margin: "4px 0 0 0", fontSize: "13px" }}>Queue is clear at present.</p>
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#64748B" }}>{t("noWaitingPatients", language)}</h3>
+              <p style={{ margin: "4px 0 0 0", fontSize: "13px" }}>{t("queueClearMsg", language)}</p>
             </div>
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table style={kioskTableStyle}>
                 <thead>
                   <tr>
-                    <th style={kioskThStyle}>Pos</th>
-                    <th style={kioskThStyle}>Token ID</th>
-                    <th style={kioskThStyle}>Patient Name</th>
-                    <th style={kioskThStyle}>Dept</th>
-                    <th style={kioskThStyle}>Est Wait</th>
+                    <th style={kioskThStyle}>{t("pos", language)}</th>
+                    <th style={kioskThStyle}>{t("tokenId", language)}</th>
+                    <th style={kioskThStyle}>{t("patientNameCol", language)}</th>
+                    <th style={kioskThStyle}>{t("deptCol", language)}</th>
+                    <th style={kioskThStyle}>{t("estWaitCol", language)}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {queueSnapshot.slice(0, 8).map((t) => (
-                    <tr key={t.ticket_id}>
-                      <td style={{ ...kioskTdStyle, fontWeight: 800, color: "#475569" }}>#{t.position}</td>
-                      <td style={{ ...kioskTdStyle, fontWeight: 900, color: "#047857", fontSize: "16px" }}>#{t.ticket_id}</td>
-                      <td style={{ ...kioskTdStyle, fontWeight: 700, fontSize: "14px" }}>{t.name}</td>
-                      <td style={{ ...kioskTdStyle, fontWeight: 700, color: "#0284C7" }}>{t.service_category.toUpperCase()}</td>
+                  {queueSnapshot.slice(0, 8).map((item) => (
+                    <tr key={item.ticket_id}>
+                      <td style={{ ...kioskTdStyle, fontWeight: 800, color: "#475569" }}>#{item.position}</td>
+                      <td style={{ ...kioskTdStyle, fontWeight: 900, color: "#047857", fontSize: "16px" }}>#{item.ticket_id}</td>
+                      <td style={{ ...kioskTdStyle, fontWeight: 700, fontSize: "14px" }}>{item.name}</td>
+                      <td style={{ ...kioskTdStyle, fontWeight: 700, color: "#0284C7" }}>{getCategoryLabel(item.service_category, language)}</td>
                       <td style={{ ...kioskTdStyle, fontWeight: 900, color: "#059669", fontSize: "16px" }}>
-                        {t.estimated_wait_minutes} min
+                        {item.estimated_wait_minutes} {t("unit_min", language)}
                       </td>
                     </tr>
                   ))}
@@ -203,12 +281,27 @@ const kioskHeaderStyle = {
   boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
 };
 
-const kioskVoiceBtnStyle = {
+const kioskFullscreenBtnStyle = {
   padding: "8px 14px",
   borderRadius: "10px",
-  border: "1px solid #BAE6FD",
-  background: "#E0F2FE",
-  color: "#0284C7",
+  border: "1px solid #10B981",
+  background: "#ECFDF5",
+  color: "#047857",
+  fontWeight: 800,
+  fontSize: "12px",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  transition: "all 0.2s ease",
+};
+
+const kioskAdminReturnBtnStyle = {
+  padding: "8px 14px",
+  borderRadius: "10px",
+  border: "1px solid #CBD5E1",
+  background: "#F8FAFC",
+  color: "#334155",
   fontWeight: 700,
   fontSize: "12px",
   cursor: "pointer",

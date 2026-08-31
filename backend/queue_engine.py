@@ -74,6 +74,7 @@ class Ticket:
     name: str
     priority_level: int
     join_timestamp: float
+    effective_timestamp: Optional[float] = None
     user_email: str = ""
     age: int = 30
     gender: str = "other"
@@ -90,6 +91,14 @@ class Ticket:
     serve_start_time: Optional[float] = None
     serve_end_time: Optional[float] = None
     actual_service_minutes: Optional[float] = None
+    adjustment_count: int = 0
+    last_adjusted_at: Optional[float] = None
+    cancellation_reason: str = ""
+    cancelled_at: Optional[float] = None
+
+    def __post_init__(self):
+        if self.effective_timestamp is None:
+            self.effective_timestamp = self.join_timestamp
 
     def to_dict(self):
         return {
@@ -113,6 +122,11 @@ class Ticket:
             "estimated_wait_minutes": round(self.estimated_wait_minutes, 1),
             "position": self.position,
             "join_timestamp": self.join_timestamp,
+            "effective_timestamp": getattr(self, "effective_timestamp", self.join_timestamp),
+            "adjustment_count": getattr(self, "adjustment_count", 0),
+            "last_adjusted_at": getattr(self, "last_adjusted_at", None),
+            "cancellation_reason": getattr(self, "cancellation_reason", ""),
+            "cancelled_at": getattr(self, "cancelled_at", None),
             "serve_start_time": self.serve_start_time,
             "serve_end_time": self.serve_end_time,
             "actual_service_minutes": round(self.actual_service_minutes, 1) if self.actual_service_minutes else None,
@@ -259,10 +273,26 @@ class PluginQueueEngine:
                 conn.execute("ALTER TABLE tickets ADD COLUMN parent_ticket_id TEXT DEFAULT ''")
             if "transferred_from_dept" not in ticket_cols:
                 conn.execute("ALTER TABLE tickets ADD COLUMN transferred_from_dept TEXT DEFAULT ''")
+            if "effective_timestamp" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN effective_timestamp REAL")
+            if "adjustment_count" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN adjustment_count INTEGER DEFAULT 0")
+            if "last_adjusted_at" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN last_adjusted_at REAL")
+            if "cancellation_reason" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN cancellation_reason TEXT DEFAULT ''")
+            if "cancelled_at" not in ticket_cols:
+                conn.execute("ALTER TABLE tickets ADD COLUMN cancelled_at REAL")
 
         self._seed_default_users()
 
     def _save_ticket_db(self, ticket: Ticket):
+        eff_ts = getattr(ticket, 'effective_timestamp', ticket.join_timestamp)
+        adj_cnt = getattr(ticket, 'adjustment_count', 0)
+        last_adj = getattr(ticket, 'last_adjusted_at', None)
+        canc_rsn = getattr(ticket, 'cancellation_reason', '')
+        canc_at = getattr(ticket, 'cancelled_at', None)
+
         with self._get_db() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO tickets (
@@ -271,8 +301,10 @@ class PluginQueueEngine:
                     medical_condition, pre_existing_condition, complexity_score,
                     prescription_notes, parent_ticket_id, transferred_from_dept,
                     status, predicted_service_minutes, estimated_wait_minutes,
-                    position, serve_start_time, serve_end_time, actual_service_minutes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    position, serve_start_time, serve_end_time, actual_service_minutes,
+                    effective_timestamp, adjustment_count, last_adjusted_at,
+                    cancellation_reason, cancelled_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 ticket.ticket_id, ticket.tenant_id, ticket.consumer_type, ticket.service_category,
                 ticket.name, ticket.priority_level, ticket.join_timestamp, getattr(ticket, 'user_email', ''),
@@ -282,7 +314,8 @@ class PluginQueueEngine:
                 getattr(ticket, 'prescription_notes', ''), getattr(ticket, 'parent_ticket_id', ''),
                 getattr(ticket, 'transferred_from_dept', ''),
                 ticket.status, ticket.predicted_service_minutes, ticket.estimated_wait_minutes,
-                ticket.position, ticket.serve_start_time, ticket.serve_end_time, ticket.actual_service_minutes
+                ticket.position, ticket.serve_start_time, ticket.serve_end_time, ticket.actual_service_minutes,
+                eff_ts, adj_cnt, last_adj, canc_rsn, canc_at
             ))
             if ticket.status in ("serving", "completed", "transferred", "no_show", "cancelled"):
                 conn.execute("""
@@ -370,6 +403,7 @@ class PluginQueueEngine:
                     name=r["name"],
                     priority_level=r["priority_level"],
                     join_timestamp=r["join_timestamp"],
+                    effective_timestamp=r["effective_timestamp"] if "effective_timestamp" in r.keys() and r["effective_timestamp"] else r["join_timestamp"],
                     user_email=r["user_email"] if "user_email" in r.keys() and r["user_email"] else "",
                     age=r["age"] if "age" in r.keys() and r["age"] else 30,
                     gender=r["gender"] if "gender" in r.keys() and r["gender"] else "other",
@@ -384,12 +418,17 @@ class PluginQueueEngine:
                     estimated_wait_minutes=r["estimated_wait_minutes"] or 0.0,
                     position=r["position"] or 0,
                     serve_start_time=r["serve_start_time"],
+                    adjustment_count=r["adjustment_count"] if "adjustment_count" in r.keys() and r["adjustment_count"] else 0,
+                    last_adjusted_at=r["last_adjusted_at"] if "last_adjusted_at" in r.keys() and r["last_adjusted_at"] else None,
+                    cancellation_reason=r["cancellation_reason"] if "cancellation_reason" in r.keys() and r["cancellation_reason"] else "",
+                    cancelled_at=r["cancelled_at"] if "cancelled_at" in r.keys() and r["cancelled_at"] else None,
                 )
                 tenant = self._get_tenant(r["tenant_id"])
                 tenant["tickets"][ticket.ticket_id] = ticket
                 if ticket.status == "waiting":
                     seq = next(self._id_counter)
-                    heapq.heappush(tenant["heap"], (ticket.priority_level, ticket.join_timestamp, seq, ticket.ticket_id))
+                    eff_ts = getattr(ticket, 'effective_timestamp', ticket.join_timestamp)
+                    heapq.heappush(tenant["heap"], (ticket.priority_level, eff_ts, seq, ticket.ticket_id))
             print(f"[Engine Persistence] Hydrated {len(rows)} active tickets from database.")
 
     # ------------------------------------------------------------------
@@ -745,13 +784,152 @@ class PluginQueueEngine:
             self._save_ticket_db(ticket)
             del tenant["tickets"][ticket_id]
 
-    def cancel_ticket(self, tenant_id: str, ticket_id: str):
+    def _rebuild_heap(self, tenant_id: str):
+        tenant = self._get_tenant(tenant_id)
+        waiting = [t for t in tenant["tickets"].values() if t.status == "waiting"]
+        waiting.sort(key=lambda t: (t.priority_level, getattr(t, 'effective_timestamp', t.join_timestamp)))
+        tenant["heap"] = []
+        for t in waiting:
+            seq = next(self._id_counter)
+            eff_ts = getattr(t, 'effective_timestamp', t.join_timestamp)
+            heapq.heappush(tenant["heap"], (t.priority_level, eff_ts, seq, t.ticket_id))
+
+    def cancel_ticket(self, tenant_id: str, ticket_id: str, reason: str = "") -> Optional[Ticket]:
+        """Cancels a ticket, stores cancellation metadata, updates database, and recalculates queue."""
         tenant = self._get_tenant(tenant_id)
         ticket = tenant["tickets"].get(ticket_id)
-        if ticket:
-            ticket.status = "cancelled"
-            self._save_ticket_db(ticket)
+        if not ticket:
+            with self._get_db() as conn:
+                r = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
+                if r:
+                    ticket = Ticket(
+                        ticket_id=r["ticket_id"], tenant_id=r["tenant_id"],
+                        consumer_type=r["consumer_type"], service_category=r["service_category"],
+                        name=r["name"], priority_level=r["priority_level"], join_timestamp=r["join_timestamp"],
+                        status=r["status"]
+                    )
+        if not ticket:
+            raise ValueError(f"Ticket #{ticket_id} not found.")
+
+        if ticket.status in ("completed", "serving"):
+            raise ValueError(f"Cannot cancel ticket in '{ticket.status.upper()}' status.")
+
+        now = time.time()
+        ticket.status = "cancelled"
+        ticket.cancellation_reason = reason or "User requested cancellation"
+        ticket.cancelled_at = now
+
+        self._save_ticket_db(ticket)
+
+        if ticket_id in tenant["tickets"]:
             del tenant["tickets"][ticket_id]
+
+        self._rebuild_heap(tenant_id)
+        self.recalculate_wait_times(tenant_id)
+        return ticket
+
+    def adjust_queue_position(self, tenant_id: str, ticket_id: str, skip_positions: int = 1) -> dict:
+        """
+        Adjusts a patient's position in the queue later by skipping 1 or 2 positions.
+        Does NOT allow jumping ahead of other patients.
+        """
+        if skip_positions not in (1, 2):
+            raise ValueError("Skip adjustment must be either 1 or 2 positions.")
+
+        tenant = self._get_tenant(tenant_id)
+        ticket = tenant["tickets"].get(ticket_id)
+        if not ticket:
+            with self._get_db() as conn:
+                r = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
+                if not r:
+                    raise ValueError(f"Ticket #{ticket_id} not found.")
+                ticket = Ticket(
+                    ticket_id=r["ticket_id"],
+                    tenant_id=r["tenant_id"],
+                    consumer_type=r["consumer_type"],
+                    service_category=r["service_category"],
+                    name=r["name"],
+                    priority_level=r["priority_level"],
+                    join_timestamp=r["join_timestamp"],
+                    effective_timestamp=r["effective_timestamp"] if "effective_timestamp" in r.keys() and r["effective_timestamp"] else r["join_timestamp"],
+                    user_email=r["user_email"] if "user_email" in r.keys() and r["user_email"] else "",
+                    age=r["age"] if "age" in r.keys() and r["age"] else 30,
+                    gender=r["gender"] if "gender" in r.keys() and r["gender"] else "other",
+                    medical_condition=r["medical_condition"] if "medical_condition" in r.keys() and r["medical_condition"] else "general_checkup",
+                    pre_existing_condition=r["pre_existing_condition"] if "pre_existing_condition" in r.keys() and r["pre_existing_condition"] else "none",
+                    complexity_score=r["complexity_score"] if "complexity_score" in r.keys() and r["complexity_score"] else 1.0,
+                    prescription_notes=r["prescription_notes"] if "prescription_notes" in r.keys() and r["prescription_notes"] else "",
+                    parent_ticket_id=r["parent_ticket_id"] if "parent_ticket_id" in r.keys() and r["parent_ticket_id"] else "",
+                    transferred_from_dept=r["transferred_from_dept"] if "transferred_from_dept" in r.keys() and r["transferred_from_dept"] else "",
+                    status=r["status"],
+                    predicted_service_minutes=r["predicted_service_minutes"] or 10.0,
+                    estimated_wait_minutes=r["estimated_wait_minutes"] or 0.0,
+                    position=r["position"] or 0,
+                    serve_start_time=r["serve_start_time"],
+                    adjustment_count=r["adjustment_count"] if "adjustment_count" in r.keys() and r["adjustment_count"] else 0,
+                    last_adjusted_at=r["last_adjusted_at"] if "last_adjusted_at" in r.keys() and r["last_adjusted_at"] else None,
+                    cancellation_reason=r["cancellation_reason"] if "cancellation_reason" in r.keys() and r["cancellation_reason"] else "",
+                    cancelled_at=r["cancelled_at"] if "cancelled_at" in r.keys() and r["cancelled_at"] else None,
+                )
+                tenant["tickets"][ticket_id] = ticket
+
+        if ticket.status != "waiting":
+            raise ValueError(f"Cannot adjust queue: Ticket is in '{ticket.status.upper()}' status. Only WAITING tickets can be adjusted.")
+
+        # Limit to 1 adjustment per ticket to prevent infinite delay abuses
+        if getattr(ticket, 'adjustment_count', 0) >= 1:
+            raise ValueError("This ticket has already been adjusted once. Maximum 1 queue adjustment allowed per ticket.")
+
+        # Get all waiting tickets in the same queue / service category
+        dept_clean = ticket.service_category.strip().lower()
+        same_dept_waiting = [
+            t for t in tenant["tickets"].values()
+            if t.status == "waiting" and t.service_category.strip().lower() == dept_clean
+        ]
+        # Sort by priority and effective_timestamp
+        same_dept_waiting.sort(key=lambda t: (t.priority_level, getattr(t, 'effective_timestamp', t.join_timestamp)))
+
+        try:
+            curr_idx = next(i for i, t in enumerate(same_dept_waiting) if t.ticket_id == ticket_id)
+        except StopIteration:
+            raise ValueError("Ticket is not in the active waiting queue.")
+
+        previous_position = curr_idx + 1
+        available_behind = len(same_dept_waiting) - 1 - curr_idx
+        if available_behind <= 0:
+            raise ValueError("You are already at the end of the department queue. No positions behind to swap with.")
+
+        actual_skip = min(skip_positions, available_behind)
+        target_idx = curr_idx + actual_skip
+        target_ticket = same_dept_waiting[target_idx]
+
+        # Calculate new effective_timestamp to position immediately AFTER target_ticket
+        target_eff = getattr(target_ticket, 'effective_timestamp', target_ticket.join_timestamp)
+        if target_idx + 1 < len(same_dept_waiting):
+            next_eff = getattr(same_dept_waiting[target_idx + 1], 'effective_timestamp', same_dept_waiting[target_idx + 1].join_timestamp)
+            new_eff = (target_eff + next_eff) / 2.0
+        else:
+            new_eff = target_eff + 1.0
+
+        ticket.effective_timestamp = new_eff
+        ticket.adjustment_count = getattr(ticket, 'adjustment_count', 0) + 1
+        ticket.last_adjusted_at = time.time()
+
+        self._save_ticket_db(ticket)
+        self._rebuild_heap(tenant_id)
+        self.recalculate_wait_times(tenant_id)
+
+        new_position = ticket.position
+        print(f"[Queue Event] Ticket: {ticket.ticket_id} | Action: QUEUE_ADJUSTED | Prev Pos: {previous_position} | Skip: +{actual_skip} | New Pos: {new_position}")
+
+        return {
+            "ticket": ticket.to_dict(),
+            "previous_position": previous_position,
+            "new_position": new_position,
+            "requested_skip": skip_positions,
+            "actual_skip": actual_skip,
+            "message": f"Successfully postponed queue position by {actual_skip} position(s). New position is #{new_position}."
+        }
 
     # ------------------------------------------------------------------
     # Dynamic Recalculation
@@ -761,7 +939,7 @@ class PluginQueueEngine:
         active_counters = tenant["active_counters"]
 
         waiting = [t for t in tenant["tickets"].values() if t.status == "waiting"]
-        waiting.sort(key=lambda t: (t.priority_level, t.join_timestamp))
+        waiting.sort(key=lambda t: (t.priority_level, getattr(t, 'effective_timestamp', t.join_timestamp)))
 
         cumulative_by_group: Dict[str, float] = {}
         updated = []
@@ -789,7 +967,7 @@ class PluginQueueEngine:
         if department and department.strip().lower() != "all":
             dept_clean = department.strip().lower()
             waiting = [t for t in waiting if t.service_category.strip().lower() == dept_clean]
-        waiting.sort(key=lambda t: (t.priority_level, t.join_timestamp))
+        waiting.sort(key=lambda t: (t.priority_level, getattr(t, 'effective_timestamp', t.join_timestamp)))
         return [t.to_dict() for t in waiting]
 
     def get_serving_tickets(self, tenant_id: str, department: Optional[str] = None) -> List[dict]:
@@ -1137,40 +1315,92 @@ class PluginQueueEngine:
     def get_user_appointments(self, user_email: str) -> List[dict]:
         email_clean = user_email.strip().lower()
         with self._get_db() as conn:
-            # Sync status from tickets table
+            # Sync status from tickets table into appointments table
             conn.execute("""
                 UPDATE appointments
                 SET status = (
                     SELECT status FROM tickets
                     WHERE tickets.ticket_id = appointments.ticket_id
                 )
-                WHERE (user_email = ? OR LOWER(patient_name) = (SELECT LOWER(username) FROM users WHERE email = ?))
-                  AND ticket_id IS NOT NULL AND ticket_id != ''
+                WHERE ticket_id IS NOT NULL AND ticket_id != ''
                   AND EXISTS (
                       SELECT 1 FROM tickets
                       WHERE tickets.ticket_id = appointments.ticket_id
                   )
-            """, (email_clean, email_clean))
+            """)
 
+            # Fetch user username if registered
+            u_row = conn.execute("SELECT username, email FROM users WHERE LOWER(email) = ? OR LOWER(username) = ?", (email_clean, email_clean)).fetchone()
+            matched_username = u_row["username"].lower() if u_row else email_clean
+            matched_email = u_row["email"].lower() if u_row else email_clean
+
+            # Fetch pre-scheduled appointments
             rows = conn.execute("""
                 SELECT * FROM appointments
-                WHERE user_email = ? OR LOWER(patient_name) = (SELECT LOWER(username) FROM users WHERE email = ?)
+                WHERE LOWER(user_email) = ? 
+                   OR LOWER(user_email) = ?
+                   OR LOWER(patient_name) = ?
+                   OR LOWER(patient_name) = ?
+                   OR LOWER(patient_name) LIKE ?
                 ORDER BY created_at DESC
-            """, (email_clean, email_clean)).fetchall()
+            """, (email_clean, matched_email, email_clean, matched_username, f"{matched_username}%")).fetchall()
 
             result = []
+            seen_ticket_ids = set()
+
             for r in rows:
                 item = dict(r)
                 if item.get("ticket_id"):
+                    seen_ticket_ids.add(item["ticket_id"])
                     t_row = conn.execute("""
-                        SELECT prescription_notes, transferred_from_dept, actual_service_minutes
+                        SELECT prescription_notes, transferred_from_dept, actual_service_minutes, status
                         FROM tickets WHERE ticket_id = ?
                     """, (item["ticket_id"],)).fetchone()
                     if t_row:
                         item["prescription_notes"] = t_row["prescription_notes"] or ""
                         item["transferred_from_dept"] = t_row["transferred_from_dept"] or ""
                         item["actual_service_minutes"] = t_row["actual_service_minutes"]
+                        if t_row["status"]:
+                            item["status"] = t_row["status"]
                 result.append(item)
+
+            # Also fetch walk-in / standalone consultation tickets for this user
+            ticket_rows = conn.execute("""
+                SELECT * FROM tickets
+                WHERE (LOWER(user_email) = ? 
+                   OR LOWER(user_email) = ?
+                   OR LOWER(name) = ?
+                   OR LOWER(name) = ?
+                   OR LOWER(name) LIKE ?)
+                ORDER BY join_timestamp DESC
+            """, (email_clean, matched_email, email_clean, matched_username, f"{matched_username}%")).fetchall()
+
+            for t_r in ticket_rows:
+                t_dict = dict(t_r)
+                tid = t_dict["ticket_id"]
+                if tid not in seen_ticket_ids:
+                    seen_ticket_ids.add(tid)
+                    join_ts = t_dict.get("join_timestamp") or time.time()
+                    walkin_item = {
+                        "appointment_id": f"TKN-{tid}",
+                        "tenant_id": t_dict.get("tenant_id", "city-hospital-01"),
+                        "consumer_type": t_dict.get("consumer_type", "hospital"),
+                        "service_category": t_dict.get("service_category", "consultation"),
+                        "patient_name": t_dict.get("name", matched_username),
+                        "user_email": t_dict.get("user_email") or matched_email,
+                        "appointment_date": time.strftime("%Y-%m-%d", time.localtime(join_ts)),
+                        "time_slot": time.strftime("%I:%M %p", time.localtime(join_ts)),
+                        "status": t_dict.get("status", "completed"),
+                        "created_at": join_ts,
+                        "ticket_id": tid,
+                        "prescription_notes": t_dict.get("prescription_notes") or "",
+                        "transferred_from_dept": t_dict.get("transferred_from_dept") or "",
+                        "actual_service_minutes": t_dict.get("actual_service_minutes")
+                    }
+                    result.append(walkin_item)
+
+            # Sort unified records by created_at DESC
+            result.sort(key=lambda x: x.get("created_at", 0), reverse=True)
             return result
 
     def get_tenant_appointments(

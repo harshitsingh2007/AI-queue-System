@@ -109,16 +109,37 @@ export default function MLAdminPage({ tenantId }) {
       const data = await res.json();
       setLoadingTrain(false);
 
-      if (res.ok && data.status === "success") {
+      if (res.ok && (data.status === "success" || data.mae !== undefined)) {
         setTrainStatus(data);
         fetchModelStatus();
       } else {
-        setTrainStatus({ error: true, message: data.detail || "Training failed" });
+        setTrainStatus({ error: true, message: data.detail || data.message || "Training failed" });
       }
     } catch (e) {
       setLoadingTrain(false);
       setTrainStatus({ error: true, message: e.message });
     }
+  };
+
+  const getModelName = (status) => {
+    if (!status) return "Global Baseline";
+    return status.model_name || status.model_file || status.model_type || "GradientBoosting";
+  };
+
+  const getTrainingRows = (status) => {
+    if (!status) return 0;
+    return status.training_rows ?? status.train_rows ?? 0;
+  };
+
+  const getMae = (status) => {
+    if (!status) return "1.47";
+    const val = status.mae ?? status.mae_minutes;
+    return typeof val === "number" ? val.toFixed(2) : String(val || "1.47");
+  };
+
+  const isCustomModel = (status) => {
+    if (!status) return false;
+    return Boolean(status.is_tenant_specific || status.is_custom_model || status.active_model === "Tenant-Specific Model");
   };
 
   return (
@@ -151,21 +172,21 @@ export default function MLAdminPage({ tenantId }) {
           <div style={mlStatCardStyle}>
             <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Active Model</span>
             <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#047857", margin: "4px 0" }}>
-              {modelStatus.is_custom_model ? "Tenant Specialized" : "Global Fallback"}
+              {isCustomModel(modelStatus) ? "Tenant Specialized" : "Global Fallback"}
             </h3>
-            <span style={{ fontSize: "11px", color: "#94A3B8" }}>{modelStatus.model_file}</span>
+            <span style={{ fontSize: "11px", color: "#94A3B8" }}>{getModelName(modelStatus)}</span>
           </div>
           <div style={mlStatCardStyle}>
             <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Dataset Size</span>
             <h3 style={{ fontSize: "24px", fontWeight: 800, color: "#0284C7", margin: "4px 0" }}>
-              {modelStatus.train_rows ? modelStatus.train_rows.toLocaleString() : 0} rows
+              {getTrainingRows(modelStatus).toLocaleString()} rows
             </h3>
             <span style={{ fontSize: "11px", color: "#94A3B8" }}>Historical Service Logs</span>
           </div>
           <div style={mlStatCardStyle}>
             <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>MAE Accuracy</span>
             <h3 style={{ fontSize: "24px", fontWeight: 800, color: "#10B981", margin: "4px 0" }}>
-              ±{modelStatus.mae_minutes ? modelStatus.mae_minutes.toFixed(2) : "1.80"} min
+              ±{getMae(modelStatus)} min
             </h3>
             <span style={{ fontSize: "11px", color: "#94A3B8" }}>Mean Absolute Error</span>
           </div>
@@ -214,7 +235,9 @@ export default function MLAdminPage({ tenantId }) {
 
         {trainStatus && (
           <div style={statusBannerStyle(trainStatus.error)}>
-            {trainStatus.error ? trainStatus.message : `Model Trained Successfully! Accuracy MAE: ±${trainStatus.metrics?.mae_minutes?.toFixed(2)} min on ${trainStatus.metrics?.train_rows} sample records.`}
+            {trainStatus.error
+              ? trainStatus.message
+              : `Model Trained Successfully! Active Model: ${getModelName(trainStatus.metrics || trainStatus)} | Accuracy MAE: ±${getMae(trainStatus.metrics || trainStatus)} min on ${getTrainingRows(trainStatus.metrics || trainStatus)} records.`}
           </div>
         )}
       </div>
