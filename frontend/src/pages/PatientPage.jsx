@@ -8,7 +8,10 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
-import { t } from "../utils/i18n";
+import { t, getCategoryLabel, getStatusLabel } from "../utils/i18n";
+import { printTokenPass, printAppointmentRecord } from "../utils/printPassHelper";
+import QueueStepper from "../components/QueueStepper";
+import FamilyMemberSwitcher from "../components/FamilyMemberSwitcher";
 import HeroBanner from "../components/HeroBanner";
 import Footer from "../components/Footer";
 
@@ -25,6 +28,42 @@ export default function PatientPage({
   navigateTo,
   currentTab = "walkin",
 }) {
+  // Family Members & Dependents Management
+  const getInitialFamilyMembers = () => {
+    try {
+      const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+
+    return [
+      {
+        id: "self",
+        name: currentUser ? (currentUser.username || "Self") : "Self",
+        relation: "self",
+        age: currentUser && currentUser.age ? currentUser.age : 35,
+        gender: currentUser && currentUser.gender ? currentUser.gender.toLowerCase() : "male",
+      },
+    ];
+  };
+
+  const [familyMembers, setFamilyMembers] = useState(getInitialFamilyMembers);
+  const [selectedMemberId, setSelectedMemberId] = useState("self");
+
+  // Family Tickets dictionary: { [memberId]: ticketObj }
+  const [familyTickets, setFamilyTickets] = useState(() => {
+    try {
+      const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+      const saved = localStorage.getItem(ticketStorageKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+
   // Sync activeTab with currentTab prop & URL parameters
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -66,7 +105,6 @@ export default function PatientPage({
       window.history.pushState({}, "", url.toString());
     }
   };
-
   const [name, setName] = useState(currentUser ? currentUser.username : "");
   const [age, setAge] = useState(currentUser && currentUser.age ? currentUser.age : 35);
   const [gender, setGender] = useState(currentUser && currentUser.gender ? currentUser.gender.toLowerCase() : "male");
@@ -119,6 +157,60 @@ export default function PatientPage({
     return s === "completed" || s === "transferred" || s === "cancelled" || s === "no_show";
   });
 
+  const selectedMember = familyMembers.find((m) => m.id === selectedMemberId) || familyMembers[0];
+
+  const handleSelectMember = (member) => {
+    setSelectedMemberId(member.id);
+    setName(member.name);
+    if (member.age) setAge(member.age);
+    if (member.gender) setGender(member.gender.toLowerCase());
+
+    // If this family member already has an active ticket in familyTickets, switch activeTicket to it
+    if (familyTickets[member.id]) {
+      const memTicket = familyTickets[member.id];
+      setActiveTicket(memTicket);
+      fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${memTicket.ticket_id}`)
+        .then((r) => r.json())
+        .then((qr) => setTicketQrData(qr))
+        .catch((e) => console.log("QR error:", e));
+    }
+    setStatusMsg(`${t("profileSwitchedMsg", language)} ${member.name}`);
+  };
+
+  const handleAddMember = (newMember) => {
+    const updated = [...familyMembers, newMember];
+    setFamilyMembers(updated);
+    try {
+      const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch (e) {}
+    handleSelectMember(newMember);
+  };
+
+  const handleDeleteMember = (memberId) => {
+    if (memberId === "self") return;
+    const updated = familyMembers.filter((m) => m.id !== memberId);
+    setFamilyMembers(updated);
+    try {
+      const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch (e) {}
+
+    if (familyTickets[memberId]) {
+      const updatedTickets = { ...familyTickets };
+      delete updatedTickets[memberId];
+      setFamilyTickets(updatedTickets);
+      try {
+        const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+        localStorage.setItem(ticketStorageKey, JSON.stringify(updatedTickets));
+      } catch (e) {}
+    }
+
+    if (selectedMemberId === memberId) {
+      handleSelectMember(familyMembers[0]);
+    }
+  };
+
   // 1. Instant Walk-In Ticket Checkin
   const handleJoinQueue = async (e) => {
     e.preventDefault();
@@ -146,9 +238,21 @@ export default function PatientPage({
 
       if (res.ok) {
         const data = await res.json();
-        const tkt = data.ticket;
-        setActiveTicket(tkt);
-        setStatusMsg(`Ticket #${tkt.ticket_id} Issued. AI Service Estimate: ${tkt.predicted_service_minutes} min.`);
+        const t = data.ticket;
+        const tkt = t;
+        setActiveTicket(t);
+
+        // Record ticket in family tickets map under active member
+        setFamilyTickets((prev) => {
+          const updated = { ...prev, [selectedMemberId]: t };
+          try {
+            const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+            localStorage.setItem(ticketStorageKey, JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+
+        setStatusMsg(`Ticket #${t.ticket_id} Issued for ${name}. AI Service Estimate: ${t.predicted_service_minutes} min.`);
 
         fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${tkt.ticket_id}`)
           .then((r) => r.json())
@@ -215,9 +319,21 @@ export default function PatientPage({
 
       const data = await res.json();
       if (res.ok && data.status === "success") {
-        const tkt = data.ticket;
-        setActiveTicket(tkt);
-        setStatusMsg(`Appointment Checked In. Merged into Priority Line as Token #${tkt.ticket_id}`);
+        const t = data.ticket;
+        const tkt = t;
+        setActiveTicket(t);
+
+        // Record ticket in family tickets map under active member
+        setFamilyTickets((prev) => {
+          const updated = { ...prev, [selectedMemberId]: t };
+          try {
+            const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+            localStorage.setItem(ticketStorageKey, JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+
+        setStatusMsg(`Appointment Checked In. Merged into Priority Line as Token #${t.ticket_id}`);
 
         fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${tkt.ticket_id}`)
           .then((r) => r.json())
@@ -234,6 +350,100 @@ export default function PatientPage({
     }
   };
 
+  // 4. Cancel Ticket with Reason Validation
+  const handleCancelTicket = async () => {
+    if (!activeTicket) return;
+    setCancelLoading(true);
+    setCancelError("");
+    const reasonText = cancelReason === "Other" && otherCancelReason.trim() ? otherCancelReason.trim() : cancelReason;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/plugin/tickets/${activeTicket.ticket_id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          ticket_id: activeTicket.ticket_id,
+          reason: reasonText,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || "Failed to cancel ticket.");
+      }
+
+      const cancelledTicket = data.ticket || { ...activeTicket, status: "cancelled", cancellation_reason: reasonText };
+      setActiveTicket(cancelledTicket);
+
+      // Clean from familyTickets map
+      setFamilyTickets((prev) => {
+        const updated = { ...prev };
+        delete updated[selectedMemberId];
+        Object.keys(updated).forEach((k) => {
+          if (updated[k]?.ticket_id === activeTicket.ticket_id) delete updated[k];
+        });
+        try {
+          const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+          localStorage.setItem(ticketStorageKey, JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+
+      setShowCancelModal(false);
+      setShowAdjustModal(false);
+      setStatusMsg(`Ticket #${activeTicket.ticket_id} has been cancelled.`);
+      fetchUserAppointments();
+      if (refreshData) refreshData();
+    } catch (err) {
+      setCancelError(err.message || "Could not cancel ticket.");
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  // 5. Adjust Queue / Skip Positions (Postpone Later in Queue)
+  const handleAdjustQueue = async (skipCount) => {
+    if (!activeTicket) return;
+    setAdjustLoading(true);
+    setAdjustError("");
+    setAdjustSuccessMsg("");
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/plugin/tickets/${activeTicket.ticket_id}/adjust-queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          ticket_id: activeTicket.ticket_id,
+          skip_positions: skipCount,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.message || "Failed to adjust queue.");
+      }
+
+      if (data.ticket) {
+        setActiveTicket(data.ticket);
+      }
+      setAdjustSuccessMsg(data.message || `Postponed by ${skipCount} position(s).`);
+      setStatusMsg(data.message || `Queue adjusted by +${skipCount} positions.`);
+
+      setTimeout(() => {
+        setShowAdjustModal(false);
+        setAdjustSuccessMsg("");
+      }, 1400);
+
+      fetchUserAppointments();
+      if (refreshData) refreshData();
+    } catch (err) {
+      setAdjustError(err.message || "Could not adjust queue position.");
+    } finally {
+      setAdjustLoading(false);
+    }
+  };
   return (
     <div style={{ width: "100%", paddingBottom: "40px" }}>
       <style>{`
@@ -584,7 +794,17 @@ export default function PatientPage({
         </button>
       </div>
 
-      {/* 3. Main Form Card Container */}
+      {/* Family & Dependent Member Switcher Bar */}
+      <FamilyMemberSwitcher
+        members={familyMembers}
+        selectedMemberId={selectedMemberId}
+        onSelectMember={handleSelectMember}
+        onAddMember={handleAddMember}
+        onDeleteMember={handleDeleteMember}
+        language={language}
+      />
+
+      {/* Main Tab Content */}
       <div style={standaloneCardStyle}>
         {activeTab === "walkin" && (
           <div>
@@ -612,6 +832,22 @@ export default function PatientPage({
                 Walk-In
               </span>
             </div>
+
+            {/* Dependent Booking Notice Banner */}
+            {selectedMember && selectedMember.relation !== "self" && (
+              <div style={{ marginBottom: "16px", padding: "10px 14px", borderRadius: "10px", background: "#EFF6FF", border: "1px solid #BFDBFE", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "12px", color: "#1E40AF", fontWeight: 700 }}>
+                  👤 {t("bookingFor", language)} <strong>{selectedMember.name}</strong> ({t(`relation_${selectedMember.relation}`, language)}, {selectedMember.age} {t("unit_yrs", language)})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSelectMember(familyMembers[0])}
+                  style={{ background: "none", border: "none", color: "#2563EB", fontSize: "11px", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+                >
+                  {language === "hi" ? "स्वयं पर स्विच करें" : "Switch to Self"}
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleJoinQueue}>
               {/* Row 1: Patient Full Name & Patient Age & Gender */}
@@ -854,6 +1090,22 @@ export default function PatientPage({
                 Reserve a future appointment slot. Scan code upon arrival to merge into priority queue line.
               </p>
             </div>
+
+            {/* Dependent Booking Notice Banner */}
+            {selectedMember && selectedMember.relation !== "self" && (
+              <div style={{ marginBottom: "16px", padding: "10px 14px", borderRadius: "10px", background: "#EFF6FF", border: "1px solid #BFDBFE", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "12px", color: "#1E40AF", fontWeight: 700 }}>
+                  👤 {t("bookingFor", language)} <strong>{selectedMember.name}</strong> ({t(`relation_${selectedMember.relation}`, language)}, {selectedMember.age} {t("unit_yrs", language)})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleSelectMember(familyMembers[0])}
+                  style={{ background: "none", border: "none", color: "#2563EB", fontSize: "11px", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}
+                >
+                  {language === "hi" ? "स्वयं पर स्विच करें" : "Switch to Self"}
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleBookSlot}>
               <div style={{ marginBottom: "16px" }}>
@@ -1130,9 +1382,53 @@ export default function PatientPage({
       {/* 4. Digital Ticket Pass Card */}
       {activeTicket && (
         <div style={{ ...standaloneCardStyle, marginTop: "24px", border: "2px solid #059669" }}>
+          {/* Active Family Pass Switcher (if multiple family members have active tickets) */}
+          {Object.keys(familyTickets).length > 1 && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", background: "#F1F5F9", padding: "8px 12px", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569" }}>{t("switchTicket", language)}:</span>
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                {Object.entries(familyTickets).map(([memId, tick]) => {
+                  const isCurrent = activeTicket.ticket_id === tick.ticket_id;
+                  return (
+                    <button
+                      key={memId}
+                      type="button"
+                      onClick={() => {
+                        setActiveTicket(tick);
+                        fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${tick.ticket_id}`)
+                          .then((r) => r.json())
+                          .then((qr) => setTicketQrData(qr))
+                          .catch((e) => console.log("QR error:", e));
+                      }}
+                      style={{
+                        padding: "3px 9px",
+                        borderRadius: "6px",
+                        border: isCurrent ? "1.5px solid #059669" : "1px solid #CBD5E1",
+                        background: isCurrent ? "#059669" : "#FFFFFF",
+                        color: isCurrent ? "#FFFFFF" : "#0F172A",
+                        fontSize: "11px",
+                        fontWeight: isCurrent ? 800 : 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {tick.name} (#{tick.ticket_id})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #D8E8DD", paddingBottom: "14px", marginBottom: "16px" }}>
             <div>
-              <span style={{ fontSize: "11px", color: "#64748B", textTransform: "uppercase", fontWeight: 600 }}>{t("livePassTitle", language)}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
+                <span style={{ fontSize: "11px", color: "#64748B", textTransform: "uppercase", fontWeight: 600 }}>{t("livePassTitle", language)}</span>
+                {activeTicket.name && (
+                  <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 6px", borderRadius: "4px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
+                    👤 {activeTicket.name}
+                  </span>
+                )}
+              </div>
               <h2 style={{ margin: 0, fontSize: "32px", color: "#047857", fontWeight: 800 }}>
                 #{activeTicket.ticket_id}
               </h2>
