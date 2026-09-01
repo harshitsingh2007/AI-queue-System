@@ -12,7 +12,7 @@
 import React from "react";
 import { HOSPITAL_CONFIG } from "../config/hospitalConfig";
 
-export default function Footer() {
+export default function Footer({ language = "en" }) {
   return (
     <footer style={footerWrapperStyle} className="user-dashboard-footer">
       <style>{`
@@ -69,14 +69,16 @@ export default function Footer() {
             {HOSPITAL_CONFIG.name || "City General Hospital"}
           </div>
           <div style={{ fontSize: "11px", color: "#64748B", fontWeight: 500, marginTop: "1px" }}>
-            Care you can trust
+            {language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा" : "Care you can trust"}
           </div>
         </div>
       </div>
 
       {/* 2. Center: Copyright */}
       <div style={{ fontSize: "12.5px", color: "#64748B", fontWeight: 500 }}>
-        © 2024 City General Hospital. All rights reserved.
+        {language === "hi"
+          ? "© 2024 सिटी जनरल अस्पताल. सर्वाधिकार सुरक्षित."
+          : "© 2024 City General Hospital. All rights reserved."}
       </div>
 
       {/* 3. Right: Healthcare Heartbeat Graphic (ECG Pulse Waveform) */}

@@ -11,12 +11,15 @@
 import React from "react";
 
 export default function HeroBanner({
+  language = "en",
   stats = {
     patientsServed: "250+",
     avgWaitTime: "15 min",
     satisfaction: "98%",
   },
 }) {
+  const isHi = language === "hi";
+
   return (
     <div style={heroContainerStyle} className="hero-banner-container">
       <style>{`
@@ -120,7 +123,7 @@ export default function HeroBanner({
           background: rgba(255, 255, 255, 0.16);
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           flex-shrink: 0;
           color: #A7F3D0;
         }
@@ -188,12 +191,24 @@ export default function HeroBanner({
       <div className="hero-left-col">
         <div>
           <h1 className="hero-title">
-            Walk-In. Get Seen.
-            <br />
-            <span className="hero-title-highlight">We’re</span> Here for You.
+            {isHi ? (
+              <>
+                सीधे आएं. परामर्श पाएं.
+                <br />
+                <span className="hero-title-highlight">हम</span> आपके लिए सदैव तत्पर हैं.
+              </>
+            ) : (
+              <>
+                Walk-In. Get Seen.
+                <br />
+                <span className="hero-title-highlight">We’re</span> Here for You.
+              </>
+            )}
           </h1>
           <p className="hero-subtitle">
-            Real-time queue tracking & instant token for a smooth hospital visit.
+            {isHi
+              ? "सहज अस्पताल विज़िट हेतु रीयल-टाइम कतार ट्रैकिंग एवं तत्काल टोकन सुविधा।"
+              : "Real-time queue tracking & instant token for a smooth hospital visit."}
           </p>
         </div>
 
@@ -211,7 +226,9 @@ export default function HeroBanner({
             </div>
             <div>
               <div className="hero-stat-value">{stats.patientsServed}</div>
-              <div className="hero-stat-label">Patients Served Today</div>
+              <div className="hero-stat-label">
+                {isHi ? "आज सेवारत मरीज़" : "Patients Served Today"}
+              </div>
             </div>
           </div>
 
@@ -225,7 +242,9 @@ export default function HeroBanner({
             </div>
             <div>
               <div className="hero-stat-value">{stats.avgWaitTime}</div>
-              <div className="hero-stat-label">Avg. Wait Time</div>
+              <div className="hero-stat-label">
+                {isHi ? "औसत प्रतीक्षा समय" : "Avg. Wait Time"}
+              </div>
             </div>
           </div>
 
@@ -239,7 +258,9 @@ export default function HeroBanner({
             </div>
             <div>
               <div className="hero-stat-value">{stats.satisfaction}</div>
-              <div className="hero-stat-label">Patient Satisfaction</div>
+              <div className="hero-stat-label">
+                {isHi ? "मरीज़ संतुष्टि दर" : "Patient Satisfaction"}
+              </div>
             </div>
           </div>
         </div>

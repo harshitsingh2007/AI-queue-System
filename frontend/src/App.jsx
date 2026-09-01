@@ -197,9 +197,8 @@ export default function App() {
           setActiveTicket(data.ticket);
         }
 
-        // Only play audio chime & voice announcement on User/Patient Portal or Kiosk TV (NOT in Doctor/Admin portal)
-        const isCurrentAdmin = isAdminRef.current || ["staff", "admin", "db"].includes(activePageRef.current);
-        if (!isCurrentAdmin) {
+        // Only play audio chime & voice announcement on the Dedicated Waiting Room Kiosk TV (NOT on Patient/User Portal)
+        if (activePageRef.current === "kiosk") {
           playChimeSound();
           announceTicketVoice(data.ticket, languageRef.current || "en");
         }
@@ -281,7 +280,7 @@ export default function App() {
 
   return (
     <div style={appBgStyle}>
-      <div style={{ maxWidth: activePage === "patient" ? "960px" : "1240px", margin: "0 auto", width: "100%" }}>
+      <div style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}>
         {/* Top Navigation Header Bar */}
         <Header
           currentUser={currentUser}
@@ -332,6 +331,11 @@ export default function App() {
                   setLanguage={setLanguage}
                   navigateTo={navigateTo}
                   currentTab={currentTab}
+                  analytics={analytics}
+                  queueSnapshot={queueSnapshot}
+                  servingTickets={servingTickets}
+                  kioskQrData={kioskQrData}
+                  socketConnected={socketConnected}
                 />
               )
             )}
