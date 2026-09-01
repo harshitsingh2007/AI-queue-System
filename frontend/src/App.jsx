@@ -362,6 +362,7 @@ export default function App() {
                   refreshData={refreshData}
                   language={language}
                   socketRef={socketRef}
+                  navigateTo={navigateTo}
                 />
               )
             )}
