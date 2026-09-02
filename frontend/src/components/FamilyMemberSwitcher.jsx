@@ -9,55 +9,204 @@
 import React, { useState } from "react";
 import { t } from "../utils/i18n";
 
+export const getRelationLabel = (relation, language = "en") => {
+  if (!relation) return t("relation_other", language);
+  const key = `relation_${relation.toLowerCase()}`;
+  const translated = t(key, language);
+  return translated || relation;
+};
+
+/**
+ * Reusable Add Family Member Modal
+ */
+export function AddFamilyMemberModal({
+  isOpen,
+  onClose,
+  onAddMember,
+  language = "en",
+}) {
+  const [name, setName] = useState("");
+  const [relation, setRelation] = useState("child");
+  const [age, setAge] = useState("8");
+  const [gender, setGender] = useState("male");
+  const [formError, setFormError] = useState("");
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setFormError(
+        language === "hi"
+          ? "कृपया सदस्य का पूरा नाम दर्ज करें।"
+          : "Please enter the member's full name."
+      );
+      return;
+    }
+
+    const member = {
+      id: `dep_${Date.now()}`,
+      name: name.trim(),
+      relation,
+      age: Number(age) || 25,
+      gender,
+    };
+
+    if (onAddMember) onAddMember(member);
+    setName("");
+    setRelation("child");
+    setAge("8");
+    setGender("male");
+    setFormError("");
+    if (onClose) onClose();
+  };
+
+  return (
+    <div style={modalOverlayStyle} onClick={onClose}>
+      <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+        <div style={modalHeaderStyle}>
+          <div>
+            <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#064E3B", fontWeight: 800 }}>
+              {t("addMemberTitle", language)}
+            </h3>
+            <span style={{ fontSize: "12px", color: "#64748B" }}>
+              {t("addMemberDesc", language)}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            style={closeBtnStyle}
+            title={t("cancelBtn", language)}
+          >
+            ×
+          </button>
+        </div>
+
+        {formError && (
+          <div style={{ marginBottom: "14px", padding: "8px 12px", borderRadius: "8px", background: "#FEF2F2", color: "#DC2626", fontSize: "12px", fontWeight: 600 }}>
+            {formError}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: "14px" }}>
+            <label style={fieldLabelStyle}>{t("memberNameLabel", language)}</label>
+            <input
+              type="text"
+              placeholder={language === "hi" ? "उदा. आरव शर्मा" : "e.g. Aarav Verma"}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={inputStyle}
+              required
+              autoFocus
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+            <div>
+              <label style={fieldLabelStyle}>{t("relationshipLabel", language)}</label>
+              <select
+                value={relation}
+                onChange={(e) => setRelation(e.target.value)}
+                style={inputStyle}
+              >
+                <option value="child">{getRelationLabel("child", language)}</option>
+                <option value="spouse">{getRelationLabel("spouse", language)}</option>
+                <option value="parent">{getRelationLabel("parent", language)}</option>
+                <option value="sibling">{getRelationLabel("sibling", language)}</option>
+                <option value="other">{getRelationLabel("other", language)}</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={fieldLabelStyle}>{t("memberAgeLabel", language)}</label>
+              <input
+                type="number"
+                min="1"
+                max="120"
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+                style={inputStyle}
+                required
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label style={fieldLabelStyle}>{t("memberGenderLabel", language)}</label>
+            <div style={{ display: "flex", gap: "10px" }}>
+              {["male", "female", "other"].map((g) => (
+                <label
+                  key={g}
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    border: gender === g ? "2px solid #059669" : "1px solid #CBD5E1",
+                    background: gender === g ? "#ECFDF5" : "#FFFFFF",
+                    color: gender === g ? "#065F46" : "#475569",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    textAlign: "center",
+                    cursor: "pointer",
+                    textTransform: "capitalize",
+                    transition: "all 0.15s ease",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="modalMemberGender"
+                    value={g}
+                    checked={gender === g}
+                    onChange={() => setGender(g)}
+                    style={{ display: "none" }}
+                  />
+                  {t(g, language)}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={cancelBtnStyle}
+            >
+              {t("cancelBtn", language)}
+            </button>
+            <button
+              type="submit"
+              style={submitBtnStyle}
+            >
+              {t("saveMemberBtn", language)}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Main FamilyMemberSwitcher Component
+ */
 export default function FamilyMemberSwitcher({
-  members,
-  selectedMemberId,
+  members = [],
+  selectedMemberId = "self",
   onSelectMember,
   onAddMember,
   onDeleteMember,
   language = "en",
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newMemberName, setNewMemberName] = useState("");
-  const [newMemberRelation, setNewMemberRelation] = useState("child");
-  const [newMemberAge, setNewMemberAge] = useState("8");
-  const [newMemberGender, setNewMemberGender] = useState("male");
-  const [formError, setFormError] = useState("");
-
-  const handleSave = (e) => {
-    e.preventDefault();
-    if (!newMemberName.trim()) {
-      setFormError(language === "hi" ? "कृपया सदस्य का नाम दर्ज करें।" : "Please enter the member's full name.");
-      return;
-    }
-
-    const member = {
-      id: `dep_${Date.now()}`,
-      name: newMemberName.trim(),
-      relation: newMemberRelation,
-      age: Number(newMemberAge) || 25,
-      gender: newMemberGender,
-    };
-
-    onAddMember(member);
-    setShowAddModal(false);
-    setNewMemberName("");
-    setNewMemberRelation("child");
-    setNewMemberAge("8");
-    setNewMemberGender("male");
-    setFormError("");
-  };
-
-  const getRelationLabel = (relation) => {
-    const key = `relation_${relation.toLowerCase()}`;
-    return t(key, language);
-  };
 
   return (
     <div style={containerStyle}>
       <div style={headerRowStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
             <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
@@ -84,14 +233,14 @@ export default function FamilyMemberSwitcher({
 
       {/* Horizontal Pill Bar */}
       <div style={pillsScrollContainerStyle}>
-        {members.map((member) => {
+        {(members || []).map((member) => {
           const isSelected = member.id === selectedMemberId;
           const isSelf = member.relation === "self";
 
           return (
             <div
               key={member.id}
-              onClick={() => onSelectMember(member)}
+              onClick={() => onSelectMember && onSelectMember(member)}
               style={getPillStyle(isSelected)}
               role="button"
               tabIndex={0}
@@ -113,17 +262,20 @@ export default function FamilyMemberSwitcher({
                   {member.name}
                 </span>
                 <span style={getTagStyle(isSelected, isSelf)}>
-                  {getRelationLabel(member.relation)}
+                  {getRelationLabel(member.relation, language)}
                 </span>
               </div>
 
-              {/* Optional Delete Button for dependents */}
-              {!isSelf && (
+              {/* Delete Button for dependents */}
+              {!isSelf && onDeleteMember && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (window.confirm(`${language === "hi" ? "हटाएं" : "Remove"} ${member.name}?`)) {
+                    const msg = language === "hi"
+                      ? `क्या आप वाकई ${member.name} को हटाना चाहते हैं?`
+                      : `Remove ${member.name}?`;
+                    if (window.confirm(msg)) {
                       onDeleteMember(member.id);
                     }
                   }}
@@ -139,129 +291,12 @@ export default function FamilyMemberSwitcher({
       </div>
 
       {/* Add Family Member Modal */}
-      {showAddModal && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
-            <div style={modalHeaderStyle}>
-              <div>
-                <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#064E3B", fontWeight: 800 }}>
-                  {t("addMemberTitle", language)}
-                </h3>
-                <span style={{ fontSize: "12px", color: "#64748B" }}>
-                  {t("addMemberDesc", language)}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                style={closeBtnStyle}
-              >
-                ×
-              </button>
-            </div>
-
-            {formError && (
-              <div style={{ marginBottom: "14px", padding: "8px 12px", borderRadius: "8px", background: "#FEF2F2", color: "#DC2626", fontSize: "12px", fontWeight: 600 }}>
-                {formError}
-              </div>
-            )}
-
-            <form onSubmit={handleSave}>
-              <div style={{ marginBottom: "14px" }}>
-                <label style={fieldLabelStyle}>{t("memberNameLabel", language)}</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Aarav Verma"
-                  value={newMemberName}
-                  onChange={(e) => setNewMemberName(e.target.value)}
-                  style={inputStyle}
-                  required
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
-                <div>
-                  <label style={fieldLabelStyle}>{t("relationshipLabel", language)}</label>
-                  <select
-                    value={newMemberRelation}
-                    onChange={(e) => setNewMemberRelation(e.target.value)}
-                    style={inputStyle}
-                  >
-                    <option value="child">{getRelationLabel("child")}</option>
-                    <option value="spouse">{getRelationLabel("spouse")}</option>
-                    <option value="parent">{getRelationLabel("parent")}</option>
-                    <option value="sibling">{getRelationLabel("sibling")}</option>
-                    <option value="other">{getRelationLabel("other")}</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={fieldLabelStyle}>{t("memberAgeLabel", language)}</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="120"
-                    value={newMemberAge}
-                    onChange={(e) => setNewMemberAge(e.target.value)}
-                    style={inputStyle}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div style={{ marginBottom: "20px" }}>
-                <label style={fieldLabelStyle}>{t("memberGenderLabel", language)}</label>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  {["male", "female", "other"].map((g) => (
-                    <label
-                      key={g}
-                      style={{
-                        flex: 1,
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        border: newMemberGender === g ? "2px solid #059669" : "1px solid #CBD5E1",
-                        background: newMemberGender === g ? "#ECFDF5" : "#FFFFFF",
-                        color: newMemberGender === g ? "#065F46" : "#475569",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        textAlign: "center",
-                        cursor: "pointer",
-                        textTransform: "capitalize",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="memberGender"
-                        value={g}
-                        checked={newMemberGender === g}
-                        onChange={() => setNewMemberGender(g)}
-                        style={{ display: "none" }}
-                      />
-                      {t(g, language)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  style={cancelBtnStyle}
-                >
-                  {t("cancelBtn", language)}
-                </button>
-                <button
-                  type="submit"
-                  style={submitBtnStyle}
-                >
-                  {t("saveMemberBtn", language)}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <AddFamilyMemberModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAddMember={onAddMember}
+        language={language}
+      />
     </div>
   );
 }
@@ -271,9 +306,9 @@ const containerStyle = {
   background: "#FFFFFF",
   borderRadius: "14px",
   border: "1px solid #E2E8F0",
-  padding: "14px 16px",
-  marginBottom: "20px",
-  boxShadow: "0 1px 4px rgba(0, 0, 0, 0.02)",
+  padding: "12px 16px",
+  marginBottom: "18px",
+  boxShadow: "0 1px 4px rgba(0, 0, 0, 0.03)",
 };
 
 const headerRowStyle = {
@@ -286,14 +321,14 @@ const headerRowStyle = {
 const addTriggerBtnStyle = {
   display: "inline-flex",
   alignItems: "center",
-  gap: "4px",
-  padding: "4px 10px",
-  borderRadius: "6px",
+  gap: "5px",
+  padding: "5px 12px",
+  borderRadius: "8px",
   border: "1px solid #A7F3D0",
   background: "#ECFDF5",
   color: "#047857",
-  fontWeight: 700,
-  fontSize: "11px",
+  fontWeight: 800,
+  fontSize: "11.5px",
   cursor: "pointer",
   transition: "all 0.2s ease",
 };
@@ -311,7 +346,7 @@ const getPillStyle = (isSelected) => ({
   alignItems: "center",
   justifyContent: "space-between",
   gap: "8px",
-  padding: "8px 14px",
+  padding: "7px 13px",
   borderRadius: "10px",
   border: isSelected ? "1.5px solid #059669" : "1px solid #CBD5E1",
   background: isSelected ? "#059669" : "#F8FAFC",
@@ -319,16 +354,16 @@ const getPillStyle = (isSelected) => ({
   cursor: "pointer",
   whiteSpace: "nowrap",
   transition: "all 0.2s ease",
-  boxShadow: isSelected ? "0 2px 8px rgba(5, 150, 105, 0.2)" : "none",
+  boxShadow: isSelected ? "0 2px 8px rgba(5, 150, 105, 0.25)" : "none",
 });
 
 const getTagStyle = (isSelected, isSelf) => ({
-  padding: "1px 6px",
+  padding: "2px 6px",
   borderRadius: "4px",
   fontSize: "10px",
-  fontWeight: 700,
+  fontWeight: 800,
   background: isSelected
-    ? "rgba(255, 255, 255, 0.22)"
+    ? "rgba(255, 255, 255, 0.25)"
     : isSelf
     ? "#ECFDF5"
     : "#E0F2FE",
@@ -343,8 +378,8 @@ const getTagStyle = (isSelected, isSelf) => ({
 const deleteMemberBtnStyle = (isSelected) => ({
   background: "transparent",
   border: "none",
-  color: isSelected ? "rgba(255, 255, 255, 0.8)" : "#94A3B8",
-  fontSize: "14px",
+  color: isSelected ? "rgba(255, 255, 255, 0.85)" : "#94A3B8",
+  fontSize: "15px",
   fontWeight: 800,
   cursor: "pointer",
   padding: "0 0 0 4px",
@@ -357,8 +392,9 @@ const modalOverlayStyle = {
   left: 0,
   right: 0,
   bottom: 0,
-  background: "rgba(15, 23, 42, 0.5)",
-  backdropFilter: "blur(2px)",
+  background: "rgba(15, 23, 42, 0.55)",
+  backdropFilter: "blur(4px)",
+  WebkitBackdropFilter: "blur(4px)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -368,12 +404,12 @@ const modalOverlayStyle = {
 
 const modalContentStyle = {
   background: "#FFFFFF",
-  borderRadius: "16px",
+  borderRadius: "18px",
   border: "1px solid #E2E8F0",
   width: "100%",
   maxWidth: "420px",
-  padding: "22px",
-  boxShadow: "0 10px 25px rgba(0, 0, 0, 0.1)",
+  padding: "24px",
+  boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)",
 };
 
 const modalHeaderStyle = {
@@ -388,7 +424,7 @@ const modalHeaderStyle = {
 const closeBtnStyle = {
   background: "transparent",
   border: "none",
-  fontSize: "20px",
+  fontSize: "22px",
   color: "#64748B",
   cursor: "pointer",
   lineHeight: 1,
@@ -429,10 +465,10 @@ const submitBtnStyle = {
   padding: "8px 18px",
   borderRadius: "8px",
   border: "none",
-  background: "#059669",
+  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
   color: "#FFFFFF",
   fontSize: "12px",
-  fontWeight: 700,
+  fontWeight: 800,
   cursor: "pointer",
   boxShadow: "0 2px 6px rgba(5, 150, 105, 0.25)",
 };

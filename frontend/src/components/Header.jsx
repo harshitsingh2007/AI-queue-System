@@ -30,102 +30,12 @@ export default function Header({
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
-  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
-
-  // New Family Member Form state
-  const [newMemName, setNewMemName] = useState("");
-  const [newMemRelation, setNewMemRelation] = useState("spouse");
-  const [newMemAge, setNewMemAge] = useState(30);
-  const [newMemGender, setNewMemGender] = useState("female");
 
   const profileRef = useRef(null);
   const langRef = useRef(null);
 
   const isAdmin = currentUser && currentUser.role === "admin";
   const username = currentUser ? currentUser.username : "user";
-  const userKey = currentUser ? (currentUser.username || currentUser.email) : "guest";
-  const storageKey = `family_members_${userKey}`;
-  const selectedStorageKey = `selected_family_member_${userKey}`;
-
-  // Load Patient / Family Members
-  const getInitialFamilyMembers = () => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-
-    return [
-      {
-        id: "self",
-        name: currentUser ? (currentUser.username || "Self") : "Self",
-        relation: "self",
-        age: currentUser && currentUser.age ? currentUser.age : 35,
-        gender: currentUser && currentUser.gender ? currentUser.gender.toLowerCase() : "male",
-      },
-    ];
-  };
-
-  const [familyMembers, setFamilyMembers] = useState(getInitialFamilyMembers);
-  const [selectedMemberId, setSelectedMemberId] = useState(() => {
-    try {
-      const saved = localStorage.getItem(selectedStorageKey);
-      return saved || "self";
-    } catch (e) {
-      return "self";
-    }
-  });
-
-  // Sync family members & active profile with external events
-  useEffect(() => {
-    const handleSync = (e) => {
-      const members = getInitialFamilyMembers();
-      setFamilyMembers(members);
-      if (e && e.detail && e.detail.id) {
-        setSelectedMemberId(e.detail.id);
-      }
-    };
-    window.addEventListener("family_members_updated", handleSync);
-    window.addEventListener("switch_patient_profile", handleSync);
-    return () => {
-      window.removeEventListener("family_members_updated", handleSync);
-      window.removeEventListener("switch_patient_profile", handleSync);
-    };
-  }, [userKey]);
-
-  const handleSelectMember = (member) => {
-    setSelectedMemberId(member.id);
-    try {
-      localStorage.setItem(selectedStorageKey, member.id);
-    } catch (e) {}
-    window.dispatchEvent(new CustomEvent("switch_patient_profile", { detail: member }));
-    setProfileDropdownOpen(false);
-  };
-
-  const handleAddMemberSubmit = (e) => {
-    e.preventDefault();
-    if (!newMemName.trim()) return;
-    const newMember = {
-      id: `mem_${Date.now()}`,
-      name: newMemName.trim(),
-      relation: newMemRelation,
-      age: Number(newMemAge) || 25,
-      gender: newMemGender,
-    };
-    const updated = [...familyMembers, newMember];
-    setFamilyMembers(updated);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    } catch (e) {}
-    window.dispatchEvent(new CustomEvent("family_members_updated", { detail: updated }));
-    handleSelectMember(newMember);
-    setShowAddMemberModal(false);
-    setNewMemName("");
-  };
-
-  const activeMember = familyMembers.find((m) => m.id === selectedMemberId) || familyMembers[0];
 
   // Derive tab from prop or URL query parameter
   const getEffectiveTab = () => {
@@ -190,6 +100,7 @@ export default function Header({
             border: 1px solid transparent;
             background: transparent;
             transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+
             text-decoration: none;
             outline: none;
             display: inline-flex;
@@ -355,11 +266,18 @@ export default function Header({
           }
         `}</style>
 
-        {/* 1. Left: Hospital Brand Shield & Live Hospital Status */}
         <div
           style={{ display: "flex", alignItems: "center", gap: "14px", cursor: "pointer" }}
-          onClick={() => navigateTo("patient", "walkin")}
-          title="City General Hospital - Home"
+          onClick={() => {
+            if (currentUser?.role === "super_admin") {
+              navigateTo("superadmin");
+            } else if (["admin", "doctor", "staff", "receptionist"].includes(currentUser?.role)) {
+              navigateTo("staff");
+            } else {
+              navigateTo("patient", "walkin");
+            }
+          }}
+          title="Hospital System HQ"
         >
           <div style={shieldLogoContainerStyle}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -379,7 +297,7 @@ export default function Header({
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#064E3B", letterSpacing: "-0.4px", lineHeight: "1.2" }}>
-                {HOSPITAL_CONFIG.name}
+                {currentUser?.hospital_name || HOSPITAL_CONFIG.name}
               </span>
               <span style={{ padding: "2px 7px", borderRadius: "20px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 800, border: "1px solid #A7F3D0" }}>
                 NABH ACCREDITED
@@ -400,6 +318,55 @@ export default function Header({
 
         {/* 2. Center: Quick Hospital Support & Emergency Hotline */}
         <nav style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          {/* Super Admin Navigation Button */}
+          {currentUser?.role === "super_admin" && (
+            <button
+              type="button"
+              onClick={() => navigateTo("superadmin")}
+              className={`header-nav-btn ${activePage === "superadmin" ? "active" : ""}`}
+              style={{
+                background: activePage === "superadmin" ? "#044E3B" : "#ECFDF5",
+                color: activePage === "superadmin" ? "#FFFFFF" : "#047857",
+                fontWeight: 800,
+                border: "1px solid #10B981",
+              }}
+              title="Super Admin / Hospital Owner Network Portal"
+            >
+              <span>👑</span>
+              <span>{language === "hi" ? "सुपर एडमिन" : "Super Admin"}</span>
+            </button>
+          )}
+
+          {/* Doctor / Staff Desk Navigation Button (Only for Staff / Doctors, NOT for Super Admin) */}
+          {currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role) && (
+            <button
+              type="button"
+              onClick={() => navigateTo("staff")}
+              className={`header-nav-btn ${activePage === "staff" ? "active" : ""}`}
+              style={{
+                background: activePage === "staff" ? "#044E3B" : "#F0FDF4",
+                color: activePage === "staff" ? "#FFFFFF" : "#064E3B",
+                fontWeight: 800,
+                border: "1px solid #A7F3D0",
+              }}
+              title="Doctor & Staff Desk"
+            >
+              <span>🩺</span>
+              <span>{language === "hi" ? "स्टाफ डेस्क" : "Staff Desk"}</span>
+            </button>
+          )}
+
+          {/* TV Kiosk Waiting Room Display */}
+          <button
+            type="button"
+            onClick={() => navigateTo("kiosk")}
+            className={`header-nav-btn ${activePage === "kiosk" ? "active" : ""}`}
+            title="Public Waiting Room TV Kiosk"
+          >
+            <span>📺</span>
+            <span>{language === "hi" ? "टीवी कियोस्क" : "TV Kiosk"}</span>
+          </button>
+
           {/* Emergency 24/7 Hotline Button */}
           <button
             type="button"
@@ -496,18 +463,24 @@ export default function Header({
                   background: profileDropdownOpen ? "#F0FDF4" : "#FFFFFF",
                 }}
               >
-                {/* Active Member Avatar Circle */}
+                {/* User Avatar Circle */}
                 <div style={dropdownAvatarStyle}>
-                  {(activeMember ? activeMember.name : username).charAt(0).toUpperCase()}
+                  {username.charAt(0).toUpperCase()}
                 </div>
                 <div style={{ textAlign: "left", lineHeight: 1.15 }}>
                   <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {activeMember ? activeMember.name : username}
+                    {username}
                   </div>
                   <span style={{ fontSize: "10px", color: "#047857", fontWeight: 700 }}>
-                    {activeMember && activeMember.relation !== "self"
-                      ? (language === "hi" ? `मरीज़ (${t(`relation_${activeMember.relation}`, language)})` : `Patient (${activeMember.relation.toUpperCase()})`)
-                      : (language === "hi" ? "मरीज़ (स्वयं)" : "Patient (Self)")}
+                    {currentUser.role === "super_admin"
+                      ? "SUPER ADMIN"
+                      : currentUser.role === "doctor"
+                        ? "DOCTOR"
+                        : currentUser.role === "staff"
+                          ? "STAFF"
+                          : currentUser.role === "admin"
+                            ? "HOSPITAL ADMIN"
+                            : (language === "hi" ? "मरीज़ खाता" : "Patient Account")}
                   </span>
                 </div>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "4px" }}>
@@ -516,9 +489,9 @@ export default function Header({
               </button>
 
               {profileDropdownOpen && (
-                <div className="header-dropdown-menu" style={{ width: "290px", padding: "10px" }}>
+                <div className="header-dropdown-menu" style={{ width: "260px", padding: "10px" }}>
                   {/* Account Header */}
-                  <div style={{ padding: "10px 12px 12px 12px", borderBottom: "1px solid #F1F5F9", marginBottom: "8px", background: "#F8FAFC", borderRadius: "12px" }}>
+                  <div style={{ padding: "10px 12px 12px 12px", marginBottom: "8px", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <div style={{ ...dropdownAvatarStyle, width: "36px", height: "36px", fontSize: "14px", background: "#044E3B", color: "#FFFFFF" }}>
                         {username.charAt(0).toUpperCase()}
@@ -527,108 +500,19 @@ export default function Header({
                         <div style={{ fontWeight: 800, fontSize: "13.5px", color: "#0F172A", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {username}
                         </div>
-                        <span style={userRoleTagStyle(isAdmin)}>
-                          {isAdmin
-                            ? (language === "hi" ? "स्टाफ खाता" : "Staff Account")
-                            : (language === "hi" ? "पंजीकृत परिवार खाता" : "Registered Family Account")}
+                        <span style={userRoleTagStyle(currentUser.role)}>
+                          {(currentUser.role || "user").toUpperCase()}
                         </span>
+                        {currentUser.hospital_name && (
+                          <span style={{ fontSize: "10.5px", color: "#64748B", display: "block", marginTop: "2px" }}>
+                            🏥 {currentUser.hospital_name}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Section Title */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px 8px 8px" }}>
-                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                      {language === "hi" ? `मरीज़ प्रोफ़ाइल (${familyMembers.length})` : `Patient Profiles (${familyMembers.length})`}
-                    </span>
-                    <span style={{ fontSize: "10px", color: "#059669", fontWeight: 700 }}>
-                      {language === "hi" ? "बदलने हेतु क्लिक करें" : "Click to switch"}
-                    </span>
-                  </div>
-
-                  {/* Patient / Family Member Profiles List */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "240px", overflowY: "auto" }}>
-                    {familyMembers.map((mem) => {
-                      const isSelected = (selectedMemberId || "self") === mem.id;
-                      const relIcon = mem.relation === "self" ? "👤" : mem.relation === "spouse" ? "💍" : mem.relation === "child" ? "🧒" : mem.relation === "parent" ? "🧓" : "👥";
-                      const relText = t(`relation_${mem.relation}`, language);
-                      const genText = t(mem.gender || "male", language);
-
-                      return (
-                        <button
-                          key={mem.id}
-                          type="button"
-                          onClick={() => handleSelectMember(mem)}
-                          style={{
-                            width: "100%",
-                            padding: "9px 12px",
-                            borderRadius: "12px",
-                            border: isSelected ? "1.5px solid #059669" : "1px solid #E2E8F0",
-                            background: isSelected ? "linear-gradient(135deg, #ECFDF5 0%, #E6F4EA 100%)" : "#FFFFFF",
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            textAlign: "left",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                            <span style={{ fontSize: "16px" }}>{relIcon}</span>
-                            <div>
-                              <div style={{ fontSize: "13px", fontWeight: 800, color: isSelected ? "#064E3B" : "#0F172A", lineHeight: 1.2 }}>
-                                {mem.name}
-                              </div>
-                              <span style={{ fontSize: "11px", color: isSelected ? "#047857" : "#64748B", fontWeight: 600 }}>
-                                {relText} • {mem.age} {language === "hi" ? "वर्ष" : "yrs"} • {genText}
-                              </span>
-                            </div>
-                          </div>
-
-                          {isSelected ? (
-                            <span style={{ padding: "2px 7px", borderRadius: "6px", background: "#047857", color: "#FFFFFF", fontSize: "10px", fontWeight: 800 }}>
-                              {language === "hi" ? "✓ सक्रिय" : "✓ Active"}
-                            </span>
-                          ) : (
-                            <span style={{ fontSize: "11px", color: "#94A3B8", fontWeight: 600 }}>
-                              {language === "hi" ? "चुनें" : "Switch"}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* + Add Family Member Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfileDropdownOpen(false);
-                      setShowAddMemberModal(true);
-                    }}
-                    style={{
-                      width: "100%",
-                      marginTop: "8px",
-                      padding: "9px 12px",
-                      borderRadius: "10px",
-                      border: "1.5px dashed #A7F3D0",
-                      background: "#F0FDF4",
-                      color: "#047857",
-                      fontSize: "12px",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <span>➕</span>
-                    <span>{language === "hi" ? "परिवार सदस्य जोड़ें" : "Add Family Member"}</span>
-                  </button>
-
-                  <div style={{ height: "1px", background: "#E2E8F0", margin: "10px 0 6px 0" }} />
+                  <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
 
                   {/* Sign Out Button */}
                   <button
@@ -822,130 +706,6 @@ export default function Header({
           </div>
         </div>
       )}
-
-      {/* 6. ADD FAMILY MEMBER MODAL */}
-      {showAddMemberModal && (
-        <div className="header-modal-overlay" onClick={() => setShowAddMemberModal(false)}>
-          <div className="header-modal-content" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#ECFDF5", color: "#047857", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
-                  👥
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "17px", color: "#064E3B", fontWeight: 800 }}>
-                    {language === "hi" ? "परिवार सदस्य / आश्रित जोड़ें" : "Add Patient / Family Member"}
-                  </h3>
-                  <span style={{ fontSize: "11.5px", color: "#64748B" }}>
-                    {language === "hi" ? "अपने अस्पताल खाते में आश्रित को जोड़ें" : "Add dependent to your hospital account"}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddMemberModal(false)}
-                style={{ background: "none", border: "none", fontSize: "18px", color: "#94A3B8", cursor: "pointer" }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleAddMemberSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "5px" }}>
-                  {language === "hi" ? "मरीज़ का पूरा नाम" : "Full Name"}
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder={language === "hi" ? "उदा. प्रिया शर्मा / आरव सिंह" : "e.g. Priya Sharma / Aarav Singh"}
-                  value={newMemName}
-                  onChange={(e) => setNewMemName(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "13px", outline: "none" }}
-                />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "5px" }}>
-                    {language === "hi" ? "संबंध" : "Relationship"}
-                  </label>
-                  <select
-                    value={newMemRelation}
-                    onChange={(e) => setNewMemRelation(e.target.value)}
-                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "13px", outline: "none", background: "#FFF" }}
-                  >
-                    <option value="spouse">{language === "hi" ? "पति/पत्नी" : "Spouse"}</option>
-                    <option value="child">{language === "hi" ? "बच्चा / आश्रित" : "Child / Dependent"}</option>
-                    <option value="parent">{language === "hi" ? "माता/पिता" : "Parent"}</option>
-                    <option value="other">{language === "hi" ? "अन्य रिश्तेदार" : "Other Relative"}</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "5px" }}>
-                    {language === "hi" ? "आयु (वर्ष)" : "Age (Years)"}
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="120"
-                    required
-                    value={newMemAge}
-                    onChange={(e) => setNewMemAge(e.target.value)}
-                    style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "13px", outline: "none" }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 700, color: "#334155", marginBottom: "5px" }}>
-                  {language === "hi" ? "लिंग" : "Gender"}
-                </label>
-                <div style={{ display: "flex", gap: "10px" }}>
-                  {["female", "male", "other"].map((g) => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setNewMemGender(g)}
-                      style={{
-                        flex: 1,
-                        padding: "8px 10px",
-                        borderRadius: "8px",
-                        border: newMemGender === g ? "1.5px solid #059669" : "1px solid #CBD5E1",
-                        background: newMemGender === g ? "#ECFDF5" : "#FFFFFF",
-                        color: newMemGender === g ? "#047857" : "#475569",
-                        fontWeight: 700,
-                        fontSize: "12px",
-                        cursor: "pointer",
-                        textTransform: "capitalize",
-                      }}
-                    >
-                      {t(g, language)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowAddMemberModal(false)}
-                  style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#64748B", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
-                >
-                  {language === "hi" ? "रद्द करें" : "Cancel"}
-                </button>
-                <button
-                  type="submit"
-                  style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "none", background: "linear-gradient(135deg, #044E3B 0%, #065F46 100%)", color: "#FFFFFF", fontWeight: 800, fontSize: "13px", cursor: "pointer" }}
-                >
-                  {language === "hi" ? "प्रोफ़ाइल सहेजें" : "Save Profile"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   );
 }
@@ -993,17 +753,12 @@ const dropdownAvatarStyle = {
   flexShrink: 0,
 };
 
-const userRoleTagStyle = (isAdmin) => ({
-  display: "inline-block",
-  padding: "2px 6px",
-  borderRadius: "4px",
-  fontSize: "10px",
-  fontWeight: 800,
-  textTransform: "uppercase",
-  background: isAdmin ? "#FEF3C7" : "#ECFDF5",
-  color: isAdmin ? "#D97706" : "#047857",
-  marginTop: "2px",
-});
+const userRoleTagStyle = (role) => {
+  if (role === "super_admin") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A", marginTop: "2px" };
+  if (role === "doctor") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0", marginTop: "2px" };
+  if (role === "admin") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", marginTop: "2px" };
+  return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1", marginTop: "2px" };
+};
 
 const contactInfoCardStyle = {
   padding: "12px 14px",

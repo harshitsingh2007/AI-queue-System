@@ -20,6 +20,7 @@ import StaffPage from "./pages/StaffPage";
 import MLAdminPage from "./pages/MLAdminPage";
 import DatabaseInspectorPage from "./pages/DatabaseInspectorPage";
 import KioskPage from "./pages/KioskPage";
+import SuperAdminPage from "./pages/SuperAdminPage";
 
 import { announceTicketVoice } from "./utils/voiceSynthesizer";
 
@@ -29,13 +30,17 @@ function getInitialPage(user) {
   if (pageParam && pageParam.toLowerCase() !== "hub") return pageParam.toLowerCase();
 
   const path = window.location.pathname.toLowerCase();
+  if (path.includes("superadmin") || path.includes("super_admin")) return "superadmin";
   if (path.includes("patient")) return "patient";
   if (path.includes("staff") || path.includes("doctor")) return "staff";
   if (path.includes("admin") || path.includes("ml")) return "admin";
   if (path.includes("db") || path.includes("database")) return "db";
   if (path.includes("kiosk") || path.includes("tv")) return "kiosk";
 
-  if (user && user.role === "admin") return "staff";
+  if (user) {
+    if (user.role === "super_admin") return "superadmin";
+    if (["admin", "doctor", "staff", "receptionist"].includes(user.role)) return "staff";
+  }
   return "patient";
 }
 
@@ -50,12 +55,31 @@ export default function App() {
     }
   });
 
-  const [activePage, setActivePage] = useState(() => getInitialPage(currentUser));
+  const [currentHospitalTenant, setCurrentHospitalTenant] = useState(() => {
+    try {
+      const saved = localStorage.getItem("ai_queue_user");
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u && u.hospital_code && u.hospital_code !== "all") return u.hospital_code;
+      }
+    } catch (e) {}
+    return HOSPITAL_CONFIG.tenantId;
+  });
+
+  const [activePage, setActivePage] = useState(() => {
+    try {
+      const saved = localStorage.getItem("ai_queue_user");
+      const u = saved ? JSON.parse(saved) : null;
+      return getInitialPage(u);
+    } catch (e) {
+      return "patient";
+    }
+  });
   const [currentTab, setCurrentTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("tab") || "walkin";
   });
-  const tenantId = HOSPITAL_CONFIG.tenantId;
+  const tenantId = currentHospitalTenant || HOSPITAL_CONFIG.tenantId;
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState("login");
@@ -66,6 +90,19 @@ export default function App() {
     try {
       localStorage.setItem("ai_queue_user", JSON.stringify(userData));
     } catch (e) {}
+
+    if (userData.hospital_code && userData.hospital_code !== "all") {
+      setCurrentHospitalTenant(userData.hospital_code);
+    }
+
+    // Role-based auto dashboard direct redirect (zero patient interference)
+    if (userData.role === "super_admin") {
+      navigateTo("superadmin");
+    } else if (["admin", "doctor", "staff", "receptionist"].includes(userData.role)) {
+      navigateTo("staff");
+    } else {
+      navigateTo("patient", "walkin");
+    }
   };
 
   const handleLogout = () => {
@@ -73,6 +110,7 @@ export default function App() {
     try {
       localStorage.removeItem("ai_queue_user");
     } catch (e) {}
+    navigateTo("patient", "walkin");
   };
 
   // Real-time Queue State
@@ -124,8 +162,10 @@ export default function App() {
     window.dispatchEvent(new Event("popstate"));
   };
 
-  const isAdmin = currentUser && currentUser.role === "admin";
-  const adminDepartment = isAdmin ? (currentUser.department ? currentUser.department.toLowerCase() : "all") : "all";
+  const isSuperAdmin = currentUser && currentUser.role === "super_admin";
+  const isStaffOrAdmin = currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role);
+  const isAdmin = isStaffOrAdmin;
+  const adminDepartment = currentUser && currentUser.department ? currentUser.department.toLowerCase() : "all";
   const adminDeptRef = useRef(adminDepartment);
   const activePageRef = useRef(activePage);
   const isAdminRef = useRef(isAdmin);
@@ -281,18 +321,20 @@ export default function App() {
   return (
     <div style={appBgStyle}>
       <div style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}>
-        {/* Top Navigation Header Bar */}
-        <Header
-          currentUser={currentUser}
-          activePage={activePage}
-          navigateTo={navigateTo}
-          handleLogout={handleLogout}
-          setShowAuthModal={setShowAuthModal}
-          socketConnected={socketConnected}
-          language={language}
-          setLanguage={setLanguage}
-          currentTab={currentTab}
-        />
+        {/* Top Navigation Header Bar (Hidden on Login Screen) */}
+        {currentUser && (
+          <Header
+            currentUser={currentUser}
+            activePage={activePage}
+            navigateTo={navigateTo}
+            handleLogout={handleLogout}
+            setShowAuthModal={setShowAuthModal}
+            socketConnected={socketConnected}
+            language={language}
+            setLanguage={setLanguage}
+            currentTab={currentTab}
+          />
+        )}
 
         {/* Main Content Router */}
         <main style={mainContentStyle}>
@@ -300,17 +342,12 @@ export default function App() {
           <MandatoryAuthScreen
             onLoginSuccess={(user) => {
               handleLoginSuccess(user);
-              if (user.role === "admin") {
-                navigateTo("staff");
-              } else {
-                navigateTo("patient");
-              }
             }}
           />
         ) : (
           <>
             {activePage === "patient" && (
-              isAdmin ? (
+              (isAdmin || isSuperAdmin) ? (
                 <AccessDeniedGuard
                   requiredRole="user"
                   pageName="Patient Check-in Portal (Consumer)"
@@ -336,6 +373,27 @@ export default function App() {
                   servingTickets={servingTickets}
                   kioskQrData={kioskQrData}
                   socketConnected={socketConnected}
+                />
+              )
+            )}
+
+            {activePage === "superadmin" && (
+              !isSuperAdmin ? (
+                <AccessDeniedGuard
+                  requiredRole="super_admin"
+                  pageName="Super Admin / Hospital Owner Portal"
+                  currentUser={currentUser}
+                  onLoginSuccess={handleLoginSuccess}
+                  navigateTo={navigateTo}
+                />
+              ) : (
+                <SuperAdminPage
+                  currentUser={currentUser}
+                  language={language}
+                  onSelectHospitalTenant={(hCode) => {
+                    setCurrentHospitalTenant(hCode);
+                  }}
+                  navigateTo={navigateTo}
                 />
               )
             )}
@@ -398,11 +456,14 @@ export default function App() {
             {activePage === "kiosk" && (
               <KioskPage
                 tenantId={tenantId}
+                analytics={analytics}
                 servingTickets={servingTickets}
                 queueSnapshot={queueSnapshot}
                 kioskQrData={kioskQrData}
                 language={language}
                 setLanguage={setLanguage}
+                currentUser={currentUser}
+                navigateTo={navigateTo}
               />
             )}
           </>

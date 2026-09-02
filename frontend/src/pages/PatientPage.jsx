@@ -13,6 +13,7 @@ import { printTokenPass, printAppointmentRecord } from "../utils/printPassHelper
 import QueueStepper from "../components/QueueStepper";
 import HeroBanner from "../components/HeroBanner";
 import Footer from "../components/Footer";
+import FamilyMemberSwitcher, { AddFamilyMemberModal, getRelationLabel } from "../components/FamilyMemberSwitcher";
 
 export default function PatientPage({
   tenantId,
@@ -182,24 +183,65 @@ export default function PatientPage({
     setStatusMsg(`${t("profileSwitchedMsg", language)} ${member.name}`);
   };
 
-  const handleAddMember = (newMember) => {
+  // Fetch family members from backend when user is logged in
+  useEffect(() => {
+    if (!currentUser || !currentUser.email) return;
+    fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(currentUser.email)}/family-members`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === "success" && Array.isArray(data.members)) {
+          const selfObj = {
+            id: "self",
+            name: currentUser.username || "Self",
+            relation: "self",
+            age: currentUser.age || 35,
+            gender: currentUser.gender ? currentUser.gender.toLowerCase() : "male",
+          };
+          const fullList = [selfObj, ...data.members];
+          setFamilyMembers(fullList);
+          const storageKey = `family_members_${currentUser.username || currentUser.email}`;
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(fullList));
+          } catch (e) {}
+        }
+      })
+      .catch((err) => console.log("PatientPage family fetch error:", err));
+  }, [currentUser]);
+
+  const handleAddMember = async (newMember) => {
     const updated = [...familyMembers, newMember];
     setFamilyMembers(updated);
+    const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
     try {
-      const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
       localStorage.setItem(storageKey, JSON.stringify(updated));
     } catch (e) {}
+
+    window.dispatchEvent(new CustomEvent("family_members_updated", { detail: updated }));
     handleSelectMember(newMember);
+
+    if (currentUser && currentUser.email) {
+      try {
+        await fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(currentUser.email)}/family-members`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newMember),
+        });
+      } catch (err) {
+        console.log("Error saving family member:", err);
+      }
+    }
   };
 
-  const handleDeleteMember = (memberId) => {
+  const handleDeleteMember = async (memberId) => {
     if (memberId === "self") return;
     const updated = familyMembers.filter((m) => m.id !== memberId);
     setFamilyMembers(updated);
+    const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
     try {
-      const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
       localStorage.setItem(storageKey, JSON.stringify(updated));
     } catch (e) {}
+
+    window.dispatchEvent(new CustomEvent("family_members_updated", { detail: updated }));
 
     if (familyTickets[memberId]) {
       const updatedTickets = { ...familyTickets };
@@ -213,6 +255,16 @@ export default function PatientPage({
 
     if (selectedMemberId === memberId) {
       handleSelectMember(familyMembers[0]);
+    }
+
+    if (currentUser && currentUser.email) {
+      try {
+        await fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(currentUser.email)}/family-members/${encodeURIComponent(memberId)}`, {
+          method: "DELETE",
+        });
+      } catch (err) {
+        console.log("Error deleting family member:", err);
+      }
     }
   };
 
@@ -780,13 +832,21 @@ export default function PatientPage({
         }
       `}</style>
 
-      {/* 1. HERO SECTION (Matching Image 2 closely) */}
+      {/* 1. HERO SECTION (100% Live Real-Time Telemetry) */}
       <HeroBanner
         language={language}
+        hospitalName={currentUser?.hospital_name || "City General Hospital"}
         stats={{
-          patientsServed: "250+",
-          avgWaitTime: language === "hi" ? "15 मिनट" : "15 min",
-          satisfaction: "98%",
+          patientsServed: analytics ? `${(analytics.total_completed || 0) + (analytics.currently_serving || 0)}` : "0",
+          avgWaitTime: language === "hi"
+            ? `${analytics ? Math.round(analytics.avg_wait_minutes || 0) : 0} मिनट`
+            : `${analytics ? Math.round(analytics.avg_wait_minutes || 0) : 0} min`,
+          activeDesks: language === "hi"
+            ? `${analytics ? analytics.active_counters || 0 : 0} डेस्क`
+            : `${analytics ? analytics.active_counters || 0 : 0} Active Desks`,
+          currentlyWaiting: language === "hi"
+            ? `${analytics ? analytics.currently_waiting || 0 : queueSnapshot.length || 0} प्रतीक्षारत`
+            : `${analytics ? analytics.currently_waiting || 0 : queueSnapshot.length || 0} Waiting`,
         }}
       />
 

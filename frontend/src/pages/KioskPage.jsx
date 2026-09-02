@@ -124,15 +124,15 @@ export default function KioskPage({
             {isFullscreen ? t("exitTv", language) : t("fullscreenTv", language)}
           </button>
 
-          {/* Admin Return Button */}
-          {isAdmin && navigateTo && (
+          {/* Return to Hospital Portal Button */}
+          {navigateTo && (
             <button
-              onClick={() => navigateTo("staff")}
+              onClick={() => navigateTo("patient", "walkin")}
               style={kioskAdminReturnBtnStyle}
-              title="Return to Doctor Desk Dashboard"
+              title="Return to Hospital Portal"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-              {t("doctorDesk", language)}
+              {language === "hi" ? "मुख्य पोर्टल" : "Hospital Home"}
             </button>
           )}
 

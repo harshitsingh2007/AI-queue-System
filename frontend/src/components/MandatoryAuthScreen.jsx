@@ -1,8 +1,9 @@
 /**
  * MandatoryAuthScreen.jsx
  * -----------------------
- * Gatekeeper Auth Screen forcing user authentication before entering pages.
+ * Dedicated Gatekeeper Auth Screen when user is not signed in.
  * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
+ * Beautiful, distraction-free centered healthcare login experience.
  */
 
 import React, { useState } from "react";
@@ -12,21 +13,25 @@ export default function MandatoryAuthScreen({ onLoginSuccess }) {
   const [authMode, setAuthMode] = useState("login");
 
   return (
-    <div style={{ maxWidth: "500px", margin: "40px auto", textAlign: "center" }}>
-      <div style={cardStyle}>
-        <div style={lockIconCircleStyle}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    <div style={containerStyle}>
+      {/* Hospital Branding Header (Centered above the login card) */}
+      <div style={brandHeaderStyle}>
+        <div style={brandLogoBadgeStyle}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
         </div>
-        <h2 style={{ margin: "0 0 8px 0", fontSize: "22px", color: "#064E3B", fontWeight: 800 }}>
-          Authentication Required
-        </h2>
-        <p style={{ color: "#64748B", fontSize: "14px", lineHeight: "1.5", marginBottom: "24px" }}>
-          Please sign in to your <strong>Staff Admin</strong> or <strong>Patient/Consumer</strong> account to continue.
-        </p>
+        <div style={{ textAlign: "center" }}>
+          <h1 style={hospitalTitleStyle}>City General Hospital</h1>
+          <div style={hospitalBadgeRowStyle}>
+            <span style={nabhBadgeStyle}>NABH ACCREDITED</span>
+            <span style={taglineStyle}>Care you can trust • AI Triage Active</span>
+          </div>
+        </div>
+      </div>
 
+      {/* Main Auth Card */}
+      <div style={cardContainerStyle}>
         <AuthModal
           authMode={authMode}
           setAuthMode={setAuthMode}
@@ -35,26 +40,96 @@ export default function MandatoryAuthScreen({ onLoginSuccess }) {
           isInline={true}
         />
       </div>
+
+      {/* Security & System Note */}
+      <div style={footerMetaStyle}>
+        <span>🔒 256-bit Encrypted Healthcare Session</span>
+        <span>•</span>
+        <span>AI Queue System v2.0</span>
+      </div>
     </div>
   );
 }
 
-const cardStyle = {
-  background: "#FFFFFF",
-  borderRadius: "18px",
-  border: "1px solid #D8E8DD",
-  padding: "32px",
-  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+// Styling Constants
+const containerStyle = {
+  maxWidth: "480px",
+  margin: "32px auto 48px auto",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  boxSizing: "border-box",
+  padding: "0 12px",
 };
 
-const lockIconCircleStyle = {
-  width: "60px",
-  height: "60px",
-  borderRadius: "50%",
-  background: "#ECFDF5",
-  border: "1px solid #A7F3D0",
-  display: "inline-flex",
+const brandHeaderStyle = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  gap: "10px",
+  marginBottom: "20px",
+};
+
+const brandLogoBadgeStyle = {
+  width: "54px",
+  height: "54px",
+  borderRadius: "16px",
+  background: "linear-gradient(135deg, #059669 0%, #047857 60%, #064E3B 100%)",
+  display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  marginBottom: "16px",
+  boxShadow: "0 8px 24px rgba(5, 150, 105, 0.3)",
+};
+
+const hospitalTitleStyle = {
+  margin: "0 0 4px 0",
+  fontSize: "23px",
+  fontWeight: 900,
+  color: "#064E3B",
+  letterSpacing: "-0.4px",
+};
+
+const hospitalBadgeRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+};
+
+const nabhBadgeStyle = {
+  fontSize: "10px",
+  fontWeight: 800,
+  padding: "2px 8px",
+  borderRadius: "6px",
+  background: "#ECFDF5",
+  color: "#047857",
+  border: "1px solid #A7F3D0",
+  letterSpacing: "0.5px",
+};
+
+const taglineStyle = {
+  fontSize: "12px",
+  color: "#64748B",
+  fontWeight: 500,
+};
+
+const cardContainerStyle = {
+  width: "100%",
+  background: "#FFFFFF",
+  borderRadius: "20px",
+  border: "1px solid #D8E8DD",
+  padding: "26px 28px",
+  boxShadow: "0 16px 40px rgba(6, 78, 59, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04)",
+  boxSizing: "border-box",
+};
+
+const footerMetaStyle = {
+  marginTop: "20px",
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "11px",
+  color: "#94A3B8",
+  fontWeight: 600,
 };

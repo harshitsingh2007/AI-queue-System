@@ -14,7 +14,11 @@ import { getCategoryLabel } from "../utils/i18n";
 export default function AdminHeroBanner({
   language = "en",
   adminDept = "all",
+  hospitalName = "City General Hospital",
   analytics,
+  waitingCount,
+  servingCount,
+  servingTicket,
   appointmentsCount = 0,
   handleCounterChange,
   navigateTo,
@@ -157,7 +161,7 @@ export default function AdminHeroBanner({
           cursor: pointer;
           display: inline-flex;
           align-items: center;
-          justify-content: center;
+          justifyContent: center;
           transition: all 0.15s ease;
           outline: none;
         }
@@ -203,10 +207,13 @@ export default function AdminHeroBanner({
       {/* LEFT COLUMN: Operations Header & Live Badges */}
       <div className="admin-hero-left-col">
         <div>
-          {/* Department Security Tag & Kiosk TV shortcut */}
+          {/* Department Security Tag & Hospital Tag */}
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px", flexWrap: "wrap" }}>
-            <span style={{ padding: "3px 10px", borderRadius: "9999px", background: "rgba(52, 211, 153, 0.18)", border: "1px solid rgba(52, 211, 153, 0.4)", color: "#34D399", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
-              🛡️ {adminDept === "all" ? (isHi ? "सुपर एडमिन कंसोल" : "SUPER ADMIN CONSOLE") : `${deptLabel.toUpperCase()}`}
+            <span style={{ padding: "3px 10px", borderRadius: "9999px", background: "rgba(52, 211, 153, 0.2)", border: "1px solid rgba(52, 211, 153, 0.4)", color: "#34D399", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
+              🏥 {hospitalName}
+            </span>
+            <span style={{ padding: "3px 10px", borderRadius: "9999px", background: "rgba(255, 255, 255, 0.15)", border: "1px solid rgba(255, 255, 255, 0.25)", color: "#A7F3D0", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
+              🛡️ {adminDept === "all" ? (isHi ? "सुपर एडमिन कंसोल" : "ALL DEPARTMENTS") : `${deptLabel.toUpperCase()}`}
             </span>
             <span style={{ fontSize: "11.5px", color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>
               ● {isHi ? "AI ट्राइएज लाइव" : "AI Triage Active"}
@@ -249,7 +256,7 @@ export default function AdminHeroBanner({
             </div>
             <div>
               <div className="admin-hero-stat-value" style={{ color: "#FDE047" }}>
-                {analytics ? analytics.currently_waiting : 0}
+                {waitingCount !== undefined ? waitingCount : (analytics ? analytics.currently_waiting : 0)}
               </div>
               <div className="admin-hero-stat-label">
                 {isHi ? "प्रतीक्षारत मरीज़" : "Waiting Patients"}
@@ -267,7 +274,13 @@ export default function AdminHeroBanner({
             </div>
             <div>
               <div className="admin-hero-stat-value" style={{ color: "#34D399" }}>
-                {analytics ? analytics.currently_serving : 0}
+                {servingTicket
+                  ? `#${servingTicket.ticket_id}`
+                  : servingCount > 0
+                  ? `${servingCount} Active`
+                  : analytics
+                  ? `${analytics.currently_serving} Active`
+                  : "0 Active"}
               </div>
               <div className="admin-hero-stat-label">
                 {isHi ? "सेवारत टोकन" : "Now Serving"}

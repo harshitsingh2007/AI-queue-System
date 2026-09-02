@@ -12,10 +12,12 @@ import React from "react";
 
 export default function HeroBanner({
   language = "en",
+  hospitalName = "City General Hospital",
   stats = {
-    patientsServed: "250+",
-    avgWaitTime: "15 min",
-    satisfaction: "98%",
+    patientsServed: "0",
+    activeDesks: "0 Active Desks",
+    avgWaitTime: "0 min",
+    currentlyWaiting: "0 Waiting",
   },
 }) {
   const isHi = language === "hi";
@@ -88,21 +90,21 @@ export default function HeroBanner({
           line-height: 1.5;
           margin-top: 12px;
           margin-bottom: 24px;
-          max-width: 380px;
+          max-width: 420px;
           font-weight: 500;
         }
 
         .hero-stats-row {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 12px;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
         }
 
         .hero-stat-card {
           background: rgba(255, 255, 255, 0.1);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.16);
+          border: 1px solid rgba(255, 255, 255, 0.18);
           border-radius: 14px;
           padding: 10px 12px;
           display: flex;
@@ -112,7 +114,7 @@ export default function HeroBanner({
         }
 
         .hero-stat-card:hover {
-          background: rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.16);
           transform: translateY(-2px);
         }
 
@@ -120,32 +122,37 @@ export default function HeroBanner({
           width: 34px;
           height: 34px;
           border-radius: 10px;
-          background: rgba(255, 255, 255, 0.16);
+          background: rgba(255, 255, 255, 0.18);
           display: flex;
           align-items: center;
-          justify-content: center;
+          justifyContent: center;
           flex-shrink: 0;
           color: #A7F3D0;
         }
 
         .hero-stat-value {
-          font-size: 15px;
+          font-size: 16px;
           font-weight: 800;
           color: #FFFFFF;
           line-height: 1.1;
-          letter-spacing: -0.2px;
+          letter-spacing: -0.3px;
         }
 
         .hero-stat-label {
           font-size: 10px;
           font-weight: 600;
-          color: rgba(255, 255, 255, 0.75);
-          line-height: 1.25;
+          color: rgba(255, 255, 255, 0.78);
+          line-height: 1.2;
           margin-top: 2px;
         }
 
-        /* Responsive Breakpoints */
-        @media (max-width: 860px) {
+        @media (max-width: 1100px) {
+          .hero-stats-row {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 900px) {
           .hero-banner-container {
             flex-direction: column;
           }
@@ -158,19 +165,6 @@ export default function HeroBanner({
             min-height: 220px;
             width: 100%;
           }
-          .hero-stats-row {
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-          }
-          .hero-stat-card {
-            padding: 8px 10px;
-          }
-          .hero-stat-value {
-            font-size: 13px;
-          }
-          .hero-stat-label {
-            font-size: 9.5px;
-          }
         }
 
         @media (max-width: 540px) {
@@ -178,11 +172,11 @@ export default function HeroBanner({
             font-size: 26px;
           }
           .hero-stats-row {
-            grid-template-columns: 1fr;
+            grid-template-columns: 1fr 1fr;
             gap: 8px;
           }
           .hero-stat-card {
-            padding: 10px 12px;
+            padding: 8px 10px;
           }
         }
       `}</style>
@@ -190,6 +184,10 @@ export default function HeroBanner({
       {/* LEFT COLUMN: Texts & Stats Cards */}
       <div className="hero-left-col">
         <div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 10px", borderRadius: "9999px", background: "rgba(52, 211, 153, 0.2)", border: "1px solid rgba(52, 211, 153, 0.4)", color: "#34D399", fontSize: "11px", fontWeight: 800, marginBottom: "10px" }}>
+            <span>🏥</span>
+            <span>{hospitalName}</span>
+          </div>
           <h1 className="hero-title">
             {isHi ? (
               <>
@@ -212,7 +210,7 @@ export default function HeroBanner({
           </p>
         </div>
 
-        {/* 3 Stats Badges */}
+        {/* 4 Stats Badges */}
         <div className="hero-stats-row">
           {/* 1. Patients Served */}
           <div className="hero-stat-card">
@@ -227,12 +225,31 @@ export default function HeroBanner({
             <div>
               <div className="hero-stat-value">{stats.patientsServed}</div>
               <div className="hero-stat-label">
-                {isHi ? "आज सेवारत मरीज़" : "Patients Served Today"}
+                {isHi ? "आज सेवारत मरीज़" : "Patients Today"}
               </div>
             </div>
           </div>
 
-          {/* 2. Avg Wait Time */}
+          {/* 2. Active Desks */}
+          <div className="hero-stat-card">
+            <div className="hero-stat-icon-wrap" style={{ color: "#6EE7B7" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </div>
+            <div>
+              <div className="hero-stat-value" style={{ color: "#34D399" }}>
+                {stats.activeDesks || "4 Desks"}
+              </div>
+              <div className="hero-stat-label">
+                {isHi ? "सक्रिय डॉक्टर डेस्क" : "Active Desks"}
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Avg Wait Time */}
           <div className="hero-stat-card">
             <div className="hero-stat-icon-wrap">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -243,23 +260,27 @@ export default function HeroBanner({
             <div>
               <div className="hero-stat-value">{stats.avgWaitTime}</div>
               <div className="hero-stat-label">
-                {isHi ? "औसत प्रतीक्षा समय" : "Avg. Wait Time"}
+                {isHi ? "औसत प्रतीक्षा" : "Avg. Wait"}
               </div>
             </div>
           </div>
 
-          {/* 3. Patient Satisfaction */}
+          {/* 4. Currently in Queue */}
           <div className="hero-stat-card">
-            <div className="hero-stat-icon-wrap">
+            <div className="hero-stat-icon-wrap" style={{ color: "#FDE047" }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                <polyline points="9 12 11 14 15 10" />
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             </div>
             <div>
-              <div className="hero-stat-value">{stats.satisfaction}</div>
+              <div className="hero-stat-value" style={{ color: "#FDE047" }}>
+                {stats.currentlyWaiting || (isHi ? "0 प्रतीक्षारत" : "0 Waiting")}
+              </div>
               <div className="hero-stat-label">
-                {isHi ? "मरीज़ संतुष्टि दर" : "Patient Satisfaction"}
+                {isHi ? "प्रतीक्षारत मरीज़" : "Live in Queue"}
               </div>
             </div>
           </div>

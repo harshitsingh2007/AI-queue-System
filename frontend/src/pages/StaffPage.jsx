@@ -164,9 +164,13 @@ export default function StaffPage({
   useEffect(() => {
     fetchTenantAppointments();
     fetchModelStatus();
-    const interval = setInterval(fetchTenantAppointments, 5000);
+    if (refreshData) refreshData();
+    const interval = setInterval(() => {
+      fetchTenantAppointments();
+      if (refreshData) refreshData();
+    }, 4000);
     return () => clearInterval(interval);
-  }, [fetchTenantAppointments, fetchModelStatus]);
+  }, [fetchTenantAppointments, fetchModelStatus, refreshData]);
 
   // ML Handlers
   const handleFileChange = (e) => {
@@ -419,11 +423,15 @@ export default function StaffPage({
         }
       `}</style>
 
-      {/* 1. EXECUTIVE ADMIN HERO SECTION */}
+      {/* 1. EXECUTIVE ADMIN HERO SECTION (100% Live Telemetry) */}
       <AdminHeroBanner
         language={language}
         adminDept={adminDept}
+        hospitalName={currentUser?.hospital_name || "City General Hospital"}
         analytics={analytics}
+        waitingCount={queueSnapshot.length}
+        servingCount={servingTickets.length}
+        servingTicket={primaryServing}
         appointmentsCount={appointments.length}
         handleCounterChange={handleCounterChange}
         navigateTo={navigateTo}
@@ -1104,32 +1112,6 @@ export default function StaffPage({
               ⚡ {language === "hi" ? "त्वरित संचालन शॉर्टकट" : "Operations Shortcuts"}
             </span>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {navigateTo && (
-                <button
-                  type="button"
-                  onClick={() => navigateTo("kiosk")}
-                  style={{
-                    width: "100%",
-                    padding: "9px 12px",
-                    borderRadius: "10px",
-                    border: "1px solid #A7F3D0",
-                    background: "#ECFDF5",
-                    color: "#047857",
-                    fontWeight: 700,
-                    fontSize: "12px",
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    textAlign: "left",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <span>📺</span>
-                  <span>{language === "hi" ? "फुलस्क्रीन प्रतीक्षा टीवी खोलें" : "Launch Fullscreen TV Kiosk"}</span>
-                </button>
-              )}
-
               {navigateTo && (
                 <button
                   type="button"

@@ -12,6 +12,7 @@ Supports:
 import os
 import sqlite3
 from typing import Any
+# pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker

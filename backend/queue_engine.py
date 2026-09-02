@@ -19,6 +19,8 @@ import os
 import json
 import sqlite3
 import hashlib
+import random
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
 import joblib
@@ -239,6 +241,52 @@ class PluginQueueEngine:
                     created_at REAL NOT NULL,
                     ticket_id TEXT
                 );
+
+                CREATE TABLE IF NOT EXISTS hospitals (
+                    hospital_code TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    address TEXT DEFAULT '',
+                    phone TEXT DEFAULT '',
+                    email TEXT DEFAULT '',
+                    description TEXT DEFAULT '',
+                    logo_url TEXT DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS departments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hospital_code TEXT NOT NULL,
+                    dept_code TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    created_at REAL NOT NULL,
+                    UNIQUE(hospital_code, dept_code)
+                );
+
+                CREATE TABLE IF NOT EXISTS desks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hospital_code TEXT NOT NULL,
+                    dept_code TEXT NOT NULL,
+                    desk_number INTEGER NOT NULL,
+                    desk_name TEXT NOT NULL,
+                    staff_user_id INTEGER DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'AVAILABLE',
+                    current_ticket_id TEXT DEFAULT '',
+                    last_active_at REAL,
+                    UNIQUE(hospital_code, dept_code, desk_number)
+                );
+
+                CREATE TABLE IF NOT EXISTS family_members (
+                    id TEXT PRIMARY KEY,
+                    user_email TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    relation TEXT NOT NULL,
+                    age INTEGER DEFAULT 25,
+                    gender TEXT DEFAULT 'male',
+                    created_at REAL NOT NULL
+                );
             """)
 
             # Run safe column migration check for existing sqlite database
@@ -253,6 +301,12 @@ class PluginQueueEngine:
                 conn.execute("ALTER TABLE users ADD COLUMN medical_id TEXT DEFAULT ''")
             if "department" not in user_cols:
                 conn.execute("ALTER TABLE users ADD COLUMN department TEXT DEFAULT 'all'")
+            if "hospital_code" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN hospital_code TEXT DEFAULT 'city-hospital-01'")
+            if "employee_id" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN employee_id TEXT DEFAULT ''")
+            if "status" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'")
 
             ticket_cols = [row[1] for row in conn.execute("PRAGMA table_info(tickets)").fetchall()]
             if "user_email" not in ticket_cols:
@@ -284,7 +338,13 @@ class PluginQueueEngine:
             if "cancelled_at" not in ticket_cols:
                 conn.execute("ALTER TABLE tickets ADD COLUMN cancelled_at REAL")
 
-        self._seed_default_users()
+            hosp_cols = [row[1] for row in conn.execute("PRAGMA table_info(hospitals)").fetchall()]
+            if "owner_email" not in hosp_cols:
+                conn.execute("ALTER TABLE hospitals ADD COLUMN owner_email TEXT DEFAULT ''")
+            if "owner_user_id" not in hosp_cols:
+                conn.execute("ALTER TABLE hospitals ADD COLUMN owner_user_id INTEGER DEFAULT 0")
+
+        self._seed_default_hospital_and_users()
 
     def _save_ticket_db(self, ticket: Ticket):
         eff_ts = getattr(ticket, 'effective_timestamp', ticket.join_timestamp)
@@ -992,6 +1052,15 @@ class PluginQueueEngine:
         dept_clean = department.strip().lower() if department and department.strip().lower() != "all" else None
 
         with self._get_db() as conn:
+            # Query actual active desks from desks table for this hospital
+            desk_rows = conn.execute("SELECT status FROM desks WHERE LOWER(hospital_code) = ?", (tenant_id.lower(),)).fetchall()
+            if desk_rows:
+                active_counters_count = sum(1 for d in desk_rows if d["status"] in ("ACTIVE", "BUSY"))
+                if active_counters_count == 0:
+                    active_counters_count = sum(1 for d in desk_rows if d["status"] == "AVAILABLE")
+            else:
+                active_counters_count = tenant["active_counters"]
+
             if dept_clean:
                 completed_row = conn.execute(
                     "SELECT COUNT(*) as count, AVG(service_duration_minutes) as avg_duration FROM service_logs WHERE tenant_id = ? AND LOWER(service_category) = ?",
@@ -1024,7 +1093,7 @@ class PluginQueueEngine:
                 ).fetchall()
 
         completed_count = completed_row["count"] if completed_row else 0
-        avg_service = round(completed_row["avg_duration"], 1) if (completed_row and completed_row["avg_duration"]) else 12.4
+        avg_service = round(completed_row["avg_duration"], 1) if (completed_row and completed_row["avg_duration"]) else 10.0
 
         avg_wait = (
             round(sum(t["estimated_wait_minutes"] for t in snapshot) / len(snapshot), 1)
@@ -1032,15 +1101,13 @@ class PluginQueueEngine:
         )
 
         hourly_dist = [{"hour": f"{r['hour_of_day']:02d}:00", "count": r["cnt"]} for r in hourly_rows]
-        if not hourly_dist:
-            hourly_dist = [{"hour": "09:00", "count": 12}, {"hour": "11:00", "count": 28}, {"hour": "14:00", "count": 22}, {"hour": "16:00", "count": 15}]
 
         from train_model import get_tenant_model_info
         model_info = get_tenant_model_info(tenant_id)
 
         return {
             "tenant_id": tenant_id,
-            "active_counters": tenant["active_counters"],
+            "active_counters": active_counters_count,
             "currently_waiting": len(snapshot),
             "currently_serving": len(serving),
             "total_completed": completed_count,
@@ -1066,88 +1133,425 @@ class PluginQueueEngine:
             self._models_cache.clear()
 
     # ------------------------------------------------------------------
-    # User Authentication & Role Management
+    # User Authentication, Super Admin & Multi-Hospital Management
     # ------------------------------------------------------------------
     def _hash_password(self, password: str) -> str:
         return hashlib.sha256((password + "ai_queue_secret_salt_2026").encode('utf-8')).hexdigest()
 
-    def _seed_default_users(self):
+    def _seed_default_hospital_and_users(self):
         with self._get_db() as conn:
-            count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-            if count == 0:
-                admin_pwd = self._hash_password("admin123")
-                user_pwd = self._hash_password("user123")
-                now = time.time()
-                conn.execute(
-                    "INSERT INTO users (email, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
-                    ("admin@hospital.com", "Dr. Admin", admin_pwd, "admin", now)
-                )
-                conn.execute(
-                    "INSERT INTO users (email, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
-                    ("patient@hospital.com", "Patient Priya", user_pwd, "user", now)
-                )
+            now = time.time()
+            # 1. Seed Default Hospital (City General Hospital)
+            h_count = conn.execute("SELECT COUNT(*) FROM hospitals").fetchone()[0]
+            if h_count == 0:
+                conn.execute("""
+                    INSERT INTO hospitals (
+                        hospital_code, name, address, phone, email, description, logo_url, status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                """, (
+                    "city-hospital-01",
+                    "City General Hospital",
+                    "108 Healthcare Blvd, Central District",
+                    "+1 (555) 234-5678",
+                    "info@cityhospital.org",
+                    "Premier tertiary care and academic medical center with 24/7 AI-optimized triage.",
+                    "",
+                    now,
+                    now
+                ))
 
-    def register_user(self, email: str, username: str, password: str, role: str = "user", department: str = "all") -> dict:
+            # 2. Seed Default Departments for city-hospital-01
+            d_count = conn.execute("SELECT COUNT(*) FROM departments WHERE hospital_code = 'city-hospital-01'").fetchone()[0]
+            if d_count == 0:
+                default_depts = [
+                    ("consultation", "General Consultation (OPD)", "General outpatient doctor examinations"),
+                    ("pharmacy", "Pharmacy & Medicine", "Prescription dispensing and clinical pharmacy"),
+                    ("laboratory", "Pathology & Lab Test", "Diagnostic blood, urine and pathology assays"),
+                    ("radiology", "Radiology & X-Ray", "X-Ray, CT Scan, MRI and ultrasound imaging"),
+                    ("emergency", "Emergency Triage", "Critical 24/7 emergency resuscitation and trauma"),
+                    ("billing", "Central Billing", "Insurance claims, cash desk and discharge invoices"),
+                ]
+                for d_code, d_name, d_desc in default_depts:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
+                        VALUES ('city-hospital-01', ?, ?, ?, ?)
+                    """, (d_code, d_name, d_desc, now))
+
+            # 3. Seed Default Desks for city-hospital-01
+            desk_count = conn.execute("SELECT COUNT(*) FROM desks WHERE hospital_code = 'city-hospital-01'").fetchone()[0]
+            if desk_count == 0:
+                dept_desks = [
+                    ("consultation", 1, "Desk 1 - Dr. Sharma", "ACTIVE"),
+                    ("consultation", 2, "Desk 2 - Dr. Patel", "AVAILABLE"),
+                    ("consultation", 3, "Desk 3 - Dr. Verma", "AVAILABLE"),
+                    ("pharmacy", 1, "Counter 1 - Fast Rx", "ACTIVE"),
+                    ("pharmacy", 2, "Counter 2 - Chronic Meds", "AVAILABLE"),
+                    ("laboratory", 1, "Phlebotomy Bay A", "ACTIVE"),
+                    ("laboratory", 2, "Pathology Intake B", "AVAILABLE"),
+                    ("radiology", 1, "X-Ray Room 1", "ACTIVE"),
+                    ("radiology", 2, "CT Scanner 2", "AVAILABLE"),
+                    ("emergency", 1, "Trauma Bay Red", "ACTIVE"),
+                    ("emergency", 2, "Urgent Bay Yellow", "ACTIVE"),
+                    ("billing", 1, "Cashier Window 1", "ACTIVE"),
+                ]
+                for d_code, d_num, d_name, d_status in dept_desks:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES ('city-hospital-01', ?, ?, ?, ?, ?)
+                    """, (d_code, d_num, d_name, d_status, now))
+
+            # 4. Seed Default Users (Super Admin, Hospital Admin, Doctors, Staff, Patient)
+            u_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            if u_count == 0:
+                super_pwd = self._hash_password("superadmin123")
+                admin_pwd = self._hash_password("admin123")
+                doc_pwd = self._hash_password("doctor123")
+                staff_pwd = self._hash_password("staff123")
+                user_pwd = self._hash_password("user123")
+
+                # Super Admin
+                conn.execute("""
+                    INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, status, created_at)
+                    VALUES (?, ?, ?, 'super_admin', 'all', 'all', 'SUP-001', 'active', ?)
+                """, ("superadmin@hospital.com", "Super Admin HQ", super_pwd, now))
+
+                # Hospital Admin
+                conn.execute("""
+                    INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, status, created_at)
+                    VALUES (?, ?, ?, 'admin', 'all', 'city-hospital-01', 'ADM-001', 'active', ?)
+                """, ("admin@hospital.com", "Dr. Admin (Medical Director)", admin_pwd, now))
+
+                # Doctor (Cardiology / Consultation)
+                conn.execute("""
+                    INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, status, created_at)
+                    VALUES (?, ?, ?, 'doctor', 'consultation', 'city-hospital-01', 'DOC-101', 'active', ?)
+                """, ("doctor@hospital.com", "Dr. A. Sharma", doc_pwd, now))
+
+                # Staff (Pharmacy)
+                conn.execute("""
+                    INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, status, created_at)
+                    VALUES (?, ?, ?, 'staff', 'pharmacy', 'city-hospital-01', 'STF-201', 'active', ?)
+                """, ("staff@hospital.com", "Pharm. Rahul Verma", staff_pwd, now))
+
+                # Registered Patient
+                conn.execute("""
+                    INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, status, created_at)
+                    VALUES (?, ?, ?, 'user', 'all', 'city-hospital-01', '', 'active', ?)
+                """, ("patient@hospital.com", "Priya Sharma", user_pwd, now))
+            else:
+                # Ensure a superadmin account exists
+                super_exists = conn.execute("SELECT id FROM users WHERE role = 'super_admin' OR email = 'superadmin@hospital.com'").fetchone()
+                if not super_exists:
+                    super_pwd = self._hash_password("superadmin123")
+                    conn.execute("""
+                        INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, status, created_at)
+                        VALUES (?, ?, ?, 'super_admin', 'all', 'all', 'SUP-001', 'active', ?)
+                    """, ("superadmin@hospital.com", "Super Admin HQ", super_pwd, now))
+
+                # Fix legacy users with null or empty hospital_code
+                conn.execute("UPDATE users SET hospital_code = 'city-hospital-01' WHERE hospital_code IS NULL OR hospital_code = ''")
+
+    def register_user(
+        self,
+        email: str,
+        username: str,
+        password: str,
+        role: str = "user",
+        department: str = "all",
+        hospital_code: str = "city-hospital-01",
+        employee_id: str = "",
+        phone: str = ""
+    ) -> dict:
+        """Standard public user registration (restricted strictly to Patient/Consumer role)."""
         email_clean = email.strip().lower()
-        role_clean = role.strip().lower()
         dept_clean = department.strip().lower() if department else "all"
-        if role_clean not in ("user", "admin"):
-            role_clean = "user"
-        
+        h_code_clean = hospital_code.strip() if hospital_code else "city-hospital-01"
+
         with self._get_db() as conn:
             existing = conn.execute("SELECT id FROM users WHERE email = ?", (email_clean,)).fetchone()
             if existing:
-                raise ValueError("User with this email address already exists.")
-            
+                raise ValueError("An account with this email address already exists.")
+
             pwd_hash = self._hash_password(password)
             now = time.time()
-            cursor = conn.execute(
-                "INSERT INTO users (email, username, password_hash, role, department, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (email_clean, username.strip(), pwd_hash, role_clean, dept_clean, now)
-            )
+            cursor = conn.execute("""
+                INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, phone, status, created_at)
+                VALUES (?, ?, ?, 'user', ?, ?, ?, ?, 'active', ?)
+            """, (email_clean, username.strip(), pwd_hash, dept_clean, h_code_clean, employee_id.strip(), phone.strip(), now))
             user_id = cursor.lastrowid
-            
+
+            h_row = conn.execute("SELECT name FROM hospitals WHERE hospital_code = ?", (h_code_clean,)).fetchone()
+            hospital_name = h_row["name"] if h_row else "City General Hospital"
+
         token = f"token-{user_id}-{int(now)}"
         return {
             "id": user_id,
             "email": email_clean,
             "username": username.strip(),
-            "role": role_clean,
+            "role": "user",
             "department": dept_clean,
+            "hospital_code": h_code_clean,
+            "hospital_name": hospital_name,
+            "employee_id": employee_id.strip(),
+            "phone": phone.strip(),
+            "token": token
+        }
+
+    def register_superadmin(
+        self,
+        email: str,
+        username: str,
+        password: str,
+        phone: str = "",
+        hospital_name: str = "",
+        hospital_code: str = ""
+    ) -> dict:
+        """Registers a new Super Admin (Tenant Owner) and automatically provisions their dedicated hospital."""
+        email_clean = email.strip().lower()
+        if not email_clean or not password:
+            raise ValueError("Email and password are required.")
+
+        with self._get_db() as conn:
+            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email_clean,)).fetchone()
+            if existing:
+                raise ValueError("An account with this email address already exists.")
+
+            # Generate unique hospital code
+            if not hospital_code:
+                slug = re.sub(r'[^a-z0-9]+', '-', (hospital_name or username).strip().lower()).strip('-')[:15]
+                if not slug:
+                    slug = "hospital"
+                h_code = f"{slug}-{random.randint(100, 999)}"
+            else:
+                h_code = hospital_code.strip().lower()
+
+            h_name = hospital_name.strip() if hospital_name.strip() else f"{username}'s Medical Center"
+            now = time.time()
+
+            # Create Super Admin User
+            pwd_hash = self._hash_password(password)
+            emp_id = f"SUP-{random.randint(1000, 9999)}"
+            cursor = conn.execute("""
+                INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, phone, status, created_at)
+                VALUES (?, ?, ?, 'super_admin', 'all', ?, ?, ?, 'active', ?)
+            """, (email_clean, username.strip(), pwd_hash, h_code, emp_id, phone.strip(), now))
+            user_id = cursor.lastrowid
+
+            # Create Dedicated Hospital Record owned by this Super Admin
+            conn.execute("""
+                INSERT OR REPLACE INTO hospitals (hospital_code, name, address, phone, email, description, logo_url, status, owner_email, owner_user_id, created_at, updated_at)
+                VALUES (?, ?, '', ?, ?, 'Dedicated clinical facility with AI queue optimization.', '', 'active', ?, ?, ?, ?)
+            """, (h_code, h_name, phone.strip(), email_clean, email_clean, user_id, now, now))
+
+            # Auto-seed standard clinical departments for new hospital
+            default_depts = [
+                ("consultation", "General Consultation (OPD)", "General outpatient doctor examinations"),
+                ("pharmacy", "Pharmacy & Medicine", "Prescription dispensing and clinical pharmacy"),
+                ("laboratory", "Pathology & Lab Test", "Diagnostic blood, urine and pathology assays"),
+                ("radiology", "Radiology & X-Ray", "X-Ray, CT Scan, MRI and ultrasound imaging"),
+                ("emergency", "Emergency Triage", "Critical 24/7 emergency resuscitation and trauma"),
+                ("billing", "Central Billing", "Insurance claims, cash desk and discharge invoices"),
+            ]
+            for d_code, d_name, d_desc in default_depts:
+                conn.execute("""
+                    INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (h_code, d_code, d_name, d_desc, now))
+
+            # Auto-seed initial desks (2 desks per department)
+            for d_code, _, _ in default_depts:
+                conn.execute("""
+                    INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                    VALUES (?, ?, 1, ?, 'ACTIVE', ?)
+                """, (h_code, d_code, f"{d_code.capitalize()} Desk 1", now))
+                conn.execute("""
+                    INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                    VALUES (?, ?, 2, ?, 'AVAILABLE', ?)
+                """, (h_code, d_code, f"{d_code.capitalize()} Desk 2", now))
+
+            conn.execute("""
+                INSERT OR REPLACE INTO tenant_config (tenant_id, active_counters, updated_at)
+                VALUES (?, 2, ?)
+            """, (h_code, now))
+
+        token = f"token-{user_id}-{int(now)}"
+        permissions = {
+            "is_super_admin": True,
+            "is_hospital_admin": True,
+            "can_manage_hospitals": True,
+            "can_manage_employees": True,
+            "can_manage_desks": True,
+            "can_serve_queue": True,
+            "department_scope": "all",
+        }
+        return {
+            "id": user_id,
+            "email": email_clean,
+            "username": username.strip(),
+            "role": "super_admin",
+            "department": "all",
+            "hospital_code": h_code,
+            "hospital_name": h_name,
+            "employee_id": emp_id,
+            "phone": phone.strip(),
+            "permissions": permissions,
+            "token": token
+        }
+
+    def register_admin(
+        self,
+        email: str,
+        username: str,
+        password: str,
+        phone: str = "",
+        hospital_code: str = "city-hospital-01"
+    ) -> dict:
+        """Registers a Hospital Admin associated with a specific hospital (not global super admin)."""
+        email_clean = email.strip().lower()
+        h_clean = hospital_code.strip().lower() if hospital_code else "city-hospital-01"
+
+        with self._get_db() as conn:
+            existing = conn.execute("SELECT id FROM users WHERE email = ?", (email_clean,)).fetchone()
+            if existing:
+                raise ValueError("An account with this email address already exists.")
+
+            h_row = conn.execute("SELECT name FROM hospitals WHERE LOWER(hospital_code) = ?", (h_clean,)).fetchone()
+            if not h_row:
+                # Fallback to first active hospital
+                first_h = conn.execute("SELECT hospital_code, name FROM hospitals ORDER BY id ASC LIMIT 1").fetchone()
+                if first_h:
+                    h_clean = first_h["hospital_code"]
+                    hospital_name = first_h["name"]
+                else:
+                    h_clean = "city-hospital-01"
+                    hospital_name = "City General Hospital"
+            else:
+                hospital_name = h_row["name"]
+
+            pwd_hash = self._hash_password(password)
+            emp_id = f"ADM-{random.randint(100, 999)}"
+            now = time.time()
+
+            cursor = conn.execute("""
+                INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, phone, status, created_at)
+                VALUES (?, ?, ?, 'admin', 'all', ?, ?, ?, 'active', ?)
+            """, (email_clean, username.strip(), pwd_hash, h_clean, emp_id, phone.strip(), now))
+            user_id = cursor.lastrowid
+
+        token = f"token-{user_id}-{int(now)}"
+        permissions = {
+            "is_super_admin": False,
+            "is_hospital_admin": True,
+            "can_manage_hospitals": False,
+            "can_manage_employees": True,
+            "can_manage_desks": True,
+            "can_serve_queue": True,
+            "department_scope": "all",
+        }
+        return {
+            "id": user_id,
+            "email": email_clean,
+            "username": username.strip(),
+            "role": "admin",
+            "department": "all",
+            "hospital_code": h_clean,
+            "hospital_name": hospital_name,
+            "employee_id": emp_id,
+            "phone": phone.strip(),
+            "permissions": permissions,
             "token": token
         }
 
     def authenticate_user(self, email: str, password: str) -> dict:
-        email_clean = email.strip().lower()
+        """Authenticates user via Email OR Assigned Employee ID (e.g. DOC-1024, STF-201, SUP-001)."""
+        identifier = email.strip()
         pwd_hash = self._hash_password(password)
-        
+
         with self._get_db() as conn:
-            user = conn.execute(
-                "SELECT id, email, username, password_hash, role, department FROM users WHERE email = ?", 
-                (email_clean,)
-            ).fetchone()
-            
+            user = conn.execute("""
+                SELECT id, email, username, password_hash, role, department, hospital_code, employee_id, phone, status
+                FROM users
+                WHERE LOWER(email) = LOWER(?) OR UPPER(employee_id) = UPPER(?) OR employee_id = ?
+            """, (identifier, identifier, identifier)).fetchone()
+
             if not user or user["password_hash"] != pwd_hash:
-                raise ValueError("Invalid email or password.")
-            
+                raise ValueError("Invalid credentials. Please check your Email / Assigned ID and password.")
+
+            if user["status"] == "inactive":
+                raise ValueError("This user account has been deactivated. Please contact your Hospital Administrator.")
+
+            h_code = user["hospital_code"] if user["hospital_code"] else "city-hospital-01"
+            h_row = conn.execute("SELECT name FROM hospitals WHERE hospital_code = ?", (h_code,)).fetchone()
+            hospital_name = h_row["name"] if h_row else "City General Hospital"
+
             token = f"token-{user['id']}-{int(time.time())}"
-            dept = user["department"] if "department" in user.keys() and user["department"] else "all"
+            dept = user["department"] if user["department"] else "all"
+
+            role = user["role"]
+            is_super = role == "super_admin"
+            is_hosp_admin = role in ("super_admin", "admin")
+            can_serve = role in ("super_admin", "admin", "doctor", "staff", "receptionist")
+
+            permissions = {
+                "is_super_admin": is_super,
+                "is_hospital_admin": is_hosp_admin,
+                "can_manage_hospitals": is_super,
+                "can_manage_employees": is_hosp_admin,
+                "can_manage_desks": is_hosp_admin,
+                "can_serve_queue": can_serve,
+                "department_scope": dept,
+            }
+
             return {
                 "id": user["id"],
                 "email": user["email"],
                 "username": user["username"],
                 "role": user["role"],
                 "department": dept,
+                "hospital_code": h_code,
+                "hospital_name": hospital_name,
+                "employee_id": user["employee_id"] or "",
+                "phone": user["phone"] or "",
+                "permissions": permissions,
                 "token": token
             }
 
+    def verify_hospital_access(self, hospital_code: str, requester_email: str) -> bool:
+        """Security Guard: Verifies that the requester owns or is authorized to access the given hospital."""
+        if not requester_email or not hospital_code:
+            return False
+
+        r_clean = requester_email.strip().lower()
+        h_clean = hospital_code.strip().lower()
+
+        with self._get_db() as conn:
+            user = conn.execute("SELECT role, hospital_code FROM users WHERE LOWER(email) = ?", (r_clean,)).fetchone()
+            if not user:
+                return False
+
+            # Super Admin: verify they own this hospital or it is assigned as their hospital
+            if user["role"] == "super_admin":
+                hosp = conn.execute("SELECT owner_email, hospital_code FROM hospitals WHERE LOWER(hospital_code) = ?", (h_clean,)).fetchone()
+                if hosp:
+                    if (hosp["owner_email"] and hosp["owner_email"].lower() == r_clean) or hosp["hospital_code"].lower() == user["hospital_code"].lower() or user["hospital_code"] == "all":
+                        return True
+                return False
+
+            # Hospital Admin / Staff / Doctor: only their assigned hospital
+            return user["hospital_code"].lower() == h_clean
+
     def get_user_by_email(self, email: str) -> Optional[dict]:
         with self._get_db() as conn:
-            user = conn.execute(
-                "SELECT id, email, username, role, department, phone, gender, age, medical_id, created_at FROM users WHERE email = ?",
-                (email.lower(),)
-            ).fetchone()
-            return dict(user) if user else None
+            user = conn.execute("""
+                SELECT id, email, username, role, department, hospital_code, employee_id, phone, gender, age, medical_id, status, created_at
+                FROM users WHERE email = ?
+            """, (email.lower(),)).fetchone()
+            if not user:
+                return None
+            res = dict(user)
+            h_row = conn.execute("SELECT name FROM hospitals WHERE hospital_code = ?", (res.get("hospital_code", "city-hospital-01"),)).fetchone()
+            res["hospital_name"] = h_row["name"] if h_row else "City General Hospital"
+            return res
 
     def update_user_profile(
         self, email: str, username: str, phone: str = "", gender: str = "", age: int = 0, medical_id: str = "", department: str = ""
@@ -1176,10 +1580,533 @@ class PluginQueueEngine:
     def get_all_users(self) -> List[dict]:
         with self._get_db() as conn:
             rows = conn.execute("""
-                SELECT id, email, username, role, department, phone, gender, age, medical_id, created_at
+                SELECT id, email, username, role, department, hospital_code, employee_id, phone, gender, age, medical_id, status, created_at
                 FROM users ORDER BY id DESC
             """).fetchall()
             return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Super Admin & Multi-Hospital Management APIs (Tenant-Isolated)
+    # ------------------------------------------------------------------
+    def get_superadmin_overview(self, requester_email: str = "") -> dict:
+        """Tenant-isolated overview telemetry strictly for hospitals owned by the authenticated Super Admin."""
+        with self._get_db() as conn:
+            if requester_email:
+                r_clean = requester_email.strip().lower()
+                user = conn.execute("SELECT role, hospital_code FROM users WHERE LOWER(email) = ?", (r_clean,)).fetchone()
+                if user and user["role"] == "super_admin":
+                    hospitals = conn.execute("""
+                        SELECT * FROM hospitals
+                        WHERE LOWER(owner_email) = ? OR LOWER(hospital_code) = ? OR ? = 'all'
+                    """, (r_clean, user["hospital_code"].lower(), user["hospital_code"])).fetchall()
+                else:
+                    hospitals = conn.execute("SELECT * FROM hospitals WHERE LOWER(owner_email) = ?", (r_clean,)).fetchall()
+            else:
+                hospitals = conn.execute("SELECT * FROM hospitals").fetchall()
+
+            h_codes = [h["hospital_code"] for h in hospitals]
+            total_hospitals = len(hospitals)
+            active_hospitals = sum(1 for h in hospitals if h["status"] == "active")
+
+            if not h_codes:
+                return {
+                    "total_hospitals": 0,
+                    "active_hospitals": 0,
+                    "total_employees": 0,
+                    "active_doctors": 0,
+                    "total_desks": 0,
+                    "active_desks": 0,
+                    "patients_today": 0,
+                    "active_queues": 0
+                }
+
+            placeholders = ",".join(["?"] * len(h_codes))
+
+            # Total employees & doctors for these hospitals
+            emp_rows = conn.execute(f"""
+                SELECT role, hospital_code FROM users
+                WHERE hospital_code IN ({placeholders}) AND role IN ('admin', 'doctor', 'staff', 'receptionist')
+            """, h_codes).fetchall()
+            total_employees = len(emp_rows)
+            active_doctors = sum(1 for e in emp_rows if e["role"] == "doctor")
+
+            # Desks count
+            desk_rows = conn.execute(f"""
+                SELECT status FROM desks WHERE hospital_code IN ({placeholders})
+            """, h_codes).fetchall()
+            total_desks = len(desk_rows)
+            active_desks = sum(1 for d in desk_rows if d["status"] in ("ACTIVE", "BUSY"))
+
+            # Tickets count today for these hospitals
+            now = time.time()
+            start_of_day = now - (now % 86400)
+            t_today = conn.execute(f"""
+                SELECT COUNT(*) FROM tickets WHERE tenant_id IN ({placeholders}) AND join_timestamp >= ?
+            """, (*h_codes, start_of_day)).fetchone()[0]
+            if t_today == 0:
+                t_today = conn.execute(f"""
+                    SELECT COUNT(*) FROM tickets WHERE tenant_id IN ({placeholders})
+                """, h_codes).fetchone()[0]
+
+            # Active queues
+            active_queues = conn.execute(f"""
+                SELECT COUNT(DISTINCT tenant_id) FROM tickets WHERE tenant_id IN ({placeholders}) AND status = 'waiting'
+            """, h_codes).fetchone()[0]
+            if active_queues == 0:
+                active_queues = active_hospitals
+
+            return {
+                "total_hospitals": total_hospitals,
+                "active_hospitals": active_hospitals,
+                "total_employees": total_employees,
+                "active_doctors": active_doctors,
+                "total_desks": total_desks,
+                "active_desks": active_desks,
+                "patients_today": t_today,
+                "active_queues": active_queues
+            }
+
+    def get_all_hospitals(self, requester_email: str = "") -> List[dict]:
+        """Returns hospitals owned by or associated with the requester (Tenant Isolation)."""
+        with self._get_db() as conn:
+            if requester_email:
+                r_clean = requester_email.strip().lower()
+                user = conn.execute("SELECT role, hospital_code FROM users WHERE LOWER(email) = ?", (r_clean,)).fetchone()
+                if user and user["role"] == "super_admin":
+                    h_rows = conn.execute("""
+                        SELECT * FROM hospitals
+                        WHERE LOWER(owner_email) = ? OR LOWER(hospital_code) = ? OR ? = 'all'
+                        ORDER BY created_at ASC
+                    """, (r_clean, user["hospital_code"].lower(), user["hospital_code"])).fetchall()
+                elif user:
+                    h_rows = conn.execute("""
+                        SELECT * FROM hospitals WHERE LOWER(hospital_code) = ?
+                    """, (user["hospital_code"].lower(),)).fetchall()
+                else:
+                    h_rows = conn.execute("SELECT * FROM hospitals WHERE LOWER(owner_email) = ?", (r_clean,)).fetchall()
+            else:
+                h_rows = conn.execute("SELECT * FROM hospitals ORDER BY created_at ASC").fetchall()
+
+            result = []
+
+            for h in h_rows:
+                h_dict = dict(h)
+                h_code = h_dict["hospital_code"]
+
+                emp_count = conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE hospital_code = ? AND role IN ('admin', 'doctor', 'staff', 'receptionist')",
+                    (h_code,)
+                ).fetchone()[0]
+
+                doc_count = conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE hospital_code = ? AND role = 'doctor'",
+                    (h_code,)
+                ).fetchone()[0]
+
+                dept_count = conn.execute(
+                    "SELECT COUNT(*) FROM departments WHERE hospital_code = ?",
+                    (h_code,)
+                ).fetchone()[0]
+
+                desks = conn.execute("SELECT status FROM desks WHERE hospital_code = ?", (h_code,)).fetchall()
+                total_desks = len(desks)
+                active_desks = sum(1 for d in desks if d["status"] in ("ACTIVE", "BUSY"))
+
+                active_tickets = conn.execute(
+                    "SELECT COUNT(*) FROM tickets WHERE tenant_id = ? AND status IN ('waiting', 'serving')",
+                    (h_code,)
+                ).fetchone()[0]
+
+                completed_today = conn.execute(
+                    "SELECT COUNT(*) FROM tickets WHERE tenant_id = ? AND status = 'completed'",
+                    (h_code,)
+                ).fetchone()[0]
+
+                now = time.time()
+                start_of_day = now - (now % 86400)
+                patients_today = conn.execute(
+                    "SELECT COUNT(*) FROM tickets WHERE tenant_id = ? AND join_timestamp >= ?",
+                    (h_code, start_of_day)
+                ).fetchone()[0]
+                if patients_today == 0:
+                    patients_today = active_tickets + completed_today
+
+                h_dict["employee_count"] = emp_count
+                h_dict["doctor_count"] = doc_count
+                h_dict["department_count"] = dept_count
+                h_dict["total_desks"] = total_desks
+                h_dict["active_desks"] = active_desks
+                h_dict["active_tickets"] = active_tickets
+                h_dict["patients_today"] = patients_today
+                h_dict["completed_today"] = completed_today
+
+                result.append(h_dict)
+
+            return result
+
+    def get_hospital_by_code(self, hospital_code: str) -> Optional[dict]:
+        """Returns deep statistics and settings for a specific hospital."""
+        hospitals = self.get_all_hospitals()
+        for h in hospitals:
+            if h["hospital_code"].lower() == hospital_code.strip().lower():
+                return h
+        return None
+
+    def create_hospital(
+        self,
+        hospital_code: str,
+        name: str,
+        address: str = "",
+        phone: str = "",
+        email: str = "",
+        description: str = "",
+        logo_url: str = "",
+        status: str = "active",
+        owner_email: str = "",
+        owner_user_id: int = 0
+    ) -> dict:
+        h_clean = hospital_code.strip().lower()
+        if not h_clean or not name.strip():
+            raise ValueError("Hospital code and name are required.")
+
+        now = time.time()
+        with self._get_db() as conn:
+            existing = conn.execute("SELECT hospital_code FROM hospitals WHERE LOWER(hospital_code) = ?", (h_clean,)).fetchone()
+            if existing:
+                raise ValueError(f"Hospital with code '{hospital_code}' already exists.")
+
+            conn.execute("""
+                INSERT INTO hospitals (hospital_code, name, address, phone, email, description, logo_url, status, owner_email, owner_user_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (h_clean, name.strip(), address.strip(), phone.strip(), email.strip(), description.strip(), logo_url.strip(), status.strip().lower(), owner_email.strip().lower(), owner_user_id, now, now))
+
+            # Auto-seed standard clinical departments for new hospital
+            default_depts = [
+                ("consultation", "General Consultation (OPD)", "General outpatient doctor examinations"),
+                ("pharmacy", "Pharmacy & Medicine", "Prescription dispensing and clinical pharmacy"),
+                ("laboratory", "Pathology & Lab Test", "Diagnostic blood, urine and pathology assays"),
+                ("radiology", "Radiology & X-Ray", "X-Ray, CT Scan, MRI and ultrasound imaging"),
+                ("emergency", "Emergency Triage", "Critical 24/7 emergency resuscitation and trauma"),
+                ("billing", "Central Billing", "Insurance claims, cash desk and discharge invoices"),
+            ]
+            for d_code, d_name, d_desc in default_depts:
+                conn.execute("""
+                    INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (h_clean, d_code, d_name, d_desc, now))
+
+            # Auto-seed initial desks (2 desks per department = 12 total desks)
+            for d_code, _, _ in default_depts:
+                conn.execute("""
+                    INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                    VALUES (?, ?, 1, ?, 'ACTIVE', ?)
+                """, (h_clean, d_code, f"{d_code.capitalize()} Desk 1", now))
+                conn.execute("""
+                    INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                    VALUES (?, ?, 2, ?, 'AVAILABLE', ?)
+                """, (h_clean, d_code, f"{d_code.capitalize()} Desk 2", now))
+
+            # Also initialize tenant_config active_counters = 2
+            conn.execute("""
+                INSERT OR REPLACE INTO tenant_config (tenant_id, active_counters, updated_at)
+                VALUES (?, 2, ?)
+            """, (h_clean, now))
+
+        return self.get_hospital_by_code(h_clean)
+
+    def update_hospital(
+        self,
+        hospital_code: str,
+        name: str,
+        address: str = "",
+        phone: str = "",
+        email: str = "",
+        description: str = "",
+        logo_url: str = "",
+        status: str = "active"
+    ) -> dict:
+        h_clean = hospital_code.strip().lower()
+        now = time.time()
+
+        with self._get_db() as conn:
+            existing = conn.execute("SELECT hospital_code FROM hospitals WHERE LOWER(hospital_code) = ?", (h_clean,)).fetchone()
+            if not existing:
+                raise ValueError(f"Hospital with code '{hospital_code}' not found.")
+
+            conn.execute("""
+                UPDATE hospitals
+                SET name = ?, address = ?, phone = ?, email = ?, description = ?, logo_url = ?, status = ?, updated_at = ?
+                WHERE LOWER(hospital_code) = ?
+            """, (name.strip(), address.strip(), phone.strip(), email.strip(), description.strip(), logo_url.strip(), status.strip().lower(), now, h_clean))
+
+        return self.get_hospital_by_code(h_clean)
+
+    def get_hospital_employees(self, hospital_code: str) -> List[dict]:
+        """Returns employees and doctors assigned to a specific hospital."""
+        h_clean = hospital_code.strip().lower()
+        with self._get_db() as conn:
+            rows = conn.execute("""
+                SELECT id, email, username, role, department, hospital_code, employee_id, phone, status, created_at
+                FROM users
+                WHERE LOWER(hospital_code) = ? AND role IN ('admin', 'doctor', 'staff', 'receptionist')
+                ORDER BY id DESC
+            """, (h_clean,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def add_hospital_employee(
+        self,
+        hospital_code: str,
+        name: str,
+        email: str,
+        role: str,
+        department: str,
+        employee_id: str = "",
+        phone: str = "",
+        password: str = "pass123"
+    ) -> dict:
+        h_clean = hospital_code.strip().lower()
+        with self._get_db() as conn:
+            h_exists = conn.execute("SELECT hospital_code FROM hospitals WHERE LOWER(hospital_code) = ?", (h_clean,)).fetchone()
+            if not h_exists:
+                raise ValueError(f"Hospital '{hospital_code}' not found.")
+
+        return self.register_user(
+            email=email,
+            username=name,
+            password=password,
+            role=role,
+            department=department,
+            hospital_code=h_clean,
+            employee_id=employee_id,
+            phone=phone
+        )
+
+    def update_hospital_employee(
+        self,
+        user_id: int,
+        name: str,
+        phone: str = "",
+        role: str = "staff",
+        department: str = "consultation",
+        employee_id: str = "",
+        status: str = "active"
+    ) -> dict:
+        with self._get_db() as conn:
+            conn.execute("""
+                UPDATE users
+                SET username = ?, phone = ?, role = ?, department = ?, employee_id = ?, status = ?
+                WHERE id = ?
+            """, (name.strip(), phone.strip(), role.strip().lower(), department.strip().lower(), employee_id.strip(), status.strip().lower(), user_id))
+
+            user = conn.execute("SELECT id, email, username, role, department, hospital_code, employee_id, phone, status FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not user:
+                raise ValueError("Employee not found.")
+            return dict(user)
+
+    def delete_hospital_employee(self, user_id: int) -> dict:
+        """Removes an employee or doctor from the hospital system."""
+        with self._get_db() as conn:
+            user = conn.execute("SELECT id, username, email FROM users WHERE id = ?", (user_id,)).fetchone()
+            if not user:
+                raise ValueError("Employee not found.")
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            # Unlink staff from any active desks
+            conn.execute("UPDATE desks SET staff_user_id = NULL WHERE staff_user_id = ?", (user_id,))
+            return {"deleted_user_id": user_id, "username": user["username"]}
+
+    def get_hospital_departments(self, hospital_code: str) -> List[dict]:
+        h_clean = hospital_code.strip().lower()
+        with self._get_db() as conn:
+            rows = conn.execute("""
+                SELECT * FROM departments WHERE LOWER(hospital_code) = ? ORDER BY id ASC
+            """, (h_clean,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def add_hospital_department(
+        self,
+        hospital_code: str,
+        dept_code: str,
+        name: str,
+        description: str = ""
+    ) -> dict:
+        h_clean = hospital_code.strip().lower()
+        d_clean = dept_code.strip().lower()
+        now = time.time()
+        with self._get_db() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO departments (hospital_code, dept_code, name, description, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (h_clean, d_clean, name.strip(), description.strip(), now))
+
+            # Create default desk 1 for this new department if none exists
+            existing_desk = conn.execute("SELECT id FROM desks WHERE LOWER(hospital_code) = ? AND LOWER(dept_code) = ?", (h_clean, d_clean)).fetchone()
+            if not existing_desk:
+                conn.execute("""
+                    INSERT INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                    VALUES (?, ?, 1, ?, 'AVAILABLE', ?)
+                """, (h_clean, d_clean, f"{name.strip()} Desk 1", now))
+
+            row = conn.execute("SELECT * FROM departments WHERE hospital_code = ? AND dept_code = ?", (h_clean, d_clean)).fetchone()
+            return dict(row)
+
+    def delete_hospital_department(self, hospital_code: str, dept_code: str) -> dict:
+        """Removes a department and its associated service desks."""
+        h_clean = hospital_code.strip().lower()
+        d_clean = dept_code.strip().lower()
+        with self._get_db() as conn:
+            dept = conn.execute("SELECT * FROM departments WHERE LOWER(hospital_code) = ? AND LOWER(dept_code) = ?", (h_clean, d_clean)).fetchone()
+            if not dept:
+                raise ValueError(f"Department '{dept_code}' not found.")
+            conn.execute("DELETE FROM departments WHERE LOWER(hospital_code) = ? AND LOWER(dept_code) = ?", (h_clean, d_clean))
+            conn.execute("DELETE FROM desks WHERE LOWER(hospital_code) = ? AND LOWER(dept_code) = ?", (h_clean, d_clean))
+            return {"deleted_dept_code": d_clean, "hospital_code": h_clean}
+
+    def get_hospital_desks(self, hospital_code: str) -> dict:
+        """Returns desks structured by department with live counts and statuses."""
+        h_clean = hospital_code.strip().lower()
+        with self._get_db() as conn:
+            desks = conn.execute("""
+                SELECT d.*, u.username as staff_name
+                FROM desks d
+                LEFT JOIN users u ON d.staff_user_id = u.id
+                WHERE LOWER(d.hospital_code) = ?
+                ORDER BY d.dept_code ASC, d.desk_number ASC
+            """, (h_clean,)).fetchall()
+
+            # Group by department
+            dept_breakdown = {}
+            total_active = 0
+            total_busy = 0
+            total_available = 0
+            total_offline = 0
+
+            for desk in desks:
+                d_dict = dict(desk)
+                dept = d_dict["dept_code"]
+                if dept not in dept_breakdown:
+                    dept_breakdown[dept] = {
+                        "dept_code": dept,
+                        "total_desks": 0,
+                        "active_desks": 0,
+                        "desks": []
+                    }
+
+                status = d_dict["status"].upper()
+                if status in ("ACTIVE", "BUSY"):
+                    dept_breakdown[dept]["active_desks"] += 1
+                    total_active += 1
+                if status == "BUSY":
+                    total_busy += 1
+                elif status == "AVAILABLE":
+                    total_available += 1
+                elif status == "OFFLINE" or status == "INACTIVE":
+                    total_offline += 1
+
+                dept_breakdown[dept]["total_desks"] += 1
+                dept_breakdown[dept]["desks"].append(d_dict)
+
+            return {
+                "hospital_code": h_clean,
+                "total_desks": len(desks),
+                "active_desks": total_active,
+                "busy_desks": total_busy,
+                "available_desks": total_available,
+                "offline_desks": total_offline,
+                "departments": list(dept_breakdown.values())
+            }
+
+    def add_hospital_desk(
+        self,
+        hospital_code: str,
+        dept_code: str,
+        desk_name: str,
+        status: str = "AVAILABLE"
+    ) -> dict:
+        """Adds a new service desk to a hospital department."""
+        h_clean = hospital_code.strip().lower()
+        d_clean = dept_code.strip().lower()
+        now = time.time()
+        with self._get_db() as conn:
+            row = conn.execute("SELECT MAX(desk_number) FROM desks WHERE LOWER(hospital_code) = ? AND LOWER(dept_code) = ?", (h_clean, d_clean)).fetchone()
+            max_num = row[0] if row and row[0] is not None else 0
+            next_num = max_num + 1
+
+            cur = conn.execute("""
+                INSERT INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (h_clean, d_clean, next_num, desk_name.strip(), status.strip().upper(), now))
+            new_id = cur.lastrowid
+            desk = conn.execute("SELECT * FROM desks WHERE id = ?", (new_id,)).fetchone()
+            return dict(desk)
+
+    def delete_hospital_desk(self, desk_id: int) -> dict:
+        """Removes a service desk by its ID."""
+        with self._get_db() as conn:
+            desk = conn.execute("SELECT * FROM desks WHERE id = ?", (desk_id,)).fetchone()
+            if not desk:
+                raise ValueError("Desk not found.")
+            conn.execute("DELETE FROM desks WHERE id = ?", (desk_id,))
+            return {"deleted_desk_id": desk_id, "desk_name": desk["desk_name"]}
+
+    def update_desk_status(self, desk_id: int, status: str) -> dict:
+        status_clean = status.strip().upper()
+        now = time.time()
+        with self._get_db() as conn:
+            conn.execute("""
+                UPDATE desks SET status = ?, last_active_at = ? WHERE id = ?
+            """, (status_clean, now, desk_id))
+            desk = conn.execute("SELECT * FROM desks WHERE id = ?", (desk_id,)).fetchone()
+            if not desk:
+                raise ValueError("Desk not found.")
+            return dict(desk)
+
+    def get_hospital_info(self, hospital_code: str) -> dict:
+        """Dynamic hospital information, branding, and active department list."""
+        h_clean = hospital_code.strip().lower() if hospital_code else "city-hospital-01"
+        with self._get_db() as conn:
+            h_row = conn.execute("SELECT * FROM hospitals WHERE LOWER(hospital_code) = ?", (h_clean,)).fetchone()
+            if not h_row:
+                h_row = conn.execute("SELECT * FROM hospitals LIMIT 1").fetchone()
+
+            if not h_row:
+                return {
+                    "tenant_id": h_clean,
+                    "name": "City General Hospital",
+                    "address": "108 Healthcare Blvd",
+                    "phone": "+1 (555) 234-5678",
+                    "email": "info@cityhospital.org",
+                    "departments": [
+                        {"id": "consultation", "label": "General Consultation (OPD)"},
+                        {"id": "pharmacy", "label": "Pharmacy & Medicine"},
+                        {"id": "laboratory", "label": "Pathology & Lab Test"},
+                        {"id": "radiology", "label": "Radiology & X-Ray"},
+                        {"id": "emergency", "label": "Emergency Triage"},
+                        {"id": "billing", "label": "Central Billing"},
+                    ]
+                }
+
+            h_dict = dict(h_row)
+            dept_rows = conn.execute("SELECT dept_code, name FROM departments WHERE LOWER(hospital_code) = ?", (h_dict["hospital_code"].lower(),)).fetchall()
+            depts = [{"id": r["dept_code"], "label": r["name"]} for r in dept_rows] if dept_rows else [
+                {"id": "consultation", "label": "General Consultation (OPD)"},
+                {"id": "pharmacy", "label": "Pharmacy & Medicine"},
+                {"id": "laboratory", "label": "Pathology & Lab Test"},
+                {"id": "radiology", "label": "Radiology & X-Ray"},
+                {"id": "emergency", "label": "Emergency Triage"},
+                {"id": "billing", "label": "Central Billing"},
+            ]
+
+            return {
+                "tenant_id": h_dict["hospital_code"],
+                "name": h_dict["name"],
+                "address": h_dict["address"],
+                "phone": h_dict["phone"],
+                "email": h_dict["email"],
+                "description": h_dict["description"],
+                "logo_url": h_dict["logo_url"],
+                "status": h_dict["status"],
+                "departments": depts
+            }
 
     def get_user_tickets(self, user_email: str) -> List[dict]:
         email_clean = user_email.strip().lower()
@@ -1463,5 +2390,62 @@ class PluginQueueEngine:
                 """, (tenant_id,)).fetchall()
 
             return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Family Member & Dependent Profile Management
+    # ------------------------------------------------------------------
+    def get_family_members(self, user_email: str) -> List[dict]:
+        email_clean = user_email.strip().lower()
+        with self._get_db() as conn:
+            rows = conn.execute("""
+                SELECT id, user_email, name, relation, age, gender, created_at
+                FROM family_members
+                WHERE LOWER(user_email) = ?
+                ORDER BY created_at ASC
+            """, (email_clean,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def add_family_member(
+        self,
+        user_email: str,
+        name: str,
+        relation: str,
+        age: int = 25,
+        gender: str = "male",
+        member_id: Optional[str] = None,
+    ) -> dict:
+        email_clean = user_email.strip().lower()
+        m_id = member_id.strip() if member_id else f"dep_{int(time.time() * 1000)}"
+        now = time.time()
+        with self._get_db() as conn:
+            existing = conn.execute("SELECT id FROM family_members WHERE id = ? AND LOWER(user_email) = ?", (m_id, email_clean)).fetchone()
+            if existing:
+                conn.execute("""
+                    UPDATE family_members
+                    SET name = ?, relation = ?, age = ?, gender = ?
+                    WHERE id = ? AND LOWER(user_email) = ?
+                """, (name.strip(), relation.strip().lower(), int(age), gender.strip().lower(), m_id, email_clean))
+            else:
+                conn.execute("""
+                    INSERT INTO family_members (id, user_email, name, relation, age, gender, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (m_id, email_clean, name.strip(), relation.strip().lower(), int(age), gender.strip().lower(), now))
+
+        return {
+            "id": m_id,
+            "user_email": email_clean,
+            "name": name.strip(),
+            "relation": relation.strip().lower(),
+            "age": int(age),
+            "gender": gender.strip().lower(),
+            "created_at": now
+        }
+
+    def delete_family_member(self, user_email: str, member_id: str) -> bool:
+        email_clean = user_email.strip().lower()
+        m_id = member_id.strip()
+        with self._get_db() as conn:
+            cur = conn.execute("DELETE FROM family_members WHERE id = ? AND LOWER(user_email) = ?", (m_id, email_clean))
+            return cur.rowcount > 0
 
 engine = PluginQueueEngine()

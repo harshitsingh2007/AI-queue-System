@@ -20,7 +20,7 @@ import io
 import json
 import base64
 import pandas as pd
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -95,6 +95,37 @@ class SignupRequest(BaseModel):
     password: str
     role: Optional[str] = "user"
     department: Optional[str] = "all"
+    hospital_code: Optional[str] = "city-hospital-01"
+    employee_id: Optional[str] = ""
+    phone: Optional[str] = ""
+
+class SuperAdminSignupRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+    phone: Optional[str] = ""
+    hospital_name: Optional[str] = ""
+    hospital_code: Optional[str] = ""
+
+class AdminSignupRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+    phone: Optional[str] = ""
+    hospital_code: Optional[str] = "city-hospital-01"
+
+class PatientSignupRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+    phone: Optional[str] = ""
+
+def get_requester_email(request: Request) -> str:
+    """Helper to extract user email from header for tenant isolation."""
+    email_hdr = request.headers.get("x-user-email") or request.headers.get("X-User-Email")
+    if email_hdr:
+        return email_hdr.strip().lower()
+    return ""
 
 class LoginRequest(BaseModel):
     email: str
@@ -107,7 +138,63 @@ class UpdateProfileRequest(BaseModel):
     gender: Optional[str] = ""
     age: Optional[int] = 0
     medical_id: Optional[str] = ""
+
+class FamilyMemberCreateRequest(BaseModel):
+    name: str
+    relation: str
+    age: Optional[int] = 25
+    gender: Optional[str] = "male"
+    id: Optional[str] = None
     department: Optional[str] = "all"
+
+class HospitalCreateRequest(BaseModel):
+    hospital_code: str
+    name: str
+    address: Optional[str] = ""
+    phone: Optional[str] = ""
+    email: Optional[str] = ""
+    description: Optional[str] = ""
+    logo_url: Optional[str] = ""
+    status: Optional[str] = "active"
+
+class HospitalUpdateRequest(BaseModel):
+    name: str
+    address: Optional[str] = ""
+    phone: Optional[str] = ""
+    email: Optional[str] = ""
+    description: Optional[str] = ""
+    logo_url: Optional[str] = ""
+    status: Optional[str] = "active"
+
+class EmployeeCreateRequest(BaseModel):
+    name: str
+    email: str
+    role: str
+    department: str
+    employee_id: Optional[str] = ""
+    phone: Optional[str] = ""
+    password: Optional[str] = "pass123"
+
+class EmployeeUpdateRequest(BaseModel):
+    name: str
+    phone: Optional[str] = ""
+    role: str = "staff"
+    department: str = "consultation"
+    employee_id: Optional[str] = ""
+    status: Optional[str] = "active"
+
+class DepartmentCreateRequest(BaseModel):
+    dept_code: str
+    name: str
+    description: Optional[str] = ""
+
+class DeskStatusUpdateRequest(BaseModel):
+    status: str
+
+class DeskCreateRequest(BaseModel):
+    dept_code: str
+    desk_name: str
+    status: Optional[str] = "AVAILABLE"
 
 class BookAppointmentRequest(BaseModel):
     tenant_id: str
@@ -490,15 +577,52 @@ async def get_model_status(tenant_id: str):
 # ---------------------------------------------------------------------------
 # Authentication & Role Management Endpoints
 # ---------------------------------------------------------------------------
-@app.post("/api/v1/auth/signup")
-async def signup(payload: SignupRequest):
+@app.post("/api/v1/auth/signup/superadmin")
+async def signup_superadmin(payload: SuperAdminSignupRequest):
     try:
+        user_data = engine.register_superadmin(
+            email=payload.email,
+            username=payload.username,
+            password=payload.password,
+            phone=payload.phone or "",
+            hospital_name=payload.hospital_name or "",
+            hospital_code=payload.hospital_code or ""
+        )
+        return {"status": "success", "user": user_data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Super Admin registration error: {str(e)}")
+
+@app.post("/api/v1/auth/signup/admin")
+async def signup_admin(payload: AdminSignupRequest):
+    try:
+        user_data = engine.register_admin(
+            email=payload.email,
+            username=payload.username,
+            password=payload.password,
+            phone=payload.phone or "",
+            hospital_code=payload.hospital_code or "city-hospital-01"
+        )
+        return {"status": "success", "user": user_data}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Hospital Admin registration error: {str(e)}")
+
+@app.post("/api/v1/auth/signup/patient")
+@app.post("/api/v1/auth/signup")
+async def signup_patient(payload: SignupRequest):
+    try:
+        # Public self-registration is strictly for Patient / Consumer accounts.
+        # Staff and Doctor accounts must be provisioned by a Super Admin.
         user_data = engine.register_user(
             email=payload.email,
             username=payload.username,
             password=payload.password,
-            role=payload.role or "user",
-            department=payload.department or "all"
+            role="user",
+            department="all",
+            phone=payload.phone or ""
         )
         return {"status": "success", "user": user_data}
     except ValueError as e:
@@ -555,12 +679,269 @@ async def get_user_history(email: str):
     tickets = engine.get_user_tickets(email)
     return {"status": "success", "tickets": tickets}
 
+# ---------------------------------------------------------------------------
+# Family Member & Dependent Profile Endpoints
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/users/{email}/family-members")
+async def get_user_family_members(email: str):
+    try:
+        members = engine.get_family_members(email)
+        return {"status": "success", "members": members}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/users/{email}/family-members")
+async def add_user_family_member(email: str, payload: FamilyMemberCreateRequest):
+    try:
+        member = engine.add_family_member(
+            user_email=email,
+            name=payload.name,
+            relation=payload.relation,
+            age=payload.age or 25,
+            gender=payload.gender or "male",
+            member_id=payload.id
+        )
+        return {"status": "success", "member": member}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/v1/users/{email}/family-members/{member_id}")
+async def delete_user_family_member(email: str, member_id: str):
+    try:
+        success = engine.delete_family_member(email, member_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Family member not found")
+        return {"status": "success", "deleted_id": member_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/v1/admin/db-overview")
 async def get_db_overview():
     try:
         from database import get_db_info
         data = engine.get_database_overview()
         return {"status": "success", "db_info": get_db_info(), "database": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ---------------------------------------------------------------------------
+# Super Admin & Multi-Hospital Management Endpoints (Tenant-Isolated)
+# ---------------------------------------------------------------------------
+@app.get("/api/v1/hospital/info/{hospital_code}")
+async def get_hospital_info_endpoint(hospital_code: str):
+    info = engine.get_hospital_info(hospital_code)
+    return {"status": "success", "hospital": info}
+
+@app.get("/api/v1/superadmin/overview")
+async def get_superadmin_overview_endpoint(request: Request):
+    requester = get_requester_email(request)
+    overview = engine.get_superadmin_overview(requester_email=requester)
+    return {"status": "success", "overview": overview}
+
+@app.get("/api/v1/superadmin/hospitals")
+async def get_superadmin_hospitals_endpoint(request: Request):
+    requester = get_requester_email(request)
+    hospitals = engine.get_all_hospitals(requester_email=requester)
+    return {"status": "success", "hospitals": hospitals}
+
+@app.post("/api/v1/superadmin/hospitals")
+async def create_hospital_endpoint(payload: HospitalCreateRequest, request: Request):
+    try:
+        requester = get_requester_email(request)
+        hospital = engine.create_hospital(
+            hospital_code=payload.hospital_code,
+            name=payload.name,
+            address=payload.address or "",
+            phone=payload.phone or "",
+            email=payload.email or "",
+            description=payload.description or "",
+            logo_url=payload.logo_url or "",
+            status=payload.status or "active",
+            owner_email=requester
+        )
+        return {"status": "success", "hospital": hospital}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/superadmin/hospitals/{hospital_code}")
+async def get_hospital_detail_endpoint(hospital_code: str, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this hospital's resources.")
+    hospital = engine.get_hospital_by_code(hospital_code)
+    if not hospital:
+        raise HTTPException(status_code=404, detail="Hospital not found")
+    return {"status": "success", "hospital": hospital}
+
+@app.put("/api/v1/superadmin/hospitals/{hospital_code}")
+async def update_hospital_endpoint(hospital_code: str, payload: HospitalUpdateRequest, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have ownership of this hospital.")
+    try:
+        hospital = engine.update_hospital(
+            hospital_code=hospital_code,
+            name=payload.name,
+            address=payload.address or "",
+            phone=payload.phone or "",
+            email=payload.email or "",
+            description=payload.description or "",
+            logo_url=payload.logo_url or "",
+            status=payload.status or "active"
+        )
+        return {"status": "success", "hospital": hospital}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/superadmin/hospitals/{hospital_code}/employees")
+async def get_hospital_employees_endpoint(hospital_code: str, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this hospital's employees.")
+    employees = engine.get_hospital_employees(hospital_code)
+    return {"status": "success", "employees": employees}
+
+@app.post("/api/v1/superadmin/hospitals/{hospital_code}/employees")
+async def add_hospital_employee_endpoint(hospital_code: str, payload: EmployeeCreateRequest, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You cannot provision employees for another hospital.")
+    try:
+        user = engine.add_hospital_employee(
+            hospital_code=hospital_code,
+            name=payload.name,
+            email=payload.email,
+            role=payload.role,
+            department=payload.department,
+            employee_id=payload.employee_id or "",
+            phone=payload.phone or "",
+            password=payload.password or "pass123"
+        )
+        return {"status": "success", "employee": user}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/v1/superadmin/hospitals/{hospital_code}/employees/{user_id}")
+async def update_hospital_employee_endpoint(hospital_code: str, user_id: int, payload: EmployeeUpdateRequest, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have access to manage this employee.")
+    try:
+        user = engine.update_hospital_employee(
+            user_id=user_id,
+            name=payload.name,
+            phone=payload.phone or "",
+            role=payload.role,
+            department=payload.department,
+            employee_id=payload.employee_id or "",
+            status=payload.status or "active"
+        )
+        return {"status": "success", "employee": user}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/v1/superadmin/hospitals/{hospital_code}/employees/{user_id}")
+async def delete_hospital_employee_endpoint(hospital_code: str, user_id: int, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have access to delete this employee.")
+    try:
+        res = engine.delete_hospital_employee(user_id=user_id)
+        return {"status": "success", "result": res}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/superadmin/hospitals/{hospital_code}/departments")
+async def get_hospital_departments_endpoint(hospital_code: str, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this hospital's departments.")
+    departments = engine.get_hospital_departments(hospital_code)
+    return {"status": "success", "departments": departments}
+
+@app.post("/api/v1/superadmin/hospitals/{hospital_code}/departments")
+async def add_hospital_department_endpoint(hospital_code: str, payload: DepartmentCreateRequest, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You cannot modify departments for another hospital.")
+    try:
+        dept = engine.add_hospital_department(
+            hospital_code=hospital_code,
+            dept_code=payload.dept_code,
+            name=payload.name,
+            description=payload.description or ""
+        )
+        return {"status": "success", "department": dept}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/v1/superadmin/hospitals/{hospital_code}/departments/{dept_code}")
+async def delete_hospital_department_endpoint(hospital_code: str, dept_code: str, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You cannot delete departments from another hospital.")
+    try:
+        res = engine.delete_hospital_department(hospital_code=hospital_code, dept_code=dept_code)
+        return {"status": "success", "result": res}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/superadmin/hospitals/{hospital_code}/desks")
+async def get_hospital_desks_endpoint(hospital_code: str, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this hospital's desks.")
+    desks_data = engine.get_hospital_desks(hospital_code)
+    return {"status": "success", "desks": desks_data}
+
+@app.post("/api/v1/superadmin/hospitals/{hospital_code}/desks")
+async def add_hospital_desk_endpoint(hospital_code: str, payload: DeskCreateRequest):
+    try:
+        desk = engine.add_hospital_desk(
+            hospital_code=hospital_code,
+            dept_code=payload.dept_code,
+            desk_name=payload.desk_name,
+            status=payload.status or "AVAILABLE"
+        )
+        return {"status": "success", "desk": desk}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/v1/superadmin/hospitals/{hospital_code}/desks/{desk_id}")
+async def delete_hospital_desk_endpoint(hospital_code: str, desk_id: int):
+    try:
+        res = engine.delete_hospital_desk(desk_id=desk_id)
+        return {"status": "success", "result": res}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/v1/superadmin/hospitals/{hospital_code}/desks/{desk_id}/status")
+async def update_desk_status_endpoint(hospital_code: str, desk_id: int, payload: DeskStatusUpdateRequest):
+    try:
+        desk = engine.update_desk_status(desk_id=desk_id, status=payload.status)
+        return {"status": "success", "desk": desk}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

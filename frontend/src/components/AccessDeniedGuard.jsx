@@ -54,8 +54,8 @@ export default function AccessDeniedGuard({ requiredRole, pageName, currentUser,
 }
 
 function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
-  const [email, setEmail] = useState("admin@hospital.com");
-  const [password, setPassword] = useState("admin123");
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -68,18 +68,18 @@ function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
       const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: identifier.trim(), password }),
       });
       const data = await res.json();
       setLoading(false);
       if (res.ok && data.status === "success") {
-        if (data.user.role !== "admin") {
-          setErrorMsg("Login failed: Account is not a Staff Admin.");
+        if (!["admin", "doctor", "staff", "super_admin", "receptionist"].includes(data.user.role)) {
+          setErrorMsg("Login failed: Account does not have staff permissions.");
           return;
         }
         onLoginSuccess(data.user);
       } else {
-        setErrorMsg(data.detail || "Invalid Staff Admin credentials.");
+        setErrorMsg(data.detail || "Invalid credentials.");
       }
     } catch (err) {
       setLoading(false);
@@ -94,11 +94,12 @@ function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
       </h4>
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: "12px" }}>
-          <label style={fieldLabelStyle}>{t("emailAddress", language)}</label>
+          <label style={fieldLabelStyle}>Email / Assigned ID</label>
           <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            placeholder="name@hospital.com or DOC-1024"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
             required
             style={fieldInputStyle}
           />
@@ -107,6 +108,7 @@ function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
           <label style={fieldLabelStyle}>{t("password", language)}</label>
           <input
             type="password"
+            placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
