@@ -518,9 +518,9 @@ export default function SuperAdminPage({
 
         @media (min-width: 900px) {
           .superadmin-hero-left-col {
-            clip-path: polygon(0 0, 100% 0, 93% 100%, 0 100%);
-            padding-right: 56px;
-            margin-right: -24px;
+            padding-right: 40px;
+            margin-right: 0;
+            border-right: 1px solid rgba(16, 185, 129, 0.25);
           }
         }
 
@@ -562,6 +562,7 @@ export default function SuperAdminPage({
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 10px;
+          width: 100%;
         }
 
         .superadmin-hero-stat-card {
@@ -574,6 +575,8 @@ export default function SuperAdminPage({
           display: flex;
           align-items: center;
           gap: 10px;
+          min-width: 0;
+          box-sizing: border-box;
           transition: transform 0.2s ease, background 0.2s ease;
         }
 
@@ -724,6 +727,12 @@ export default function SuperAdminPage({
           align-items: start;
         }
 
+        @media (max-width: 1240px) {
+          .superadmin-hero-stats-row {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
         @media (max-width: 1024px) {
           .superadmin-portal-dashboard {
             grid-template-columns: 1fr;
@@ -731,12 +740,9 @@ export default function SuperAdminPage({
           .superadmin-tabs-bar {
             grid-template-columns: repeat(2, 1fr);
           }
-          .superadmin-hero-stats-row {
-            grid-template-columns: repeat(2, 1fr);
-          }
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 900px) {
           .superadmin-hero-container {
             flex-direction: column;
           }
@@ -744,9 +750,12 @@ export default function SuperAdminPage({
             clip-path: none !important;
             padding: 28px 22px;
             margin-right: 0;
+            border-right: none !important;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.25);
           }
           .superadmin-hero-right-col {
             min-height: 200px;
+            width: 100%;
           }
           .superadmin-tabs-bar {
             grid-template-columns: 1fr;
@@ -2438,7 +2447,7 @@ const modalOverlayStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 1000,
+  zIndex: 10000,
   padding: "20px",
 };
 

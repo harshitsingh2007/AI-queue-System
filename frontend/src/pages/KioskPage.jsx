@@ -50,9 +50,25 @@ export default function KioskPage({
 
   return (
     <div style={{ maxWidth: isFullscreen ? "100%" : "1280px", margin: "0 auto", padding: isFullscreen ? "20px 40px" : "0" }}>
+      <style>{`
+        @media (max-width: 960px) {
+          .kiosk-main-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .kiosk-header-bar {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 16px !important;
+          }
+          .kiosk-header-right {
+            justify-content: space-between !important;
+            width: 100% !important;
+          }
+        }
+      `}</style>
       {/* Top TV Header Bar */}
-      <div style={kioskHeaderStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+      <div style={kioskHeaderStyle} className="kiosk-header-bar">
+        <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
           <div style={kioskLogoBadgeStyle}>
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 6v12M6 12h12"/>
@@ -60,11 +76,11 @@ export default function KioskPage({
             </svg>
           </div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <h1 style={{ margin: 0, fontSize: "24px", color: "#064E3B", fontWeight: 900 }}>
                 {t("hospitalName", language)}
               </h1>
-              <span style={{ padding: "3px 10px", borderRadius: "20px", background: "#ECFDF5", color: "#047857", fontSize: "11px", fontWeight: 800, border: "1px solid #A7F3D0", display: "flex", alignItems: "center", gap: "5px" }}>
+              <span style={{ padding: "3px 10px", borderRadius: "20px", background: "#ECFDF5", color: "#047857", fontSize: "11px", fontWeight: 800, border: "1px solid #A7F3D0", display: "flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap" }}>
                 <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 8px #10B981" }} />
                 {t("liveTvDisplay", language)}
               </span>
@@ -76,7 +92,7 @@ export default function KioskPage({
         </div>
 
         {/* Center Digital Clock */}
-        <div style={{ textAlign: "center", padding: "8px 18px", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
+        <div style={{ textAlign: "center", padding: "8px 18px", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0", alignSelf: "center" }}>
           <div style={{ fontSize: "18px", fontWeight: 900, color: "#0F172A", letterSpacing: "1px" }}>
             {formattedTime}
           </div>
@@ -85,7 +101,7 @@ export default function KioskPage({
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+        <div className="kiosk-header-right" style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
           {/* Language Switcher */}
           {setLanguage && (
             <div style={kioskLangContainerStyle}>
@@ -159,7 +175,7 @@ export default function KioskPage({
       </div>
 
       {/* Main TV Layout Grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "24px" }}>
+      <div className="kiosk-main-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "24px" }}>
         {/* Now Serving Big Display */}
         <div style={kioskCardStyle}>
           <div style={{ borderBottom: "2px solid #047857", paddingBottom: "12px", marginBottom: "20px" }}>
@@ -273,10 +289,12 @@ const kioskHeaderStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
+  flexWrap: "wrap",
+  gap: "16px",
   background: "#FFFFFF",
   borderRadius: "20px",
   border: "1px solid #D8E8DD",
-  padding: "20px 28px",
+  padding: "18px 24px",
   marginBottom: "24px",
   boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
 };

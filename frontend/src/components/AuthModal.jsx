@@ -123,6 +123,18 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
 
   const modalBody = (
     <div style={isInline ? { width: "100%", textAlign: "left" } : modalCardStyle}>
+      <style>{`
+        .auth-modal-row-2col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+        @media (max-width: 520px) {
+          .auth-modal-row-2col {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
       {/* Header Bar */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -269,7 +281,7 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+          <div className="auth-modal-row-2col" style={{ marginBottom: "12px" }}>
             <div>
               <label style={fieldLabelStyle}>Email Address *</label>
               <input
@@ -305,7 +317,7 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "18px" }}>
+          <div className="auth-modal-row-2col" style={{ marginBottom: "18px" }}>
             <div>
               <label style={fieldLabelStyle}>Password *</label>
               <input
@@ -359,7 +371,7 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
             />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+          <div className="auth-modal-row-2col" style={{ marginBottom: "12px" }}>
             <div>
               <label style={fieldLabelStyle}>Email Address *</label>
               <input
@@ -383,7 +395,7 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "18px" }}>
+          <div className="auth-modal-row-2col" style={{ marginBottom: "18px" }}>
             <div>
               <label style={fieldLabelStyle}>Password *</label>
               <input
@@ -469,7 +481,7 @@ const modalBackdropStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 9999,
+  zIndex: 10000,
   padding: "16px",
   boxSizing: "border-box",
 };

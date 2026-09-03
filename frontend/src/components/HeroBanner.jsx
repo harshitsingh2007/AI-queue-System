@@ -51,12 +51,12 @@ export default function HeroBanner({
           position: relative;
         }
 
-        /* Diagonal divider effect on wide screens */
+        /* Divider on wide screens */
         @media (min-width: 900px) {
           .hero-left-col {
-            clip-path: polygon(0 0, 100% 0, 93% 100%, 0 100%);
-            padding-right: 56px;
-            margin-right: -24px;
+            padding-right: 40px;
+            margin-right: 0;
+            border-right: 1px solid rgba(16, 185, 129, 0.25);
           }
         }
 
@@ -98,6 +98,7 @@ export default function HeroBanner({
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 10px;
+          width: 100%;
         }
 
         .hero-stat-card {
@@ -110,6 +111,8 @@ export default function HeroBanner({
           display: flex;
           align-items: center;
           gap: 10px;
+          min-width: 0;
+          box-sizing: border-box;
           transition: transform 0.2s ease, background 0.2s ease;
         }
 
@@ -131,11 +134,14 @@ export default function HeroBanner({
         }
 
         .hero-stat-value {
-          font-size: 16px;
+          font-size: 15px;
           font-weight: 800;
           color: #FFFFFF;
-          line-height: 1.1;
+          line-height: 1.15;
           letter-spacing: -0.3px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .hero-stat-label {
@@ -144,9 +150,12 @@ export default function HeroBanner({
           color: rgba(255, 255, 255, 0.78);
           line-height: 1.2;
           margin-top: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
-        @media (max-width: 1100px) {
+        @media (max-width: 1240px) {
           .hero-stats-row {
             grid-template-columns: repeat(2, 1fr);
           }
@@ -160,6 +169,8 @@ export default function HeroBanner({
             clip-path: none !important;
             padding: 30px 24px;
             margin-right: 0;
+            border-right: none !important;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.25);
           }
           .hero-right-col {
             min-height: 220px;

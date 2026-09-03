@@ -318,33 +318,48 @@ export default function App() {
     if (socketRef.current) socketRef.current.emit("set_counters", { tenant_id: tenantId, active_counters: next });
   };
 
+  // Dedicated full-viewport view for unauthenticated login screen (no outer wrapper padding / scrolling)
+  if (!currentUser && activePage !== "kiosk") {
+    return (
+      <div style={{ height: "100vh", maxHeight: "100vh", width: "100vw", overflow: "hidden", margin: 0, padding: 0 }}>
+        <MandatoryAuthScreen
+          onLoginSuccess={(user) => {
+            handleLoginSuccess(user);
+          }}
+          language={language}
+          setLanguage={setLanguage}
+          navigateTo={navigateTo}
+        />
+        {showAuthModal && (
+          <AuthModal
+            authMode={authMode}
+            setAuthMode={setAuthMode}
+            onClose={() => setShowAuthModal(false)}
+            onLoginSuccess={handleLoginSuccess}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={appBgStyle}>
       <div style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}>
-        {/* Top Navigation Header Bar (Hidden on Login Screen) */}
-        {currentUser && (
-          <Header
-            currentUser={currentUser}
-            activePage={activePage}
-            navigateTo={navigateTo}
-            handleLogout={handleLogout}
-            setShowAuthModal={setShowAuthModal}
-            socketConnected={socketConnected}
-            language={language}
-            setLanguage={setLanguage}
-            currentTab={currentTab}
-          />
-        )}
+        {/* Top Navigation Header Bar */}
+        <Header
+          currentUser={currentUser}
+          activePage={activePage}
+          navigateTo={navigateTo}
+          handleLogout={handleLogout}
+          setShowAuthModal={setShowAuthModal}
+          socketConnected={socketConnected}
+          language={language}
+          setLanguage={setLanguage}
+          currentTab={currentTab}
+        />
 
         {/* Main Content Router */}
         <main style={mainContentStyle}>
-        {!currentUser && activePage !== "kiosk" ? (
-          <MandatoryAuthScreen
-            onLoginSuccess={(user) => {
-              handleLoginSuccess(user);
-            }}
-          />
-        ) : (
           <>
             {activePage === "patient" && (
               (isAdmin || isSuperAdmin) ? (
@@ -467,8 +482,7 @@ export default function App() {
               />
             )}
           </>
-        )}
-      </main>
+        </main>
 
         {/* Auth Modal Overlay */}
         {showAuthModal && (

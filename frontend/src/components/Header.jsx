@@ -232,7 +232,7 @@ export default function Header({
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 10000;
             padding: 20px;
             animation: fadeIn 0.15s ease;
           }
@@ -267,7 +267,7 @@ export default function Header({
         `}</style>
 
         <div
-          style={{ display: "flex", alignItems: "center", gap: "14px", cursor: "pointer" }}
+          style={{ display: "flex", alignItems: "center", gap: "14px", cursor: "pointer", flexShrink: 0 }}
           onClick={() => {
             if (currentUser?.role === "super_admin") {
               navigateTo("superadmin");
@@ -295,15 +295,15 @@ export default function Header({
             </svg>
           </div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#064E3B", letterSpacing: "-0.4px", lineHeight: "1.2" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#064E3B", letterSpacing: "-0.4px", lineHeight: "1.2", maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {currentUser?.hospital_name || HOSPITAL_CONFIG.name}
               </span>
-              <span style={{ padding: "2px 7px", borderRadius: "20px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 800, border: "1px solid #A7F3D0" }}>
+              <span style={{ padding: "2px 7px", borderRadius: "20px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 800, border: "1px solid #A7F3D0", whiteSpace: "nowrap" }}>
                 NABH ACCREDITED
               </span>
             </div>
-            <div style={{ fontSize: "11.5px", color: "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "6px" }}>
+            <div style={{ fontSize: "11.5px", color: "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
               <span>{language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा" : "Care you can trust"}</span>
               <span>•</span>
               <span style={{ color: socketConnected ? "#059669" : "#D97706", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700 }}>
@@ -406,12 +406,15 @@ export default function Header({
         </nav>
 
         {/* 3. Right: Language Selector & Patient Profile Dropdown */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", position: "relative", flexShrink: 0 }}>
           {/* Language Selector Pill Button */}
           <div ref={langRef} style={{ position: "relative" }}>
             <button
               type="button"
-              onClick={() => setLangDropdownOpen(!langDropdownOpen)}
+              onClick={() => {
+                setLangDropdownOpen((prev) => !prev);
+                setProfileDropdownOpen(false);
+              }}
               className="header-pill-btn"
               title="Change Language"
             >
@@ -455,7 +458,10 @@ export default function Header({
             <div ref={profileRef} style={{ position: "relative" }}>
               <button
                 type="button"
-                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                onClick={() => {
+                  setProfileDropdownOpen((prev) => !prev);
+                  setLangDropdownOpen(false);
+                }}
                 className="header-pill-btn"
                 style={{
                   padding: "5px 14px 5px 6px",

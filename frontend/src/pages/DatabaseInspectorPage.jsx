@@ -50,7 +50,7 @@ export default function DatabaseInspectorPage() {
   return (
     <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
       {/* Top Header Card */}
-      <div style={{ ...dbCardStyle, marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ ...dbCardStyle, marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
         <div>
           <span style={{ fontSize: "11px", color: "#047857", fontWeight: 700, textTransform: "uppercase" }}>Database Inspector</span>
           <h2 style={{ margin: "4px 0 0 0", color: "#064E3B", fontSize: "24px", fontWeight: 800 }}>
@@ -67,7 +67,7 @@ export default function DatabaseInspectorPage() {
       </div>
 
       {/* Table Selector Tabs */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
         <button
           onClick={() => setActiveTable("users")}
           style={tableTabStyle(activeTable === "users")}
@@ -93,7 +93,7 @@ export default function DatabaseInspectorPage() {
 
       {/* Main Table Inspector Card */}
       <div style={dbCardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
           <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
             Table: <code>{activeTable}</code> ({filteredRows.length} records)
           </h3>

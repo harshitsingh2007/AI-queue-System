@@ -1177,7 +1177,7 @@ export default function PatientPage({
                         {t("priorityTriageLabel", language)}
                       </label>
 
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "12px" }}>
                         {/* Routine Case Option */}
                         <button
                           type="button"
@@ -1366,7 +1366,7 @@ export default function PatientPage({
                         </svg>
                         Select Available Time Slot
                       </label>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))", gap: "8px" }}>
                         {timeSlotOptions.map((slot) => (
                           <button
                             key={slot}
@@ -1938,26 +1938,26 @@ function DigitalTicketPassCard({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "20px" }}>
-        <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "16px", marginBottom: "20px" }}>
+        <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: "11px", color: "#64748B" }}>{t("patientDemographics", language)}</span>
-          <p style={{ margin: "2px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>
+          <p style={{ margin: "2px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px", wordBreak: "break-word" }}>
             {activeTicket.name} ({activeTicket.age || 30} {language === "hi" ? "वर्ष" : "yrs"}, {t(activeTicket.gender || "male", language)})
           </p>
         </div>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: "11px", color: "#64748B" }}>{t("deptCategory", language)}</span>
-          <p style={{ margin: "2px 0 0 0", color: "#047857", fontWeight: 700, fontSize: "15px" }}>
+          <p style={{ margin: "2px 0 0 0", color: "#047857", fontWeight: 700, fontSize: "15px", wordBreak: "break-word" }}>
             {getCategoryLabel(activeTicket.service_category || "consultation", language)}
           </p>
         </div>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: "11px", color: "#64748B" }}>{t("pos", language)}</span>
           <p style={{ margin: "2px 0 0 0", color: "#D97706", fontWeight: 800, fontSize: "24px" }}>
             #{activeTicket.position}
           </p>
         </div>
-        <div>
+        <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: "11px", color: "#64748B" }}>{t("estWait", language)}</span>
           <p style={{ margin: "2px 0 0 0", color: "#059669", fontWeight: 800, fontSize: "24px" }}>
             {activeTicket.estimated_wait_minutes} {language === "hi" ? "मिनट" : "min"}

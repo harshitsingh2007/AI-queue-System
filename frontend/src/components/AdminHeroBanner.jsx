@@ -57,9 +57,9 @@ export default function AdminHeroBanner({
 
         @media (min-width: 900px) {
           .admin-hero-left-col {
-            clip-path: polygon(0 0, 100% 0, 93% 100%, 0 100%);
-            padding-right: 56px;
-            margin-right: -24px;
+            padding-right: 40px;
+            margin-right: 0;
+            border-right: 1px solid rgba(16, 185, 129, 0.25);
           }
         }
 
@@ -68,7 +68,7 @@ export default function AdminHeroBanner({
           background: linear-gradient(180deg, #EBF5FB 0%, #E2F0F7 100%);
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           position: relative;
           overflow: hidden;
           min-height: 260px;
@@ -101,6 +101,7 @@ export default function AdminHeroBanner({
           display: grid;
           grid-template-columns: repeat(4, 1fr);
           gap: 10px;
+          width: 100%;
         }
 
         .admin-hero-stat-card {
@@ -113,6 +114,8 @@ export default function AdminHeroBanner({
           display: flex;
           align-items: center;
           gap: 9px;
+          min-width: 0;
+          box-sizing: border-box;
           transition: transform 0.2s ease, background 0.2s ease;
         }
 
@@ -134,11 +137,14 @@ export default function AdminHeroBanner({
         }
 
         .admin-hero-stat-value {
-          font-size: 16px;
+          font-size: 15px;
           font-weight: 800;
           color: #FFFFFF;
-          line-height: 1.1;
+          line-height: 1.15;
           letter-spacing: -0.2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .admin-hero-stat-label {
@@ -147,6 +153,9 @@ export default function AdminHeroBanner({
           color: rgba(255, 255, 255, 0.75);
           line-height: 1.2;
           margin-top: 2px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .counter-adjust-btn {
@@ -164,6 +173,7 @@ export default function AdminHeroBanner({
           justifyContent: center;
           transition: all 0.15s ease;
           outline: none;
+          flex-shrink: 0;
         }
 
         .counter-adjust-btn:hover {
@@ -172,7 +182,7 @@ export default function AdminHeroBanner({
           border-color: #34D399;
         }
 
-        @media (max-width: 960px) {
+        @media (max-width: 1240px) {
           .admin-hero-stats-row {
             grid-template-columns: repeat(2, 1fr);
           }
@@ -186,6 +196,8 @@ export default function AdminHeroBanner({
             clip-path: none !important;
             padding: 28px 22px;
             margin-right: 0;
+            border-right: none !important;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.25);
           }
           .admin-hero-right-col {
             min-height: 200px;

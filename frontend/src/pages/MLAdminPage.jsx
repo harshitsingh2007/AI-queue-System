@@ -144,8 +144,26 @@ export default function MLAdminPage({ tenantId }) {
 
   return (
     <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+      <style>{`
+        .ml-metrics-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 16px;
+          margin-bottom: 24px;
+        }
+        @media (max-width: 860px) {
+          .ml-metrics-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .ml-metrics-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
       {/* Top Header Card */}
-      <div style={{ ...mlCardStyle, marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ ...mlCardStyle, marginBottom: "24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
         <div>
           <span style={{ fontSize: "11px", color: "#047857", fontWeight: 700, textTransform: "uppercase" }}>Machine Learning Engine</span>
           <h2 style={{ margin: "4px 0 0 0", color: "#064E3B", fontSize: "24px", fontWeight: 800 }}>
@@ -168,7 +186,7 @@ export default function MLAdminPage({ tenantId }) {
 
       {/* Model Status Metrics */}
       {modelStatus && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "24px" }}>
+        <div className="ml-metrics-grid">
           <div style={mlStatCardStyle}>
             <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Active Model</span>
             <h3 style={{ fontSize: "18px", fontWeight: 800, color: "#047857", margin: "4px 0" }}>

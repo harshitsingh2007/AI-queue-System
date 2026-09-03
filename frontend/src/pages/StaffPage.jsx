@@ -1409,7 +1409,7 @@ const modalOverlayStyle = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 1000,
+  zIndex: 10000,
   padding: "20px",
 };
 
@@ -1421,4 +1421,7 @@ const modalContentStyle = {
   padding: "28px",
   boxShadow: "0 24px 48px -10px rgba(0, 0, 0, 0.25)",
   border: "1px solid #E2E8F0",
+  maxHeight: "90vh",
+  overflowY: "auto",
+  boxSizing: "border-box",
 };

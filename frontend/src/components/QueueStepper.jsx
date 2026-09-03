@@ -93,7 +93,7 @@ export default function QueueStepper({ ticket, language = "en" }) {
         <div
           style={{
             ...trackFillStyle,
-            width: `${progressPercent}%`,
+            width: `${(progressPercent / 100) * 75}%`,
           }}
         />
 
@@ -173,8 +173,8 @@ const stepBadgeStyle = {
 const trackBgStyle = {
   position: "absolute",
   top: "16px",
-  left: "32px",
-  right: "32px",
+  left: "12.5%",
+  right: "12.5%",
   height: "3px",
   background: "#E2E8F0",
   borderRadius: "2px",
@@ -184,7 +184,7 @@ const trackBgStyle = {
 const trackFillStyle = {
   position: "absolute",
   top: "16px",
-  left: "32px",
+  left: "12.5%",
   height: "3px",
   background: "linear-gradient(90deg, #059669 0%, #10B981 100%)",
   borderRadius: "2px",
@@ -206,6 +206,9 @@ const stepNodeStyle = {
   alignItems: "center",
   width: "25%",
   textAlign: "center",
+  padding: "0 4px",
+  boxSizing: "border-box",
+  minWidth: 0,
 };
 
 const getCircleStyle = (isCompleted, isCurrent) => ({
@@ -239,10 +242,14 @@ const getStepTitleStyle = (isCompleted, isCurrent) => ({
   color: isCurrent ? "#047857" : isCompleted ? "#0F172A" : "#64748B",
   marginBottom: "2px",
   lineHeight: 1.2,
+  wordBreak: "break-word",
+  maxWidth: "100%",
 });
 
 const getStepSubtextStyle = (isCurrent) => ({
   fontSize: "11px",
   fontWeight: isCurrent ? 700 : 500,
   color: isCurrent ? "#059669" : "#94A3B8",
+  wordBreak: "break-word",
+  maxWidth: "100%",
 });
