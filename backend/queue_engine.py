@@ -28,6 +28,8 @@ import pandas as pd
 import numpy as np
 import math
 
+from database import get_db_connection, IS_POSTGRES, get_db_info, init_postgres_schema
+
 DB_PATH = os.path.join(os.path.dirname(__file__), "queue_system.db")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
@@ -143,14 +145,16 @@ class PluginQueueEngine:
         self._hydrate_from_db()
 
     # ------------------------------------------------------------------
-    # SQLite Database Initialization
+    # Database Connection & Initialization
     # ------------------------------------------------------------------
     def _get_db(self):
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        return conn
+        return get_db_connection()
 
     def _init_db(self):
+        if IS_POSTGRES:
+            init_postgres_schema()
+            return
+
         with self._get_db() as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS tickets (
@@ -354,29 +358,82 @@ class PluginQueueEngine:
         canc_at = getattr(ticket, 'cancelled_at', None)
 
         with self._get_db() as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO tickets (
-                    ticket_id, tenant_id, consumer_type, service_category, name,
-                    priority_level, join_timestamp, user_email, age, gender,
-                    medical_condition, pre_existing_condition, complexity_score,
-                    prescription_notes, parent_ticket_id, transferred_from_dept,
-                    status, predicted_service_minutes, estimated_wait_minutes,
-                    position, serve_start_time, serve_end_time, actual_service_minutes,
-                    effective_timestamp, adjustment_count, last_adjusted_at,
-                    cancellation_reason, cancelled_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                ticket.ticket_id, ticket.tenant_id, ticket.consumer_type, ticket.service_category,
-                ticket.name, ticket.priority_level, ticket.join_timestamp, getattr(ticket, 'user_email', ''),
-                getattr(ticket, 'age', 30), getattr(ticket, 'gender', 'other'),
-                getattr(ticket, 'medical_condition', 'general_checkup'), getattr(ticket, 'pre_existing_condition', 'none'),
-                getattr(ticket, 'complexity_score', 1.0),
-                getattr(ticket, 'prescription_notes', ''), getattr(ticket, 'parent_ticket_id', ''),
-                getattr(ticket, 'transferred_from_dept', ''),
-                ticket.status, ticket.predicted_service_minutes, ticket.estimated_wait_minutes,
-                ticket.position, ticket.serve_start_time, ticket.serve_end_time, ticket.actual_service_minutes,
-                eff_ts, adj_cnt, last_adj, canc_rsn, canc_at
-            ))
+            if IS_POSTGRES:
+                conn.execute("""
+                    INSERT INTO tickets (
+                        ticket_id, tenant_id, consumer_type, service_category, name,
+                        priority_level, join_timestamp, user_email, age, gender,
+                        medical_condition, pre_existing_condition, complexity_score,
+                        prescription_notes, parent_ticket_id, transferred_from_dept,
+                        status, predicted_service_minutes, estimated_wait_minutes,
+                        position, serve_start_time, serve_end_time, actual_service_minutes,
+                        effective_timestamp, adjustment_count, last_adjusted_at,
+                        cancellation_reason, cancelled_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (ticket_id) DO UPDATE SET
+                        tenant_id = EXCLUDED.tenant_id,
+                        consumer_type = EXCLUDED.consumer_type,
+                        service_category = EXCLUDED.service_category,
+                        name = EXCLUDED.name,
+                        priority_level = EXCLUDED.priority_level,
+                        join_timestamp = EXCLUDED.join_timestamp,
+                        user_email = EXCLUDED.user_email,
+                        age = EXCLUDED.age,
+                        gender = EXCLUDED.gender,
+                        medical_condition = EXCLUDED.medical_condition,
+                        pre_existing_condition = EXCLUDED.pre_existing_condition,
+                        complexity_score = EXCLUDED.complexity_score,
+                        prescription_notes = EXCLUDED.prescription_notes,
+                        parent_ticket_id = EXCLUDED.parent_ticket_id,
+                        transferred_from_dept = EXCLUDED.transferred_from_dept,
+                        status = EXCLUDED.status,
+                        predicted_service_minutes = EXCLUDED.predicted_service_minutes,
+                        estimated_wait_minutes = EXCLUDED.estimated_wait_minutes,
+                        position = EXCLUDED.position,
+                        serve_start_time = EXCLUDED.serve_start_time,
+                        serve_end_time = EXCLUDED.serve_end_time,
+                        actual_service_minutes = EXCLUDED.actual_service_minutes,
+                        effective_timestamp = EXCLUDED.effective_timestamp,
+                        adjustment_count = EXCLUDED.adjustment_count,
+                        last_adjusted_at = EXCLUDED.last_adjusted_at,
+                        cancellation_reason = EXCLUDED.cancellation_reason,
+                        cancelled_at = EXCLUDED.cancelled_at
+                """, (
+                    ticket.ticket_id, ticket.tenant_id, ticket.consumer_type, ticket.service_category,
+                    ticket.name, ticket.priority_level, ticket.join_timestamp, getattr(ticket, 'user_email', ''),
+                    getattr(ticket, 'age', 30), getattr(ticket, 'gender', 'other'),
+                    getattr(ticket, 'medical_condition', 'general_checkup'), getattr(ticket, 'pre_existing_condition', 'none'),
+                    getattr(ticket, 'complexity_score', 1.0),
+                    getattr(ticket, 'prescription_notes', ''), getattr(ticket, 'parent_ticket_id', ''),
+                    getattr(ticket, 'transferred_from_dept', ''),
+                    ticket.status, ticket.predicted_service_minutes, ticket.estimated_wait_minutes,
+                    ticket.position, ticket.serve_start_time, ticket.serve_end_time, ticket.actual_service_minutes,
+                    eff_ts, adj_cnt, last_adj, canc_rsn, canc_at
+                ))
+            else:
+                conn.execute("""
+                    INSERT OR REPLACE INTO tickets (
+                        ticket_id, tenant_id, consumer_type, service_category, name,
+                        priority_level, join_timestamp, user_email, age, gender,
+                        medical_condition, pre_existing_condition, complexity_score,
+                        prescription_notes, parent_ticket_id, transferred_from_dept,
+                        status, predicted_service_minutes, estimated_wait_minutes,
+                        position, serve_start_time, serve_end_time, actual_service_minutes,
+                        effective_timestamp, adjustment_count, last_adjusted_at,
+                        cancellation_reason, cancelled_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    ticket.ticket_id, ticket.tenant_id, ticket.consumer_type, ticket.service_category,
+                    ticket.name, ticket.priority_level, ticket.join_timestamp, getattr(ticket, 'user_email', ''),
+                    getattr(ticket, 'age', 30), getattr(ticket, 'gender', 'other'),
+                    getattr(ticket, 'medical_condition', 'general_checkup'), getattr(ticket, 'pre_existing_condition', 'none'),
+                    getattr(ticket, 'complexity_score', 1.0),
+                    getattr(ticket, 'prescription_notes', ''), getattr(ticket, 'parent_ticket_id', ''),
+                    getattr(ticket, 'transferred_from_dept', ''),
+                    ticket.status, ticket.predicted_service_minutes, ticket.estimated_wait_minutes,
+                    ticket.position, ticket.serve_start_time, ticket.serve_end_time, ticket.actual_service_minutes,
+                    eff_ts, adj_cnt, last_adj, canc_rsn, canc_at
+                ))
             if ticket.status in ("serving", "completed", "transferred", "no_show", "cancelled"):
                 conn.execute("""
                     UPDATE appointments
@@ -404,10 +461,19 @@ class PluginQueueEngine:
 
     def save_tenant_mapping(self, tenant_id: str, mapping_dict: dict):
         with self._get_db() as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO tenant_mapping (tenant_id, mapping_json, updated_at)
-                VALUES (?, ?, ?)
-            """, (tenant_id, json.dumps(mapping_dict), time.time()))
+            if IS_POSTGRES:
+                conn.execute("""
+                    INSERT INTO tenant_mapping (tenant_id, mapping_json, updated_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (tenant_id) DO UPDATE SET
+                        mapping_json = EXCLUDED.mapping_json,
+                        updated_at = EXCLUDED.updated_at
+                """, (tenant_id, json.dumps(mapping_dict), time.time()))
+            else:
+                conn.execute("""
+                    INSERT OR REPLACE INTO tenant_mapping (tenant_id, mapping_json, updated_at)
+                    VALUES (?, ?, ?)
+                """, (tenant_id, json.dumps(mapping_dict), time.time()))
 
     def get_tenant_mapping(self, tenant_id: str) -> Optional[dict]:
         with self._get_db() as conn:
@@ -545,10 +611,19 @@ class PluginQueueEngine:
         tenant["active_counters"] = count
 
         with self._get_db() as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO tenant_config (tenant_id, active_counters, updated_at)
-                VALUES (?, ?, ?)
-            """, (tenant_id, count, time.time()))
+            if IS_POSTGRES:
+                conn.execute("""
+                    INSERT INTO tenant_config (tenant_id, active_counters, updated_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (tenant_id) DO UPDATE SET
+                        active_counters = EXCLUDED.active_counters,
+                        updated_at = EXCLUDED.updated_at
+                """, (tenant_id, count, time.time()))
+            else:
+                conn.execute("""
+                    INSERT OR REPLACE INTO tenant_config (tenant_id, active_counters, updated_at)
+                    VALUES (?, ?, ?)
+                """, (tenant_id, count, time.time()))
 
         self.recalculate_wait_times(tenant_id)
         return count
@@ -1172,10 +1247,17 @@ class PluginQueueEngine:
                     ("billing", "Central Billing", "Insurance claims, cash desk and discharge invoices"),
                 ]
                 for d_code, d_name, d_desc in default_depts:
-                    conn.execute("""
-                        INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
-                        VALUES ('city-hospital-01', ?, ?, ?, ?)
-                    """, (d_code, d_name, d_desc, now))
+                    if IS_POSTGRES:
+                        conn.execute("""
+                            INSERT INTO departments (hospital_code, dept_code, name, description, created_at)
+                            VALUES ('city-hospital-01', %s, %s, %s, %s)
+                            ON CONFLICT (hospital_code, dept_code) DO NOTHING
+                        """, (d_code, d_name, d_desc, now))
+                    else:
+                        conn.execute("""
+                            INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
+                            VALUES ('city-hospital-01', ?, ?, ?, ?)
+                        """, (d_code, d_name, d_desc, now))
 
             # 3. Seed Default Desks for city-hospital-01
             desk_count = conn.execute("SELECT COUNT(*) FROM desks WHERE hospital_code = 'city-hospital-01'").fetchone()[0]
@@ -1195,10 +1277,17 @@ class PluginQueueEngine:
                     ("billing", 1, "Cashier Window 1", "ACTIVE"),
                 ]
                 for d_code, d_num, d_name, d_status in dept_desks:
-                    conn.execute("""
-                        INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
-                        VALUES ('city-hospital-01', ?, ?, ?, ?, ?)
-                    """, (d_code, d_num, d_name, d_status, now))
+                    if IS_POSTGRES:
+                        conn.execute("""
+                            INSERT INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                            VALUES ('city-hospital-01', %s, %s, %s, %s, %s)
+                            ON CONFLICT (hospital_code, dept_code, desk_number) DO NOTHING
+                        """, (d_code, d_num, d_name, d_status, now))
+                    else:
+                        conn.execute("""
+                            INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                            VALUES ('city-hospital-01', ?, ?, ?, ?, ?)
+                        """, (d_code, d_num, d_name, d_status, now))
 
             # 4. Seed Default Users (Super Admin, Hospital Admin, Doctors, Staff, Patient)
             u_count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
@@ -1266,6 +1355,7 @@ class PluginQueueEngine:
         email_clean = email.strip().lower()
         dept_clean = department.strip().lower() if department else "all"
         h_code_clean = hospital_code.strip() if hospital_code else "city-hospital-01"
+        role_clean = role.strip().lower() if role else "user"
 
         with self._get_db() as conn:
             existing = conn.execute("SELECT id FROM users WHERE email = ?", (email_clean,)).fetchone()
@@ -1276,8 +1366,8 @@ class PluginQueueEngine:
             now = time.time()
             cursor = conn.execute("""
                 INSERT INTO users (email, username, password_hash, role, department, hospital_code, employee_id, phone, status, created_at)
-                VALUES (?, ?, ?, 'user', ?, ?, ?, ?, 'active', ?)
-            """, (email_clean, username.strip(), pwd_hash, dept_clean, h_code_clean, employee_id.strip(), phone.strip(), now))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+            """, (email_clean, username.strip(), pwd_hash, role_clean, dept_clean, h_code_clean, employee_id.strip(), phone.strip(), now))
             user_id = cursor.lastrowid
 
             h_row = conn.execute("SELECT name FROM hospitals WHERE hospital_code = ?", (h_code_clean,)).fetchone()
@@ -1288,7 +1378,7 @@ class PluginQueueEngine:
             "id": user_id,
             "email": email_clean,
             "username": username.strip(),
-            "role": "user",
+            "role": role_clean,
             "department": dept_clean,
             "hospital_code": h_code_clean,
             "hospital_name": hospital_name,
@@ -1338,10 +1428,23 @@ class PluginQueueEngine:
             user_id = cursor.lastrowid
 
             # Create Dedicated Hospital Record owned by this Super Admin
-            conn.execute("""
-                INSERT OR REPLACE INTO hospitals (hospital_code, name, address, phone, email, description, logo_url, status, owner_email, owner_user_id, created_at, updated_at)
-                VALUES (?, ?, '', ?, ?, 'Dedicated clinical facility with AI queue optimization.', '', 'active', ?, ?, ?, ?)
-            """, (h_code, h_name, phone.strip(), email_clean, email_clean, user_id, now, now))
+            if IS_POSTGRES:
+                conn.execute("""
+                    INSERT INTO hospitals (hospital_code, name, address, phone, email, description, logo_url, status, owner_email, owner_user_id, created_at, updated_at)
+                    VALUES (%s, %s, '', %s, %s, 'Dedicated clinical facility with AI queue optimization.', '', 'active', %s, %s, %s, %s)
+                    ON CONFLICT (hospital_code) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        phone = EXCLUDED.phone,
+                        email = EXCLUDED.email,
+                        owner_email = EXCLUDED.owner_email,
+                        owner_user_id = EXCLUDED.owner_user_id,
+                        updated_at = EXCLUDED.updated_at
+                """, (h_code, h_name, phone.strip(), email_clean, email_clean, user_id, now, now))
+            else:
+                conn.execute("""
+                    INSERT OR REPLACE INTO hospitals (hospital_code, name, address, phone, email, description, logo_url, status, owner_email, owner_user_id, created_at, updated_at)
+                    VALUES (?, ?, '', ?, ?, 'Dedicated clinical facility with AI queue optimization.', '', 'active', ?, ?, ?, ?)
+                """, (h_code, h_name, phone.strip(), email_clean, email_clean, user_id, now, now))
 
             # Auto-seed standard clinical departments for new hospital
             default_depts = [
@@ -1353,26 +1456,52 @@ class PluginQueueEngine:
                 ("billing", "Central Billing", "Insurance claims, cash desk and discharge invoices"),
             ]
             for d_code, d_name, d_desc in default_depts:
-                conn.execute("""
-                    INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (h_code, d_code, d_name, d_desc, now))
+                if IS_POSTGRES:
+                    conn.execute("""
+                        INSERT INTO departments (hospital_code, dept_code, name, description, created_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (hospital_code, dept_code) DO NOTHING
+                    """, (h_code, d_code, d_name, d_desc, now))
+                else:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (h_code, d_code, d_name, d_desc, now))
 
             # Auto-seed initial desks (2 desks per department)
             for d_code, _, _ in default_depts:
-                conn.execute("""
-                    INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
-                    VALUES (?, ?, 1, ?, 'ACTIVE', ?)
-                """, (h_code, d_code, f"{d_code.capitalize()} Desk 1", now))
-                conn.execute("""
-                    INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
-                    VALUES (?, ?, 2, ?, 'AVAILABLE', ?)
-                """, (h_code, d_code, f"{d_code.capitalize()} Desk 2", now))
+                if IS_POSTGRES:
+                    conn.execute("""
+                        INSERT INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES (%s, %s, 1, %s, 'ACTIVE', %s)
+                        ON CONFLICT (hospital_code, dept_code, desk_number) DO NOTHING
+                    """, (h_code, d_code, f"{d_code.capitalize()} Desk 1", now))
+                    conn.execute("""
+                        INSERT INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES (%s, %s, 2, %s, 'AVAILABLE', %s)
+                        ON CONFLICT (hospital_code, dept_code, desk_number) DO NOTHING
+                    """, (h_code, d_code, f"{d_code.capitalize()} Desk 2", now))
+                else:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES (?, ?, 1, ?, 'ACTIVE', ?)
+                    """, (h_code, d_code, f"{d_code.capitalize()} Desk 1", now))
+                    conn.execute("""
+                        INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES (?, ?, 2, ?, 'AVAILABLE', ?)
+                    """, (h_code, d_code, f"{d_code.capitalize()} Desk 2", now))
 
-            conn.execute("""
-                INSERT OR REPLACE INTO tenant_config (tenant_id, active_counters, updated_at)
-                VALUES (?, 2, ?)
-            """, (h_code, now))
+            if IS_POSTGRES:
+                conn.execute("""
+                    INSERT INTO tenant_config (tenant_id, active_counters, updated_at)
+                    VALUES (%s, 2, %s)
+                    ON CONFLICT (tenant_id) DO UPDATE SET active_counters = EXCLUDED.active_counters, updated_at = EXCLUDED.updated_at
+                """, (h_code, now))
+            else:
+                conn.execute("""
+                    INSERT OR REPLACE INTO tenant_config (tenant_id, active_counters, updated_at)
+                    VALUES (?, 2, ?)
+                """, (h_code, now))
 
         token = f"token-{user_id}-{int(now)}"
         permissions = {
@@ -1790,27 +1919,53 @@ class PluginQueueEngine:
                 ("billing", "Central Billing", "Insurance claims, cash desk and discharge invoices"),
             ]
             for d_code, d_name, d_desc in default_depts:
-                conn.execute("""
-                    INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (h_clean, d_code, d_name, d_desc, now))
+                if IS_POSTGRES:
+                    conn.execute("""
+                        INSERT INTO departments (hospital_code, dept_code, name, description, created_at)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (hospital_code, dept_code) DO NOTHING
+                    """, (h_clean, d_code, d_name, d_desc, now))
+                else:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO departments (hospital_code, dept_code, name, description, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (h_clean, d_code, d_name, d_desc, now))
 
             # Auto-seed initial desks (2 desks per department = 12 total desks)
             for d_code, _, _ in default_depts:
-                conn.execute("""
-                    INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
-                    VALUES (?, ?, 1, ?, 'ACTIVE', ?)
-                """, (h_clean, d_code, f"{d_code.capitalize()} Desk 1", now))
-                conn.execute("""
-                    INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
-                    VALUES (?, ?, 2, ?, 'AVAILABLE', ?)
-                """, (h_clean, d_code, f"{d_code.capitalize()} Desk 2", now))
+                if IS_POSTGRES:
+                    conn.execute("""
+                        INSERT INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES (%s, %s, 1, %s, 'ACTIVE', %s)
+                        ON CONFLICT (hospital_code, dept_code, desk_number) DO NOTHING
+                    """, (h_clean, d_code, f"{d_code.capitalize()} Desk 1", now))
+                    conn.execute("""
+                        INSERT INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES (%s, %s, 2, %s, 'AVAILABLE', %s)
+                        ON CONFLICT (hospital_code, dept_code, desk_number) DO NOTHING
+                    """, (h_clean, d_code, f"{d_code.capitalize()} Desk 2", now))
+                else:
+                    conn.execute("""
+                        INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES (?, ?, 1, ?, 'ACTIVE', ?)
+                    """, (h_clean, d_code, f"{d_code.capitalize()} Desk 1", now))
+                    conn.execute("""
+                        INSERT OR IGNORE INTO desks (hospital_code, dept_code, desk_number, desk_name, status, last_active_at)
+                        VALUES (?, ?, 2, ?, 'AVAILABLE', ?)
+                    """, (h_clean, d_code, f"{d_code.capitalize()} Desk 2", now))
 
             # Also initialize tenant_config active_counters = 2
-            conn.execute("""
-                INSERT OR REPLACE INTO tenant_config (tenant_id, active_counters, updated_at)
-                VALUES (?, 2, ?)
-            """, (h_clean, now))
+            if IS_POSTGRES:
+                conn.execute("""
+                    INSERT INTO tenant_config (tenant_id, active_counters, updated_at)
+                    VALUES (%s, 2, %s)
+                    ON CONFLICT (tenant_id) DO UPDATE SET active_counters = EXCLUDED.active_counters, updated_at = EXCLUDED.updated_at
+                """, (h_clean, now))
+            else:
+                conn.execute("""
+                    INSERT OR REPLACE INTO tenant_config (tenant_id, active_counters, updated_at)
+                    VALUES (?, 2, ?)
+                """, (h_clean, now))
 
         return self.get_hospital_by_code(h_clean)
 
@@ -1933,10 +2088,19 @@ class PluginQueueEngine:
         d_clean = dept_code.strip().lower()
         now = time.time()
         with self._get_db() as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO departments (hospital_code, dept_code, name, description, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (h_clean, d_clean, name.strip(), description.strip(), now))
+            if IS_POSTGRES:
+                conn.execute("""
+                    INSERT INTO departments (hospital_code, dept_code, name, description, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (hospital_code, dept_code) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        description = EXCLUDED.description
+                """, (h_clean, d_clean, name.strip(), description.strip(), now))
+            else:
+                conn.execute("""
+                    INSERT OR REPLACE INTO departments (hospital_code, dept_code, name, description, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (h_clean, d_clean, name.strip(), description.strip(), now))
 
             # Create default desk 1 for this new department if none exists
             existing_desk = conn.execute("SELECT id FROM desks WHERE LOWER(hospital_code) = ? AND LOWER(dept_code) = ?", (h_clean, d_clean)).fetchone()
@@ -2120,18 +2284,33 @@ class PluginQueueEngine:
 
     def get_database_overview(self) -> dict:
         with self._get_db() as conn:
-            tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
-            result = {}
-            for table in tables:
-                schema = [dict(col) for col in conn.execute(f"PRAGMA table_info('{table}');").fetchall()]
-                count = conn.execute(f"SELECT COUNT(*) FROM '{table}';").fetchone()[0]
-                rows = [dict(r) for r in conn.execute(f"SELECT * FROM '{table}' ORDER BY 1 DESC LIMIT 100;").fetchall()]
-                result[table] = {
-                    "count": count,
-                    "schema": schema,
-                    "rows": rows
-                }
-            return result
+            if IS_POSTGRES:
+                tables = [r[0] for r in conn.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name;").fetchall()]
+                result = {}
+                for table in tables:
+                    cols = conn.execute("SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s ORDER BY ordinal_position;", (table,)).fetchall()
+                    schema = [{"cid": i, "name": c[0], "type": c[1], "notnull": 1 if c[2] == "NO" else 0} for i, c in enumerate(cols)]
+                    count = conn.execute(f'SELECT COUNT(*) FROM "{table}";').fetchone()[0]
+                    rows = [dict(r) for r in conn.execute(f'SELECT * FROM "{table}" ORDER BY 1 DESC LIMIT 100;').fetchall()]
+                    result[table] = {
+                        "count": count,
+                        "schema": schema,
+                        "rows": rows
+                    }
+                return result
+            else:
+                tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()]
+                result = {}
+                for table in tables:
+                    schema = [dict(col) for col in conn.execute(f"PRAGMA table_info('{table}');").fetchall()]
+                    count = conn.execute(f"SELECT COUNT(*) FROM '{table}';").fetchone()[0]
+                    rows = [dict(r) for r in conn.execute(f"SELECT * FROM '{table}' ORDER BY 1 DESC LIMIT 100;").fetchall()]
+                    result[table] = {
+                        "count": count,
+                        "schema": schema,
+                        "rows": rows
+                    }
+                return result
 
     # ------------------------------------------------------------------
     # Hybrid Queueing: Slot Booking & Pre-scheduled Check-in

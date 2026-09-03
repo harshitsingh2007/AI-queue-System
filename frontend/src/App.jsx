@@ -458,7 +458,7 @@ export default function App() {
               !isAdmin ? (
                 <AccessDeniedGuard
                   requiredRole="admin"
-                  pageName="SQLite Database Inspector"
+                  pageName="Database Inspector"
                   currentUser={currentUser}
                   onLoginSuccess={handleLoginSuccess}
                   navigateTo={navigateTo}
