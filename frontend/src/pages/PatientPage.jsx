@@ -13,7 +13,7 @@ import { printTokenPass, printAppointmentRecord } from "../utils/printPassHelper
 import QueueStepper from "../components/QueueStepper";
 import HeroBanner from "../components/HeroBanner";
 import Footer from "../components/Footer";
-import FamilyMemberSwitcher, { AddFamilyMemberModal, getRelationLabel } from "../components/FamilyMemberSwitcher";
+import FamilyMemberSwitcher, { AddFamilyMemberModal, EditFamilyMemberModal, getRelationLabel } from "../components/FamilyMemberSwitcher";
 
 export default function PatientPage({
   tenantId,
@@ -32,9 +32,28 @@ export default function PatientPage({
   servingTickets = [],
   kioskQrData,
   socketConnected = true,
+  // App-level family profile state (passed from App.jsx)
+  familyMembers: familyMembersProp = null,
+  setFamilyMembers: setFamilyMembersProp = null,
+  activeFamilyMember: activeFamilyMemberProp = null,
+  setActiveFamilyMember: setActiveFamilyMemberProp = null,
+  onSwitchProfile = null,
+  onFamilyMembersChange = null,
 }) {
   // Family Members & Dependents Management
+  // Use App-level state when provided, fall back to local state
   const getInitialFamilyMembers = () => {
+    // If App provides family members, use them (not local storage)
+    if (familyMembersProp !== null) {
+      const selfObj = {
+        id: "self",
+        name: currentUser ? (currentUser.username || "Self") : "Self",
+        relation: "self",
+        age: currentUser && currentUser.age ? currentUser.age : 35,
+        gender: currentUser && currentUser.gender ? currentUser.gender.toLowerCase() : "male",
+      };
+      return [selfObj, ...(familyMembersProp || [])];
+    }
     try {
       const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
       const saved = localStorage.getItem(storageKey);
@@ -55,8 +74,35 @@ export default function PatientPage({
     ];
   };
 
-  const [familyMembers, setFamilyMembers] = useState(getInitialFamilyMembers);
+  const [localFamilyMembers, setLocalFamilyMembers] = useState(getInitialFamilyMembers);
+
+  // Use app-level family members if provided, build combined list with self
+  const selfObj = {
+    id: "self",
+    name: currentUser ? (currentUser.username || "Self") : "Self",
+    relation: "self",
+    age: currentUser && currentUser.age ? currentUser.age : 35,
+    gender: currentUser && currentUser.gender ? currentUser.gender.toLowerCase() : "male",
+  };
+
+  const familyMembers = familyMembersProp !== null
+    ? [selfObj, ...(familyMembersProp || [])]
+    : localFamilyMembers;
+
+  const setFamilyMembers = (newMembers) => {
+    if (setFamilyMembersProp) {
+      // Filter out self to pass only dependents to App
+      const dependentsOnly = Array.isArray(newMembers)
+        ? newMembers.filter(m => m.id !== "self")
+        : [];
+      setFamilyMembersProp(dependentsOnly);
+    } else {
+      setLocalFamilyMembers(newMembers);
+    }
+  };
+
   const [selectedMemberId, setSelectedMemberId] = useState("self");
+  const [editingMember, setEditingMember] = useState(null);
 
   // Family Tickets dictionary: { [memberId]: ticketObj }
   const [familyTickets, setFamilyTickets] = useState(() => {
@@ -69,18 +115,18 @@ export default function PatientPage({
     }
   });
 
-  // Sync activeTab with currentTab prop & URL parameters
+  // Sync tab with URL, including "family" tab
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
-    if (tabParam && ["walkin", "book", "my_apts", "history"].includes(tabParam.toLowerCase())) {
+    if (tabParam && ["walkin", "book", "my_apts", "history", "family"].includes(tabParam.toLowerCase())) {
       return tabParam.toLowerCase();
     }
     return currentTab || "walkin";
   });
 
   useEffect(() => {
-    if (currentTab && ["walkin", "book", "my_apts", "history"].includes(currentTab.toLowerCase())) {
+    if (currentTab && ["walkin", "book", "my_apts", "history", "family"].includes(currentTab.toLowerCase())) {
       setActiveTab(currentTab.toLowerCase());
     }
   }, [currentTab]);
@@ -89,7 +135,7 @@ export default function PatientPage({
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam && ["walkin", "book", "my_apts", "history"].includes(tabParam.toLowerCase())) {
+      if (tabParam && ["walkin", "book", "my_apts", "history", "family"].includes(tabParam.toLowerCase())) {
         setActiveTab(tabParam.toLowerCase());
       } else {
         setActiveTab("walkin");
@@ -120,6 +166,20 @@ export default function PatientPage({
   const [priority, setPriority] = useState(2);
   const [statusMsg, setStatusMsg] = useState(null);
 
+  // Ticket Cancellation Modal State
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("Running late");
+  const [otherCancelReason, setOtherCancelReason] = useState("");
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+
+  // Queue Adjustment (Skip Backward) Modal State
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [selectedSkipCount, setSelectedSkipCount] = useState(1);
+  const [adjustLoading, setAdjustLoading] = useState(false);
+  const [adjustError, setAdjustError] = useState("");
+  const [adjustSuccessMsg, setAdjustSuccessMsg] = useState("");
+
   // Appointment Booking Form State
   const [aptDate, setAptDate] = useState(() => {
     const today = new Date();
@@ -129,18 +189,35 @@ export default function PatientPage({
   const [bookedAppointment, setBookedAppointment] = useState(null);
   const [userAppointments, setUserAppointments] = useState([]);
   const [checkInCode, setCheckInCode] = useState("");
+  const [aptSearchName, setAptSearchName] = useState("");
+  const [aptSearchLoading, setAptSearchLoading] = useState(false);
+  const [userTicketHistory, setUserTicketHistory] = useState([]);
 
   const timeSlotOptions = [
     "09:00 AM", "09:45 AM", "10:30 AM", "11:15 AM", "12:00 PM",
     "02:00 PM", "02:45 PM", "03:30 PM", "04:15 PM", "05:00 PM"
   ];
 
-  const fetchUserAppointments = useCallback(() => {
-    if (!currentUser && !name) return;
-    const email = currentUser ? currentUser.email : name;
-    fetch(`${API_BASE}/api/v1/plugin/appointments/user/${encodeURIComponent(email)}`)
+  const fetchUserAppointments = useCallback((overrideName) => {
+    const ident =
+      overrideName ||
+      (currentUser?.email) ||
+      (currentUser?.username) ||
+      name ||
+      localStorage.getItem("last_patient_name") ||
+      "";
+    if (!ident.trim()) return;
+    const encodedIdent = encodeURIComponent(ident.trim());
+    // Always include name as a secondary fallback parameter
+    const extraName = (name && name.trim() && name.trim().toLowerCase() !== ident.trim().toLowerCase())
+      ? `?name=${encodeURIComponent(name.trim())}`
+      : "";
+    fetch(`${API_BASE}/api/v1/plugin/appointments/user/${encodedIdent}${extraName}`)
       .then((r) => r.json())
-      .then((d) => setUserAppointments(d.appointments || []))
+      .then((d) => {
+        const apts = d.appointments || [];
+        setUserAppointments(apts);
+      })
       .catch((e) => console.log("Appointments fetch error:", e));
   }, [currentUser, name]);
 
@@ -149,9 +226,37 @@ export default function PatientPage({
       setName(currentUser.username);
       if (currentUser.age) setAge(currentUser.age);
       if (currentUser.gender) setGender(currentUser.gender.toLowerCase());
+    } else {
+      const savedName = localStorage.getItem("last_patient_name");
+      if (savedName && !name) {
+        setName(savedName);
+      }
     }
     fetchUserAppointments();
   }, [currentUser, fetchUserAppointments]);
+
+  const fetchUserTicketHistory = useCallback((overrideName) => {
+    const ident =
+      overrideName ||
+      (currentUser?.email) ||
+      (currentUser?.username) ||
+      name ||
+      localStorage.getItem("last_patient_name") ||
+      "";
+    if (!ident.trim()) return;
+    const encodedIdent = encodeURIComponent(ident.trim());
+    const extraName = (name && name.trim() && name.trim().toLowerCase() !== ident.trim().toLowerCase())
+      ? `?name=${encodeURIComponent(name.trim())}`
+      : "";
+    fetch(`${API_BASE}/api/v1/plugin/tickets/history/${encodedIdent}${extraName}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setUserTicketHistory(d.tickets || []);
+      })
+      .catch((e) => console.log("Ticket history fetch error:", e));
+  }, [currentUser, name]);
+
+  const selectedMember = familyMembers.find((m) => m.id === selectedMemberId) || familyMembers[0];
 
   const activeAppointments = userAppointments.filter((apt) => {
     const s = (apt.status || "").toLowerCase();
@@ -163,7 +268,21 @@ export default function PatientPage({
     return s === "completed" || s === "transferred" || s === "cancelled" || s === "no_show";
   });
 
-  const selectedMember = familyMembers.find((m) => m.id === selectedMemberId) || familyMembers[0];
+  // Walk-in tickets that are completed or cancelled — these are NOT in appointments table
+  const historyTickets = userTicketHistory.filter((t) => {
+    const s = (t.status || "").toLowerCase();
+    return s === "completed" || s === "cancelled" || s === "transferred" || s === "no_show";
+  });
+
+  useEffect(() => {
+    if (activeTab === "my_apts") {
+      fetchUserAppointments();
+    }
+    if (activeTab === "history") {
+      fetchUserAppointments();
+      fetchUserTicketHistory();
+    }
+  }, [activeTab, fetchUserAppointments, fetchUserTicketHistory]);
 
   const handleSelectMember = (member) => {
     setSelectedMemberId(member.id);
@@ -186,7 +305,11 @@ export default function PatientPage({
   // Fetch family members from backend when user is logged in
   useEffect(() => {
     if (!currentUser || !currentUser.email) return;
-    fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(currentUser.email)}/family-members`)
+    // If App-level prop is controlling family members, don't fetch independently
+    if (familyMembersProp !== null) return;
+    fetch(`${API_BASE}/api/v1/family-members`, {
+      headers: { "X-User-Email": currentUser.email }
+    })
       .then((r) => r.json())
       .then((data) => {
         if (data.status === "success" && Array.isArray(data.members)) {
@@ -198,7 +321,7 @@ export default function PatientPage({
             gender: currentUser.gender ? currentUser.gender.toLowerCase() : "male",
           };
           const fullList = [selfObj, ...data.members];
-          setFamilyMembers(fullList);
+          setLocalFamilyMembers(fullList);
           const storageKey = `family_members_${currentUser.username || currentUser.email}`;
           try {
             localStorage.setItem(storageKey, JSON.stringify(fullList));
@@ -208,63 +331,103 @@ export default function PatientPage({
       .catch((err) => console.log("PatientPage family fetch error:", err));
   }, [currentUser]);
 
+  // Sync when App-level family members prop changes
+  useEffect(() => {
+    if (familyMembersProp !== null) {
+      // familyMembers computed above auto-updates since it reads familyMembersProp
+      // If current selected member is no longer in the list, reset to self
+      if (selectedMemberId !== "self") {
+        const stillExists = (familyMembersProp || []).some(m => m.id === selectedMemberId);
+        if (!stillExists) setSelectedMemberId("self");
+      }
+    }
+  }, [familyMembersProp]);
+
   const handleAddMember = async (newMember) => {
-    const updated = [...familyMembers, newMember];
-    setFamilyMembers(updated);
-    const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    } catch (e) {}
-
-    window.dispatchEvent(new CustomEvent("family_members_updated", { detail: updated }));
-    handleSelectMember(newMember);
-
     if (currentUser && currentUser.email) {
       try {
-        await fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(currentUser.email)}/family-members`, {
+        const res = await fetch(`${API_BASE}/api/v1/family-members`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-User-Email": currentUser.email
+          },
           body: JSON.stringify(newMember),
         });
+        const data = await res.json();
+        if (data.status === "success" && data.member) {
+          const savedMember = data.member;
+          const dependents = familyMembers.filter(m => m.id !== "self");
+          const updatedDependents = [...dependents, savedMember];
+          setFamilyMembers([selfObj, ...updatedDependents]);
+          window.dispatchEvent(new CustomEvent("family_members_updated", { detail: updatedDependents }));
+          if (onFamilyMembersChange) onFamilyMembersChange();
+          handleSelectMember(savedMember);
+          return;
+        }
       } catch (err) {
         console.log("Error saving family member:", err);
       }
+    }
+    // Fallback: local-only add (guest mode)
+    const updated = [...familyMembers, newMember];
+    setFamilyMembers(updated);
+    handleSelectMember(newMember);
+  };
+
+  const handleEditMember = async (updatedMember) => {
+    if (!currentUser || !currentUser.email) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/family-members/${encodeURIComponent(updatedMember.id)}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Email": currentUser.email
+        },
+        body: JSON.stringify(updatedMember),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        // Update local list
+        const dependents = familyMembers
+          .filter(m => m.id !== "self")
+          .map(m => m.id === updatedMember.id ? { ...m, ...updatedMember } : m);
+        setFamilyMembers([selfObj, ...dependents]);
+        if (onFamilyMembersChange) onFamilyMembersChange();
+        setEditingMember(null);
+      }
+    } catch (err) {
+      console.log("Error updating family member:", err);
     }
   };
 
   const handleDeleteMember = async (memberId) => {
     if (memberId === "self") return;
-    const updated = familyMembers.filter((m) => m.id !== memberId);
-    setFamilyMembers(updated);
-    const storageKey = `family_members_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(updated));
-    } catch (e) {}
+    if (currentUser && currentUser.email) {
+      try {
+        await fetch(`${API_BASE}/api/v1/family-members/${encodeURIComponent(memberId)}`, {
+          method: "DELETE",
+          headers: { "X-User-Email": currentUser.email }
+        });
+      } catch (err) {
+        console.log("Error deleting family member:", err);
+      }
+    }
 
-    window.dispatchEvent(new CustomEvent("family_members_updated", { detail: updated }));
+    const dependents = familyMembers.filter(m => m.id !== "self" && m.id !== memberId);
+    setFamilyMembers([selfObj, ...dependents]);
+    window.dispatchEvent(new CustomEvent("family_members_updated", { detail: dependents }));
+    if (onFamilyMembersChange) onFamilyMembersChange();
 
     if (familyTickets[memberId]) {
       const updatedTickets = { ...familyTickets };
       delete updatedTickets[memberId];
       setFamilyTickets(updatedTickets);
-      try {
-        const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
-        localStorage.setItem(ticketStorageKey, JSON.stringify(updatedTickets));
-      } catch (e) {}
     }
 
     if (selectedMemberId === memberId) {
-      handleSelectMember(familyMembers[0]);
-    }
-
-    if (currentUser && currentUser.email) {
-      try {
-        await fetch(`${API_BASE}/api/v1/users/${encodeURIComponent(currentUser.email)}/family-members/${encodeURIComponent(memberId)}`, {
-          method: "DELETE",
-        });
-      } catch (err) {
-        console.log("Error deleting family member:", err);
-      }
+      setSelectedMemberId("self");
+      setName(selfObj.name);
     }
   };
 
@@ -312,6 +475,8 @@ export default function PatientPage({
           gender: gender,
           medical_condition: medicalCondition,
           pre_existing_condition: preExistingCondition,
+          // Include family_member_id when booking for a dependent
+          ...(selectedMemberId && selectedMemberId !== "self" ? { family_member_id: selectedMemberId } : {}),
         }),
       });
 
@@ -341,7 +506,8 @@ export default function PatientPage({
         refreshData();
       } else {
         const err = await res.json();
-        setStatusMsg(`Error: ${err.detail}`);
+        const msg = typeof err.detail === "string" ? err.detail : Array.isArray(err.detail) ? err.detail.map((d) => d.msg || JSON.stringify(d)).join(", ") : (err.message || "Failed to issue ticket.");
+        setStatusMsg(`Error: ${msg}`);
       }
     } catch (err) {
       setStatusMsg(`Join failed: ${err.message}`);
@@ -366,6 +532,8 @@ export default function PatientPage({
           user_email: currentUser ? currentUser.email : name,
           appointment_date: aptDate,
           time_slot: aptTimeSlot,
+          // Include family_member_id when booking for a dependent
+          ...(selectedMemberId && selectedMemberId !== "self" ? { family_member_id: selectedMemberId } : {}),
         }),
       });
 
@@ -373,6 +541,13 @@ export default function PatientPage({
       if (res.ok && data.status === "success") {
         setBookedAppointment(data.appointment);
         setStatusMsg(`Appointment Reserved. Code: ${data.appointment.appointment_id}`);
+        try {
+          localStorage.setItem("last_patient_name", name);
+        } catch (e) {}
+        setUserAppointments((prev) => [
+          data.appointment,
+          ...prev.filter((a) => a.appointment_id !== data.appointment.appointment_id),
+        ]);
         fetchUserAppointments();
       } else {
         setStatusMsg(`Booking failed: ${data.detail}`);
@@ -419,6 +594,13 @@ export default function PatientPage({
           .then((qr) => setTicketQrData(qr))
           .catch((e) => console.log("QR error:", e));
 
+        setUserAppointments((prev) =>
+          prev.map((a) =>
+            a.appointment_id === targetId
+              ? { ...a, status: "checked_in", ticket_id: t.ticket_id }
+              : a
+          )
+        );
         fetchUserAppointments();
         refreshData();
       } else {
@@ -437,13 +619,16 @@ export default function PatientPage({
     const reasonText = cancelReason === "Other" && otherCancelReason.trim() ? otherCancelReason.trim() : cancelReason;
 
     try {
-      const res = await fetch(`${API_BASE}/api/v1/plugin/tickets/${activeTicket.ticket_id}/cancel`, {
+      const res = await fetch(`${API_BASE}/api/v1/tickets/${activeTicket.ticket_id}/cancel`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(currentUser?.email ? { "X-User-Email": currentUser.email } : {}),
+        },
         body: JSON.stringify({
           tenant_id: tenantId,
           ticket_id: activeTicket.ticket_id,
-          reason: reasonText,
+          reason: reasonText || "Patient requested cancellation",
         }),
       });
 
@@ -470,7 +655,6 @@ export default function PatientPage({
       });
 
       setShowCancelModal(false);
-      setShowAdjustModal(false);
       setStatusMsg(`Ticket #${activeTicket.ticket_id} has been cancelled.`);
       fetchUserAppointments();
       if (refreshData) refreshData();
@@ -481,21 +665,27 @@ export default function PatientPage({
     }
   };
 
-  // 5. Adjust Queue / Skip Positions (Postpone Later in Queue)
+  // 5. Adjust Queue / Skip Positions Backward (Fairness: 1-3 positions back)
   const handleAdjustQueue = async (skipCount) => {
     if (!activeTicket) return;
+    const positionsToSkip = Number(skipCount || selectedSkipCount || 1);
     setAdjustLoading(true);
     setAdjustError("");
     setAdjustSuccessMsg("");
 
     try {
-      const res = await fetch(`${API_BASE}/api/v1/plugin/tickets/${activeTicket.ticket_id}/adjust-queue`, {
+      const res = await fetch(`${API_BASE}/api/v1/tickets/${activeTicket.ticket_id}/adjust`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(currentUser?.email ? { "X-User-Email": currentUser.email } : {}),
+        },
         body: JSON.stringify({
           tenant_id: tenantId,
           ticket_id: activeTicket.ticket_id,
-          skip_positions: skipCount,
+          positions: positionsToSkip,
+          skip_positions: positionsToSkip,
+          reason: "Running late",
         }),
       });
 
@@ -507,13 +697,14 @@ export default function PatientPage({
       if (data.ticket) {
         setActiveTicket(data.ticket);
       }
-      setAdjustSuccessMsg(data.message || `Postponed by ${skipCount} position(s).`);
-      setStatusMsg(data.message || `Queue adjusted by +${skipCount} positions.`);
+      const successText = data.message || `Postponed by ${positionsToSkip} position(s).`;
+      setAdjustSuccessMsg(successText);
+      setStatusMsg(successText);
 
       setTimeout(() => {
         setShowAdjustModal(false);
         setAdjustSuccessMsg("");
-      }, 1400);
+      }, 1200);
 
       fetchUserAppointments();
       if (refreshData) refreshData();
@@ -541,7 +732,7 @@ export default function PatientPage({
         .patient-nav-title {
           font-size: 13.5px;
           font-weight: 800;
-          color: #064E3B;
+          color: #0F172A;
           letter-spacing: -0.2px;
           display: flex;
           align-items: center;
@@ -554,19 +745,19 @@ export default function PatientPage({
           gap: 5px;
           font-size: 11px;
           font-weight: 700;
-          color: #059669;
-          background: #ECFDF5;
+          color: #0284C7;
+          background: #F0F9FF;
           padding: 3px 9px;
           border-radius: 9999px;
-          border: 1px solid #A7F3D0;
+          border: 1px solid #BAE6FD;
         }
 
         .status-dot-pulse {
           width: 7px;
           height: 7px;
           border-radius: 50%;
-          background: #10B981;
-          box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
+          background: #0284C7;
+          box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.25);
           animation: pulseDot 2s infinite ease-in-out;
         }
 
@@ -630,7 +821,7 @@ export default function PatientPage({
           align-items: center;
           gap: 12px;
           cursor: pointer;
-          transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+          transition: all 0.2s ease;
           text-align: left;
           width: 100%;
           outline: none;
@@ -639,10 +830,10 @@ export default function PatientPage({
         }
 
         .tab-button-modern.active {
-          background: linear-gradient(135deg, #044E3B 0%, #065F46 100%);
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
           color: #FFFFFF;
-          border-color: #044E3B;
-          box-shadow: 0 6px 18px rgba(4, 78, 59, 0.26);
+          border-color: #0284C7;
+          box-shadow: 0 6px 18px rgba(2, 132, 199, 0.26);
         }
 
         .tab-button-modern.inactive {
@@ -655,7 +846,6 @@ export default function PatientPage({
           background: #FFFFFF;
           border-color: #CBD5E1;
           box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
-          transform: translateY(-2px);
         }
 
         .tab-icon-wrapper {
@@ -675,8 +865,8 @@ export default function PatientPage({
         }
 
         .tab-button-modern.inactive .tab-icon-wrapper {
-          background: #E2E8F0;
-          color: #064E3B;
+          background: #F0F9FF;
+          color: #0284C7;
         }
 
         .tab-title-text {
@@ -754,8 +944,8 @@ export default function PatientPage({
         }
 
         .modern-form-input:focus {
-          border-color: #059669;
-          box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.12);
+          border-color: #0284C7;
+          box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
         }
 
         .modern-form-select {
@@ -786,9 +976,9 @@ export default function PatientPage({
         }
 
         .modern-triage-card.active-routine {
-          background: #ECFDF5;
-          border: 1.5px solid #059669;
-          box-shadow: 0 2px 8px rgba(5, 150, 105, 0.08);
+          background: #F0F9FF;
+          border: 1.5px solid #0284C7;
+          box-shadow: 0 2px 8px rgba(2, 132, 199, 0.08);
         }
 
         .modern-triage-card.active-emergency {
@@ -812,19 +1002,19 @@ export default function PatientPage({
           padding: 16px 20px;
           border-radius: 12px;
           border: none;
-          background: #044E3B;
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
           color: #FFFFFF;
           cursor: pointer;
-          box-shadow: 0 4px 14px rgba(4, 78, 59, 0.25);
-          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
+          transition: all 0.18s ease;
           outline: none;
           box-sizing: border-box;
+          font-weight: 700;
         }
 
         .modern-submit-btn:hover {
-          background: #033E2F;
-          box-shadow: 0 6px 18px rgba(4, 78, 59, 0.35);
-          transform: translateY(-1px);
+          background: linear-gradient(135deg, #0369A1 0%, #0284C7 100%);
+          box-shadow: 0 6px 18px rgba(2, 132, 199, 0.35);
         }
 
         .modern-submit-btn:active {
@@ -854,7 +1044,7 @@ export default function PatientPage({
       <section className="patient-nav-section">
         <div className="patient-nav-header">
           <div className="patient-nav-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
               <path d="M12 11h4" />
@@ -887,7 +1077,7 @@ export default function PatientPage({
               <span className="tab-title-text">
                 {t("instantWalkin", language)}
               </span>
-              <span className="tab-sub-text" style={{ color: activeTab === "walkin" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "walkin" ? "#BAE6FD" : "#64748B" }}>
                 {t("getTokenNow", language)}
               </span>
             </div>
@@ -912,7 +1102,7 @@ export default function PatientPage({
               <span className="tab-title-text">
                 {t("bookSlot", language)}
               </span>
-              <span className="tab-sub-text" style={{ color: activeTab === "book" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "book" ? "#BAE6FD" : "#64748B" }}>
                 {t("scheduleVisit", language)}
               </span>
             </div>
@@ -940,14 +1130,14 @@ export default function PatientPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "my_apts" ? "#34D399" : "#044E3B",
-                    color: activeTab === "my_apts" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "my_apts" ? "#38BDF8" : "#0284C7",
+                    color: activeTab === "my_apts" ? "#0F172A" : "#FFFFFF",
                   }}
                 >
                   {activeAppointments.length}
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "my_apts" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "my_apts" ? "#BAE6FD" : "#64748B" }}>
                 {t("viewAndManage", language)}
               </span>
             </div>
@@ -974,14 +1164,14 @@ export default function PatientPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "history" ? "#34D399" : "#044E3B",
-                    color: activeTab === "history" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "history" ? "#38BDF8" : "#0284C7",
+                    color: activeTab === "history" ? "#0F172A" : "#FFFFFF",
                   }}
                 >
-                  {historyAppointments.length}
+                  {historyAppointments.length + historyTickets.length}
                 </span>
               </div>
-          <span className="tab-sub-text" style={{ color: activeTab === "history" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "history" ? "#BAE6FD" : "#64748B" }}>
                 {t("pastRecords", language)}
               </span>
             </div>
@@ -1189,7 +1379,7 @@ export default function PatientPage({
                               width: "28px",
                               height: "28px",
                               borderRadius: "50%",
-                              background: priority === 2 ? "#059669" : "transparent",
+                              background: priority === 2 ? "#0284C7" : "transparent",
                               color: priority === 2 ? "#FFFFFF" : "#64748B",
                               display: "flex",
                               alignItems: "center",
@@ -1203,10 +1393,10 @@ export default function PatientPage({
                             </svg>
                           </div>
                           <div>
-                            <div style={{ fontWeight: 800, fontSize: "13.5px", color: priority === 2 ? "#064E3B" : "#1E293B" }}>
+                            <div style={{ fontWeight: 800, fontSize: "13.5px", color: priority === 2 ? "#0369A1" : "#1E293B" }}>
                               {t("routineCase", language)}
                             </div>
-                            <div style={{ fontSize: "11.5px", color: priority === 2 ? "#047857" : "#64748B", marginTop: "2px", fontWeight: 500 }}>
+                            <div style={{ fontSize: "11.5px", color: priority === 2 ? "#0284C7" : "#64748B", marginTop: "2px", fontWeight: 500 }}>
                               {t("standardOrder", language)}
                             </div>
                           </div>
@@ -1375,9 +1565,9 @@ export default function PatientPage({
                             style={{
                               padding: "10px 4px",
                               borderRadius: "8px",
-                              border: aptTimeSlot === slot ? "2px solid #059669" : "1px solid #CBD5E1",
-                              background: aptTimeSlot === slot ? "#ECFDF5" : "#F8FAFC",
-                              color: aptTimeSlot === slot ? "#047857" : "#475569",
+                              border: aptTimeSlot === slot ? "2px solid #0284C7" : "1px solid #CBD5E1",
+                              background: aptTimeSlot === slot ? "#F0F9FF" : "#F8FAFC",
+                              color: aptTimeSlot === slot ? "#0284C7" : "#475569",
                               fontWeight: 700,
                               fontSize: "11.5px",
                               cursor: "pointer",
@@ -1397,10 +1587,10 @@ export default function PatientPage({
 
                   {bookedAppointment && (
                     <div style={aptConfirmationBoxStyle}>
-                      <span style={{ fontSize: "11px", color: "#047857", fontWeight: 700, textTransform: "uppercase" }}>
+                      <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700, textTransform: "uppercase" }}>
                         {t("appointmentConfirmed", language)}
                       </span>
-                      <h3 style={{ margin: "4px 0", color: "#064E3B", fontSize: "22px", fontWeight: 900 }}>
+                      <h3 style={{ margin: "4px 0", color: "#0369A1", fontSize: "22px", fontWeight: 900 }}>
                         {language === "hi" ? "कोड:" : "Code:"} {bookedAppointment.appointment_id}
                       </h3>
                       <p style={{ margin: 0, color: "#475569", fontSize: "13px" }}>
@@ -1421,7 +1611,19 @@ export default function PatientPage({
               )}
 
               {statusMsg && (
-                <div style={{ marginTop: "16px", padding: "12px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#047857", fontSize: "13px", textAlign: "center", fontWeight: 600 }}>
+                <div
+                  style={{
+                    marginTop: "16px",
+                    padding: "12px",
+                    borderRadius: "10px",
+                    background: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "#FEF2F2" : "#ECFDF5",
+                    border: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "1px solid #FECACA" : "1px solid #A7F3D0",
+                    color: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "#DC2626" : "#047857",
+                    fontSize: "13px",
+                    textAlign: "center",
+                    fontWeight: 600,
+                  }}
+                >
                   {statusMsg}
                 </div>
               )}
@@ -1436,6 +1638,16 @@ export default function PatientPage({
                 ticketQrData={ticketQrData}
                 language={language}
                 onPrint={() => printTokenPass(activeTicket, tenantId)}
+                onOpenAdjustModal={() => {
+                  setAdjustError("");
+                  setAdjustSuccessMsg("");
+                  setSelectedSkipCount(1);
+                  setShowAdjustModal(true);
+                }}
+                onOpenCancelModal={() => {
+                  setCancelError("");
+                  setShowCancelModal(true);
+                }}
               />
             )}
           </div>
@@ -1477,9 +1689,43 @@ export default function PatientPage({
             </div>
           </div>
 
+          {/* Name lookup for guests / unmatched users */}
+          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "#F0FDF4", borderRadius: "12px", border: "1px solid #BBF7D0", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#047857" }}>🔍 Look up by name:</span>
+            <input
+              id="apt-search-name"
+              type="text"
+              value={aptSearchName}
+              onChange={(e) => setAptSearchName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && aptSearchName.trim()) {
+                  setAptSearchLoading(true);
+                  fetchUserAppointments(aptSearchName.trim());
+                  setTimeout(() => setAptSearchLoading(false), 800);
+                }
+              }}
+              placeholder="Enter your full name (e.g. Alice Wonderland)"
+              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #A7F3D0", fontSize: "13px", outline: "none" }}
+            />
+            <button
+              id="apt-search-btn"
+              type="button"
+              onClick={() => {
+                if (!aptSearchName.trim()) return;
+                setAptSearchLoading(true);
+                fetchUserAppointments(aptSearchName.trim());
+                setTimeout(() => setAptSearchLoading(false), 800);
+              }}
+              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#047857", color: "#fff", fontWeight: 700, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              {aptSearchLoading ? "Searching..." : "Search"}
+            </button>
+          </div>
+
           {activeAppointments.length === 0 ? (
-            <div style={{ padding: "48px 24px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #E2E8F0", color: "#94A3B8" }}>
-              <p style={{ margin: "0 0 14px 0", color: "#64748B", fontWeight: 600, fontSize: "14px" }}>{t("noActiveAptsMsg", language)}</p>
+            <div style={{ padding: "40px 24px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #E2E8F0", color: "#94A3B8" }}>
+              <p style={{ margin: "0 0 6px 0", color: "#64748B", fontWeight: 600, fontSize: "14px" }}>{t("noActiveAptsMsg", language)}</p>
+              <p style={{ margin: "0 0 14px 0", color: "#94A3B8", fontSize: "12px" }}>Search by your name above or reserve a new slot below.</p>
               <button
                 type="button"
                 onClick={() => handleTabChange("book")}
@@ -1516,7 +1762,7 @@ export default function PatientPage({
                     ) : (
                       <div style={{ textAlign: "right" }}>
                         <span style={{ fontSize: "13px", color: "#047857", fontWeight: 800, display: "block" }}>
-                          {t("mergedToken", language)} #{apt.ticket_id})
+                          {t("mergedToken", language)} #{apt.ticket_id}
                         </span>
                         <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
                           {t("activeInLiveQueue", language)}
@@ -1532,65 +1778,365 @@ export default function PatientPage({
       ) : (
         /* VISIT HISTORY FULL VIEW */
         <div style={standaloneCardStyle}>
-          <div style={{ marginBottom: "20px" }}>
-            <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
-              {t("appointmentHistory", language)}
-            </h3>
-            <span style={{ fontSize: "12.5px", color: "#64748B" }}>
-              {t("historySubtitle", language)}
-            </span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
+            <div>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
+                {t("appointmentHistory", language)}
+              </h3>
+              <span style={{ fontSize: "12.5px", color: "#64748B" }}>
+                {t("historySubtitle", language)}
+              </span>
+            </div>
           </div>
 
-          {historyAppointments.length === 0 ? (
+          {/* Name lookup for guests / unmatched users */}
+          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "#F0FDF4", borderRadius: "12px", border: "1px solid #BBF7D0", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#047857" }}>🔍 Look up by name:</span>
+            <input
+              id="history-search-name"
+              type="text"
+              value={aptSearchName}
+              onChange={(e) => setAptSearchName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && aptSearchName.trim()) {
+                  setAptSearchLoading(true);
+                  fetchUserAppointments(aptSearchName.trim());
+                  fetchUserTicketHistory(aptSearchName.trim());
+                  setTimeout(() => setAptSearchLoading(false), 1000);
+                }
+              }}
+              placeholder="Enter your full name (e.g. Harshit Singh)"
+              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #A7F3D0", fontSize: "13px", outline: "none" }}
+            />
+            <button
+              id="history-search-btn"
+              type="button"
+              onClick={() => {
+                if (!aptSearchName.trim()) return;
+                setAptSearchLoading(true);
+                fetchUserAppointments(aptSearchName.trim());
+                fetchUserTicketHistory(aptSearchName.trim());
+                setTimeout(() => setAptSearchLoading(false), 1000);
+              }}
+              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#047857", color: "#fff", fontWeight: 700, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              {aptSearchLoading ? "Searching..." : "Search"}
+            </button>
+          </div>
+
+          {historyAppointments.length === 0 && historyTickets.length === 0 ? (
             <div style={{ padding: "48px 24px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #E2E8F0", color: "#94A3B8", fontSize: "13.5px" }}>
-              {t("noHistoryMsg", language)}
+              <p style={{ margin: "0 0 8px 0", fontSize: "14px", fontWeight: 600, color: "#64748B" }}>{t("noHistoryMsg", language)}</p>
+              <p style={{ margin: 0, fontSize: "12px" }}>Search by your name above to find past visits.</p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              {historyAppointments.map((apt) => (
-                <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
-                      <span style={aptStatusBadgeStyle(apt.status)}>{getStatusLabel(apt.status || "COMPLETED", language)}</span>
-                      {apt.ticket_id && (
-                        <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
-                          ({t("tokenLabel", language)} #{apt.ticket_id})
-                        </span>
-                      )}
-                    </div>
-                    <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14.5px" }}>
-                      {apt.patient_name} — {getCategoryLabel(apt.service_category || "consultation", language)}
-                    </p>
-                    <span style={{ fontSize: "12px", color: "#64748B" }}>
-                      {t("dateLabel", language)}: {apt.appointment_date} | {t("reservedSlotLabel", language)}: {apt.time_slot}
-                    </span>
 
-                    {/* E-Prescription & Visit Notes */}
-                    {apt.prescription_notes && (
-                      <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", display: "block" }}>
-                          💊 {t("ePrescriptionLabel", language)}
+              {/* Walk-in Tickets Section */}
+              {historyTickets.length > 0 && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: "0.5px" }}>🎫 Walk-in Queue Tickets</span>
+                    <div style={{ flex: 1, height: "1px", background: "#D1FAE5" }} />
+                  </div>
+                  {historyTickets.map((tk) => (
+                    <div key={tk.ticket_id} style={aptCardRowStyle(tk.status)}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>#{tk.ticket_id}</span>
+                          <span style={aptStatusBadgeStyle(tk.status)}>{getStatusLabel(tk.status || "completed", language)}</span>
+                          <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600, padding: "2px 7px", background: "#F1F5F9", borderRadius: "5px", border: "1px solid #E2E8F0" }}>
+                            Walk-in
+                          </span>
+                        </div>
+                        <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14.5px" }}>
+                          {tk.name} — {getCategoryLabel(tk.service_category || "consultation", language)}
+                        </p>
+                        <span style={{ fontSize: "12px", color: "#64748B" }}>
+                          {tk.created_at ? new Date(tk.created_at).toLocaleDateString() : ""}{" "}
+                          {tk.department_name && `| Dept: ${tk.department_name}`}
                         </span>
-                        <span style={{ fontSize: "12.5px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
-                          "{apt.prescription_notes}"
+                        {tk.cancellation_reason && (
+                          <p style={{ margin: "4px 0 0 0", fontSize: "11.5px", color: "#DC2626", fontStyle: "italic" }}>
+                            Reason: {tk.cancellation_reason}
+                          </p>
+                        )}
+                        {tk.prescription_notes && (
+                          <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", display: "block" }}>
+                              💊 {t("ePrescriptionLabel", language)}
+                            </span>
+                            <span style={{ fontSize: "12.5px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
+                              "{tk.prescription_notes}"
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ textAlign: "right", marginLeft: "14px" }}>
+                        <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("finalVisitStatus", language)}</span>
+                        <span style={{ fontSize: "12px", fontWeight: 800, color: tk.status === "completed" ? "#047857" : "#DC2626" }}>
+                          {getStatusLabel(tk.status || "completed", language)}
                         </span>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  ))}
+                </>
+              )}
 
-                  <div style={{ textAlign: "right", marginLeft: "14px" }}>
-                    <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>
-                      {t("finalVisitStatus", language)}
-                    </span>
-                    <span style={{ fontSize: "12px", fontWeight: 800, color: apt.status === "completed" ? "#047857" : "#0284C7" }}>
-                      {getStatusLabel(apt.status || "completed", language)}
-                    </span>
+              {/* Appointment History Section */}
+              {historyAppointments.length > 0 && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: historyTickets.length > 0 ? "10px" : "0", marginBottom: "4px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", textTransform: "uppercase", letterSpacing: "0.5px" }}>📅 Pre-Scheduled Appointments</span>
+                    <div style={{ flex: 1, height: "1px", background: "#BFDBFE" }} />
                   </div>
-                </div>
-              ))}
+                  {historyAppointments.map((apt) => (
+                    <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
+                          <span style={aptStatusBadgeStyle(apt.status)}>{getStatusLabel(apt.status || "COMPLETED", language)}</span>
+                          {apt.ticket_id && (
+                            <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
+                              ({t("tokenLabel", language)} #{apt.ticket_id})
+                            </span>
+                          )}
+                        </div>
+                        <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14.5px" }}>
+                          {apt.patient_name} — {getCategoryLabel(apt.service_category || "consultation", language)}
+                        </p>
+                        <span style={{ fontSize: "12px", color: "#64748B" }}>
+                          {t("dateLabel", language)}: {apt.appointment_date} | {t("reservedSlotLabel", language)}: {apt.time_slot}
+                        </span>
+
+                        {apt.prescription_notes && (
+                          <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", display: "block" }}>
+                              💊 {t("ePrescriptionLabel", language)}
+                            </span>
+                            <span style={{ fontSize: "12.5px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
+                              "{apt.prescription_notes}"
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ textAlign: "right", marginLeft: "14px" }}>
+                        <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>
+                          {t("finalVisitStatus", language)}
+                        </span>
+                        <span style={{ fontSize: "12px", fontWeight: 800, color: apt.status === "completed" ? "#047857" : "#0284C7" }}>
+                          {getStatusLabel(apt.status || "completed", language)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
             </div>
           )}
+        </div>
+      )}
+
+
+
+
+      {/* Edit Family Member Modal */}
+      {editingMember && (
+        <EditFamilyMemberModal
+          isOpen={!!editingMember}
+          onClose={() => setEditingMember(null)}
+          onSaveMember={handleEditMember}
+          member={editingMember}
+          language={language}
+        />
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelModal && activeTicket && (
+        <div style={modalBackdropStyle}>
+          <div style={modalContentStyle}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#FEF2F2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+                ⚠️
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
+                  Cancel Ticket?
+                </h3>
+                <span style={{ fontSize: "12px", color: "#64748B" }}>
+                  Ticket #{activeTicket.ticket_id}
+                </span>
+              </div>
+            </div>
+
+            <p style={{ fontSize: "13.5px", color: "#475569", margin: "0 0 16px 0", lineHeight: 1.5 }}>
+              Are you sure you want to cancel ticket <strong>#{activeTicket.ticket_id}</strong>? This will remove you from the active queue.
+            </p>
+
+            <div style={{ marginBottom: "18px" }}>
+              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                Reason (optional):
+              </label>
+              <select
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "13px", marginBottom: cancelReason === "Other" ? "8px" : "0" }}
+              >
+                <option value="Running late">Running late</option>
+                <option value="Feeling better / no longer needed">Feeling better / no longer needed</option>
+                <option value="Emergency elsewhere">Emergency elsewhere</option>
+                <option value="Wait time too long">Wait time too long</option>
+                <option value="Other">Other reason...</option>
+              </select>
+
+              {cancelReason === "Other" && (
+                <input
+                  type="text"
+                  placeholder="Please specify reason..."
+                  value={otherCancelReason}
+                  onChange={(e) => setOtherCancelReason(e.target.value)}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "13px", boxSizing: "border-box" }}
+                />
+              )}
+            </div>
+
+            {cancelError && (
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", fontSize: "12.5px", marginBottom: "16px", fontWeight: 600 }}>
+                {cancelError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setShowCancelModal(false)}
+                disabled={cancelLoading}
+                style={{ padding: "10px 18px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#334155", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+              >
+                Keep Ticket
+              </button>
+              <button
+                id="confirm-cancel-btn"
+                type="button"
+                onClick={handleCancelTicket}
+                disabled={cancelLoading}
+                style={{ padding: "10px 18px", borderRadius: "10px", border: "none", background: "#DC2626", color: "#FFFFFF", fontSize: "13px", fontWeight: 700, cursor: cancelLoading ? "not-allowed" : "pointer" }}
+              >
+                {cancelLoading ? "Cancelling..." : "Cancel Ticket"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Adjust Queue Modal */}
+      {showAdjustModal && activeTicket && (
+        <div style={modalBackdropStyle}>
+          <div style={modalContentStyle}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#ECFDF5", color: "#047857", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+                ⏱️
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+                  Running late?
+                </h3>
+                <span style={{ fontSize: "12px", color: "#64748B" }}>
+                  Move your position back in the queue.
+                </span>
+              </div>
+            </div>
+
+            <div style={{ background: "#F8FAFC", padding: "12px 14px", borderRadius: "10px", border: "1px solid #E2E8F0", marginBottom: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "12.5px", color: "#64748B" }}>Ticket:</span>
+                <strong style={{ fontSize: "13px", color: "#0F172A" }}>#{activeTicket.ticket_id}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+                <span style={{ fontSize: "12.5px", color: "#64748B" }}>Current Position:</span>
+                <strong style={{ fontSize: "15px", color: "#0284C7" }}>#{activeTicket.position}</strong>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "8px" }}>
+                Move back:
+              </label>
+              {(() => {
+                const rem = Math.max(0, 3 - (activeTicket.adjustment_count || 0));
+                return (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px" }}>
+                    {[1, 2, 3].map((num) => {
+                      const isDisabled = num > rem;
+                      const isSelected = selectedSkipCount === num;
+                      return (
+                        <button
+                          key={num}
+                          type="button"
+                          disabled={isDisabled}
+                          onClick={() => setSelectedSkipCount(num)}
+                          style={{
+                            padding: "12px 6px",
+                            borderRadius: "10px",
+                            border: isSelected ? "2px solid #0284C7" : "1px solid #CBD5E1",
+                            background: isSelected ? "#F0F9FF" : isDisabled ? "#F1F5F9" : "#FFFFFF",
+                            color: isSelected ? "#0284C7" : isDisabled ? "#94A3B8" : "#0F172A",
+                            fontWeight: isSelected ? 800 : 600,
+                            fontSize: "12.5px",
+                            cursor: isDisabled ? "not-allowed" : "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          {num} {num === 1 ? "person" : "people"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", fontSize: "12px", color: "#64748B", background: "#F8FAFC", padding: "8px 12px", borderRadius: "8px" }}>
+              <span>Remaining adjustment:</span>
+              <strong style={{ color: "#0369A1", fontSize: "13px" }}>
+                {Math.max(0, 3 - (activeTicket.adjustment_count || 0))} of 3
+              </strong>
+            </div>
+
+            {adjustError && (
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", fontSize: "12.5px", marginBottom: "16px", fontWeight: 600 }}>
+                {adjustError}
+              </div>
+            )}
+
+            {adjustSuccessMsg && (
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "#F0F9FF", border: "1px solid #BAE6FD", color: "#0284C7", fontSize: "12.5px", marginBottom: "16px", fontWeight: 700, textAlign: "center" }}>
+                ✓ {adjustSuccessMsg}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setShowAdjustModal(false)}
+                disabled={adjustLoading}
+                style={{ padding: "10px 18px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#334155", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                id="confirm-adjust-btn"
+                type="button"
+                onClick={() => handleAdjustQueue(selectedSkipCount)}
+                disabled={adjustLoading || (activeTicket.adjustment_count || 0) >= 3}
+                style={{ padding: "10px 20px", borderRadius: "10px", border: "none", background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)", color: "#FFFFFF", fontSize: "13px", fontWeight: 700, cursor: adjustLoading ? "not-allowed" : "pointer" }}
+              >
+                {adjustLoading ? "Adjusting..." : "Confirm"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1637,10 +2183,10 @@ const patientSubmitBtnStyle = {
   padding: "14px 20px",
   borderRadius: "12px",
   border: "none",
-  background: "#044E3B",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#ffffff",
   cursor: "pointer",
-  boxShadow: "0 4px 14px rgba(4, 78, 59, 0.25)",
+  boxShadow: "0 4px 14px rgba(2, 132, 199, 0.25)",
   transition: "all 0.2s ease",
 };
 
@@ -1648,8 +2194,8 @@ const aptConfirmationBoxStyle = {
   marginTop: "20px",
   padding: "18px",
   borderRadius: "14px",
-  background: "#ECFDF5",
-  border: "2px solid #059669",
+  background: "#F0F9FF",
+  border: "2px solid #0284C7",
   textAlign: "center",
 };
 
@@ -1657,19 +2203,19 @@ const checkInNowBtnStyle = {
   padding: "10px 16px",
   borderRadius: "10px",
   border: "none",
-  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#ffffff",
   fontWeight: 800,
   fontSize: "12px",
   cursor: "pointer",
-  boxShadow: "0 4px 12px rgba(5, 150, 105, 0.3)",
+  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
 };
 
 const quickCheckInBtnStyle = {
   padding: "8px 14px",
   borderRadius: "8px",
   border: "none",
-  background: "#047857",
+  background: "#0284C7",
   color: "#ffffff",
   fontWeight: 700,
   fontSize: "12px",
@@ -1884,9 +2430,11 @@ function DigitalTicketPassCard({
   ticketQrData,
   language = "en",
   onPrint,
+  onOpenAdjustModal,
+  onOpenCancelModal,
 }) {
   return (
-    <div style={{ ...standaloneCardStyle, border: "2px solid #059669" }}>
+    <div style={{ ...standaloneCardStyle, border: "2px solid #0284C7" }}>
       {/* Active Family Pass Switcher */}
       {Object.keys(familyTickets).length > 1 && (
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", background: "#F1F5F9", padding: "8px 12px", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
@@ -1902,8 +2450,8 @@ function DigitalTicketPassCard({
                   style={{
                     padding: "3px 9px",
                     borderRadius: "6px",
-                    border: isCurrent ? "1.5px solid #059669" : "1px solid #CBD5E1",
-                    background: isCurrent ? "#059669" : "#FFFFFF",
+                    border: isCurrent ? "1.5px solid #0284C7" : "1px solid #CBD5E1",
+                    background: isCurrent ? "#0284C7" : "#FFFFFF",
                     color: isCurrent ? "#FFFFFF" : "#0F172A",
                     fontSize: "11px",
                     fontWeight: isCurrent ? 800 : 600,
@@ -1918,7 +2466,7 @@ function DigitalTicketPassCard({
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #D8E8DD", paddingBottom: "14px", marginBottom: "16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #E0F2FE", paddingBottom: "14px", marginBottom: "16px" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
             <span style={{ fontSize: "11px", color: "#64748B", textTransform: "uppercase", fontWeight: 600 }}>{t("livePassTitle", language)}</span>
@@ -1928,7 +2476,7 @@ function DigitalTicketPassCard({
               </span>
             )}
           </div>
-          <h2 style={{ margin: 0, fontSize: "32px", color: "#047857", fontWeight: 800 }}>
+          <h2 style={{ margin: 0, fontSize: "32px", color: "#0284C7", fontWeight: 800 }}>
             #{activeTicket.ticket_id}
           </h2>
         </div>
@@ -1947,7 +2495,7 @@ function DigitalTicketPassCard({
         </div>
         <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: "11px", color: "#64748B" }}>{t("deptCategory", language)}</span>
-          <p style={{ margin: "2px 0 0 0", color: "#047857", fontWeight: 700, fontSize: "15px", wordBreak: "break-word" }}>
+          <p style={{ margin: "2px 0 0 0", color: "#0284C7", fontWeight: 700, fontSize: "15px", wordBreak: "break-word" }}>
             {getCategoryLabel(activeTicket.service_category || "consultation", language)}
           </p>
         </div>
@@ -1959,14 +2507,76 @@ function DigitalTicketPassCard({
         </div>
         <div style={{ minWidth: 0 }}>
           <span style={{ fontSize: "11px", color: "#64748B" }}>{t("estWait", language)}</span>
-          <p style={{ margin: "2px 0 0 0", color: "#059669", fontWeight: 800, fontSize: "24px" }}>
+          <p style={{ margin: "2px 0 0 0", color: "#0284C7", fontWeight: 800, fontSize: "24px" }}>
             {activeTicket.estimated_wait_minutes} {language === "hi" ? "मिनट" : "min"}
           </p>
         </div>
       </div>
 
+      {/* Active Ticket Actions (WAITING status only) */}
+      {activeTicket && (activeTicket.status || "").toLowerCase() === "waiting" && (
+        <div style={{ display: "flex", gap: "10px", marginTop: "16px", marginBottom: "16px", flexWrap: "wrap" }}>
+          <button
+            id="adjust-queue-btn"
+            type="button"
+            onClick={onOpenAdjustModal}
+            disabled={(activeTicket.adjustment_count || 0) >= 3}
+            style={{
+              flex: 1,
+              minWidth: "130px",
+              padding: "10px 16px",
+              borderRadius: "10px",
+              border: (activeTicket.adjustment_count || 0) >= 3 ? "1px solid #E2E8F0" : "1.5px solid #0284C7",
+              background: (activeTicket.adjustment_count || 0) >= 3 ? "#F1F5F9" : "#F0F9FF",
+              color: (activeTicket.adjustment_count || 0) >= 3 ? "#94A3B8" : "#0284C7",
+              fontSize: "12.5px",
+              fontWeight: 700,
+              cursor: (activeTicket.adjustment_count || 0) >= 3 ? "not-allowed" : "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>⏱️</span>
+            <span>
+              {(activeTicket.adjustment_count || 0) >= 3
+                ? (language === "hi" ? "समायोजन सीमा समाप्त (3/3)" : "Adjust Limit Reached (3/3)")
+                : (language === "hi" ? "कतार समायोजित करें" : "Adjust Queue")}
+            </span>
+          </button>
+
+          <button
+            id="cancel-ticket-btn"
+            type="button"
+            onClick={onOpenCancelModal}
+            style={{
+              flex: 1,
+              minWidth: "130px",
+              padding: "10px 16px",
+              borderRadius: "10px",
+              border: "1.5px solid #FECACA",
+              background: "#FEF2F2",
+              color: "#DC2626",
+              fontSize: "12.5px",
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>✕</span>
+            <span>{language === "hi" ? "टोकन रद्द करें" : "Cancel Ticket"}</span>
+          </button>
+        </div>
+      )}
+
       {ticketQrData && (
-        <div style={{ textAlign: "center", borderTop: "1px solid #D8E8DD", paddingTop: "18px" }}>
+        <div style={{ textAlign: "center", borderTop: "1px solid #E0F2FE", paddingTop: "18px" }}>
           <img
             src={ticketQrData.qr_code_base64}
             alt="Ticket QR Code"
@@ -1985,9 +2595,9 @@ function DigitalTicketPassCard({
           style={{
             padding: "9px 18px",
             borderRadius: "10px",
-            border: "1px solid #059669",
-            background: "#ECFDF5",
-            color: "#047857",
+            border: "1px solid #0284C7",
+            background: "#F0F9FF",
+            color: "#0284C7",
             fontSize: "12px",
             fontWeight: 800,
             cursor: "pointer",
@@ -2003,3 +2613,26 @@ function DigitalTicketPassCard({
     </div>
   );
 }
+
+const modalBackdropStyle = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.65)",
+  backdropFilter: "blur(4px)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 10000,
+  padding: "16px",
+};
+
+const modalContentStyle = {
+  background: "#FFFFFF",
+  borderRadius: "20px",
+  maxWidth: "440px",
+  width: "100%",
+  padding: "26px",
+  boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+  border: "1px solid #E2E8F0",
+  boxSizing: "border-box",
+};

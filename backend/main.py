@@ -28,7 +28,7 @@ from typing import Optional, Dict, Any
 import socketio
 import qrcode
 
-from queue_engine import engine, PRIORITY_EMERGENCY, PRIORITY_ROUTINE, PRIORITY_STANDARD
+from queue_engine import engine, PRIORITY_EMERGENCY, PRIORITY_ROUTINE, PRIORITY_STANDARD, MAX_PATIENT_QUEUE_ADJUSTMENT
 from schema_validator import detect_column_mappings, validate_and_transform_dataframe
 from train_model import train_model_for_tenant, get_tenant_model_info, MIN_TRAINING_ROWS
 
@@ -55,6 +55,7 @@ class JoinRequest(BaseModel):
     gender: Optional[str] = "other"
     medical_condition: Optional[str] = "general_checkup"
     pre_existing_condition: Optional[str] = "none"
+    family_member_id: Optional[str] = None  # When joining queue for a family member
 
 class ServeNextRequest(BaseModel):
     tenant_id: str
@@ -74,7 +75,9 @@ class CancelTicketRequest(BaseModel):
 class AdjustQueueRequest(BaseModel):
     tenant_id: Optional[str] = "city-hospital-01"
     ticket_id: Optional[str] = None
-    skip_positions: int = Field(1, ge=1, le=2)
+    positions: Optional[int] = None
+    skip_positions: Optional[int] = None
+    reason: Optional[str] = "Late arrival"
 
 class TransferTicketRequest(BaseModel):
     tenant_id: str
@@ -144,8 +147,16 @@ class FamilyMemberCreateRequest(BaseModel):
     relation: str
     age: Optional[int] = 25
     gender: Optional[str] = "male"
+    phone: Optional[str] = ""
     id: Optional[str] = None
     department: Optional[str] = "all"
+
+class FamilyMemberUpdateRequest(BaseModel):
+    name: str
+    relation: str
+    age: Optional[int] = 25
+    gender: Optional[str] = "male"
+    phone: Optional[str] = ""
 
 class HospitalCreateRequest(BaseModel):
     hospital_code: str
@@ -204,6 +215,7 @@ class BookAppointmentRequest(BaseModel):
     user_email: Optional[str] = ""
     appointment_date: str
     time_slot: str
+    family_member_id: Optional[str] = None  # When booking for a family member
 
 class CheckInAppointmentRequest(BaseModel):
     appointment_id: str
@@ -231,8 +243,19 @@ async def _broadcast_queue_update(tenant_id: str):
 # Core Queue & Counter Endpoints
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/plugin/join")
-async def join_queue_http_endpoint(req: JoinRequest):
+async def join_queue_http_endpoint(req: JoinRequest, request: Request):
     priority = _urgency_to_priority(req.consumer_type, req.urgency)
+
+    # Resolve family member patient_id if provided
+    patient_id = None
+    if req.family_member_id and req.user_email:
+        try:
+            fm = engine.verify_family_member_ownership(req.user_email, req.family_member_id)
+            patient_id = fm.get("patient_id")
+        except PermissionError as pe:
+            raise HTTPException(status_code=403, detail=str(pe))
+        except ValueError as ve:
+            raise HTTPException(status_code=404, detail=str(ve))
 
     ticket = engine.join_queue(
         tenant_id=req.tenant_id,
@@ -245,6 +268,7 @@ async def join_queue_http_endpoint(req: JoinRequest):
         gender=req.gender or "other",
         medical_condition=req.medical_condition or "general_checkup",
         pre_existing_condition=req.pre_existing_condition or "none",
+        patient_id=patient_id,
     )
     engine.recalculate_wait_times(req.tenant_id)
     await _broadcast_queue_update(req.tenant_id)
@@ -309,9 +333,14 @@ async def mark_no_show(payload: TicketActionRequest):
     await _broadcast_queue_update(payload.tenant_id)
     return {"success": True}
 
-@app.post("/api/v1/plugin/cancel")
+@app.post("/api/v1/tickets/{ticket_id}/cancel")
 @app.post("/api/v1/plugin/tickets/{ticket_id}/cancel")
-async def cancel_ticket_api(payload: Optional[CancelTicketRequest] = None, ticket_id: Optional[str] = None):
+@app.post("/api/v1/plugin/cancel")
+async def cancel_ticket_api(
+    request: Request,
+    payload: Optional[CancelTicketRequest] = None,
+    ticket_id: Optional[str] = None
+):
     tid = ticket_id or (payload.ticket_id if payload else None)
     tenant_id = (payload.tenant_id if payload else None) or "city-hospital-01"
     reason = (payload.reason if payload else None) or "No longer available"
@@ -319,30 +348,92 @@ async def cancel_ticket_api(payload: Optional[CancelTicketRequest] = None, ticke
     if not tid:
         raise HTTPException(status_code=400, detail="Ticket ID is required.")
 
+    requester_email = get_requester_email(request)
+
     try:
-        cancelled_t = engine.cancel_ticket(tenant_id, tid, reason=reason)
+        cancelled_t = engine.cancel_ticket(tenant_id, tid, reason=reason, user_email=requester_email or None)
         if cancelled_t:
-            await sio.emit("ticket_cancelled", {"ticket": cancelled_t.to_dict()}, room=tenant_id)
+            await sio.emit("ticket_cancelled", {"ticket": cancelled_t.to_dict(), "ticket_id": tid}, room=tenant_id)
         await _broadcast_queue_update(tenant_id)
-        return {"status": "success", "success": True, "ticket": cancelled_t.to_dict() if cancelled_t else None}
+        return {
+            "status": "success",
+            "success": True,
+            "ticket_id": tid,
+            "status_code": 200,
+            "ticket": cancelled_t.to_dict() if cancelled_t else None
+        }
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except ValueError as ve:
+        err_str = str(ve)
+        if "not found" in err_str.lower():
+            raise HTTPException(status_code=404, detail=err_str)
+        if "only waiting" in err_str.lower() or "not waiting" in err_str.lower():
+            raise HTTPException(status_code=409, detail=err_str)
+        raise HTTPException(status_code=400, detail=err_str)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/api/v1/plugin/adjust-queue")
+@app.post("/api/v1/tickets/{ticket_id}/adjust")
+@app.post("/api/v1/tickets/{ticket_id}/adjust-queue")
 @app.post("/api/v1/plugin/tickets/{ticket_id}/adjust-queue")
-async def adjust_queue_api(payload: Optional[AdjustQueueRequest] = None, ticket_id: Optional[str] = None):
+@app.post("/api/v1/plugin/adjust-queue")
+async def adjust_queue_api(
+    request: Request,
+    payload: Optional[AdjustQueueRequest] = None,
+    ticket_id: Optional[str] = None
+):
     tid = ticket_id or (payload.ticket_id if payload else None)
     tenant_id = (payload.tenant_id if payload else None) or "city-hospital-01"
-    skip_pos = (payload.skip_positions if payload else 1) or 1
+
+    # Support both 'positions' and 'skip_positions'
+    skip_pos = 1
+    if payload:
+        if payload.positions is not None:
+            skip_pos = payload.positions
+        elif payload.skip_positions is not None:
+            skip_pos = payload.skip_positions
+
+    reason = (payload.reason if payload else None) or "Late arrival"
 
     if not tid:
         raise HTTPException(status_code=400, detail="Ticket ID is required.")
 
+    if not isinstance(skip_pos, int) or skip_pos <= 0:
+        raise HTTPException(status_code=400, detail="Invalid adjustment: positions must be a positive integer (cannot move forward or 0).")
+
+    requester_email = get_requester_email(request)
+
     try:
-        res = engine.adjust_queue_position(tenant_id, tid, skip_positions=skip_pos)
-        await sio.emit("ticket_updated", {"ticket": res["ticket"]}, room=tenant_id)
+        res = engine.adjust_queue_position(
+            tenant_id,
+            tid,
+            skip_positions=skip_pos,
+            user_email=requester_email or None,
+            reason=reason
+        )
+        await sio.emit("ticket_updated", {"ticket": res["ticket"], "ticket_id": tid}, room=tenant_id)
         await _broadcast_queue_update(tenant_id)
-        return {"status": "success", "success": True, **res}
+        return {
+            "status": "success",
+            "success": True,
+            "ticket_id": tid,
+            "old_position": res["old_position"],
+            "new_position": res["new_position"],
+            "adjustment_count": res["adjustment_count"],
+            "remaining_adjustment": res["remaining_adjustment"],
+            "ticket": res["ticket"],
+            "message": res["message"]
+        }
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except ValueError as ve:
+        err_str = str(ve)
+        if "not found" in err_str.lower():
+            raise HTTPException(status_code=404, detail=err_str)
+        if "only waiting" in err_str.lower() or "not waiting" in err_str.lower():
+            raise HTTPException(status_code=409, detail=err_str)
+        raise HTTPException(status_code=400, detail=err_str)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -366,7 +457,7 @@ async def get_ticket_details(ticket_id: str, tenant_id: Optional[str] = "city-ho
         return {"status": "success", "ticket": ticket.to_dict()}
     
     with engine._get_db() as conn:
-        r = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)).fetchone()
+        r = conn.execute("SELECT * FROM tickets WHERE ticket_id = %s", (ticket_id,)).fetchone()
         if r:
             t_dict = dict(r)
             return {"status": "success", "ticket": t_dict}
@@ -378,7 +469,7 @@ async def re_announce_ticket(payload: TicketActionRequest):
     ticket = engine._get_tenant(payload.tenant_id)["tickets"].get(payload.ticket_id)
     if not ticket:
         with engine._get_db() as conn:
-            r = conn.execute("SELECT * FROM tickets WHERE ticket_id = ?", (payload.ticket_id,)).fetchone()
+            r = conn.execute("SELECT * FROM tickets WHERE ticket_id = %s", (payload.ticket_id,)).fetchone()
             if r:
                 ticket_dict = dict(r)
             else:
@@ -521,7 +612,7 @@ async def upload_historical_data(
             }
         )
 
-    # Save to SQLite
+    # Save to PostgreSQL
     imported_count = engine.save_historical_records(tenant_id, clean_df)
     engine.save_tenant_mapping(tenant_id, mapping)
 
@@ -675,18 +766,136 @@ async def get_all_users():
     return {"status": "success", "users": users}
 
 @app.get("/api/v1/auth/user-history/{email}")
-async def get_user_history(email: str):
+async def get_user_history(email: str, name: Optional[str] = None):
     tickets = engine.get_user_tickets(email)
+    if not tickets and name and name.strip().lower() != email.strip().lower():
+        tickets = engine.get_user_tickets(name)
     return {"status": "success", "tickets": tickets}
+
+@app.get("/api/v1/plugin/tickets/history/{identifier}")
+async def get_ticket_history(identifier: str, name: Optional[str] = None):
+    """Fetch ticket history for a patient by email, username, or patient name."""
+    tickets = engine.get_user_tickets(identifier)
+    if not tickets and name and name.strip().lower() != identifier.strip().lower():
+        tickets = engine.get_user_tickets(name)
+    return {"tickets": tickets, "count": len(tickets)}
 
 # ---------------------------------------------------------------------------
 # Family Member & Dependent Profile Endpoints
 # ---------------------------------------------------------------------------
+def _require_patient_role(email: str) -> dict:
+    """Enforces that the requester has role=user/patient for family features."""
+    from database import get_db_connection
+    with get_db_connection() as conn:
+        u = conn.execute(
+            "SELECT id, role, username FROM users WHERE LOWER(email) = %s",
+            (email.strip().lower(),)
+        ).fetchone()
+    if not u:
+        raise HTTPException(status_code=401, detail="Authenticated user not found.")
+    role = u[1]
+    if role not in ("user", "patient"):
+        raise HTTPException(
+            status_code=403,
+            detail="Family profiles are only available for patient/user accounts. Admins, doctors, and staff cannot use this feature."
+        )
+    return {"id": u[0], "role": role, "username": u[2]}
+
+# --- Clean /api/v1/family-members endpoints (role=user enforced via X-User-Email header) ---
+
+@app.get("/api/v1/family-members")
+async def list_family_members(request: Request):
+    """Get all family members for the authenticated patient user."""
+    requester = get_requester_email(request)
+    if not requester:
+        raise HTTPException(status_code=401, detail="X-User-Email header is required.")
+    _require_patient_role(requester)
+    try:
+        members = engine.get_family_members(requester)
+        return {"status": "success", "members": members}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/family-members")
+async def create_family_member(payload: FamilyMemberCreateRequest, request: Request):
+    """Add a family member for the authenticated patient user."""
+    requester = get_requester_email(request)
+    if not requester:
+        raise HTTPException(status_code=401, detail="X-User-Email header is required.")
+    _require_patient_role(requester)
+    try:
+        member = engine.add_family_member(
+            user_email=requester,
+            name=payload.name,
+            relation=payload.relation,
+            age=payload.age or 25,
+            gender=payload.gender or "male",
+            phone=payload.phone or "",
+            member_id=payload.id
+        )
+        return {"status": "success", "member": member}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/v1/family-members/{member_id}")
+async def update_family_member(member_id: str, payload: FamilyMemberUpdateRequest, request: Request):
+    """Update a family member. Verifies ownership."""
+    requester = get_requester_email(request)
+    if not requester:
+        raise HTTPException(status_code=401, detail="X-User-Email header is required.")
+    _require_patient_role(requester)
+    try:
+        member = engine.update_family_member(
+            user_email=requester,
+            member_id=member_id,
+            name=payload.name,
+            relation=payload.relation,
+            age=payload.age or 25,
+            gender=payload.gender or "male",
+            phone=payload.phone or ""
+        )
+        return {"status": "success", "member": member}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except ValueError as ve:
+        raise HTTPException(status_code=404, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/v1/family-members/{member_id}")
+async def delete_family_member_clean(member_id: str, request: Request):
+    """Delete a family member. Verifies ownership."""
+    requester = get_requester_email(request)
+    if not requester:
+        raise HTTPException(status_code=401, detail="X-User-Email header is required.")
+    _require_patient_role(requester)
+    try:
+        success = engine.delete_family_member(requester, member_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Family member not found or does not belong to your account.")
+        return {"status": "success", "deleted_id": member_id}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Legacy endpoints: kept for backward compatibility, now also with role check ---
+
 @app.get("/api/v1/users/{email}/family-members")
-async def get_user_family_members(email: str):
+async def get_user_family_members(email: str, request: Request):
     try:
         members = engine.get_family_members(email)
         return {"status": "success", "members": members}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -699,9 +908,12 @@ async def add_user_family_member(email: str, payload: FamilyMemberCreateRequest)
             relation=payload.relation,
             age=payload.age or 25,
             gender=payload.gender or "male",
+            phone=payload.phone or "",
             member_id=payload.id
         )
         return {"status": "success", "member": member}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -712,6 +924,8 @@ async def delete_user_family_member(email: str, member_id: str):
         if not success:
             raise HTTPException(status_code=404, detail="Family member not found")
         return {"status": "success", "deleted_id": member_id}
+    except PermissionError as pe:
+        raise HTTPException(status_code=403, detail=str(pe))
     except HTTPException:
         raise
     except Exception as e:
@@ -953,8 +1167,19 @@ async def health():
 # Hybrid Slot Booking & Pre-scheduled Appointment Check-in Endpoints
 # ---------------------------------------------------------------------------
 @app.post("/api/v1/plugin/appointments/book")
-async def book_appointment(req: BookAppointmentRequest):
+async def book_appointment(req: BookAppointmentRequest, request: Request):
     try:
+        # Resolve family member patient_id if provided
+        patient_id = None
+        if req.family_member_id and req.user_email:
+            try:
+                fm = engine.verify_family_member_ownership(req.user_email, req.family_member_id)
+                patient_id = fm.get("patient_id")
+            except PermissionError as pe:
+                raise HTTPException(status_code=403, detail=str(pe))
+            except ValueError as ve:
+                raise HTTPException(status_code=404, detail=str(ve))
+
         res = engine.book_appointment(
             tenant_id=req.tenant_id,
             consumer_type=req.consumer_type or "hospital",
@@ -962,9 +1187,12 @@ async def book_appointment(req: BookAppointmentRequest):
             patient_name=req.patient_name,
             user_email=req.user_email or "",
             appointment_date=req.appointment_date,
-            time_slot=req.time_slot
+            time_slot=req.time_slot,
+            patient_id=patient_id
         )
         return {"status": "success", "appointment": res}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -979,8 +1207,11 @@ async def check_in_appointment(req: CheckInAppointmentRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/v1/plugin/appointments/user/{email}")
-def get_user_appointments(email: str):
-    return {"appointments": engine.get_user_appointments(email)}
+def get_user_appointments(email: str, name: Optional[str] = None):
+    results = engine.get_user_appointments(email)
+    if not results and name and name.strip().lower() != email.strip().lower():
+        results = engine.get_user_appointments(name)
+    return {"appointments": results}
 
 @app.get("/api/v1/plugin/appointments/tenant/{tenant_id}")
 def get_tenant_appointments(
@@ -1117,10 +1348,11 @@ async def cancel_ticket(sid, data):
     tenant_id = data.get("tenant_id", "city-hospital-01")
     ticket_id = data.get("ticket_id")
     reason = data.get("reason", "User requested cancellation")
+    user_email = data.get("user_email")
     try:
-        cancelled_t = engine.cancel_ticket(tenant_id, ticket_id, reason=reason)
+        cancelled_t = engine.cancel_ticket(tenant_id, ticket_id, reason=reason, user_email=user_email)
         if cancelled_t:
-            await sio.emit("ticket_cancelled", {"ticket": cancelled_t.to_dict()}, room=tenant_id)
+            await sio.emit("ticket_cancelled", {"ticket": cancelled_t.to_dict(), "ticket_id": ticket_id}, room=tenant_id)
         await _broadcast_queue_update(tenant_id)
     except Exception as e:
         await sio.emit("error", {"message": str(e)}, to=sid)
@@ -1129,10 +1361,17 @@ async def cancel_ticket(sid, data):
 async def adjust_queue(sid, data):
     tenant_id = data.get("tenant_id", "city-hospital-01")
     ticket_id = data.get("ticket_id")
-    skip_positions = data.get("skip_positions", 1)
+    skip_positions = data.get("positions") or data.get("skip_positions", 1)
+    user_email = data.get("user_email")
+    reason = data.get("reason", "Late arrival")
     try:
-        res = engine.adjust_queue_position(tenant_id, ticket_id, skip_positions=skip_positions)
-        await sio.emit("ticket_updated", {"ticket": res["ticket"]}, room=tenant_id)
+        res = engine.adjust_queue_position(
+            tenant_id, ticket_id,
+            skip_positions=int(skip_positions),
+            user_email=user_email,
+            reason=reason
+        )
+        await sio.emit("ticket_updated", {"ticket": res["ticket"], "ticket_id": ticket_id}, room=tenant_id)
         await _broadcast_queue_update(tenant_id)
         await sio.emit("adjust_queue_success", res, to=sid)
     except Exception as e:

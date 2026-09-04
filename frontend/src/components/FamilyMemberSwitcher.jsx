@@ -29,6 +29,7 @@ export function AddFamilyMemberModal({
   const [relation, setRelation] = useState("child");
   const [age, setAge] = useState("8");
   const [gender, setGender] = useState("male");
+  const [phone, setPhone] = useState("");
   const [formError, setFormError] = useState("");
 
   if (!isOpen) return null;
@@ -50,6 +51,7 @@ export function AddFamilyMemberModal({
       relation,
       age: Number(age) || 25,
       gender,
+      phone: phone.trim(),
     };
 
     if (onAddMember) onAddMember(member);
@@ -57,6 +59,7 @@ export function AddFamilyMemberModal({
     setRelation("child");
     setAge("8");
     setGender("male");
+    setPhone("");
     setFormError("");
     if (onClose) onClose();
   };
@@ -133,6 +136,17 @@ export function AddFamilyMemberModal({
             </div>
           </div>
 
+          <div style={{ marginBottom: "14px" }}>
+            <label style={fieldLabelStyle}>{language === "hi" ? "फ़ोन नंबर (वैकल्पिक)" : "Phone Number (Optional)"}</label>
+            <input
+              type="tel"
+              placeholder={language === "hi" ? "उदा. +91 9876543210" : "e.g. +91 9876543210"}
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+
           <div style={{ marginBottom: "20px" }}>
             <label style={fieldLabelStyle}>{t("memberGenderLabel", language)}</label>
             <div style={{ display: "flex", gap: "10px" }}>
@@ -143,9 +157,9 @@ export function AddFamilyMemberModal({
                     flex: 1,
                     padding: "8px 12px",
                     borderRadius: "8px",
-                    border: gender === g ? "2px solid #059669" : "1px solid #CBD5E1",
-                    background: gender === g ? "#ECFDF5" : "#FFFFFF",
-                    color: gender === g ? "#065F46" : "#475569",
+                    border: gender === g ? "2px solid #0284C7" : "1px solid #CBD5E1",
+                    background: gender === g ? "#F0F9FF" : "#FFFFFF",
+                    color: gender === g ? "#0369A1" : "#475569",
                     fontSize: "12px",
                     fontWeight: 700,
                     textAlign: "center",
@@ -190,6 +204,147 @@ export function AddFamilyMemberModal({
 }
 
 /**
+ * Edit Family Member Modal
+ */
+export function EditFamilyMemberModal({
+  isOpen,
+  onClose,
+  onSaveMember,
+  member,
+  language = "en",
+}) {
+  const [name, setName] = useState(member?.name || "");
+  const [relation, setRelation] = useState(member?.relation || "child");
+  const [age, setAge] = useState(String(member?.age || "25"));
+  const [gender, setGender] = useState(member?.gender || "male");
+  const [phone, setPhone] = useState(member?.phone || "");
+  const [formError, setFormError] = useState("");
+
+  // Reset on member change
+  React.useEffect(() => {
+    if (member) {
+      setName(member.name || "");
+      setRelation(member.relation || "child");
+      setAge(String(member.age || "25"));
+      setGender(member.gender || "male");
+      setPhone(member.phone || "");
+      setFormError("");
+    }
+  }, [member?.id]);
+
+  if (!isOpen || !member) return null;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!name.trim()) {
+      setFormError(language === "hi" ? "कृपया नाम दर्ज करें." : "Please enter the member's full name.");
+      return;
+    }
+    if (onSaveMember) {
+      onSaveMember({
+        id: member.id,
+        name: name.trim(),
+        relation,
+        age: Number(age) || 25,
+        gender,
+        phone: phone.trim(),
+      });
+    }
+    if (onClose) onClose();
+  };
+
+  return (
+    <div style={modalOverlayStyle} onClick={onClose}>
+      <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+        <div style={modalHeaderStyle}>
+          <div>
+            <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#0369A1", fontWeight: 800 }}>
+              {language === "hi" ? "सदस्य संपादित करें" : "Edit Family Member"}
+            </h3>
+            <span style={{ fontSize: "12px", color: "#64748B" }}>
+              {language === "hi" ? "विवरण अपडेट करें" : "Update member details"}
+            </span>
+          </div>
+          <button type="button" onClick={onClose} style={closeBtnStyle}>×</button>
+        </div>
+
+        {formError && (
+          <div style={{ marginBottom: "14px", padding: "8px 12px", borderRadius: "8px", background: "#FEF2F2", color: "#DC2626", fontSize: "12px", fontWeight: 600 }}>
+            {formError}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: "14px" }}>
+            <label style={fieldLabelStyle}>{language === "hi" ? "पूरा नाम" : "Full Name"}</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={inputStyle}
+              required
+              autoFocus
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+            <div>
+              <label style={fieldLabelStyle}>{language === "hi" ? "संबंध" : "Relationship"}</label>
+              <select value={relation} onChange={(e) => setRelation(e.target.value)} style={inputStyle}>
+                <option value="child">{getRelationLabel("child", language)}</option>
+                <option value="spouse">{getRelationLabel("spouse", language)}</option>
+                <option value="parent">{getRelationLabel("parent", language)}</option>
+                <option value="sibling">{getRelationLabel("sibling", language)}</option>
+                <option value="other">{getRelationLabel("other", language)}</option>
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabelStyle}>{language === "hi" ? "आयु" : "Age"}</label>
+              <input
+                type="number" min="1" max="120"
+                value={age} onChange={(e) => setAge(e.target.value)}
+                style={inputStyle} required
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "14px" }}>
+            <label style={fieldLabelStyle}>{language === "hi" ? "फ़ोन नंबर (वैकल्पिक)" : "Phone Number (Optional)"}</label>
+            <input
+              type="tel"
+              placeholder={language === "hi" ? "उदा. +91 9876543210" : "e.g. +91 9876543210"}
+              value={phone} onChange={(e) => setPhone(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label style={fieldLabelStyle}>{language === "hi" ? "लिंग" : "Gender"}</label>
+            <div style={{ display: "flex", gap: "10px" }}>
+              {["male", "female", "other"].map((g) => (
+                <label key={g} style={{ flex: 1, padding: "8px 12px", borderRadius: "8px", border: gender === g ? "2px solid #0284C7" : "1px solid #CBD5E1", background: gender === g ? "#F0F9FF" : "#FFFFFF", color: gender === g ? "#0369A1" : "#475569", fontSize: "12px", fontWeight: 700, textAlign: "center", cursor: "pointer", textTransform: "capitalize", transition: "all 0.15s ease" }}>
+                  <input type="radio" name="editMemberGender" value={g} checked={gender === g} onChange={() => setGender(g)} style={{ display: "none" }} />
+                  {g}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+            <button type="button" onClick={onClose} style={cancelBtnStyle}>
+              {language === "hi" ? "रद्द करें" : "Cancel"}
+            </button>
+            <button type="submit" style={submitBtnStyle}>
+              {language === "hi" ? "सेव करें" : "Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Main FamilyMemberSwitcher Component
  */
 export default function FamilyMemberSwitcher({
@@ -206,13 +361,13 @@ export default function FamilyMemberSwitcher({
     <div style={containerStyle}>
       <div style={headerRowStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#047857" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0369A1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
             <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
             <path d="M16 3.13a4 4 0 0 1 0 7.75" />
           </svg>
-          <span style={{ fontSize: "11px", fontWeight: 800, color: "#065F46", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+          <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", letterSpacing: "0.5px", textTransform: "uppercase" }}>
             {t("bookingFor", language)}
           </span>
         </div>
@@ -247,7 +402,7 @@ export default function FamilyMemberSwitcher({
             >
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 {isSelf ? (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={isSelected ? "#FFFFFF" : "#047857"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={isSelected ? "#FFFFFF" : "#0369A1"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                     <circle cx="12" cy="7" r="4" />
                   </svg>
@@ -324,9 +479,9 @@ const addTriggerBtnStyle = {
   gap: "5px",
   padding: "5px 12px",
   borderRadius: "8px",
-  border: "1px solid #A7F3D0",
-  background: "#ECFDF5",
-  color: "#047857",
+  border: "1px solid #BAE6FD",
+  background: "#F0F9FF",
+  color: "#0369A1",
   fontWeight: 800,
   fontSize: "11.5px",
   cursor: "pointer",
@@ -348,13 +503,13 @@ const getPillStyle = (isSelected) => ({
   gap: "8px",
   padding: "7px 13px",
   borderRadius: "10px",
-  border: isSelected ? "1.5px solid #059669" : "1px solid #CBD5E1",
-  background: isSelected ? "#059669" : "#F8FAFC",
+  border: isSelected ? "1.5px solid #0284C7" : "1px solid #CBD5E1",
+  background: isSelected ? "#0284C7" : "#F8FAFC",
   color: isSelected ? "#FFFFFF" : "#0F172A",
   cursor: "pointer",
   whiteSpace: "nowrap",
   transition: "all 0.2s ease",
-  boxShadow: isSelected ? "0 2px 8px rgba(5, 150, 105, 0.25)" : "none",
+  boxShadow: isSelected ? "0 2px 8px rgba(2, 132, 199, 0.25)" : "none",
 });
 
 const getTagStyle = (isSelected, isSelf) => ({
@@ -365,12 +520,12 @@ const getTagStyle = (isSelected, isSelf) => ({
   background: isSelected
     ? "rgba(255, 255, 255, 0.25)"
     : isSelf
-    ? "#ECFDF5"
+    ? "#F0F9FF"
     : "#E0F2FE",
   color: isSelected
     ? "#FFFFFF"
     : isSelf
-    ? "#047857"
+    ? "#0369A1"
     : "#0284C7",
   border: isSelected ? "1px solid rgba(255, 255, 255, 0.3)" : "none",
 });
@@ -465,10 +620,9 @@ const submitBtnStyle = {
   padding: "8px 18px",
   borderRadius: "8px",
   border: "none",
-  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#FFFFFF",
   fontSize: "12px",
   fontWeight: 800,
   cursor: "pointer",
-  boxShadow: "0 2px 6px rgba(5, 150, 105, 0.25)",
 };

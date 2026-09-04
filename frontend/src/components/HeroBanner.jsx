@@ -31,9 +31,9 @@ export default function HeroBanner({
           align-items: stretch;
           border-radius: 28px;
           overflow: hidden;
-          background: #064E3B;
-          box-shadow: 0 16px 36px -8px rgba(6, 78, 59, 0.22), 0 4px 12px rgba(0, 0, 0, 0.05);
-          border: 1px solid rgba(16, 185, 129, 0.25);
+          background: #0F172A;
+          box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(2, 132, 199, 0.05);
+          border: 1px solid rgba(2, 132, 199, 0.2);
           margin-bottom: 24px;
           position: relative;
           min-height: 280px;
@@ -47,7 +47,7 @@ export default function HeroBanner({
           flex-direction: column;
           justifyContent: space-between;
           z-index: 2;
-          background: linear-gradient(135deg, #064E3B 0%, #043828 75%, #032b1f 100%);
+          background: linear-gradient(135deg, #0F172A 0%, #1E293B 70%, #0C4A6E 100%);
           position: relative;
         }
 
@@ -56,13 +56,13 @@ export default function HeroBanner({
           .hero-left-col {
             padding-right: 40px;
             margin-right: 0;
-            border-right: 1px solid rgba(16, 185, 129, 0.25);
+            border-right: 1px solid rgba(2, 132, 199, 0.2);
           }
         }
 
         .hero-right-col {
           flex: 1;
-          background: linear-gradient(180deg, #EBF5FB 0%, #E2F0F7 100%);
+          background: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
           display: flex;
           align-items: center;
           justifyContent: center;
@@ -81,11 +81,11 @@ export default function HeroBanner({
         }
 
         .hero-title-highlight {
-          color: #34D399;
+          color: #38BDF8;
         }
 
         .hero-subtitle {
-          color: rgba(220, 245, 235, 0.85);
+          color: rgba(224, 242, 254, 0.88);
           font-size: 13.5px;
           line-height: 1.5;
           margin-top: 12px;
@@ -102,10 +102,10 @@ export default function HeroBanner({
         }
 
         .hero-stat-card {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.08);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.18);
+          border: 1px solid rgba(255, 255, 255, 0.15);
           border-radius: 14px;
           padding: 10px 12px;
           display: flex;
@@ -113,24 +113,24 @@ export default function HeroBanner({
           gap: 10px;
           min-width: 0;
           box-sizing: border-box;
-          transition: transform 0.2s ease, background 0.2s ease;
+          transition: background 0.2s ease, border-color 0.2s ease;
         }
 
         .hero-stat-card:hover {
-          background: rgba(255, 255, 255, 0.16);
-          transform: translateY(-2px);
+          background: rgba(255, 255, 255, 0.14);
+          border-color: rgba(56, 189, 248, 0.4);
         }
 
         .hero-stat-icon-wrap {
           width: 34px;
           height: 34px;
           border-radius: 10px;
-          background: rgba(255, 255, 255, 0.18);
+          background: rgba(56, 189, 248, 0.18);
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           flex-shrink: 0;
-          color: #A7F3D0;
+          color: #38BDF8;
         }
 
         .hero-stat-value {
@@ -195,7 +195,7 @@ export default function HeroBanner({
       {/* LEFT COLUMN: Texts & Stats Cards */}
       <div className="hero-left-col">
         <div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 10px", borderRadius: "9999px", background: "rgba(52, 211, 153, 0.2)", border: "1px solid rgba(52, 211, 153, 0.4)", color: "#34D399", fontSize: "11px", fontWeight: 800, marginBottom: "10px" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 10px", borderRadius: "9999px", background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.35)", color: "#38BDF8", fontSize: "11px", fontWeight: 800, marginBottom: "10px" }}>
             <span>🏥</span>
             <span>{hospitalName}</span>
           </div>
@@ -243,7 +243,7 @@ export default function HeroBanner({
 
           {/* 2. Active Desks */}
           <div className="hero-stat-card">
-            <div className="hero-stat-icon-wrap" style={{ color: "#6EE7B7" }}>
+            <div className="hero-stat-icon-wrap" style={{ color: "#38BDF8" }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
                 <line x1="8" y1="21" x2="16" y2="21" />
@@ -251,7 +251,7 @@ export default function HeroBanner({
               </svg>
             </div>
             <div>
-              <div className="hero-stat-value" style={{ color: "#34D399" }}>
+              <div className="hero-stat-value" style={{ color: "#38BDF8" }}>
                 {stats.activeDesks || "4 Desks"}
               </div>
               <div className="hero-stat-label">

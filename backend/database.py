@@ -1,18 +1,21 @@
 """
 database.py
 -----------
-Unified Database Manager for AI Queue System.
-Serves as the single source of truth for database connectivity.
+Unified PostgreSQL Database Manager for AI Queue System.
+Enterprise Relational Multi-Hospital Architecture.
 
-Supports:
-- PostgreSQL (Localhost & Cloud: Supabase, Neon, AWS RDS, Render, Heroku)
-- SQLite Fallback (queue_system.db)
+- Native PostgreSQL connection pooling (psycopg2)
+- Zero SQLite dependencies in active execution path
+- Automatic DDL schema migration and validation
+- Dynamic schema inspection without credential exposure
 """
 
 import os
 import re
+import json
 import urllib.parse
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from dotenv import load_dotenv
@@ -20,17 +23,16 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
-RAW_DB_URL = os.getenv("DATABASE_URL", "sqlite:///queue_system.db").strip()
+RAW_DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:12345678@localhost:5432/ai_queue").strip()
 
 if RAW_DB_URL.startswith("postgres://"):
     RAW_DB_URL = RAW_DB_URL.replace("postgres://", "postgresql://", 1)
 
 IS_POSTGRES = RAW_DB_URL.startswith("postgresql")
-IS_SQLITE = RAW_DB_URL.startswith("sqlite")
 
 # Parse connection details securely (never expose password)
 PARSED_URL = urllib.parse.urlparse(RAW_DB_URL) if IS_POSTGRES else None
-DB_NAME = PARSED_URL.path.lstrip("/") if PARSED_URL else "queue_system.db"
+DB_NAME = PARSED_URL.path.lstrip("/") if PARSED_URL else "ai_queue"
 DB_HOST = PARSED_URL.hostname if PARSED_URL else "localhost"
 DB_PORT = PARSED_URL.port if PARSED_URL and PARSED_URL.port else 5432
 IS_LOCAL = DB_HOST in ("localhost", "127.0.0.1", "::1") if IS_POSTGRES else True
@@ -50,35 +52,16 @@ if IS_POSTGRES:
             dsn=RAW_DB_URL
         )
     except Exception as e:
-        print(f"⚠️ Warning: PostgreSQL pool initialization failed: {e}")
+        print(f"[WARN] PostgreSQL pool initialization failed: {e}")
         _pg_pool = None
-
-# SQLAlchemy Engine & SessionLocal for ORM compatibility
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-if IS_SQLITE:
-    db_file = RAW_DB_URL.replace("sqlite:///", "")
-    if not os.path.isabs(db_file):
-        db_file = os.path.join(os.path.dirname(__file__), db_file)
-    engine = create_engine(f"sqlite:///{db_file}", connect_args={"check_same_thread": False})
-else:
-    engine = create_engine(
-        RAW_DB_URL,
-        pool_pre_ping=True,
-        pool_size=10,
-        max_overflow=20
-    )
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 # -----------------------------------------------------------------------------
-# Row & Cursor Wrappers for Transparent Dual Access (Dict + Numeric Index)
+# Row & Cursor Wrappers for Dict + Numeric Index Access
 # -----------------------------------------------------------------------------
 
 class DBRow:
-    """Row wrapper compatible with both row['col'] and row[0], plus dict(row)."""
+    """Row wrapper compatible with row['col'] and row[0], plus dict(row)."""
     __slots__ = ("_data", "_keys")
 
     def __init__(self, data: tuple, keys: List[str]):
@@ -122,20 +105,16 @@ class DBRow:
         return f"DBRow({dict(self.items())})"
 
 
-def _convert_placeholders(sql: str) -> str:
-    """Converts SQLite '?' parameter placeholders to PostgreSQL '%s' placeholders."""
-    # Matches ? outside of single quotes
-    parts = re.split(r"('(?:''|[^'])*')", sql)
-    for i in range(0, len(parts), 2):
-        parts[i] = parts[i].replace("?", "%s")
-    return "".join(parts)
-
-
-TABLES_WITH_ID = {"users", "kiosks", "departments", "desks", "service_logs", "tenant_historical_data"}
+TABLES_WITH_RETURNING_ID = {
+    "users", "hospitals", "departments", "patients", "employees",
+    "desks", "kiosks", "appointments", "appointment_status_history",
+    "tickets", "queue_events", "service_logs", "tenant_historical_data",
+    "audit_logs", "family_members"
+}
 
 
 class PostgresCursorWrapper:
-    """Wraps psycopg2 cursor to provide transparent row access and placeholder conversion."""
+    """Wraps psycopg2 cursor with transparent dict/index access and ID return handling."""
 
     def __init__(self, cursor):
         self._cursor = cursor
@@ -146,7 +125,14 @@ class PostgresCursorWrapper:
         return self._lastrowid
 
     def execute(self, sql: str, params: Any = None):
-        clean_sql = _convert_placeholders(sql)
+        clean_sql = sql.strip()
+        # Handle SQLite '?' if encountered
+        if "?" in clean_sql:
+            parts = re.split(r"('(?:''|[^'])*')", clean_sql)
+            for i in range(0, len(parts), 2):
+                parts[i] = parts[i].replace("?", "%s")
+            clean_sql = "".join(parts)
+
         stripped = clean_sql.strip()
         is_insert = stripped.upper().startswith("INSERT INTO")
         has_returning = "RETURNING" in stripped.upper()
@@ -156,7 +142,7 @@ class PostgresCursorWrapper:
             words = stripped.split()
             if len(words) >= 3:
                 raw_tbl = words[2].split("(")[0].strip('"').strip("'").lower()
-                if raw_tbl in TABLES_WITH_ID:
+                if raw_tbl in TABLES_WITH_RETURNING_ID:
                     clean_sql = clean_sql.rstrip(";") + " RETURNING id"
                     appended_returning = True
 
@@ -178,7 +164,12 @@ class PostgresCursorWrapper:
         return self
 
     def executemany(self, sql: str, seq_of_params: Any):
-        clean_sql = _convert_placeholders(sql)
+        clean_sql = sql
+        if "?" in clean_sql:
+            parts = re.split(r"('(?:''|[^'])*')", clean_sql)
+            for i in range(0, len(parts), 2):
+                parts[i] = parts[i].replace("?", "%s")
+            clean_sql = "".join(parts)
         self._cursor.executemany(clean_sql, seq_of_params)
         return self
 
@@ -223,7 +214,7 @@ class PostgresCursorWrapper:
 
 
 class PostgresConnectionWrapper:
-    """Wraps psycopg2 connection to provide direct execution and cursor management."""
+    """Wraps psycopg2 connection to provide direct execution and transaction management."""
 
     def __init__(self, conn):
         self._conn = conn
@@ -261,255 +252,378 @@ class PostgresConnectionWrapper:
 
 @contextmanager
 def get_db_connection():
-    """Provides an isolated database connection context that commits on success."""
-    if IS_POSTGRES:
-        conn = None
-        from_pool = False
-        try:
-            if _pg_pool is not None:
-                conn = _pg_pool.getconn()
-                from_pool = True
-            else:
-                import psycopg2
-                conn = psycopg2.connect(RAW_DB_URL)
-            wrapped = PostgresConnectionWrapper(conn)
-            with wrapped as active_conn:
-                yield active_conn
-        finally:
-            if conn is not None:
-                if from_pool and _pg_pool is not None:
-                    _pg_pool.putconn(conn)
-                elif not from_pool:
-                    conn.close()
-    else:
-        import sqlite3
-        db_file = RAW_DB_URL.replace("sqlite:///", "")
-        if not os.path.isabs(db_file):
-            db_file = os.path.join(os.path.dirname(__file__), db_file)
-        conn = sqlite3.connect(db_file)
-        conn.row_factory = sqlite3.Row
-        try:
-            with conn:
-                yield conn
-        finally:
-            conn.close()
+    """Provides an isolated PostgreSQL database connection context that commits on success."""
+    conn = None
+    from_pool = False
+    try:
+        if _pg_pool is not None:
+            conn = _pg_pool.getconn()
+            from_pool = True
+        else:
+            import psycopg2
+            conn = psycopg2.connect(RAW_DB_URL)
+        wrapped = PostgresConnectionWrapper(conn)
+        with wrapped as active_conn:
+            yield active_conn
+    finally:
+        if conn is not None:
+            if from_pool and _pg_pool is not None:
+                _pg_pool.putconn(conn)
+            elif not from_pool:
+                conn.close()
 
 
 def get_db_info() -> Dict[str, Any]:
     """Returns dynamic database details without exposing credentials."""
-    if IS_POSTGRES:
-        mode = "Local PostgreSQL" if IS_LOCAL else "Production PostgreSQL"
-        engine_name = "PostgreSQL"
-    else:
-        mode = "SQLite (Local File)"
-        engine_name = "SQLite"
-
+    mode = "Local PostgreSQL" if IS_LOCAL else "Production PostgreSQL"
     return {
         "db_type": mode,
-        "engine": engine_name,
+        "engine": "PostgreSQL",
         "database": DB_NAME,
-        "host": DB_HOST if IS_POSTGRES else "local_disk",
-        "port": DB_PORT if IS_POSTGRES else None,
+        "host": DB_HOST,
+        "port": DB_PORT,
         "status": "Connected",
         "is_cloud": IS_POSTGRES and not IS_LOCAL,
     }
 
 
 # -----------------------------------------------------------------------------
-# PostgreSQL Production Schema Initializer
+# 17-Table Enterprise PostgreSQL Schema Definition
 # -----------------------------------------------------------------------------
 
 POSTGRES_SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS hospitals (
-    hospital_code TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    address TEXT DEFAULT '',
-    phone TEXT DEFAULT '',
-    email TEXT DEFAULT '',
-    description TEXT DEFAULT '',
-    logo_url TEXT DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'active',
-    owner_email TEXT DEFAULT '',
-    owner_user_id INTEGER DEFAULT 0,
-    created_at DOUBLE PRECISION NOT NULL,
-    updated_at DOUBLE PRECISION NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS departments (
-    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    hospital_code TEXT NOT NULL,
-    dept_code TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT DEFAULT '',
-    created_at DOUBLE PRECISION NOT NULL,
-    UNIQUE (hospital_code, dept_code)
-);
-
-CREATE TABLE IF NOT EXISTS desks (
-    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    hospital_code TEXT NOT NULL,
-    dept_code TEXT NOT NULL,
-    desk_number INTEGER NOT NULL,
-    desk_name TEXT NOT NULL,
-    staff_user_id INTEGER DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'AVAILABLE',
-    current_ticket_id TEXT DEFAULT '',
-    last_active_at DOUBLE PRECISION,
-    UNIQUE (hospital_code, dept_code, desk_number)
-);
-
+-- 1. Users (Authentication & Global Identity)
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    username TEXT NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(255) NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'user',
-    created_at DOUBLE PRECISION NOT NULL,
-    phone TEXT DEFAULT '',
-    gender TEXT DEFAULT '',
-    age INTEGER DEFAULT 0,
-    medical_id TEXT DEFAULT '',
-    department TEXT DEFAULT 'all',
-    hospital_code TEXT DEFAULT 'city-hospital-01',
-    employee_id TEXT DEFAULT '',
-    status TEXT DEFAULT 'active'
+    role VARCHAR(50) NOT NULL DEFAULT 'user',
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    phone VARCHAR(100) DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_login_at TIMESTAMPTZ
 );
 
+-- 2. Hospitals (Tenants)
+CREATE TABLE IF NOT EXISTS hospitals (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    hospital_code VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    address TEXT DEFAULT '',
+    phone VARCHAR(100) DEFAULT '',
+    email VARCHAR(255) DEFAULT '',
+    description TEXT DEFAULT '',
+    logo_url TEXT DEFAULT '',
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 3. Departments
+CREATE TABLE IF NOT EXISTS departments (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    dept_code VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    description TEXT DEFAULT '',
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (hospital_id, dept_code)
+);
+
+-- 4. Patients (Demographics & Medical Profile)
+CREATE TABLE IF NOT EXISTS patients (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    medical_id VARCHAR(100) DEFAULT '',
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(100) DEFAULT '',
+    gender VARCHAR(50) DEFAULT 'other',
+    age INTEGER DEFAULT 0 CHECK (age >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 5. Family Members / Dependents
 CREATE TABLE IF NOT EXISTS family_members (
-    id TEXT PRIMARY KEY,
-    user_email TEXT NOT NULL,
-    name TEXT NOT NULL,
-    relation TEXT NOT NULL,
-    age INTEGER DEFAULT 25,
-    gender TEXT DEFAULT 'male',
-    created_at DOUBLE PRECISION NOT NULL
+    id VARCHAR(100) PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+    name VARCHAR(255) NOT NULL,
+    relation VARCHAR(50) NOT NULL,
+    age INTEGER DEFAULT 25 CHECK (age >= 0),
+    gender VARCHAR(50) DEFAULT 'male',
+    phone VARCHAR(100) DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 6. Employees (Hospital Staff, Doctors, Admins)
+CREATE TABLE IF NOT EXISTS employees (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    employee_code VARCHAR(100) DEFAULT '',
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(100) DEFAULT '',
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (hospital_id, user_id)
+);
+
+-- 7. Desks (Counters / Examination Rooms)
+CREATE TABLE IF NOT EXISTS desks (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+    desk_number INTEGER NOT NULL,
+    desk_name VARCHAR(255) NOT NULL,
+    assigned_employee_id INTEGER REFERENCES employees(id) ON DELETE SET NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'AVAILABLE',
+    current_ticket_id VARCHAR(100) DEFAULT '',
+    last_active_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (hospital_id, department_id, desk_number)
+);
+
+-- 8. Kiosks (Self-Service / TV Monitors)
 CREATE TABLE IF NOT EXISTS kiosks (
     id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    kiosk_code TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    location TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'online',
-    last_seen_at DOUBLE PRECISION,
-    is_active INTEGER DEFAULT 1,
-    created_at DOUBLE PRECISION NOT NULL,
-    updated_at DOUBLE PRECISION NOT NULL
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    kiosk_code VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    location VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'online',
+    last_seen_at TIMESTAMPTZ,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (hospital_id, kiosk_code)
 );
 
-CREATE TABLE IF NOT EXISTS tenant_config (
-    tenant_id TEXT PRIMARY KEY,
-    active_counters INTEGER DEFAULT 2,
-    updated_at DOUBLE PRECISION
+-- 9. Appointments
+CREATE TABLE IF NOT EXISTS appointments (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    appointment_id VARCHAR(100) UNIQUE NOT NULL,
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+    department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    consumer_type VARCHAR(50) NOT NULL DEFAULT 'hospital',
+    service_category VARCHAR(100) NOT NULL,
+    appointment_date DATE NOT NULL,
+    time_slot VARCHAR(50) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'scheduled',
+    ticket_id VARCHAR(100) DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS tenant_mapping (
-    tenant_id TEXT PRIMARY KEY,
-    mapping_json TEXT NOT NULL,
-    updated_at DOUBLE PRECISION NOT NULL
+-- 10. Appointment Status History
+CREATE TABLE IF NOT EXISTS appointment_status_history (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    appointment_id VARCHAR(100) NOT NULL REFERENCES appointments(appointment_id) ON DELETE CASCADE,
+    old_status VARCHAR(50),
+    new_status VARCHAR(50) NOT NULL,
+    changed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    reason TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 11. Tickets
 CREATE TABLE IF NOT EXISTS tickets (
-    ticket_id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    consumer_type TEXT NOT NULL,
-    service_category TEXT NOT NULL,
-    name TEXT NOT NULL,
-    priority_level INTEGER NOT NULL,
-    join_timestamp DOUBLE PRECISION NOT NULL,
-    status TEXT NOT NULL,
-    predicted_service_minutes DOUBLE PRECISION,
-    estimated_wait_minutes DOUBLE PRECISION,
-    position INTEGER,
-    serve_start_time DOUBLE PRECISION,
-    serve_end_time DOUBLE PRECISION,
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    ticket_id VARCHAR(100) UNIQUE NOT NULL,
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+    appointment_id VARCHAR(100) REFERENCES appointments(appointment_id) ON DELETE SET NULL,
+    consumer_type VARCHAR(50) NOT NULL DEFAULT 'hospital',
+    service_category VARCHAR(100) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    priority_level INTEGER NOT NULL DEFAULT 2 CHECK (priority_level >= 1),
+    join_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status VARCHAR(50) NOT NULL DEFAULT 'waiting',
+    predicted_service_minutes DOUBLE PRECISION DEFAULT 10.0,
+    estimated_wait_minutes DOUBLE PRECISION DEFAULT 0.0,
+    position INTEGER DEFAULT 0,
+    serve_start_time TIMESTAMPTZ,
+    serve_end_time TIMESTAMPTZ,
     actual_service_minutes DOUBLE PRECISION,
-    user_email TEXT DEFAULT '',
-    age INTEGER DEFAULT 30,
-    gender TEXT DEFAULT 'other',
-    medical_condition TEXT DEFAULT 'general_checkup',
-    pre_existing_condition TEXT DEFAULT 'none',
+    medical_condition VARCHAR(100) DEFAULT 'general_checkup',
+    pre_existing_condition VARCHAR(100) DEFAULT 'none',
     complexity_score DOUBLE PRECISION DEFAULT 1.0,
     prescription_notes TEXT DEFAULT '',
-    parent_ticket_id TEXT DEFAULT '',
-    transferred_from_dept TEXT DEFAULT '',
-    source TEXT DEFAULT 'patient_portal',
-    kiosk_code TEXT DEFAULT '',
-    effective_timestamp DOUBLE PRECISION,
-    adjustment_count INTEGER DEFAULT 0,
-    last_adjusted_at DOUBLE PRECISION,
+    parent_ticket_id VARCHAR(100) DEFAULT '',
+    transferred_from_dept VARCHAR(100) DEFAULT '',
+    source VARCHAR(50) DEFAULT 'patient_portal',
+    kiosk_code VARCHAR(100) DEFAULT '',
+    effective_timestamp TIMESTAMPTZ,
+    adjustment_count INTEGER DEFAULT 0 CHECK (adjustment_count >= 0),
+    last_adjusted_at TIMESTAMPTZ,
     cancellation_reason TEXT DEFAULT '',
-    cancelled_at DOUBLE PRECISION
+    cancelled_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS appointments (
-    appointment_id TEXT PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    consumer_type TEXT NOT NULL,
-    service_category TEXT NOT NULL,
-    patient_name TEXT NOT NULL,
-    user_email TEXT NOT NULL,
-    appointment_date TEXT NOT NULL,
-    time_slot TEXT NOT NULL,
-    status TEXT NOT NULL,
-    created_at DOUBLE PRECISION NOT NULL,
-    ticket_id TEXT DEFAULT ''
+-- 12. Queue Events
+CREATE TABLE IF NOT EXISTS queue_events (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    ticket_id VARCHAR(100) NOT NULL REFERENCES tickets(ticket_id) ON DELETE CASCADE,
+    event_type VARCHAR(50) NOT NULL,
+    old_status VARCHAR(50),
+    new_status VARCHAR(50),
+    old_position INTEGER,
+    new_position INTEGER,
+    performed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 13. Service Logs
 CREATE TABLE IF NOT EXISTS service_logs (
     id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    ticket_id TEXT NOT NULL,
-    tenant_id TEXT NOT NULL,
-    consumer_type TEXT NOT NULL,
-    service_category TEXT NOT NULL,
+    hospital_id INTEGER NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+    ticket_id VARCHAR(100) NOT NULL,
+    department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+    consumer_type VARCHAR(50) NOT NULL DEFAULT 'hospital',
+    service_category VARCHAR(100) NOT NULL,
     hour_of_day INTEGER NOT NULL,
     day_of_week INTEGER NOT NULL,
     queue_length INTEGER NOT NULL,
     active_staff_counters INTEGER NOT NULL,
     is_peak_hour INTEGER NOT NULL,
-    complexity_score DOUBLE PRECISION NOT NULL,
-    historical_avg_speed DOUBLE PRECISION NOT NULL,
-    service_duration_minutes DOUBLE PRECISION NOT NULL,
-    completed_at DOUBLE PRECISION NOT NULL
+    complexity_score DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    historical_avg_speed DOUBLE PRECISION NOT NULL DEFAULT 15.0,
+    service_duration_minutes DOUBLE PRECISION NOT NULL CHECK (service_duration_minutes >= 0),
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 14. Tenant Historical Data (ML Training Datasets)
 CREATE TABLE IF NOT EXISTS tenant_historical_data (
     id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    tenant_id TEXT NOT NULL,
-    consumer_type TEXT NOT NULL,
-    timestamp DOUBLE PRECISION,
+    hospital_id INTEGER REFERENCES hospitals(id) ON DELETE CASCADE,
+    legacy_tenant_id VARCHAR(100) NOT NULL,
+    consumer_type VARCHAR(50) NOT NULL DEFAULT 'hospital',
+    timestamp TIMESTAMPTZ,
     queue_length INTEGER NOT NULL,
     active_staff_counters INTEGER NOT NULL,
-    service_category TEXT NOT NULL,
-    service_duration_minutes DOUBLE PRECISION NOT NULL,
-    complexity_score DOUBLE PRECISION NOT NULL,
+    service_category VARCHAR(100) NOT NULL,
+    service_duration_minutes DOUBLE PRECISION NOT NULL CHECK (service_duration_minutes >= 0),
+    complexity_score DOUBLE PRECISION NOT NULL DEFAULT 1.0,
     hour_of_day INTEGER NOT NULL,
     day_of_week INTEGER NOT NULL,
     is_peak_hour INTEGER NOT NULL,
-    imported_at DOUBLE PRECISION NOT NULL
+    imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Production Performance Indexes
-CREATE INDEX IF NOT EXISTS idx_tickets_tenant_status ON tickets(tenant_id, status);
-CREATE INDEX IF NOT EXISTS idx_tickets_user_email ON tickets(user_email);
-CREATE INDEX IF NOT EXISTS idx_users_hospital ON users(hospital_code);
-CREATE INDEX IF NOT EXISTS idx_departments_hospital ON departments(hospital_code);
-CREATE INDEX IF NOT EXISTS idx_desks_hospital_dept ON desks(hospital_code, dept_code);
-CREATE INDEX IF NOT EXISTS idx_appointments_tenant_date ON appointments(tenant_id, appointment_date);
-CREATE INDEX IF NOT EXISTS idx_service_logs_tenant ON service_logs(tenant_id);
+-- 15. Tenant Configurations
+CREATE TABLE IF NOT EXISTS tenant_config (
+    hospital_id INTEGER PRIMARY KEY REFERENCES hospitals(id) ON DELETE CASCADE,
+    legacy_tenant_id VARCHAR(100),
+    active_counters INTEGER DEFAULT 2,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 16. Tenant Mappings
+CREATE TABLE IF NOT EXISTS tenant_mapping (
+    hospital_id INTEGER PRIMARY KEY REFERENCES hospitals(id) ON DELETE CASCADE,
+    legacy_tenant_id VARCHAR(100),
+    mapping_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 17. Audit Logs
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    hospital_id INTEGER REFERENCES hospitals(id) ON DELETE SET NULL,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(100) NOT NULL,
+    entity_id VARCHAR(100) NOT NULL,
+    old_values JSONB DEFAULT '{}'::jsonb,
+    new_values JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Indexes for Production Performance
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_hospitals_code ON hospitals(hospital_code);
+CREATE INDEX IF NOT EXISTS idx_departments_hospital ON departments(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_employees_hospital ON employees(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_employees_user ON employees(user_id);
+CREATE INDEX IF NOT EXISTS idx_employees_department ON employees(department_id);
+CREATE INDEX IF NOT EXISTS idx_patients_user ON patients(user_id);
+CREATE INDEX IF NOT EXISTS idx_family_members_user ON family_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_desks_hospital_dept ON desks(hospital_id, department_id);
+CREATE INDEX IF NOT EXISTS idx_kiosks_hospital_dept ON kiosks(hospital_id, department_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_hospital_date ON appointments(hospital_id, appointment_date);
+CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_hospital_status ON tickets(hospital_id, status);
+CREATE INDEX IF NOT EXISTS idx_tickets_dept_status ON tickets(department_id, status);
+CREATE INDEX IF NOT EXISTS idx_tickets_patient ON tickets(patient_id);
+CREATE INDEX IF NOT EXISTS idx_queue_events_ticket ON queue_events(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_queue_events_hospital_created ON queue_events(hospital_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_service_logs_hospital_dept ON service_logs(hospital_id, department_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_hospital_created ON audit_logs(hospital_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
 """
 
-def init_postgres_schema():
-    """Initializes production PostgreSQL tables and indexes."""
+DROP_SCHEMA_SQL = """
+DROP TABLE IF EXISTS audit_logs CASCADE;
+DROP TABLE IF EXISTS tenant_mapping CASCADE;
+DROP TABLE IF EXISTS tenant_config CASCADE;
+DROP TABLE IF EXISTS tenant_historical_data CASCADE;
+DROP TABLE IF EXISTS service_logs CASCADE;
+DROP TABLE IF EXISTS queue_events CASCADE;
+DROP TABLE IF EXISTS tickets CASCADE;
+DROP TABLE IF EXISTS appointment_status_history CASCADE;
+DROP TABLE IF EXISTS appointments CASCADE;
+DROP TABLE IF EXISTS kiosks CASCADE;
+DROP TABLE IF EXISTS desks CASCADE;
+DROP TABLE IF EXISTS employees CASCADE;
+DROP TABLE IF EXISTS family_members CASCADE;
+DROP TABLE IF EXISTS patients CASCADE;
+DROP TABLE IF EXISTS departments CASCADE;
+DROP TABLE IF EXISTS hospitals CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+"""
+
+def init_postgres_schema(drop_existing: bool = False):
+    """Initializes production PostgreSQL tables and relational indexes."""
     if not IS_POSTGRES:
         return
     with get_db_connection() as conn:
+        if drop_existing:
+            for stmt in DROP_SCHEMA_SQL.split(";"):
+                clean_stmt = stmt.strip()
+                if clean_stmt:
+                    conn.execute(clean_stmt)
         for stmt in POSTGRES_SCHEMA_SQL.split(";"):
             clean_stmt = stmt.strip()
             if clean_stmt:
                 conn.execute(clean_stmt)
-    print("[OK] Production PostgreSQL Schema Initialized (12 Tables & Relational Indexes).")
+
+        # Safe column migrations for existing databases
+        _safe_migrations = [
+            "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS phone VARCHAR(100) DEFAULT ''",
+        ]
+        for migration in _safe_migrations:
+            try:
+                conn.execute(migration)
+            except Exception as _e:
+                pass  # Column likely already exists
+
+    print("[OK] Production PostgreSQL Schema Initialized (17 Relational Tables & Indexes).")
 
 
 print(f"[Database Manager] Initialized -> Mode: {get_db_info()['db_type']}")

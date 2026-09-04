@@ -74,13 +74,13 @@ export default function QueueStepper({ ticket, language = "en" }) {
       <div style={stepperHeaderStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={journeyDotStyle} />
-          <span style={{ fontSize: "11px", fontWeight: 800, color: "#065F46", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+          <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", letterSpacing: "0.5px", textTransform: "uppercase" }}>
             {t("stepQueueTracker", language)}
           </span>
         </div>
         <span style={stepBadgeStyle}>
           {t("stepOf", language)} {currentStep}/4:{" "}
-          <strong style={{ color: "#047857" }}>{steps[currentStep - 1].title}</strong>
+          <strong style={{ color: "#0284C7" }}>{steps[currentStep - 1].title}</strong>
         </span>
       </div>
 
@@ -157,8 +157,8 @@ const journeyDotStyle = {
   width: "8px",
   height: "8px",
   borderRadius: "50%",
-  background: "#10B981",
-  boxShadow: "0 0 6px rgba(16, 185, 129, 0.6)",
+  background: "#0284C7",
+  boxShadow: "0 0 6px rgba(2, 132, 199, 0.6)",
 };
 
 const stepBadgeStyle = {
@@ -186,7 +186,7 @@ const trackFillStyle = {
   top: "16px",
   left: "12.5%",
   height: "3px",
-  background: "linear-gradient(90deg, #059669 0%, #10B981 100%)",
+  background: "linear-gradient(90deg, #0284C7 0%, #38BDF8 100%)",
   borderRadius: "2px",
   transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
   zIndex: 2,
@@ -219,13 +219,13 @@ const getCircleStyle = (isCompleted, isCurrent) => ({
   alignItems: "center",
   justifyContent: "center",
   marginBottom: "8px",
-  background: isCompleted ? "#059669" : isCurrent ? "#ECFDF5" : "#FFFFFF",
+  background: isCompleted ? "#0284C7" : isCurrent ? "#F0F9FF" : "#FFFFFF",
   border: isCompleted
-    ? "2px solid #059669"
+    ? "2px solid #0284C7"
     : isCurrent
-    ? "2px solid #10B981"
+    ? "2px solid #0EA5E9"
     : "2px solid #CBD5E1",
-  boxShadow: isCurrent ? "0 0 0 4px rgba(16, 185, 129, 0.16)" : "none",
+  boxShadow: isCurrent ? "0 0 0 4px rgba(2, 132, 199, 0.16)" : "none",
   transition: "all 0.3s ease",
 });
 
@@ -233,13 +233,13 @@ const pulseInnerDotStyle = {
   width: "10px",
   height: "10px",
   borderRadius: "50%",
-  background: "#059669",
+  background: "#0284C7",
 };
 
 const getStepTitleStyle = (isCompleted, isCurrent) => ({
   fontSize: "12px",
   fontWeight: isCurrent || isCompleted ? 800 : 600,
-  color: isCurrent ? "#047857" : isCompleted ? "#0F172A" : "#64748B",
+  color: isCurrent ? "#0369A1" : isCompleted ? "#0F172A" : "#64748B",
   marginBottom: "2px",
   lineHeight: 1.2,
   wordBreak: "break-word",
@@ -249,7 +249,7 @@ const getStepTitleStyle = (isCompleted, isCurrent) => ({
 const getStepSubtextStyle = (isCurrent) => ({
   fontSize: "11px",
   fontWeight: isCurrent ? 700 : 500,
-  color: isCurrent ? "#059669" : "#94A3B8",
+  color: isCurrent ? "#0284C7" : "#94A3B8",
   wordBreak: "break-word",
   maxWidth: "100%",
 });

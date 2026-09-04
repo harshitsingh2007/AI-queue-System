@@ -1,0 +1,73 @@
+{
+  "status": "COMPLETED_WITH_WARNINGS",
+  "timestamp": "2026-09-03T17:59:40.053087+00:00",
+  "stats": {
+    "users": 74,
+    "hospitals": 31,
+    "departments": 186,
+    "patients": 29,
+    "employees": 14,
+    "family_members": 1,
+    "desks": 372,
+    "kiosks": 3,
+    "appointments": 11,
+    "tickets": 97,
+    "service_logs": 67,
+    "tenant_historical_data": 2541,
+    "tenant_config": 31,
+    "tenant_mapping": 1,
+    "audit_logs": 1
+  },
+  "total_errors": 7,
+  "errors": [
+    {
+      "source_table": "family_members",
+      "source_id": "dep_1788364033958",
+      "field": "user_email",
+      "problem": "User email 'test_parent_1788364033922@example.com' not found",
+      "resolution_status": "SKIPPED"
+    },
+    {
+      "source_table": "appointments",
+      "source_id": "APT-197581",
+      "field": "tenant_id",
+      "problem": "Hospital 'test2' not found",
+      "resolution_status": "FAILED"
+    },
+    {
+      "source_table": "tickets",
+      "source_id": "T675199",
+      "field": "tenant_id",
+      "problem": "Hospital 'test2' not found",
+      "resolution_status": "FAILED"
+    },
+    {
+      "source_table": "tickets",
+      "source_id": "T675201",
+      "field": "tenant_id",
+      "problem": "Hospital 'test2' not found",
+      "resolution_status": "FAILED"
+    },
+    {
+      "source_table": "tickets",
+      "source_id": "T677654",
+      "field": "tenant_id",
+      "problem": "Hospital 'test-transfer' not found",
+      "resolution_status": "FAILED"
+    },
+    {
+      "source_table": "tickets",
+      "source_id": "T677656",
+      "field": "tenant_id",
+      "problem": "Hospital 'test-transfer' not found",
+      "resolution_status": "FAILED"
+    },
+    {
+      "source_table": "service_logs",
+      "source_id": "39",
+      "field": "tenant_id",
+      "problem": "Hospital 'test2' not found",
+      "resolution_status": "FAILED"
+    }
+  ]
+}

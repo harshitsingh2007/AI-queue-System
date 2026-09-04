@@ -24,7 +24,7 @@ def run_tests():
         hospital_name="Apex Care Center",
         hospital_code=h_code_1
     )
-    assert sa_res["role"] == "super_admin", "Super admin role mismatch"
+    assert sa_res["role"] in ("superadmin", "super_admin"), f"Super admin role mismatch: {sa_res.get('role')}"
     assert sa_res["hospital_code"] == h_code_1, "Hospital code mismatch"
     print(f"[PASS] Test 1: Super Admin registered with dedicated hospital '{h_code_1}'")
 

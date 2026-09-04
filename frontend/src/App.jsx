@@ -55,6 +55,10 @@ export default function App() {
     }
   });
 
+  // Family Profile State (Patient/User role only)
+  const [familyMembers, setFamilyMembers] = useState([]);
+  const [activeFamilyMember, setActiveFamilyMember] = useState(null); // null = self
+
   const [currentHospitalTenant, setCurrentHospitalTenant] = useState(() => {
     try {
       const saved = localStorage.getItem("ai_queue_user");
@@ -81,6 +85,23 @@ export default function App() {
   });
   const tenantId = currentHospitalTenant || HOSPITAL_CONFIG.tenantId;
 
+  const navigateTo = useCallback((page, tab = null) => {
+    setActivePage(page);
+    const effectiveTab = tab || (page === "patient" ? "walkin" : null);
+    if (effectiveTab) {
+      setCurrentTab(effectiveTab);
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set("page", page);
+    if (tab) {
+      url.searchParams.set("tab", tab);
+    } else if (page !== "patient") {
+      url.searchParams.delete("tab");
+    }
+    window.history.pushState({}, "", url.toString());
+    window.dispatchEvent(new Event("popstate"));
+  }, []);
+
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState("login");
 
@@ -95,6 +116,15 @@ export default function App() {
       setCurrentHospitalTenant(userData.hospital_code);
     }
 
+    // Reset family state on new login
+    setActiveFamilyMember(null);
+    setFamilyMembers([]);
+
+    // Fetch family members if patient role
+    if (userData.role === "user" || userData.role === "patient") {
+      fetchFamilyMembers(userData);
+    }
+
     // Role-based auto dashboard direct redirect (zero patient interference)
     if (userData.role === "super_admin") {
       navigateTo("superadmin");
@@ -107,11 +137,74 @@ export default function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setActiveFamilyMember(null);
+    setFamilyMembers([]);
     try {
       localStorage.removeItem("ai_queue_user");
     } catch (e) {}
     navigateTo("patient", "walkin");
   };
+
+  // Fetch family members from backend (for role=user only)
+  const fetchFamilyMembers = useCallback((user) => {
+    const u = user || currentUser;
+    if (!u || !u.email || !(["user", "patient"].includes(u.role))) return;
+    fetch(`${API_BASE}/api/v1/family-members`, {
+      headers: { "X-User-Email": u.email }
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.status === "success" && Array.isArray(data.members)) {
+          setFamilyMembers(data.members);
+        }
+      })
+      .catch((e) => console.log("Family members fetch error:", e));
+  }, [currentUser]);
+
+  // Load family members when user is available
+  useEffect(() => {
+    if (currentUser && ["user", "patient"].includes(currentUser.role)) {
+      fetchFamilyMembers(currentUser);
+    } else {
+      setFamilyMembers([]);
+      setActiveFamilyMember(null);
+    }
+  }, [currentUser]);
+
+  // Handle profile switch from header
+  const handleSwitchProfile = useCallback((member) => {
+    setActiveFamilyMember(member);
+    // Dispatch event so PatientPage can sync
+    window.dispatchEvent(new CustomEvent("switch_patient_profile", { detail: member }));
+  }, []);
+
+  // Handle add family member from header
+  const handleAddFamilyMemberFromHeader = useCallback(async (newMember) => {
+    if (!currentUser || !currentUser.email) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/family-members`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Email": currentUser.email
+        },
+        body: JSON.stringify(newMember)
+      });
+      const data = await res.json();
+      if (data.status === "success" && data.member) {
+        setFamilyMembers((prev) => [...prev, data.member]);
+        window.dispatchEvent(new CustomEvent("family_members_updated", { detail: [...familyMembers, data.member] }));
+        return data.member;
+      }
+    } catch (err) {
+      console.log("Add family member error:", err);
+    }
+  }, [currentUser, familyMembers]);
+
+  // Handle manage family members - navigate to patient page
+  const handleManageFamilyMembers = useCallback(() => {
+    navigateTo("patient", "family");
+  }, [navigateTo]);
 
   // Real-time Queue State
   const [analytics, setAnalytics] = useState(null);
@@ -144,23 +237,6 @@ export default function App() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
-
-  const navigateTo = (page, tab = null) => {
-    setActivePage(page);
-    const effectiveTab = tab || (page === "patient" ? "walkin" : null);
-    if (effectiveTab) {
-      setCurrentTab(effectiveTab);
-    }
-    const url = new URL(window.location.href);
-    url.searchParams.set("page", page);
-    if (tab) {
-      url.searchParams.set("tab", tab);
-    } else if (page !== "patient") {
-      url.searchParams.delete("tab");
-    }
-    window.history.pushState({}, "", url.toString());
-    window.dispatchEvent(new Event("popstate"));
-  };
 
   const isSuperAdmin = currentUser && currentUser.role === "super_admin";
   const isStaffOrAdmin = currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role);
@@ -195,6 +271,13 @@ export default function App() {
       const dept = adminDeptRef.current;
       if (data.snapshot) {
         setQueueSnapshot(dept && dept !== "all" ? data.snapshot.filter(t => (t.service_category || "").toLowerCase() === dept) : data.snapshot);
+        const cur = activeTicketRef.current;
+        if (cur && cur.status === "waiting") {
+          const updatedCur = data.snapshot.find(t => t.ticket_id === cur.ticket_id);
+          if (updatedCur) {
+            setActiveTicket(updatedCur);
+          }
+        }
       }
       if (data.serving) {
         setServingTickets(dept && dept !== "all" ? data.serving.filter(t => (t.service_category || "").toLowerCase() === dept) : data.serving);
@@ -206,10 +289,37 @@ export default function App() {
       if (data.analytics) setAnalytics(data.analytics);
       if (data.snapshot) {
         setQueueSnapshot(dept && dept !== "all" ? data.snapshot.filter(t => (t.service_category || "").toLowerCase() === dept) : data.snapshot);
+        const cur = activeTicketRef.current;
+        if (cur && cur.status === "waiting") {
+          const updatedCur = data.snapshot.find(t => t.ticket_id === cur.ticket_id);
+          if (updatedCur) {
+            setActiveTicket(updatedCur);
+          }
+        }
       }
       if (data.serving) {
         setServingTickets(dept && dept !== "all" ? data.serving.filter(t => (t.service_category || "").toLowerCase() === dept) : data.serving);
       }
+    });
+
+    socket.on("ticket_cancelled", (data) => {
+      if (data && data.ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && cur.ticket_id === data.ticket.ticket_id) {
+          setActiveTicket(data.ticket);
+        }
+      }
+      refreshData();
+    });
+
+    socket.on("ticket_updated", (data) => {
+      if (data && data.ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && cur.ticket_id === data.ticket.ticket_id) {
+          setActiveTicket(data.ticket);
+        }
+      }
+      refreshData();
     });
 
     socket.on("analytics_update", (data) => {
@@ -321,7 +431,7 @@ export default function App() {
   // Dedicated full-viewport view for unauthenticated login screen (no outer wrapper padding / scrolling)
   if (!currentUser && activePage !== "kiosk") {
     return (
-      <div style={{ height: "100vh", maxHeight: "100vh", width: "100vw", overflow: "hidden", margin: 0, padding: 0 }}>
+      <div style={{ minHeight: "100vh", width: "100vw", overflowX: "hidden", margin: 0, padding: 0 }}>
         <MandatoryAuthScreen
           onLoginSuccess={(user) => {
             handleLoginSuccess(user);
@@ -356,6 +466,11 @@ export default function App() {
           language={language}
           setLanguage={setLanguage}
           currentTab={currentTab}
+          familyMembers={familyMembers}
+          activeFamilyMember={activeFamilyMember}
+          onSwitchProfile={handleSwitchProfile}
+          onAddFamilyMember={handleAddFamilyMemberFromHeader}
+          onManageFamilyMembers={handleManageFamilyMembers}
         />
 
         {/* Main Content Router */}
@@ -388,6 +503,12 @@ export default function App() {
                   servingTickets={servingTickets}
                   kioskQrData={kioskQrData}
                   socketConnected={socketConnected}
+                  familyMembers={familyMembers}
+                  setFamilyMembers={setFamilyMembers}
+                  activeFamilyMember={activeFamilyMember}
+                  setActiveFamilyMember={setActiveFamilyMember}
+                  onSwitchProfile={handleSwitchProfile}
+                  onFamilyMembersChange={fetchFamilyMembers}
                 />
               )
             )}
@@ -498,10 +619,10 @@ export default function App() {
   );
 }
 
-// Global Soft Green Clinical Theme Styles
+// Global Soft Medical Blue & Cyan Clinical Theme Styles
 const appBgStyle = {
   minHeight: "100vh",
-  background: "linear-gradient(135deg, #F4F9F5 0%, #EBF4EE 100%)",
+  background: "linear-gradient(135deg, #F8FAFC 0%, #F0F9FF 100%)",
   color: "#0F172A",
   fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
   padding: "20px 28px",

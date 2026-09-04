@@ -1,0 +1,8 @@
+source_table,source_id,field,problem,resolution_status
+family_members,dep_1788364033958,user_email,User email 'test_parent_1788364033922@example.com' not found,SKIPPED
+appointments,APT-197581,tenant_id,Hospital 'test2' not found,FAILED
+tickets,T675199,tenant_id,Hospital 'test2' not found,FAILED
+tickets,T675201,tenant_id,Hospital 'test2' not found,FAILED
+tickets,T677654,tenant_id,Hospital 'test-transfer' not found,FAILED
+tickets,T677656,tenant_id,Hospital 'test-transfer' not found,FAILED
+service_logs,39,tenant_id,Hospital 'test2' not found,FAILED

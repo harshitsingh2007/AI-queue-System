@@ -14,6 +14,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { HOSPITAL_CONFIG } from "../config/hospitalConfig";
 import { t } from "../utils/i18n";
+import { AddFamilyMemberModal, getRelationLabel } from "./FamilyMemberSwitcher";
 
 export default function Header({
   currentUser,
@@ -25,17 +26,31 @@ export default function Header({
   language = "en",
   setLanguage,
   currentTab = "walkin",
+  familyMembers = [],
+  activeFamilyMember = null,
+  onSwitchProfile,
+  onAddFamilyMember,
+  onManageFamilyMembers,
 }) {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
+  const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
+  const [familySwitcherExpanded, setFamilySwitcherExpanded] = useState(false);
 
   const profileRef = useRef(null);
   const langRef = useRef(null);
 
+  const isPatientUser = currentUser && currentUser.role === "user";
   const isAdmin = currentUser && currentUser.role === "admin";
   const username = currentUser ? currentUser.username : "user";
+
+  // Determine active display name (family member or self)
+  const activeDisplayName = activeFamilyMember ? activeFamilyMember.name : username;
+  const activeDisplayRelation = activeFamilyMember
+    ? getRelationLabel(activeFamilyMember.relation, language)
+    : (language === "hi" ? "मेरी प्रोफ़ाइल" : "My Profile");
 
   // Derive tab from prop or URL query parameter
   const getEffectiveTab = () => {
@@ -110,9 +125,9 @@ export default function Header({
           }
 
           .header-nav-btn:hover {
-            color: #044E3B;
-            background: #F1F5F9;
-            border-color: #E2E8F0;
+            color: #0284C7;
+            background: #F0F9FF;
+            border-color: #BAE6FD;
           }
 
           .header-emergency-pill {
@@ -134,7 +149,6 @@ export default function Header({
           .header-emergency-pill:hover {
             background: #FEE2E2;
             border-color: #FCA5A5;
-            transform: translateY(-1px);
             box-shadow: 0 3px 10px rgba(220, 38, 38, 0.15);
           }
 
@@ -157,9 +171,9 @@ export default function Header({
           }
 
           .header-pill-btn:hover {
-            border-color: #059669;
-            background: #F8FAFC;
-            box-shadow: 0 3px 10px rgba(5, 150, 105, 0.08);
+            border-color: #0284C7;
+            background: #F0F9FF;
+            box-shadow: 0 3px 10px rgba(2, 132, 199, 0.08);
           }
 
           .header-dropdown-menu {
@@ -465,28 +479,30 @@ export default function Header({
                 className="header-pill-btn"
                 style={{
                   padding: "5px 14px 5px 6px",
-                  borderColor: profileDropdownOpen ? "#059669" : "#CBD5E1",
-                  background: profileDropdownOpen ? "#F0FDF4" : "#FFFFFF",
+                  borderColor: profileDropdownOpen ? "#0284C7" : "#CBD5E1",
+                  background: profileDropdownOpen ? "#F0F9FF" : "#FFFFFF",
                 }}
               >
                 {/* User Avatar Circle */}
                 <div style={dropdownAvatarStyle}>
-                  {username.charAt(0).toUpperCase()}
+                  {activeDisplayName.charAt(0).toUpperCase()}
                 </div>
                 <div style={{ textAlign: "left", lineHeight: 1.15 }}>
-                  <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {username}
+                  <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {activeDisplayName}
                   </div>
-                  <span style={{ fontSize: "10px", color: "#047857", fontWeight: 700 }}>
-                    {currentUser.role === "super_admin"
-                      ? "SUPER ADMIN"
-                      : currentUser.role === "doctor"
-                        ? "DOCTOR"
-                        : currentUser.role === "staff"
-                          ? "STAFF"
-                          : currentUser.role === "admin"
-                            ? "HOSPITAL ADMIN"
-                            : (language === "hi" ? "मरीज़ खाता" : "Patient Account")}
+                  <span style={{ fontSize: "10px", color: "#0284C7", fontWeight: 700 }}>
+                    {activeFamilyMember
+                      ? activeDisplayRelation
+                      : (currentUser.role === "super_admin"
+                        ? "SUPER ADMIN"
+                        : currentUser.role === "doctor"
+                          ? "DOCTOR"
+                          : currentUser.role === "staff"
+                            ? "STAFF"
+                            : currentUser.role === "admin"
+                              ? "HOSPITAL ADMIN"
+                              : (language === "hi" ? "मरीज़ खाता" : "Patient Account"))}
                   </span>
                 </div>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "4px" }}>
@@ -495,20 +511,27 @@ export default function Header({
               </button>
 
               {profileDropdownOpen && (
-                <div className="header-dropdown-menu" style={{ width: "260px", padding: "10px" }}>
+                <div className="header-dropdown-menu" style={{ width: "280px", padding: "10px" }}>
                   {/* Account Header */}
                   <div style={{ padding: "10px 12px 12px 12px", marginBottom: "8px", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <div style={{ ...dropdownAvatarStyle, width: "36px", height: "36px", fontSize: "14px", background: "#044E3B", color: "#FFFFFF" }}>
-                        {username.charAt(0).toUpperCase()}
+                      <div style={{ ...dropdownAvatarStyle, width: "36px", height: "36px", fontSize: "14px", background: "#0284C7", color: "#FFFFFF" }}>
+                        {activeDisplayName.charAt(0).toUpperCase()}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 800, fontSize: "13.5px", color: "#0F172A", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {username}
+                          {activeDisplayName}
                         </div>
-                        <span style={userRoleTagStyle(currentUser.role)}>
-                          {(currentUser.role || "user").toUpperCase()}
-                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                          <span style={userRoleTagStyle(currentUser.role)}>
+                            {(currentUser.role || "user").toUpperCase()}
+                          </span>
+                          {activeFamilyMember && (
+                            <span style={{ fontSize: "10px", color: "#0369A1", fontWeight: 700, background: "#E0F2FE", padding: "1px 5px", borderRadius: "4px", border: "1px solid #BAE6FD" }}>
+                              {activeDisplayRelation}
+                            </span>
+                          )}
+                        </div>
                         {currentUser.hospital_name && (
                           <span style={{ fontSize: "10.5px", color: "#64748B", display: "block", marginTop: "2px" }}>
                             🏥 {currentUser.hospital_name}
@@ -518,7 +541,125 @@ export default function Header({
                     </div>
                   </div>
 
-                  <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
+                  {/* Profile Switcher — Only for patient/user role */}
+                  {isPatientUser && (
+                    <>
+                      <div style={{ padding: "4px 12px 6px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: "10.5px", fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                          {language === "hi" ? "प्रोफ़ाइल बदलें" : "Switch Profile"}
+                        </span>
+                        {familyMembers.length > 2 && (
+                          <button
+                            type="button"
+                            onClick={() => setFamilySwitcherExpanded(prev => !prev)}
+                            style={{ fontSize: "10px", color: "#0369A1", fontWeight: 700, background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                          >
+                            {familySwitcherExpanded ? (language === "hi" ? "कम दिखाएं" : "Less") : (language === "hi" ? "सभी दिखाएं" : "All")}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Self */}
+                      <button
+                        type="button"
+                        className={`header-dropdown-item ${!activeFamilyMember ? "active" : ""}`}
+                        onClick={() => {
+                          if (onSwitchProfile) onSwitchProfile(null);
+                          setProfileDropdownOpen(false);
+                        }}
+                        style={{ justifyContent: "space-between" }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: !activeFamilyMember ? "#0284C7" : "#F0F9FF", color: !activeFamilyMember ? "#fff" : "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 800, border: !activeFamilyMember ? "2px solid #0284C7" : "1px solid #BAE6FD", flexShrink: 0 }}>
+                            {username.charAt(0).toUpperCase()}
+                          </div>
+                          <div style={{ textAlign: "left" }}>
+                            <div style={{ fontSize: "12.5px", fontWeight: 700, lineHeight: 1.2 }}>{username}</div>
+                            <div style={{ fontSize: "10px", color: !activeFamilyMember ? "#0284C7" : "#64748B", fontWeight: 600 }}>{language === "hi" ? "मेरी प्रोफ़ाइल" : "My Profile"}</div>
+                          </div>
+                        </div>
+                        {!activeFamilyMember && (
+                          <span style={{ color: "#0284C7", fontSize: "14px", fontWeight: 900 }}>✓</span>
+                        )}
+                      </button>
+
+                      {/* Family Members */}
+                      {(familySwitcherExpanded ? familyMembers : familyMembers.slice(0, 3)).map((member) => {
+                        const isActive = activeFamilyMember && activeFamilyMember.id === member.id;
+                        return (
+                          <button
+                            key={member.id}
+                            type="button"
+                            className={`header-dropdown-item ${isActive ? "active" : ""}`}
+                            onClick={() => {
+                              if (onSwitchProfile) onSwitchProfile(member);
+                              setProfileDropdownOpen(false);
+                            }}
+                            style={{ justifyContent: "space-between" }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: isActive ? "#0369A1" : "#E0F2FE", color: isActive ? "#fff" : "#0369A1", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 800, border: isActive ? "2px solid #0284C7" : "1px solid #BAE6FD", flexShrink: 0 }}>
+                                {member.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div style={{ textAlign: "left" }}>
+                                <div style={{ fontSize: "12.5px", fontWeight: 700, lineHeight: 1.2 }}>{member.name}</div>
+                                <div style={{ fontSize: "10px", color: isActive ? "#0284C7" : "#64748B", fontWeight: 600 }}>{getRelationLabel(member.relation, language)}</div>
+                              </div>
+                            </div>
+                            {isActive && (
+                              <span style={{ color: "#0284C7", fontSize: "14px", fontWeight: 900 }}>✓</span>
+                            )}
+                          </button>
+                        );
+                      })}
+
+                      <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
+
+                      {/* Add Family Member */}
+                      <button
+                        type="button"
+                        className="header-dropdown-item"
+                        onClick={() => {
+                          setShowAddFamilyModal(true);
+                          setProfileDropdownOpen(false);
+                        }}
+                        style={{ color: "#0284C7" }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                          <circle cx="9" cy="7" r="4"/>
+                          <line x1="19" y1="8" x2="19" y2="14"/>
+                          <line x1="22" y1="11" x2="16" y2="11"/>
+                        </svg>
+                        <span>{language === "hi" ? "+ परिवार जोड़ें" : "+ Add Family Member"}</span>
+                      </button>
+
+                      {/* Manage Family Members */}
+                      <button
+                        type="button"
+                        className="header-dropdown-item"
+                        onClick={() => {
+                          if (onManageFamilyMembers) onManageFamilyMembers();
+                          setProfileDropdownOpen(false);
+                        }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                          <circle cx="9" cy="7" r="4"/>
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                        <span>{language === "hi" ? "परिवार प्रबंधित करें" : "Manage Family Members"}</span>
+                      </button>
+
+                      <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
+                    </>
+                  )}
+
+                  {/* Logged-in account info for non-patient roles */}
+                  {!isPatientUser && (
+                    <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
+                  )}
 
                   {/* Sign Out Button */}
                   <button
@@ -712,6 +853,21 @@ export default function Header({
           </div>
         </div>
       )}
+
+      {/* Add Family Member Modal (triggered from profile dropdown) */}
+      {isPatientUser && (
+        <AddFamilyMemberModal
+          isOpen={showAddFamilyModal}
+          onClose={() => setShowAddFamilyModal(false)}
+          onAddMember={async (member) => {
+            if (onAddFamilyMember) {
+              await onAddFamilyMember(member);
+            }
+            setShowAddFamilyModal(false);
+          }}
+          language={language}
+        />
+      )}
     </>
   );
 }
@@ -730,8 +886,8 @@ const shieldLogoContainerStyle = {
   width: "38px",
   height: "38px",
   borderRadius: "12px",
-  background: "linear-gradient(135deg, #044E3B 0%, #065F46 100%)",
-  boxShadow: "0 4px 12px rgba(4, 78, 59, 0.25)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.25)",
   flexShrink: 0,
 };
 
@@ -748,20 +904,20 @@ const dropdownAvatarStyle = {
   width: "32px",
   height: "32px",
   borderRadius: "50%",
-  background: "#ECFDF5",
-  color: "#047857",
+  background: "#F0F9FF",
+  color: "#0369A1",
   fontWeight: 800,
   fontSize: "13px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  border: "1px solid #A7F3D0",
+  border: "1px solid #BAE6FD",
   flexShrink: 0,
 };
 
 const userRoleTagStyle = (role) => {
   if (role === "super_admin") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A", marginTop: "2px" };
-  if (role === "doctor") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0", marginTop: "2px" };
+  if (role === "doctor") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#F0F9FF", color: "#0369A1", border: "1px solid #BAE6FD", marginTop: "2px" };
   if (role === "admin") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", marginTop: "2px" };
   return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1", marginTop: "2px" };
 };
@@ -778,10 +934,10 @@ const modalCloseBtnStyle = {
   padding: "11px 16px",
   borderRadius: "10px",
   border: "none",
-  background: "#044E3B",
+  background: "#0284C7",
   color: "#FFFFFF",
   fontWeight: 700,
   fontSize: "13px",
   cursor: "pointer",
-  boxShadow: "0 2px 8px rgba(4, 78, 59, 0.2)",
+  boxShadow: "0 2px 8px rgba(2, 132, 199, 0.2)",
 };
