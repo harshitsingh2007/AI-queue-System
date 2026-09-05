@@ -195,7 +195,7 @@ def run_comprehensive_tests():
         service_category="consultation",
         patient_name="Rahul Appointment",
         user_email=pat_email,
-        appointment_date="2026-09-04",
+        appointment_date=engine.get_current_queue_date().isoformat(),
         time_slot="10:00 AM"
     )
     test_assert(apt["status"] == "scheduled", f"Appointment {apt['appointment_id']} booked as 'scheduled'")

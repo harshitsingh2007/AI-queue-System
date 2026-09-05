@@ -17,14 +17,41 @@ Features:
 import os
 import json
 import time
+import uuid
 import math
 import heapq
 import random
 import hashlib
 import itertools
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+try:
+    from zoneinfo import ZoneInfo
+    TIMEZONE_NAME = os.getenv("HOSPITAL_TIMEZONE", "Asia/Kolkata")
+    HOSPITAL_TZ = ZoneInfo(TIMEZONE_NAME)
+except Exception:
+    HOSPITAL_TZ = timezone(timedelta(hours=5, minutes=30))
+
+def get_current_queue_date() -> date:
+    """Returns today's date in configured hospital local timezone."""
+    return datetime.now(HOSPITAL_TZ).date()
+
+def parse_queue_date(d: Union[str, date, datetime, None]) -> date:
+    """Safely normalizes various date/datetime inputs into local date."""
+    if d is None:
+        return get_current_queue_date()
+    if isinstance(d, date) and not isinstance(d, datetime):
+        return d
+    if isinstance(d, datetime):
+        return d.astimezone(HOSPITAL_TZ).date() if d.tzinfo else d.date()
+    if isinstance(d, str):
+        try:
+            return datetime.strptime(d.strip()[:10], "%Y-%m-%d").date()
+        except Exception:
+            return get_current_queue_date()
+    return get_current_queue_date()
 
 import joblib
 import numpy as np
@@ -105,6 +132,8 @@ class Ticket:
     name: str
     priority_level: int
     join_timestamp: float
+    queue_date: Optional[str] = None  # ISO format "YYYY-MM-DD"
+    appointment_id: Optional[str] = None
     effective_timestamp: Optional[float] = None
     user_email: str = ""
     age: int = 30
@@ -118,7 +147,7 @@ class Ticket:
     status: str = "waiting"
     predicted_service_minutes: float = 0.0
     estimated_wait_minutes: float = 0.0
-    position: int = 0
+    position: Optional[int] = 0
     serve_start_time: Optional[float] = None
     serve_end_time: Optional[float] = None
     actual_service_minutes: Optional[float] = None
@@ -132,6 +161,8 @@ class Ticket:
     def __post_init__(self):
         if self.effective_timestamp is None:
             self.effective_timestamp = self.join_timestamp
+        if self.queue_date is None:
+            self.queue_date = str(get_current_queue_date())
 
     def to_dict(self):
         return {
@@ -141,6 +172,8 @@ class Ticket:
             "service_category": self.service_category,
             "name": self.name,
             "priority_level": self.priority_level,
+            "queue_date": self.queue_date or str(get_current_queue_date()),
+            "appointment_id": self.appointment_id or "",
             "user_email": self.user_email,
             "age": self.age,
             "gender": self.gender,
@@ -167,6 +200,12 @@ class Ticket:
 
 
 class PluginQueueEngine:
+    def get_current_queue_date(self) -> date:
+        return get_current_queue_date()
+
+    def parse_queue_date(self, d: Any) -> date:
+        return parse_queue_date(d)
+
     def __init__(self):
         self._tenants: Dict[str, dict] = {}
         self._models_cache: Dict[str, dict] = {}
@@ -402,13 +441,15 @@ class PluginQueueEngine:
     # Persistent Ticket Storage & Encounter Logging
     # ------------------------------------------------------------------
     def _save_ticket_db(self, ticket: Ticket):
-        """Persists ticket record into PostgreSQL using relational keys."""
+        """Persists ticket record into PostgreSQL using relational keys and explicit queue_date."""
         join_dt = datetime.fromtimestamp(ticket.join_timestamp, tz=timezone.utc)
         eff_dt = datetime.fromtimestamp(getattr(ticket, "effective_timestamp", ticket.join_timestamp), tz=timezone.utc)
         start_dt = datetime.fromtimestamp(ticket.serve_start_time, tz=timezone.utc) if ticket.serve_start_time else None
         end_dt = datetime.fromtimestamp(ticket.serve_end_time, tz=timezone.utc) if ticket.serve_end_time else None
         last_adj = datetime.fromtimestamp(ticket.last_adjusted_at, tz=timezone.utc) if getattr(ticket, "last_adjusted_at", None) else None
         canc_at = datetime.fromtimestamp(ticket.cancelled_at, tz=timezone.utc) if getattr(ticket, "cancelled_at", None) else None
+        q_date = parse_queue_date(getattr(ticket, "queue_date", None))
+        apt_id = getattr(ticket, "appointment_id", None) or None
 
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, ticket.tenant_id)
@@ -427,15 +468,15 @@ class PluginQueueEngine:
 
             conn.execute("""
                 INSERT INTO tickets (
-                    ticket_id, hospital_id, department_id, patient_id, consumer_type, service_category,
-                    name, priority_level, join_timestamp, status, predicted_service_minutes,
+                    ticket_id, hospital_id, department_id, patient_id, appointment_id, consumer_type, service_category,
+                    name, priority_level, queue_date, join_timestamp, status, predicted_service_minutes,
                     estimated_wait_minutes, position, serve_start_time, serve_end_time, actual_service_minutes,
                     medical_condition, pre_existing_condition, complexity_score, prescription_notes,
                     parent_ticket_id, transferred_from_dept, source, effective_timestamp,
                     adjustment_count, last_adjusted_at, cancellation_reason, cancelled_at, created_at, updated_at
                 ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s,
@@ -445,10 +486,12 @@ class PluginQueueEngine:
                     hospital_id = EXCLUDED.hospital_id,
                     department_id = EXCLUDED.department_id,
                     patient_id = EXCLUDED.patient_id,
+                    appointment_id = EXCLUDED.appointment_id,
                     consumer_type = EXCLUDED.consumer_type,
                     service_category = EXCLUDED.service_category,
                     name = EXCLUDED.name,
                     priority_level = EXCLUDED.priority_level,
+                    queue_date = EXCLUDED.queue_date,
                     status = EXCLUDED.status,
                     predicted_service_minutes = EXCLUDED.predicted_service_minutes,
                     estimated_wait_minutes = EXCLUDED.estimated_wait_minutes,
@@ -469,15 +512,17 @@ class PluginQueueEngine:
                 hid,
                 dept_id,
                 pid,
+                apt_id,
                 ticket.consumer_type,
                 ticket.service_category,
                 ticket.name,
                 ticket.priority_level,
+                q_date,
                 join_dt,
                 ticket.status,
                 ticket.predicted_service_minutes,
                 ticket.estimated_wait_minutes,
-                ticket.position,
+                ticket.position or 0,
                 start_dt,
                 end_dt,
                 ticket.actual_service_minutes,
@@ -497,7 +542,7 @@ class PluginQueueEngine:
             ))
 
             # Sync linked appointments status if any
-            if ticket.status in ("serving", "completed", "transferred", "no_show", "cancelled"):
+            if ticket.status in ("serving", "completed", "transferred", "no_show", "cancelled", "expired"):
                 conn.execute("""
                     UPDATE appointments
                     SET status = %s, updated_at = NOW()
@@ -510,6 +555,7 @@ class PluginQueueEngine:
         hour_of_day = join_dt.hour
         day_of_week = join_dt.weekday()
         is_peak = 1 if hour_of_day in (9, 10, 11, 14, 15, 16) and day_of_week < 5 else 0
+        q_date = parse_queue_date(getattr(ticket, "queue_date", None))
 
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, ticket.tenant_id)
@@ -517,16 +563,17 @@ class PluginQueueEngine:
 
             conn.execute("""
                 INSERT INTO service_logs (
-                    hospital_id, ticket_id, department_id, consumer_type, service_category,
+                    hospital_id, ticket_id, department_id, consumer_type, service_category, queue_date,
                     hour_of_day, day_of_week, queue_length, active_staff_counters, is_peak_hour,
                     complexity_score, historical_avg_speed, service_duration_minutes, completed_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW());
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW());
             """, (
                 hid,
                 ticket.ticket_id,
                 dept_id,
                 ticket.consumer_type,
                 ticket.service_category,
+                q_date,
                 hour_of_day,
                 day_of_week,
                 queue_length,
@@ -570,11 +617,13 @@ class PluginQueueEngine:
             hid = self._resolve_hospital_id(conn, tenant_id)
             records = []
             for _, r in df.iterrows():
-                ts_val = ts_to_dt(r.get("timestamp"))
+                ts_val = ts_to_dt(r.get("timestamp")) if "ts_to_dt" in globals() else None
+                q_date = parse_queue_date(r.get("queue_date") or ts_val)
                 records.append((
                     hid,
                     tenant_id,
                     r.get("consumer_type", "hospital"),
+                    q_date,
                     ts_val,
                     int(r.get("queue_length", 1)),
                     int(r.get("active_staff_counters", 2)),
@@ -588,10 +637,10 @@ class PluginQueueEngine:
 
             conn.executemany("""
                 INSERT INTO tenant_historical_data (
-                    hospital_id, legacy_tenant_id, consumer_type, timestamp, queue_length,
+                    hospital_id, legacy_tenant_id, consumer_type, queue_date, timestamp, queue_length,
                     active_staff_counters, service_category, service_duration_minutes,
                     complexity_score, hour_of_day, day_of_week, is_peak_hour, imported_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW());
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW());
             """, records)
 
         return len(df)
@@ -599,18 +648,30 @@ class PluginQueueEngine:
     def get_historical_records(self, tenant_id: str) -> List[dict]:
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, tenant_id)
-            rows = conn.execute("""
+            rows1 = conn.execute("""
                 SELECT consumer_type, service_category, queue_length, active_staff_counters,
                        service_duration_minutes, complexity_score, hour_of_day, day_of_week, is_peak_hour
                 FROM tenant_historical_data
                 WHERE hospital_id = %s OR legacy_tenant_id = %s
             """, (hid, tenant_id)).fetchall()
 
-            return [dict(r) for r in rows]
+            rows2 = conn.execute("""
+                SELECT consumer_type, service_category, queue_length, active_staff_counters,
+                       service_duration_minutes, complexity_score, hour_of_day, day_of_week, is_peak_hour
+                FROM service_logs
+                WHERE hospital_id = %s
+            """, (hid,)).fetchall()
+
+            combined = [dict(r) for r in rows1] + [dict(r) for r in rows2]
+            return combined
 
     def _hydrate_from_db(self):
-        """Loads active waiting and serving tickets into in-memory heaps on startup."""
+        """Loads only today's active waiting and serving tickets into in-memory heaps on startup."""
         try:
+            # 1. Close and expire unvisited previous day queues first
+            self.close_and_expire_previous_day_queues()
+
+            today = get_current_queue_date()
             with self._get_db() as conn:
                 # Load configs
                 cfgs = conn.execute("""
@@ -621,14 +682,19 @@ class PluginQueueEngine:
                 for r in cfgs:
                     self._get_tenant(r["hospital_code"])["active_counters"] = int(r["active_counters"])
 
-                # Load active tickets
+                # Reset all tenant in-memory queues for today
+                for tid in list(self._tenants.keys()):
+                    self._tenants[tid]["queue"] = []
+                    self._tenants[tid]["tickets"] = {}
+
+                # Load active tickets strictly for CURRENT_DATE
                 tickets = conn.execute("""
                     SELECT t.*, h.hospital_code
                     FROM tickets t
                     JOIN hospitals h ON h.id = t.hospital_id
-                    WHERE t.status IN ('waiting', 'serving')
-                    ORDER BY t.join_timestamp ASC
-                """).fetchall()
+                    WHERE t.queue_date = %s AND t.status IN ('waiting', 'serving', 'called')
+                    ORDER BY t.priority_level ASC, t.join_timestamp ASC
+                """, (today,)).fetchall()
 
                 for r in tickets:
                     t_dict = dict(r)
@@ -637,6 +703,7 @@ class PluginQueueEngine:
                     eff_ts = dt_to_epoch(t_dict.get("effective_timestamp")) or join_ts
                     start_ts = dt_to_epoch(t_dict.get("serve_start_time")) if t_dict.get("serve_start_time") else None
                     end_ts = dt_to_epoch(t_dict.get("serve_end_time")) if t_dict.get("serve_end_time") else None
+                    q_date_str = str(t_dict.get("queue_date") or today)
 
                     t = Ticket(
                         ticket_id=str(t_dict["ticket_id"]),
@@ -646,6 +713,8 @@ class PluginQueueEngine:
                         name=t_dict.get("name", "Patient"),
                         priority_level=int(t_dict.get("priority_level") or 2),
                         join_timestamp=join_ts,
+                        queue_date=q_date_str,
+                        appointment_id=t_dict.get("appointment_id"),
                         effective_timestamp=eff_ts,
                         user_email="",
                         age=int(t_dict.get("age") or 30),
@@ -669,15 +738,16 @@ class PluginQueueEngine:
 
                     tenant = self._get_tenant(hcode)
                     tenant["tickets"][t.ticket_id] = t
-                    if t.status == "waiting":
+                    if t.status in ("waiting", "called"):
                         heapq.heappush(tenant["queue"], (t.priority_level, eff_ts, t.ticket_id))
 
-            # Recalculate wait times for all initialized tenants
+            # Recalculate wait times and restart positions from #1 for all initialized tenants
             for tid in list(self._tenants.keys()):
                 self.recalculate_wait_times(tid)
 
-            print(f"[Hydration] Successfully loaded active queues for {len(self._tenants)} hospital tenants.")
+            print(f"[Daily Queue Hydration] Loaded today ({today}) active queues for {len(self._tenants)} hospital tenants.")
         except Exception as e:
+            print(f"[Hydration] Note during startup: {e}")
             print(f"[Hydration] Note during startup: {e}")
 
     def _get_tenant(self, tenant_id: str) -> dict:
@@ -819,10 +889,16 @@ class PluginQueueEngine:
         medical_condition: str = "general_checkup",
         pre_existing_condition: str = "none",
         patient_id: Optional[int] = None,
+        queue_date: Optional[Union[str, date]] = None,
+        appointment_id: Optional[str] = None,
+        status: str = "waiting",
     ) -> Ticket:
         tenant = self._get_tenant(tenant_id)
         now = time.time()
         ticket_id = f"T{next(self._id_counter):04d}"
+        q_date = parse_queue_date(queue_date)
+        today = get_current_queue_date()
+        is_today_active = (q_date == today and status == "waiting")
 
         complexity = compute_clinical_complexity(
             age=age,
@@ -835,12 +911,14 @@ class PluginQueueEngine:
         dt_now = datetime.fromtimestamp(now, tz=timezone.utc)
         predicted_service = self._predict_service_minutes(tenant_id, {
             "service_category": service_category,
-            "queue_length": len(tenant["queue"]) + 1,
+            "queue_length": len(tenant["queue"]) + 1 if is_today_active else 1,
             "active_staff_counters": tenant["active_counters"],
             "complexity_score": complexity,
             "hour_of_day": dt_now.hour,
             "day_of_week": dt_now.weekday(),
         })
+
+        initial_pos = (len(tenant["queue"]) + 1) if is_today_active else 0
 
         ticket = Ticket(
             ticket_id=ticket_id,
@@ -850,6 +928,8 @@ class PluginQueueEngine:
             name=name,
             priority_level=priority_level,
             join_timestamp=now,
+            queue_date=str(q_date),
+            appointment_id=appointment_id,
             effective_timestamp=now,
             user_email=user_email,
             age=age,
@@ -858,25 +938,28 @@ class PluginQueueEngine:
             pre_existing_condition=pre_existing_condition,
             complexity_score=complexity,
             predicted_service_minutes=predicted_service,
-            status="waiting",
-            position=len(tenant["queue"]) + 1,
+            status=status,
+            position=initial_pos if is_today_active else None,
             explicit_patient_id=patient_id,
         )
 
-        tenant["tickets"][ticket_id] = ticket
-        heapq.heappush(tenant["queue"], (priority_level, now, ticket_id))
+        if is_today_active:
+            tenant["tickets"][ticket_id] = ticket
+            heapq.heappush(tenant["queue"], (priority_level, now, ticket_id))
 
         # Persist and emit event
         self._save_ticket_db(ticket)
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, tenant_id)
+            event_name = "QUEUE_JOINED" if is_today_active else "SCHEDULED"
             self._log_queue_event(
-                conn, hid, ticket_id, "QUEUE_JOINED", None, "waiting",
+                conn, hid, ticket_id, event_name, None, status,
                 old_position=None, new_position=ticket.position,
-                metadata={"complexity": complexity, "predicted_service": predicted_service}
+                metadata={"complexity": complexity, "predicted_service": predicted_service, "queue_date": str(q_date)}
             )
 
-        self.recalculate_wait_times(tenant_id)
+        if is_today_active:
+            self.recalculate_wait_times(tenant_id)
         return ticket
 
     def transfer_ticket(
@@ -902,6 +985,8 @@ class PluginQueueEngine:
                         name=d.get("name", "Patient"),
                         priority_level=int(d.get("priority_level") or 2),
                         join_timestamp=dt_to_epoch(d.get("join_timestamp")),
+                        queue_date=str(d.get("queue_date") or get_current_queue_date()),
+                        appointment_id=d.get("appointment_id"),
                         status=d.get("status", "serving"),
                     )
 
@@ -918,6 +1003,9 @@ class PluginQueueEngine:
         # 2. Create target ticket
         now = time.time()
         new_tid = f"T{next(self._id_counter):04d}"
+        today = get_current_queue_date()
+        target_q_date = orig_ticket.queue_date or str(today)
+
         new_ticket = Ticket(
             ticket_id=new_tid,
             tenant_id=tenant_id,
@@ -926,6 +1014,8 @@ class PluginQueueEngine:
             name=orig_ticket.name,
             priority_level=orig_ticket.priority_level,
             join_timestamp=now,
+            queue_date=target_q_date,
+            appointment_id=orig_ticket.appointment_id,
             effective_timestamp=now,
             user_email=orig_ticket.user_email,
             age=orig_ticket.age,
@@ -949,11 +1039,11 @@ class PluginQueueEngine:
             hid = self._resolve_hospital_id(conn, tenant_id)
             self._log_queue_event(
                 conn, hid, orig_ticket.ticket_id, "TRANSFERRED", "serving", "transferred",
-                metadata={"transferred_to_ticket": new_tid, "target_dept": target_department}
+                metadata={"transferred_to_ticket": new_tid, "target_dept": target_department, "queue_date": target_q_date}
             )
             self._log_queue_event(
                 conn, hid, new_tid, "QUEUE_JOINED", None, "waiting",
-                metadata={"transferred_from": orig_ticket.ticket_id, "from_dept": orig_ticket.service_category}
+                metadata={"transferred_from": orig_ticket.ticket_id, "from_dept": orig_ticket.service_category, "queue_date": target_q_date}
             )
 
         self._rebuild_heap(tenant_id)
@@ -970,8 +1060,9 @@ class PluginQueueEngine:
         tenant = self._get_tenant(tenant_id)
         now = time.time()
         filter_dept = (department or service_category or "").strip().lower()
+        today = get_current_queue_date()
 
-        # Department-scoped queue serving
+        # Department-scoped queue serving strictly for today's date
         temp_popped = []
         found_ticket = None
 
@@ -980,6 +1071,10 @@ class PluginQueueEngine:
             t = tenant["tickets"].get(tid)
 
             if not t or t.status != "waiting":
+                continue
+
+            # Verify queue date is today
+            if parse_queue_date(getattr(t, "queue_date", None)) != today:
                 continue
 
             if filter_dept and t.service_category.strip().lower() != filter_dept:
@@ -1005,7 +1100,7 @@ class PluginQueueEngine:
             hid = self._resolve_hospital_id(conn, tenant_id)
             self._log_queue_event(
                 conn, hid, found_ticket.ticket_id, "CALLED", "waiting", "serving",
-                old_position=1, new_position=0, metadata={"desk_id": desk_id}
+                old_position=1, new_position=0, metadata={"desk_id": desk_id, "queue_date": str(today)}
             )
 
         self.recalculate_wait_times(tenant_id)
@@ -1028,6 +1123,8 @@ class PluginQueueEngine:
                         name=d.get("name", "Patient"),
                         priority_level=int(d.get("priority_level") or 2),
                         join_timestamp=dt_to_epoch(d.get("join_timestamp")),
+                        queue_date=str(d.get("queue_date") or get_current_queue_date()),
+                        appointment_id=d.get("appointment_id"),
                         status=d.get("status", "serving"),
                     )
 
@@ -1046,7 +1143,7 @@ class PluginQueueEngine:
             hid = self._resolve_hospital_id(conn, tenant_id)
             self._log_queue_event(
                 conn, hid, ticket.ticket_id, "COMPLETED", "serving", "completed",
-                metadata={"service_minutes": ticket.actual_service_minutes}
+                metadata={"service_minutes": ticket.actual_service_minutes, "queue_date": getattr(ticket, "queue_date", str(get_current_queue_date()))}
             )
 
         self.recalculate_wait_times(tenant_id)
@@ -1061,7 +1158,7 @@ class PluginQueueEngine:
             self._save_ticket_db(ticket)
             with self._get_db() as conn:
                 hid = self._resolve_hospital_id(conn, tenant_id)
-                self._log_queue_event(conn, hid, ticket.ticket_id, "NO_SHOW", "serving", "no_show")
+                self._log_queue_event(conn, hid, ticket.ticket_id, "NO_SHOW", "serving", "no_show", metadata={"queue_date": getattr(ticket, "queue_date", str(get_current_queue_date()))})
 
         self._rebuild_heap(tenant_id)
         self.recalculate_wait_times(tenant_id)
@@ -1086,7 +1183,7 @@ class PluginQueueEngine:
             # Transactional row lock on target ticket
             row = conn.execute("""
                 SELECT t.id, t.ticket_id, t.hospital_id, t.patient_id, t.department_id,
-                       t.service_category, t.status, t.position, t.priority_level,
+                       t.service_category, t.status, t.position, t.priority_level, t.queue_date,
                        h.hospital_code
                 FROM tickets t
                 JOIN hospitals h ON h.id = t.hospital_id
@@ -1107,14 +1204,15 @@ class PluginQueueEngine:
             if user_email:
                 performed_by_uid = self._verify_ticket_ownership(conn, ticket_id, user_email, hid)
 
-            # 3. Status Validation: Only WAITING tickets can be cancelled
+            # 3. Status Validation: WAITING or SCHEDULED tickets can be cancelled
             curr_status = (t_dict.get("status") or "").lower()
-            if curr_status != "waiting":
-                raise ValueError(f"Cannot cancel ticket: Ticket status is '{curr_status.upper()}'. Only WAITING tickets can be cancelled.")
+            if curr_status not in ("waiting", "scheduled"):
+                raise ValueError(f"Cannot cancel ticket: Ticket status is '{curr_status.upper()}'. Only WAITING or SCHEDULED tickets can be cancelled.")
 
             old_pos = t_dict.get("position") or 0
             dept_id = t_dict.get("department_id")
             service_cat = t_dict.get("service_category")
+            q_date = t_dict.get("queue_date")
 
             # 4. Update Ticket status in PostgreSQL
             conn.execute("""
@@ -1127,55 +1225,54 @@ class PluginQueueEngine:
                 WHERE ticket_id = %s;
             """, (canc_dt, reason, ticket_id))
 
-            # 5. Shift remaining waiting tickets in database to prevent gaps
-            if old_pos > 0:
+            # 5. Shift remaining waiting tickets in database to prevent gaps for that date and department
+            if old_pos > 0 and curr_status == "waiting":
                 if dept_id:
                     conn.execute("""
                         UPDATE tickets
                         SET position = position - 1, updated_at = NOW()
-                        WHERE hospital_id = %s AND department_id = %s AND status = 'waiting' AND position > %s;
-                    """, (hid, dept_id, old_pos))
+                        WHERE hospital_id = %s AND department_id = %s AND queue_date = %s AND status = 'waiting' AND position > %s;
+                    """, (hid, dept_id, q_date, old_pos))
                 else:
                     conn.execute("""
                         UPDATE tickets
                         SET position = position - 1, updated_at = NOW()
-                        WHERE hospital_id = %s AND service_category = %s AND status = 'waiting' AND position > %s;
-                    """, (hid, service_cat, old_pos))
+                        WHERE hospital_id = %s AND service_category = %s AND queue_date = %s AND status = 'waiting' AND position > %s;
+                    """, (hid, service_cat, q_date, old_pos))
 
             # 6. Record Queue Lifecycle Event
             self._log_queue_event(
-                conn, hid, ticket_id, "CANCEL", "waiting", "cancelled",
+                conn, hid, ticket_id, "CANCEL", curr_status, "cancelled",
                 old_position=old_pos, new_position=None,
                 performed_by_user_id=performed_by_uid,
-                metadata={"reason": reason}
+                metadata={"reason": reason, "queue_date": str(q_date)}
             )
 
-        # Synchronize In-Memory Queue State
-        ticket = tenant["tickets"].get(ticket_id)
-        if ticket:
-            ticket.status = "cancelled"
-            ticket.position = 0
-            ticket.cancelled_at = canc_time
-            ticket.cancellation_reason = reason
-        else:
-            ticket = Ticket(
-                ticket_id=ticket_id,
-                tenant_id=clean_tenant,
-                consumer_type="hospital",
-                service_category=t_dict.get("service_category", "consultation"),
-                name="Patient",
-                priority_level=int(t_dict.get("priority_level") or 2),
-                join_timestamp=canc_time,
-                status="cancelled",
-                position=0,
-                cancelled_at=canc_time,
-                cancellation_reason=reason
-            )
-            tenant["tickets"][ticket_id] = ticket
+        # Synchronize In-Memory State
+        if ticket_id in tenant["tickets"]:
+            tenant["tickets"][ticket_id].status = "cancelled"
+            tenant["tickets"][ticket_id].cancelled_at = canc_time
+            tenant["tickets"][ticket_id].cancellation_reason = reason
+            tenant["tickets"][ticket_id].position = 0
+            self._rebuild_heap(clean_tenant)
+            self.recalculate_wait_times(clean_tenant)
+            return tenant["tickets"][ticket_id]
 
-        self._rebuild_heap(clean_tenant)
-        self.recalculate_wait_times(clean_tenant)
-        return ticket
+        t_res = Ticket(
+            ticket_id=ticket_id,
+            tenant_id=clean_tenant,
+            consumer_type=t_dict.get("consumer_type", "hospital"),
+            service_category=service_cat or "consultation",
+            name="Patient",
+            priority_level=int(t_dict.get("priority_level") or 2),
+            join_timestamp=canc_time,
+            queue_date=str(q_date),
+            status="cancelled",
+            position=0,
+            cancelled_at=canc_time,
+            cancellation_reason=reason,
+        )
+        return t_res
 
     def adjust_queue_position(
         self,
@@ -1185,23 +1282,25 @@ class PluginQueueEngine:
         user_email: Optional[str] = None,
         reason: str = "Late arrival"
     ) -> dict:
-        """Postpones queue position backward by 1 to 3 positions for an active WAITING ticket."""
         clean_tenant = (tenant_id or "city-hospital-01").strip()
         tenant = self._get_tenant(clean_tenant)
+        skip_positions = int(skip_positions)
 
-        # Validate skip_positions: must be positive integer (cannot move forward)
-        if not isinstance(skip_positions, int) or skip_positions <= 0:
-            raise ValueError("Invalid adjustment: skip positions must be a positive integer (cannot move forward or 0).")
+        if skip_positions <= 0:
+            raise ValueError("Adjustment must be a positive integer (cannot move forward or 0).")
 
         performed_by_uid = None
+        now = time.time()
+        adj_dt = datetime.fromtimestamp(now, tz=timezone.utc)
+        today = get_current_queue_date()
+
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, clean_tenant)
 
-            # Transactional row-level lock on the target ticket
             row = conn.execute("""
                 SELECT t.id, t.ticket_id, t.hospital_id, t.patient_id, t.department_id,
-                       t.service_category, t.status, t.position, t.adjustment_count,
-                       t.priority_level, t.effective_timestamp, t.join_timestamp,
+                       t.service_category, t.status, t.position, t.priority_level,
+                       t.join_timestamp, t.effective_timestamp, t.adjustment_count, t.queue_date,
                        h.hospital_code
                 FROM tickets t
                 JOIN hospitals h ON h.id = t.hospital_id
@@ -1214,79 +1313,60 @@ class PluginQueueEngine:
 
             t_dict = dict(row)
 
-            # 1. Hospital Tenant Isolation Check
+            # 1. Isolation check
             if t_dict["hospital_id"] != hid:
                 raise PermissionError("Forbidden: Ticket does not belong to this hospital.")
 
-            # 2. Patient Ownership Check
+            # 2. Ownership check
             if user_email:
                 performed_by_uid = self._verify_ticket_ownership(conn, ticket_id, user_email, hid)
 
-            # 3. Status Validation: Only WAITING tickets can be adjusted
-            curr_status = (t_dict.get("status") or "").lower()
-            if curr_status != "waiting":
-                raise ValueError(f"Cannot adjust queue: Ticket status is '{curr_status.upper()}'. Only WAITING tickets can be adjusted.")
+            # 3. Status Validation
+            if (t_dict.get("status") or "").lower() != "waiting":
+                raise ValueError(f"Cannot adjust queue position: Ticket status is '{t_dict.get('status')}'. Only WAITING tickets can be adjusted.")
 
-            # 4. Adjustment Limit Enforcement
-            current_adj = int(t_dict.get("adjustment_count") or 0)
-            if current_adj >= MAX_PATIENT_QUEUE_ADJUSTMENT:
-                raise ValueError(f"Adjustment limit exceeded: Maximum allowed adjustments ({MAX_PATIENT_QUEUE_ADJUSTMENT}) already reached.")
+            # 4. Adjustment limit check
+            current_adj_count = int(t_dict.get("adjustment_count") or 0)
+            if current_adj_count + skip_positions > MAX_PATIENT_QUEUE_ADJUSTMENT:
+                remaining = max(0, MAX_PATIENT_QUEUE_ADJUSTMENT - current_adj_count)
+                raise ValueError(f"Queue adjustment limit exceeded. You requested to skip {skip_positions} position(s), but only {remaining} position adjustment(s) remain (maximum allowed: {MAX_PATIENT_QUEUE_ADJUSTMENT}).")
 
-            if current_adj + skip_positions > MAX_PATIENT_QUEUE_ADJUSTMENT:
-                rem = MAX_PATIENT_QUEUE_ADJUSTMENT - current_adj
-                raise ValueError(f"Adjustment limit exceeded: You requested to move back {skip_positions} positions, but only {rem} position(s) remain.")
-
-            # 5. Retrieve waiting queue in the same department ordered by priority and effective timestamp
+            previous_position = int(t_dict.get("position") or 1)
             dept_id = t_dict.get("department_id")
             service_cat = t_dict.get("service_category")
+            q_date = t_dict.get("queue_date") or today
 
-            if dept_id:
-                waiting_rows = conn.execute("""
-                    SELECT id, ticket_id, position, effective_timestamp, join_timestamp, priority_level
-                    FROM tickets
-                    WHERE hospital_id = %s AND department_id = %s AND status = 'waiting'
-                    ORDER BY priority_level ASC, effective_timestamp ASC, join_timestamp ASC
-                    FOR UPDATE;
-                """, (hid, dept_id)).fetchall()
+            # 5. Calculate new effective timestamp to move precisely skip_positions behind
+            dept_waiting = [
+                t for t in tenant["tickets"].values()
+                if (t.service_category == service_cat) and t.status == "waiting" and parse_queue_date(getattr(t, "queue_date", None)) == today
+            ]
+            dept_waiting.sort(key=lambda x: (x.priority_level, getattr(x, "effective_timestamp", x.join_timestamp)))
+
+            curr_idx = None
+            for idx, item in enumerate(dept_waiting):
+                if item.ticket_id == ticket_id:
+                    curr_idx = idx
+                    break
+
+            if curr_idx is not None and (curr_idx + skip_positions) < len(dept_waiting):
+                target_t = dept_waiting[curr_idx + skip_positions]
+                target_eff = getattr(target_t, "effective_timestamp", target_t.join_timestamp)
+                new_eff = target_eff + 0.001
             else:
-                waiting_rows = conn.execute("""
-                    SELECT id, ticket_id, position, effective_timestamp, join_timestamp, priority_level
-                    FROM tickets
-                    WHERE hospital_id = %s AND service_category = %s AND status = 'waiting'
-                    ORDER BY priority_level ASC, effective_timestamp ASC, join_timestamp ASC
-                    FOR UPDATE;
-                """, (hid, service_cat)).fetchall()
+                if dept_waiting:
+                    last_eff = max(getattr(t, "effective_timestamp", t.join_timestamp) for t in dept_waiting)
+                    new_eff = last_eff + (skip_positions * 1.0)
+                else:
+                    curr_eff = dt_to_epoch(t_dict.get("effective_timestamp")) or dt_to_epoch(t_dict.get("join_timestamp"))
+                    new_eff = max(time.time(), curr_eff) + (skip_positions * 1800)
 
-            waiting_list = [dict(r) for r in waiting_rows]
-            try:
-                curr_idx = next(i for i, r in enumerate(waiting_list) if r["ticket_id"] == ticket_id)
-            except StopIteration:
-                raise ValueError("Ticket is not in the active waiting queue.")
-
-            previous_position = curr_idx + 1
-            available_behind = len(waiting_list) - 1 - curr_idx
-            if available_behind <= 0:
-                raise ValueError("You are already at the end of the queue. No positions behind to swap with.")
-
-            if skip_positions > available_behind:
-                raise ValueError(f"Cannot move beyond the end of the queue. Only {available_behind} position(s) available behind you.")
-
-            target_idx = curr_idx + skip_positions
-            target_row = waiting_list[target_idx]
-            new_position = target_idx + 1
-
-            target_eff = dt_to_epoch(target_row.get("effective_timestamp") or target_row.get("join_timestamp"))
-            if target_idx + 1 < len(waiting_list):
-                next_eff = dt_to_epoch(waiting_list[target_idx + 1].get("effective_timestamp") or waiting_list[target_idx + 1].get("join_timestamp"))
-                new_eff = (target_eff + next_eff) / 2.0
-            else:
-                new_eff = target_eff + 1.0
-
-            new_adj_count = current_adj + skip_positions
-            adj_dt = datetime.fromtimestamp(time.time(), tz=timezone.utc)
             eff_dt = datetime.fromtimestamp(new_eff, tz=timezone.utc)
+            new_adj_count = current_adj_count + skip_positions
 
-            # 6. Update patient ticket in database
+            new_position = previous_position + skip_positions
+
+            # 6. Update database
             conn.execute("""
                 UPDATE tickets
                 SET effective_timestamp = %s,
@@ -1305,8 +1385,7 @@ class PluginQueueEngine:
                     "adjusted_by": "patient",
                     "positions_moved": skip_positions,
                     "reason": reason,
-                    "requested_skip": skip_positions,
-                    "actual_skip": skip_positions
+                    "queue_date": str(q_date)
                 }
             )
 
@@ -1321,6 +1400,7 @@ class PluginQueueEngine:
                 name=t_dict.get("name", "Patient"),
                 priority_level=int(t_dict.get("priority_level") or 2),
                 join_timestamp=dt_to_epoch(t_dict.get("join_timestamp")),
+                queue_date=str(q_date),
                 effective_timestamp=new_eff,
                 status="waiting",
                 adjustment_count=new_adj_count,
@@ -1354,19 +1434,25 @@ class PluginQueueEngine:
 
     def _rebuild_heap(self, tenant_id: str):
         tenant = self._get_tenant(tenant_id)
+        today = get_current_queue_date()
         new_queue = [
             (t.priority_level, getattr(t, "effective_timestamp", t.join_timestamp), t.ticket_id)
             for t in tenant["tickets"].values()
-            if t.status == "waiting"
+            if t.status == "waiting" and parse_queue_date(getattr(t, "queue_date", None)) == today
         ]
         heapq.heapify(new_queue)
         tenant["queue"] = new_queue
 
     def recalculate_wait_times(self, tenant_id: str) -> List[Ticket]:
+        """Calculates independent queue positions starting from #1 for today's active tickets."""
         tenant = self._get_tenant(tenant_id)
         active_counters = tenant["active_counters"]
+        today = get_current_queue_date()
 
-        waiting = [t for t in tenant["tickets"].values() if t.status == "waiting"]
+        waiting = [
+            t for t in tenant["tickets"].values()
+            if t.status == "waiting" and parse_queue_date(getattr(t, "queue_date", None)) == today
+        ]
         waiting.sort(key=lambda t: (t.priority_level, getattr(t, "effective_timestamp", t.join_timestamp)))
 
         cumulative_by_group: Dict[str, float] = {}
@@ -1399,49 +1485,285 @@ class PluginQueueEngine:
 
         return updated
 
-    def get_queue_snapshot(self, tenant_id: str, department: Optional[str] = None) -> List[dict]:
-        tenant = self._get_tenant(tenant_id)
+    def close_and_expire_previous_day_queues(
+        self,
+        target_date: Optional[Union[str, date]] = None,
+        hospital_code: Optional[str] = None
+    ) -> dict:
+        """Closes daily queues for past dates, transitioning unserved tickets and appointments to EXPIRED.
+        Idempotent, transaction-safe, and hospital-isolated.
+        Uses PostgreSQL advisory lock to prevent race conditions across multiple worker instances."""
+        current_today = parse_queue_date(target_date) if target_date else get_current_queue_date()
+
+        expired_tickets_count = 0
+        expired_appointments_count = 0
+
+        with self._get_db() as conn:
+            # 1. Multi-instance distributed lock via PostgreSQL transaction advisory lock
+            try:
+                locked = conn.execute("SELECT pg_try_advisory_xact_lock(88472910)").fetchone()[0]
+                if not locked:
+                    return {
+                        "status": "skipped",
+                        "reason": "concurrent_lock_active",
+                        "current_queue_date": str(current_today),
+                        "expired_tickets_count": 0,
+                        "expired_appointments_count": 0
+                    }
+            except Exception:
+                pass  # In case advisory lock is not supported
+
+            hid_filter = None
+            if hospital_code:
+                hid_filter = self._resolve_hospital_id(conn, hospital_code)
+
+            # 2. Find all previous-day tickets that are still in WAITING or SCHEDULED or CALLED status
+            t_query = """
+                SELECT t.id, t.ticket_id, t.hospital_id, t.department_id, t.status, t.position, t.queue_date, t.appointment_id, h.hospital_code
+                FROM tickets t
+                JOIN hospitals h ON h.id = t.hospital_id
+                WHERE t.queue_date < %s AND t.status IN ('waiting', 'scheduled', 'called')
+            """
+            params: list = [current_today]
+            if hid_filter:
+                t_query += " AND t.hospital_id = %s"
+                params.append(hid_filter)
+            t_query += " FOR UPDATE OF t"
+
+            past_tickets = conn.execute(t_query, tuple(params)).fetchall()
+
+            for pt in past_tickets:
+                pt_dict = dict(pt)
+                old_status = pt_dict.get("status")
+                old_pos = pt_dict.get("position")
+                t_id = pt_dict.get("ticket_id")
+                h_id = pt_dict.get("hospital_id")
+                q_date_val = str(pt_dict.get("queue_date"))
+
+                # Transition to 'expired'
+                conn.execute("""
+                    UPDATE tickets
+                    SET status = 'expired',
+                        position = NULL,
+                        updated_at = NOW()
+                    WHERE id = %s;
+                """, (pt_dict["id"],))
+
+                # Write EXPIRE queue event
+                self._log_queue_event(
+                    conn,
+                    h_id,
+                    t_id,
+                    "EXPIRE",
+                    old_status=old_status,
+                    new_status="expired",
+                    old_position=old_pos,
+                    new_position=None,
+                    metadata={"reason": "daily_queue_closure", "queue_date": q_date_val}
+                )
+                expired_tickets_count += 1
+
+            # 3. Find and expire previous-day appointments that were not visited/served
+            a_query = """
+                SELECT a.id, a.appointment_id, a.hospital_id, a.status, a.appointment_date
+                FROM appointments a
+                WHERE a.appointment_date < %s AND a.status IN ('scheduled', 'checked_in', 'waiting')
+            """
+            a_params: list = [current_today]
+            if hid_filter:
+                a_query += " AND a.hospital_id = %s"
+                a_params.append(hid_filter)
+            a_query += " FOR UPDATE OF a"
+
+            past_apts = conn.execute(a_query, tuple(a_params)).fetchall()
+
+            for pa in past_apts:
+                pa_dict = dict(pa)
+                conn.execute("""
+                    UPDATE appointments
+                    SET status = 'expired',
+                        updated_at = NOW()
+                    WHERE id = %s;
+                """, (pa_dict["id"],))
+
+                self._log_appointment_history(
+                    conn,
+                    pa_dict["appointment_id"],
+                    pa_dict["status"],
+                    "expired",
+                    reason="daily_queue_closure"
+                )
+                expired_appointments_count += 1
+
+        # 4. In-Memory state cleanup: purge expired tickets from memory heaps
+        for tid, tenant_data in list(self._tenants.items()):
+            to_remove = []
+            for t_id, t_obj in tenant_data["tickets"].items():
+                if parse_queue_date(getattr(t_obj, "queue_date", None)) < current_today or t_obj.status in ("expired", "completed", "cancelled", "no_show"):
+                    to_remove.append(t_id)
+            for t_id in to_remove:
+                tenant_data["tickets"].pop(t_id, None)
+            self._rebuild_heap(tid)
+            self.recalculate_wait_times(tid)
+
+        return {
+            "status": "success",
+            "current_queue_date": str(current_today),
+            "expired_tickets_count": expired_tickets_count,
+            "expired_appointments_count": expired_appointments_count,
+        }
+
+    def get_queue_snapshot(
+        self,
+        tenant_id: str,
+        department: Optional[str] = None,
+        queue_date: Optional[Union[str, date]] = None
+    ) -> List[dict]:
+        target_date = parse_queue_date(queue_date) if queue_date else get_current_queue_date()
+        today = get_current_queue_date()
         dept_filter = (department or "").strip().lower()
 
-        waiting = [t for t in tenant["tickets"].values() if t.status == "waiting"]
-        waiting.sort(key=lambda t: (t.priority_level, getattr(t, "effective_timestamp", t.join_timestamp)))
+        if target_date == today:
+            tenant = self._get_tenant(tenant_id)
+            waiting = [
+                t for t in tenant["tickets"].values()
+                if t.status in ("waiting", "called") and parse_queue_date(getattr(t, "queue_date", None)) == today
+            ]
+            waiting.sort(key=lambda t: (t.priority_level, getattr(t, "effective_timestamp", t.join_timestamp)))
+            if dept_filter:
+                waiting = [t for t in waiting if t.service_category.strip().lower() == dept_filter]
+            return [t.to_dict() for t in waiting]
 
-        if dept_filter:
-            waiting = [t for t in waiting if t.service_category.strip().lower() == dept_filter]
+        # Query database for non-today date
+        with self._get_db() as conn:
+            hid = self._resolve_hospital_id(conn, tenant_id)
+            query = """
+                SELECT t.*, h.hospital_code
+                FROM tickets t
+                JOIN hospitals h ON h.id = t.hospital_id
+                WHERE t.hospital_id = %s AND t.queue_date = %s AND t.status IN ('waiting', 'called')
+            """
+            params: list = [hid, target_date]
+            if dept_filter:
+                dept_id = self._resolve_department_id(conn, hid, dept_filter)
+                query += " AND t.department_id = %s"
+                params.append(dept_id)
+            query += " ORDER BY t.priority_level ASC, t.join_timestamp ASC;"
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [dict(r) for r in rows]
 
-        return [t.to_dict() for t in waiting]
-
-    def get_serving_tickets(self, tenant_id: str, department: Optional[str] = None) -> List[dict]:
-        tenant = self._get_tenant(tenant_id)
+    def get_serving_tickets(
+        self,
+        tenant_id: str,
+        department: Optional[str] = None,
+        queue_date: Optional[Union[str, date]] = None
+    ) -> List[dict]:
+        target_date = parse_queue_date(queue_date) if queue_date else get_current_queue_date()
+        today = get_current_queue_date()
         dept_filter = (department or "").strip().lower()
 
-        serving = [t for t in tenant["tickets"].values() if t.status == "serving"]
-        if dept_filter:
-            serving = [t for t in serving if t.service_category.strip().lower() == dept_filter]
+        if target_date == today:
+            tenant = self._get_tenant(tenant_id)
+            serving = [
+                t for t in tenant["tickets"].values()
+                if t.status == "serving" and parse_queue_date(getattr(t, "queue_date", None)) == today
+            ]
+            if dept_filter:
+                serving = [t for t in serving if t.service_category.strip().lower() == dept_filter]
+            return [t.to_dict() for t in serving]
 
-        return [t.to_dict() for t in serving]
+        with self._get_db() as conn:
+            hid = self._resolve_hospital_id(conn, tenant_id)
+            query = """
+                SELECT t.*, h.hospital_code
+                FROM tickets t
+                JOIN hospitals h ON h.id = t.hospital_id
+                WHERE t.hospital_id = %s AND t.queue_date = %s AND t.status = 'serving'
+            """
+            params: list = [hid, target_date]
+            if dept_filter:
+                dept_id = self._resolve_department_id(conn, hid, dept_filter)
+                query += " AND t.department_id = %s"
+                params.append(dept_id)
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_historical_queue_tickets(
+        self,
+        tenant_id: str,
+        queue_date: Union[str, date],
+        department: Optional[str] = None
+    ) -> List[dict]:
+        """Retrieves historical tickets for a given hospital, department, and queue_date."""
+        target_date = parse_queue_date(queue_date)
+        with self._get_db() as conn:
+            hid = self._resolve_hospital_id(conn, tenant_id)
+            query = """
+                SELECT t.*, h.hospital_code, d.name as department_name
+                FROM tickets t
+                JOIN hospitals h ON h.id = t.hospital_id
+                LEFT JOIN departments d ON d.id = t.department_id
+                WHERE t.hospital_id = %s AND t.queue_date = %s
+            """
+            params: list = [hid, target_date]
+            if department:
+                dept_id = self._resolve_department_id(conn, hid, department)
+                query += " AND t.department_id = %s"
+                params.append(dept_id)
+
+            query += " ORDER BY t.priority_level ASC, t.join_timestamp ASC;"
+            rows = conn.execute(query, tuple(params)).fetchall()
+
+            res = []
+            for r in rows:
+                d = dict(r)
+                if hasattr(d.get("queue_date"), "isoformat"):
+                    d["queue_date"] = d["queue_date"].isoformat()
+                elif d.get("queue_date"):
+                    d["queue_date"] = str(d["queue_date"])
+                for ts_col in ("created_at", "updated_at", "join_timestamp", "serve_start_time", "serve_end_time", "cancelled_at"):
+                    if d.get(ts_col) and hasattr(d[ts_col], "isoformat"):
+                        d[ts_col] = d[ts_col].isoformat()
+                res.append(d)
+            return res
 
     def get_tickets_needing_turn_alert(self, tenant_id: str) -> List[dict]:
         snapshot = self.get_queue_snapshot(tenant_id)
         return [t for t in snapshot if t.get("position") in (1, 2)]
 
-    def get_tenant_analytics(self, tenant_id: str, department: Optional[str] = None) -> dict:
+    def get_tenant_analytics(
+        self,
+        tenant_id: str,
+        department: Optional[str] = None,
+        queue_date: Optional[Union[str, date]] = None
+    ) -> dict:
+        target_date = parse_queue_date(queue_date) if queue_date else get_current_queue_date()
+        today = get_current_queue_date()
         tenant = self._get_tenant(tenant_id)
         dept_filter = (department or "").strip().lower()
 
-        waiting = [t for t in tenant["tickets"].values() if t.status == "waiting"]
-        serving = [t for t in tenant["tickets"].values() if t.status == "serving"]
-
-        if dept_filter:
-            waiting = [t for t in waiting if t.service_category.strip().lower() == dept_filter]
-            serving = [t for t in serving if t.service_category.strip().lower() == dept_filter]
-
-        avg_wait = sum(t.estimated_wait_minutes for t in waiting) / len(waiting) if waiting else 0.0
+        if target_date == today:
+            waiting = [
+                t for t in tenant["tickets"].values()
+                if t.status in ("waiting", "called") and parse_queue_date(getattr(t, "queue_date", None)) == today
+            ]
+            serving = [
+                t for t in tenant["tickets"].values()
+                if t.status == "serving" and parse_queue_date(getattr(t, "queue_date", None)) == today
+            ]
+            if dept_filter:
+                waiting = [t for t in waiting if t.service_category.strip().lower() == dept_filter]
+                serving = [t for t in serving if t.service_category.strip().lower() == dept_filter]
+            avg_wait = sum(t.estimated_wait_minutes for t in waiting) / len(waiting) if waiting else 0.0
+        else:
+            waiting = []
+            serving = []
+            avg_wait = 0.0
 
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, tenant_id)
-            log_query = "SELECT count(*), avg(service_duration_minutes) FROM service_logs WHERE hospital_id = %s"
-            params = [hid]
+            log_query = "SELECT count(*), avg(service_duration_minutes) FROM service_logs WHERE hospital_id = %s AND queue_date = %s"
+            params: list = [hid, target_date]
             if dept_filter:
                 dept_id = self._resolve_department_id(conn, hid, dept_filter)
                 log_query += " AND department_id = %s"
@@ -1449,17 +1771,18 @@ class PluginQueueEngine:
 
             row = conn.execute(log_query, tuple(params)).fetchone()
             total_served = row[0] if row else 0
-            avg_service = float(row[1] or 12.0) if row else 12.0
+            avg_service = float(row[1] or 12.0) if row and row[1] else 12.0
 
         return {
             "tenant_id": tenant_id,
             "department": department or "all",
+            "queue_date": str(target_date),
             "active_counters": tenant["active_counters"],
             "waiting_count": len(waiting),
             "serving_count": len(serving),
             "completed_today": total_served,
-            "average_wait_minutes": round(avg_wait, 1),
-            "average_service_minutes": round(avg_service, 1),
+            "avg_wait_minutes": round(avg_wait, 1),
+            "avg_service_minutes": round(avg_service, 1),
         }
 
     def fetch_all_service_logs(self, tenant_id: Optional[str] = None) -> List[dict]:
@@ -2208,7 +2531,7 @@ class PluginQueueEngine:
         time_slot: str,
         patient_id: Optional[int] = None
     ) -> dict:
-        apt_id = f"APT-{random.randint(100000, 999999)}"
+        apt_id = f"APT-{uuid.uuid4().hex[:8].upper()}"
         dept_code = service_category.strip().lower()
 
         with self._get_db() as conn:
@@ -2268,8 +2591,18 @@ class PluginQueueEngine:
             apt = dict(apt_row)
             if apt["status"] in ("completed", "cancelled"):
                 raise ValueError(f"Cannot check in: Appointment status is {apt['status'].upper()}.")
+            if apt["status"] == "expired":
+                raise ValueError("Cannot check in: Appointment has expired.")
 
-            # Generate priority queue ticket
+            apt_date = parse_queue_date(apt["appointment_date"])
+            today = get_current_queue_date()
+
+            if apt_date > today:
+                raise ValueError(f"Check-in not available yet: Your appointment is scheduled for {apt_date.isoformat()} at {apt.get('time_slot', '')}.")
+            if apt_date < today:
+                raise ValueError(f"Cannot check in: Your appointment date ({apt_date.isoformat()}) has expired.")
+
+            # Generate priority queue ticket for today's active queue
             t = self.join_queue(
                 tenant_id=apt.get("hospital_code", "city-hospital-01"),
                 consumer_type=apt.get("consumer_type", "hospital"),
@@ -2277,6 +2610,10 @@ class PluginQueueEngine:
                 name=apt.get("patient_name_db") or "Patient",
                 priority_level=PRIORITY_ROUTINE,
                 user_email=apt.get("user_email_db", ""),
+                patient_id=apt.get("patient_id"),
+                queue_date=today,
+                appointment_id=appointment_id,
+                status="waiting"
             )
 
             conn.execute("""

@@ -449,6 +449,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     service_category VARCHAR(100) NOT NULL,
     name VARCHAR(255) NOT NULL,
     priority_level INTEGER NOT NULL DEFAULT 2 CHECK (priority_level >= 1),
+    queue_date DATE NOT NULL DEFAULT CURRENT_DATE,
     join_timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     status VARCHAR(50) NOT NULL DEFAULT 'waiting',
     predicted_service_minutes DOUBLE PRECISION DEFAULT 10.0,
@@ -497,6 +498,7 @@ CREATE TABLE IF NOT EXISTS service_logs (
     department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
     consumer_type VARCHAR(50) NOT NULL DEFAULT 'hospital',
     service_category VARCHAR(100) NOT NULL,
+    queue_date DATE NOT NULL DEFAULT CURRENT_DATE,
     hour_of_day INTEGER NOT NULL,
     day_of_week INTEGER NOT NULL,
     queue_length INTEGER NOT NULL,
@@ -514,6 +516,7 @@ CREATE TABLE IF NOT EXISTS tenant_historical_data (
     hospital_id INTEGER REFERENCES hospitals(id) ON DELETE CASCADE,
     legacy_tenant_id VARCHAR(100) NOT NULL,
     consumer_type VARCHAR(50) NOT NULL DEFAULT 'hospital',
+    queue_date DATE,
     timestamp TIMESTAMPTZ,
     queue_length INTEGER NOT NULL,
     active_staff_counters INTEGER NOT NULL,
@@ -567,6 +570,7 @@ CREATE INDEX IF NOT EXISTS idx_family_members_user ON family_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_desks_hospital_dept ON desks(hospital_id, department_id);
 CREATE INDEX IF NOT EXISTS idx_kiosks_hospital_dept ON kiosks(hospital_id, department_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_hospital_date ON appointments(hospital_id, appointment_date);
+CREATE INDEX IF NOT EXISTS idx_appointments_hospital_date_status ON appointments(hospital_id, appointment_date, status);
 CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_hospital_status ON tickets(hospital_id, status);
 CREATE INDEX IF NOT EXISTS idx_tickets_dept_status ON tickets(department_id, status);
@@ -602,26 +606,39 @@ def init_postgres_schema(drop_existing: bool = False):
     """Initializes production PostgreSQL tables and relational indexes."""
     if not IS_POSTGRES:
         return
-    with get_db_connection() as conn:
-        if drop_existing:
+
+    if drop_existing:
+        with get_db_connection() as conn:
             for stmt in DROP_SCHEMA_SQL.split(";"):
                 clean_stmt = stmt.strip()
                 if clean_stmt:
                     conn.execute(clean_stmt)
+
+    with get_db_connection() as conn:
         for stmt in POSTGRES_SCHEMA_SQL.split(";"):
             clean_stmt = stmt.strip()
             if clean_stmt:
                 conn.execute(clean_stmt)
 
-        # Safe column migrations for existing databases
-        _safe_migrations = [
-            "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS phone VARCHAR(100) DEFAULT ''",
-        ]
-        for migration in _safe_migrations:
-            try:
+    # Safe column migrations & composite indexes for existing and new databases
+    _safe_migrations = [
+        "ALTER TABLE family_members ADD COLUMN IF NOT EXISTS phone VARCHAR(100) DEFAULT ''",
+        "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS queue_date DATE DEFAULT CURRENT_DATE",
+        "ALTER TABLE service_logs ADD COLUMN IF NOT EXISTS queue_date DATE DEFAULT CURRENT_DATE",
+        "ALTER TABLE tenant_historical_data ADD COLUMN IF NOT EXISTS queue_date DATE",
+        "UPDATE tickets SET queue_date = COALESCE((SELECT a.appointment_date FROM appointments a WHERE a.appointment_id = tickets.appointment_id), (tickets.created_at AT TIME ZONE 'Asia/Kolkata')::date, (tickets.join_timestamp AT TIME ZONE 'Asia/Kolkata')::date, CURRENT_DATE) WHERE queue_date IS NULL",
+        "CREATE INDEX IF NOT EXISTS idx_tickets_hospital_dept_date_status ON tickets(hospital_id, department_id, queue_date, status)",
+        "CREATE INDEX IF NOT EXISTS idx_tickets_hospital_date ON tickets(hospital_id, queue_date)",
+        "CREATE INDEX IF NOT EXISTS idx_appointments_hospital_date_status ON appointments(hospital_id, appointment_date, status)",
+        "CREATE INDEX IF NOT EXISTS idx_service_logs_hospital_date ON service_logs(hospital_id, queue_date)",
+        "CREATE INDEX IF NOT EXISTS idx_tenant_historical_date ON tenant_historical_data(hospital_id, queue_date)",
+    ]
+    for migration in _safe_migrations:
+        try:
+            with get_db_connection() as conn:
                 conn.execute(migration)
-            except Exception as _e:
-                pass  # Column likely already exists
+        except Exception as _e:
+            pass  # Column/index already exists
 
     print("[OK] Production PostgreSQL Schema Initialized (17 Relational Tables & Indexes).")
 

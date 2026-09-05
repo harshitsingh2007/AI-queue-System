@@ -203,13 +203,14 @@ class TestPostgresRedesign(unittest.TestCase):
     def test_06_appointments_and_checkin(self):
         """Verify booking, appointment history, and priority queue check-in."""
         tenant_id = "city-hospital-01"
+        today_str = engine.get_current_queue_date().isoformat()
         apt = engine.book_appointment(
             tenant_id=tenant_id,
             consumer_type="hospital",
             service_category="consultation",
             patient_name="Alice Wonderland",
             user_email="alice@test.org",
-            appointment_date="2026-09-10",
+            appointment_date=today_str,
             time_slot="11:30 AM"
         )
         self.assertEqual(apt["status"], "scheduled")

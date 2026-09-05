@@ -19,6 +19,7 @@ Endpoints & Real-time Features:
 import io
 import json
 import base64
+import asyncio
 import pandas as pd
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse, Response
@@ -28,7 +29,15 @@ from typing import Optional, Dict, Any
 import socketio
 import qrcode
 
-from queue_engine import engine, PRIORITY_EMERGENCY, PRIORITY_ROUTINE, PRIORITY_STANDARD, MAX_PATIENT_QUEUE_ADJUSTMENT
+from queue_engine import (
+    engine,
+    get_current_queue_date,
+    parse_queue_date,
+    PRIORITY_EMERGENCY,
+    PRIORITY_ROUTINE,
+    PRIORITY_STANDARD,
+    MAX_PATIENT_QUEUE_ADJUSTMENT
+)
 from schema_validator import detect_column_mappings, validate_and_transform_dataframe
 from train_model import train_model_for_tenant, get_tenant_model_info, MIN_TRAINING_ROWS
 
@@ -238,6 +247,20 @@ async def _broadcast_queue_update(tenant_id: str):
     alerts = engine.get_tickets_needing_turn_alert(tenant_id)
     if alerts:
         await sio.emit("turn_alert", {"tickets": alerts}, room=tenant_id)
+
+async def _daily_closure_background_loop():
+    """Background worker periodically executing daily queue closure & expiration safely via PostgreSQL advisory lock."""
+    while True:
+        try:
+            # Runs every 60 seconds. Safe across multiple backend workers using advisory lock.
+            engine.close_and_expire_previous_day_queues()
+        except Exception as e:
+            print(f"[WARN] Error in daily closure background task: {e}")
+        await asyncio.sleep(60)
+
+@app.on_event("startup")
+async def on_startup():
+    asyncio.create_task(_daily_closure_background_loop())
 
 # ---------------------------------------------------------------------------
 # Core Queue & Counter Endpoints
@@ -491,10 +514,55 @@ async def get_analytics(tenant_id: str, department: Optional[str] = None):
     return engine.get_tenant_analytics(tenant_id, department=department)
 
 @app.get("/api/v1/plugin/queue/{tenant_id}")
-async def get_queue(tenant_id: str, department: Optional[str] = None):
+async def get_queue(tenant_id: str, department: Optional[str] = None, date: Optional[str] = None):
+    today = get_current_queue_date()
+    if date and str(date).strip() != str(today):
+        # Historical queue query
+        hist_tickets = engine.get_historical_queue_tickets(tenant_id, target_date=date, department=department)
+        return {
+            "snapshot": hist_tickets,
+            "serving": [],
+            "is_historical": True,
+            "queue_date": str(date)
+        }
     return {
         "snapshot": engine.get_queue_snapshot(tenant_id, department=department),
-        "serving": engine.get_serving_tickets(tenant_id, department=department)
+        "serving": engine.get_serving_tickets(tenant_id, department=department),
+        "is_historical": False,
+        "queue_date": str(today)
+    }
+
+@app.get("/api/v1/plugin/queue/{tenant_id}/history")
+async def get_queue_history(tenant_id: str, date: Optional[str] = None, department: Optional[str] = None):
+    hist_tickets = engine.get_historical_queue_tickets(tenant_id, target_date=date, department=department)
+    return {
+        "status": "success",
+        "tenant_id": tenant_id,
+        "date": date or "all",
+        "department": department,
+        "tickets": hist_tickets,
+        "count": len(hist_tickets)
+    }
+
+@app.post("/api/v1/plugin/daily-closure")
+async def trigger_daily_closure(request: Request, payload: Optional[Dict[str, Any]] = None):
+    target_date = None
+    hospital_code = None
+    if payload:
+        target_date = payload.get("target_date")
+        hospital_code = payload.get("hospital_code") or payload.get("tenant_id")
+
+    requester_email = get_requester_email(request)
+    if requester_email:
+        with engine._get_db() as conn:
+            u = conn.execute("SELECT role FROM users WHERE email = %s", (requester_email,)).fetchone()
+            if u and u[0] not in ("superadmin", "admin", "staff"):
+                raise HTTPException(status_code=403, detail="Unauthorized: Only administrative accounts or system processes can execute daily closure.")
+
+    result = engine.close_and_expire_previous_day_queues(target_date=target_date, hospital_code=hospital_code)
+    return {
+        "status": "success",
+        "result": result
     }
 
 @app.get("/api/v1/plugin/qr/{tenant_id}")

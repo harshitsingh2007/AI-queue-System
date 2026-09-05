@@ -50,23 +50,6 @@ export default function MandatoryAuthScreen({
 
   const isHindi = language === "hi";
 
-  // Fast Demo Fill Helper
-  const fillDemoAccount = (role) => {
-    setErrorMsg(null);
-    if (role === "patient") {
-      setLoginIdentifier("rahul.sharma@example.com");
-      setLoginPassword("pass123");
-    } else if (role === "doctor") {
-      setLoginIdentifier("dr.gupta@cityhospital.com");
-      setLoginPassword("pass123");
-    } else if (role === "staff") {
-      setLoginIdentifier("priya.staff@cityhospital.com");
-      setLoginPassword("pass123");
-    } else if (role === "superadmin") {
-      setLoginIdentifier("superadmin@aiqueue.internal");
-      setLoginPassword("pass123");
-    }
-  };
 
   // Submit Unified Login
   const handleLoginSubmit = async (e) => {
@@ -1201,24 +1184,6 @@ export default function MandatoryAuthScreen({
               </form>
             )}
 
-            {/* Quick Demo Accounts Fast Fill */}
-            <div className="pl-demo-bar">
-              <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>
-                {isHindi ? "त्वरित डेमो:" : "Quick Demo:"}
-              </span>
-              <button type="button" onClick={() => fillDemoAccount("patient")} className="pl-demo-pill">
-                Patient
-              </button>
-              <button type="button" onClick={() => fillDemoAccount("doctor")} className="pl-demo-pill">
-                Doctor
-              </button>
-              <button type="button" onClick={() => fillDemoAccount("staff")} className="pl-demo-pill">
-                Staff
-              </button>
-              <button type="button" onClick={() => fillDemoAccount("superadmin")} className="pl-demo-pill">
-                Super Admin
-              </button>
-            </div>
 
             {/* Subtle Security Indicator */}
             <div className="pl-security-badge">

@@ -13,8 +13,8 @@ import { t, getCategoryLabel } from "../utils/i18n";
 export default function KioskPage({
   tenantId,
   analytics,
-  queueSnapshot,
-  servingTickets,
+  queueSnapshot = [],
+  servingTickets = [],
   kioskQrData,
   language = "en",
   setLanguage,
@@ -23,6 +23,7 @@ export default function KioskPage({
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [selectedDept, setSelectedDept] = useState("all");
   const isAdmin = currentUser && currentUser.role === "admin";
 
   useEffect(() => {
@@ -47,6 +48,26 @@ export default function KioskPage({
 
   const formattedTime = currentTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
   const formattedDate = currentTime.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
+  // Filter queues by selected department if not 'all'
+  const displayQueue = (queueSnapshot || []).filter((t) => {
+    if (selectedDept === "all") return true;
+    return (t.service_category || "").toLowerCase() === selectedDept.toLowerCase();
+  });
+
+  const displayServing = (servingTickets || []).filter((t) => {
+    if (selectedDept === "all") return true;
+    return (t.service_category || "").toLowerCase() === selectedDept.toLowerCase();
+  });
+
+  const deptList = [
+    { id: "all", labelEn: "All Departments", labelHi: "सभी विभाग" },
+    { id: "consultation", labelEn: "OPD Consultation", labelHi: "सामान्य परामर्श" },
+    { id: "pharmacy", labelEn: "Pharmacy", labelHi: "दवा वितरण" },
+    { id: "laboratory", labelEn: "Pathology Lab", labelHi: "पैथोलॉजी लैब" },
+    { id: "radiology", labelEn: "Radiology & X-Ray", labelHi: "रेडियोलॉजी" },
+    { id: "emergency", labelEn: "Emergency", labelHi: "आपातकालीन" },
+  ];
 
   return (
     <div style={{ maxWidth: isFullscreen ? "100%" : "1280px", margin: "0 auto", padding: isFullscreen ? "20px 40px" : "0" }}>
@@ -174,27 +195,56 @@ export default function KioskPage({
         </div>
       </div>
 
+      {/* Department Filter Bar */}
+      <div style={{ display: "flex", gap: "8px", overflowX: "auto", paddingBottom: "12px", marginBottom: "16px", scrollbarWidth: "none" }}>
+        {deptList.map((d) => {
+          const isSelected = selectedDept === d.id;
+          return (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setSelectedDept(d.id)}
+              style={{
+                padding: "7px 14px",
+                borderRadius: "10px",
+                border: isSelected ? "1.5px solid #059669" : "1px solid #CBD5E1",
+                background: isSelected ? "#059669" : "#FFFFFF",
+                color: isSelected ? "#FFFFFF" : "#334155",
+                fontSize: "12px",
+                fontWeight: isSelected ? 800 : 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                transition: "all 0.15s ease",
+                boxShadow: isSelected ? "0 2px 8px rgba(5, 150, 105, 0.2)" : "none",
+              }}
+            >
+              {language === "hi" ? d.labelHi : d.labelEn}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Main TV Layout Grid */}
       <div className="kiosk-main-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "24px" }}>
         {/* Now Serving Big Display */}
         <div style={kioskCardStyle}>
           <div style={{ borderBottom: "2px solid #047857", paddingBottom: "12px", marginBottom: "20px" }}>
             <h2 style={{ margin: 0, fontSize: "22px", color: "#064E3B", fontWeight: 900 }}>
-              {t("nowServing", language)}
+              {t("nowServing", language)} {displayServing.length > 0 ? `(${displayServing.length})` : ""}
             </h2>
             <span style={{ fontSize: "12px", color: "#64748B" }}>
               {t("servingNote", language)}
             </span>
           </div>
 
-          {servingTickets.length === 0 ? (
+          {displayServing.length === 0 ? (
             <div style={{ padding: "60px 20px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #CBD5E1", color: "#94A3B8" }}>
               <h3 style={{ margin: 0, fontSize: "18px", color: "#64748B" }}>{t("allDesksAvailable", language)}</h3>
               <p style={{ margin: "4px 0 0 0", fontSize: "13px" }}>{t("callingNextShortly", language)}</p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {servingTickets.map((tItem) => (
+              {displayServing.map((tItem) => (
                 <div key={tItem.ticket_id} style={kioskServingBigCardStyle}>
                   <div>
                     <span style={{ fontSize: "12px", color: "#047857", fontWeight: 800, textTransform: "uppercase" }}>
@@ -219,14 +269,14 @@ export default function KioskPage({
         <div style={kioskCardStyle}>
           <div style={{ borderBottom: "2px solid #0284C7", paddingBottom: "12px", marginBottom: "20px" }}>
             <h2 style={{ margin: 0, fontSize: "22px", color: "#0369A1", fontWeight: 900 }}>
-              {t("waitingQueue", language)} ({queueSnapshot.length})
+              {t("waitingQueue", language)} ({displayQueue.length})
             </h2>
             <span style={{ fontSize: "12px", color: "#64748B" }}>
               {t("waitingQueueNote", language)}
             </span>
           </div>
 
-          {queueSnapshot.length === 0 ? (
+          {displayQueue.length === 0 ? (
             <div style={{ padding: "60px 20px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #CBD5E1", color: "#94A3B8" }}>
               <h3 style={{ margin: 0, fontSize: "18px", color: "#64748B" }}>{t("noWaitingPatients", language)}</h3>
               <p style={{ margin: "4px 0 0 0", fontSize: "13px" }}>{t("queueClearMsg", language)}</p>
@@ -244,7 +294,7 @@ export default function KioskPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {queueSnapshot.slice(0, 8).map((item) => (
+                  {displayQueue.slice(0, 12).map((item) => (
                     <tr key={item.ticket_id}>
                       <td style={{ ...kioskTdStyle, fontWeight: 800, color: "#475569" }}>#{item.position}</td>
                       <td style={{ ...kioskTdStyle, fontWeight: 900, color: "#047857", fontSize: "16px" }}>#{item.ticket_id}</td>

@@ -97,7 +97,7 @@ export default function Header({
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(226, 232, 240, 0.95);
             border-radius: 20px;
-            box-shadow: 0 4px 24px -2px rgba(4, 78, 59, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02);
+            box-shadow: 0 4px 24px -2px rgba(2, 132, 199, 0.06), 0 1px 3px rgba(0, 0, 0, 0.02);
             position: relative;
             z-index: 100;
             flex-wrap: wrap;
@@ -219,13 +219,13 @@ export default function Header({
           }
 
           .header-dropdown-item:hover {
-            background: #F1F5F9;
-            color: #044E3B;
+            background: #F0F9FF;
+            color: #0284C7;
           }
 
           .header-dropdown-item.active {
-            background: #ECFDF5;
-            color: #047857;
+            background: #F0F9FF;
+            color: #0284C7;
             font-weight: 700;
           }
 
@@ -301,7 +301,7 @@ export default function Header({
               />
               <path
                 d="M12 7.5v9M7.5 12h9"
-                stroke="#044E3B"
+                stroke="#0284C7"
                 strokeWidth="2.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -310,18 +310,18 @@ export default function Header({
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#064E3B", letterSpacing: "-0.4px", lineHeight: "1.2", maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#0F172A", letterSpacing: "-0.4px", lineHeight: "1.2", maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {currentUser?.hospital_name || HOSPITAL_CONFIG.name}
               </span>
-              <span style={{ padding: "2px 7px", borderRadius: "20px", background: "#ECFDF5", color: "#047857", fontSize: "10px", fontWeight: 800, border: "1px solid #A7F3D0", whiteSpace: "nowrap" }}>
+              <span style={{ padding: "2px 7px", borderRadius: "20px", background: "#F0F9FF", color: "#0284C7", fontSize: "10px", fontWeight: 800, border: "1px solid #BAE6FD", whiteSpace: "nowrap" }}>
                 NABH ACCREDITED
               </span>
             </div>
             <div style={{ fontSize: "11.5px", color: "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
               <span>{language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा" : "Care you can trust"}</span>
               <span>•</span>
-              <span style={{ color: socketConnected ? "#059669" : "#D97706", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700 }}>
-                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: socketConnected ? "#10B981" : "#F59E0B", display: "inline-block" }} />
+              <span style={{ color: socketConnected ? "#0284C7" : "#D97706", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700 }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: socketConnected ? "#0EA5E9" : "#F59E0B", display: "inline-block" }} />
                 {socketConnected
                   ? (language === "hi" ? "AI ट्राइएज सक्रिय" : "AI Triage Active")
                   : (language === "hi" ? "कनेक्ट हो रहा है..." : "Connecting...")}
@@ -339,10 +339,10 @@ export default function Header({
               onClick={() => navigateTo("superadmin")}
               className={`header-nav-btn ${activePage === "superadmin" ? "active" : ""}`}
               style={{
-                background: activePage === "superadmin" ? "#044E3B" : "#ECFDF5",
-                color: activePage === "superadmin" ? "#FFFFFF" : "#047857",
+                background: activePage === "superadmin" ? "#0F172A" : "#F0F9FF",
+                color: activePage === "superadmin" ? "#FFFFFF" : "#0284C7",
                 fontWeight: 800,
-                border: "1px solid #10B981",
+                border: "1px solid #BAE6FD",
               }}
               title="Super Admin / Hospital Owner Network Portal"
             >
@@ -358,10 +358,10 @@ export default function Header({
               onClick={() => navigateTo("staff")}
               className={`header-nav-btn ${activePage === "staff" ? "active" : ""}`}
               style={{
-                background: activePage === "staff" ? "#044E3B" : "#F0FDF4",
-                color: activePage === "staff" ? "#FFFFFF" : "#064E3B",
+                background: activePage === "staff" ? "#0F172A" : "#F0F9FF",
+                color: activePage === "staff" ? "#FFFFFF" : "#0284C7",
                 fontWeight: 800,
-                border: "1px solid #A7F3D0",
+                border: "1px solid #BAE6FD",
               }}
               title="Doctor & Staff Desk"
             >
@@ -731,7 +731,7 @@ export default function Header({
                 </svg>
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
                   {language === "hi" ? "सिटी जनरल अस्पताल के बारे में" : "About City General Hospital"}
                 </h3>
                 <span style={{ fontSize: "12px", color: "#64748B" }}>
@@ -749,19 +749,19 @@ export default function Header({
             <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "14px", border: "1px solid #E2E8F0", marginBottom: "20px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px" }}>
                 <div>
-                  <strong style={{ color: "#047857" }}>{language === "hi" ? "✓ 24/7 आपातकालीन ट्राइएज" : "✓ 24/7 Emergency Triage"}</strong>
+                  <strong style={{ color: "#0284C7" }}>{language === "hi" ? "✓ 24/7 आपातकालीन ट्राइएज" : "✓ 24/7 Emergency Triage"}</strong>
                   <div style={{ color: "#64748B", marginTop: "2px" }}>{language === "hi" ? "प्राथमिकता एम्बुलेंस एवं आईसीयू" : "Priority ambulance & ICU care"}</div>
                 </div>
                 <div>
-                  <strong style={{ color: "#047857" }}>{language === "hi" ? "✓ AI प्रतीक्षा भविष्यवाणी" : "✓ AI Wait Prediction"}</strong>
+                  <strong style={{ color: "#0284C7" }}>{language === "hi" ? "✓ AI प्रतीक्षा भविष्यवाणी" : "✓ AI Wait Prediction"}</strong>
                   <div style={{ color: "#64748B", marginTop: "2px" }}>{language === "hi" ? "लाइव कतार सिंक्रोनाइज़ेशन" : "Live queue synchronization"}</div>
                 </div>
                 <div>
-                  <strong style={{ color: "#047857" }}>{language === "hi" ? "✓ बहु-विशेषज्ञता ओपीडी" : "✓ Multi-Specialty OPD"}</strong>
+                  <strong style={{ color: "#0284C7" }}>{language === "hi" ? "✓ बहु-विशेषज्ञता ओपीडी" : "✓ Multi-Specialty OPD"}</strong>
                   <div style={{ color: "#64748B", marginTop: "2px" }}>{language === "hi" ? "सामान्य, हृदय, न्यूरो, ऑर्थो" : "General, Cardiac, Neuro, Ortho"}</div>
                 </div>
                 <div>
-                  <strong style={{ color: "#047857" }}>{language === "hi" ? "✓ डिजिटल ई-प्रिस्क्रिप्शन" : "✓ Digital E-Prescriptions"}</strong>
+                  <strong style={{ color: "#0284C7" }}>{language === "hi" ? "✓ डिजिटल ई-प्रिस्क्रिप्शन" : "✓ Digital E-Prescriptions"}</strong>
                   <div style={{ color: "#64748B", marginTop: "2px" }}>{language === "hi" ? "सहज फार्मेसी रीफिल" : "Seamless pharmacy refills"}</div>
                 </div>
               </div>
@@ -787,7 +787,7 @@ export default function Header({
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                   <path
                     d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z"
-                    fill="#044E3B"
+                    fill="#0284C7"
                   />
                   <path
                     d="M12 7.5v9M7.5 12h9"
@@ -799,7 +799,7 @@ export default function Header({
                 </svg>
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
                   {language === "hi" ? "संपर्क एवं सहायता डेस्क" : "Contact & Support"}
                 </h3>
                 <span style={{ fontSize: "12px", color: "#64748B" }}>
@@ -819,7 +819,7 @@ export default function Header({
               </div>
 
               <div style={contactInfoCardStyle}>
-                <div style={{ fontWeight: 700, fontSize: "12.5px", color: "#047857", display: "flex", alignItems: "center", gap: "6px" }}>
+                <div style={{ fontWeight: 700, fontSize: "12.5px", color: "#0284C7", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>🏥</span> {language === "hi" ? "ओपीडी रिसेप्शन एवं कतार सहायता" : "OPD Reception & Queue Help Desk"}
                 </div>
                 <div style={{ fontSize: "14px", fontWeight: 700, color: "#0F172A", marginTop: "3px" }}>

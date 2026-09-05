@@ -10,19 +10,19 @@
       "MAE": 1.762,
       "RMSE": 2.31,
       "R2": 0.9441,
-      "Fit_Time_Sec": 0.701
+      "Fit_Time_Sec": 0.084
     },
     "HistGradientBoosting": {
       "MAE": 1.283,
       "RMSE": 1.62,
       "R2": 0.9725,
-      "Fit_Time_Sec": 4.312
+      "Fit_Time_Sec": 2.829
     },
     "RandomForest": {
       "MAE": 2.128,
       "RMSE": 2.829,
       "R2": 0.9162,
-      "Fit_Time_Sec": 0.099
+      "Fit_Time_Sec": 0.106
     }
   },
   "top_features": {},
@@ -64,5 +64,5 @@
   ],
   "feature_schema_version": "2.0_engineered",
   "data_source": "synthetic",
-  "trained_at": "2026-09-03 23:32:11"
+  "trained_at": "2026-09-05 22:05:09"
 }

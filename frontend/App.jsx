@@ -562,18 +562,7 @@ function AuthModal({ authMode, setAuthMode, onClose, onLoginSuccess }) {
           </div>
         )}
 
-        {/* Demo Quick Logins */}
-        <div style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #334155", textAlign: "center" }}>
-          <span style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginBottom: "8px" }}>Quick Demo Credentials:</span>
-          <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
-            <button type="button" onClick={() => handleQuickLogin("admin")} style={quickBtnStyle}>
-              🛡️ Quick Staff Admin Login
-            </button>
-            <button type="button" onClick={() => handleQuickLogin("user")} style={quickBtnStyle}>
-              📱 Quick Consumer Login
-            </button>
-          </div>
-        </div>
+
       </div>
     </div>
   );
@@ -734,18 +723,7 @@ function MandatoryAuthScreen({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* Demo Quick Logins */}
-        <div style={{ marginTop: "20px", paddingTop: "14px", borderTop: "1px solid #334155", textAlign: "center" }}>
-          <span style={{ fontSize: "11px", color: "#94a3b8", display: "block", marginBottom: "8px" }}>Quick Demo 1-Click Login:</span>
-          <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
-            <button type="button" onClick={() => handleQuickLogin("admin")} style={quickBtnStyle}>
-              🛡️ Quick Staff Admin Login
-            </button>
-            <button type="button" onClick={() => handleQuickLogin("user")} style={quickBtnStyle}>
-              📱 Quick Consumer Login
-            </button>
-          </div>
-        </div>
+
       </div>
     </div>
   );

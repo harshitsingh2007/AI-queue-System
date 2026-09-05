@@ -265,13 +265,13 @@ export default function PatientPage({
 
   const historyAppointments = userAppointments.filter((apt) => {
     const s = (apt.status || "").toLowerCase();
-    return s === "completed" || s === "transferred" || s === "cancelled" || s === "no_show";
+    return s === "completed" || s === "transferred" || s === "cancelled" || s === "no_show" || s === "expired";
   });
 
-  // Walk-in tickets that are completed or cancelled — these are NOT in appointments table
+  // Walk-in tickets that are completed, cancelled, expired, or no_show — these are NOT in appointments table
   const historyTickets = userTicketHistory.filter((t) => {
     const s = (t.status || "").toLowerCase();
-    return s === "completed" || s === "cancelled" || s === "transferred" || s === "no_show";
+    return s === "completed" || s === "cancelled" || s === "transferred" || s === "no_show" || s === "expired";
   });
 
   useEffect(() => {
@@ -1202,9 +1202,9 @@ export default function PatientPage({
                       style={{
                         padding: "4px 10px",
                         borderRadius: "6px",
-                        background: "#ECFDF5",
-                        color: "#047857",
-                        border: "1px solid #A7F3D0",
+                        background: "#F0F9FF",
+                        color: "#0284C7",
+                        border: "1px solid #BAE6FD",
                         fontSize: "11px",
                         fontWeight: 700,
                       }}
@@ -1451,7 +1451,7 @@ export default function PatientPage({
                           <div style={{ fontSize: "14.5px", fontWeight: 800, letterSpacing: "-0.2px", color: "#FFFFFF", lineHeight: 1.2 }}>
                             {t("getTicketBtn", language)}
                           </div>
-                          <div style={{ fontSize: "11px", fontWeight: 500, color: "#A7F3D0", marginTop: "2px" }}>
+                          <div style={{ fontSize: "11px", fontWeight: 500, color: "#BAE6FD", marginTop: "2px" }}>
                             Generate Token & Join Queue
                           </div>
                         </div>
@@ -1616,9 +1616,9 @@ export default function PatientPage({
                     marginTop: "16px",
                     padding: "12px",
                     borderRadius: "10px",
-                    background: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "#FEF2F2" : "#ECFDF5",
-                    border: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "1px solid #FECACA" : "1px solid #A7F3D0",
-                    color: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "#DC2626" : "#047857",
+                    background: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "#FEF2F2" : "#F0F9FF",
+                    border: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "1px solid #FECACA" : "1px solid #BAE6FD",
+                    color: statusMsg.toLowerCase().includes("error") || statusMsg.toLowerCase().includes("failed") ? "#DC2626" : "#0284C7",
                     fontSize: "13px",
                     textAlign: "center",
                     fontWeight: 600,
@@ -1668,7 +1668,7 @@ export default function PatientPage({
         <div style={standaloneCardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
+              <h3 style={{ margin: 0, fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
                 {t("myActiveAppointments", language)}
               </h3>
               <span style={{ fontSize: "12px", color: "#64748B" }}>
@@ -1690,8 +1690,8 @@ export default function PatientPage({
           </div>
 
           {/* Name lookup for guests / unmatched users */}
-          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "#F0FDF4", borderRadius: "12px", border: "1px solid #BBF7D0", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#047857" }}>🔍 Look up by name:</span>
+          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "#F0F9FF", borderRadius: "12px", border: "1px solid #BAE6FD", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7" }}>🔍 Look up by name:</span>
             <input
               id="apt-search-name"
               type="text"
@@ -1705,7 +1705,7 @@ export default function PatientPage({
                 }
               }}
               placeholder="Enter your full name (e.g. Alice Wonderland)"
-              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #A7F3D0", fontSize: "13px", outline: "none" }}
+              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #BAE6FD", fontSize: "13px", outline: "none" }}
             />
             <button
               id="apt-search-btn"
@@ -1716,7 +1716,7 @@ export default function PatientPage({
                 fetchUserAppointments(aptSearchName.trim());
                 setTimeout(() => setAptSearchLoading(false), 800);
               }}
-              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#047857", color: "#fff", fontWeight: 700, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
+              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#0284C7", color: "#fff", fontWeight: 700, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
             >
               {aptSearchLoading ? "Searching..." : "Search"}
             </button>
@@ -1729,7 +1729,7 @@ export default function PatientPage({
               <button
                 type="button"
                 onClick={() => handleTabChange("book")}
-                style={{ padding: "10px 20px", borderRadius: "10px", border: "none", background: "#047857", color: "#FFFFFF", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                style={{ padding: "10px 20px", borderRadius: "10px", border: "none", background: "#0284C7", color: "#FFFFFF", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
               >
                 Reserve Time Slot Now
               </button>
@@ -1740,7 +1740,7 @@ export default function PatientPage({
                 <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
                   <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "16px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
+                      <span style={{ fontSize: "16px", fontWeight: 900, color: "#0284C7" }}>{apt.appointment_id}</span>
                       <span style={aptStatusBadgeStyle(apt.status)}>{apt.status.toUpperCase()}</span>
                     </div>
                     <p style={{ margin: "6px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>
@@ -1761,7 +1761,7 @@ export default function PatientPage({
                       </button>
                     ) : (
                       <div style={{ textAlign: "right" }}>
-                        <span style={{ fontSize: "13px", color: "#047857", fontWeight: 800, display: "block" }}>
+                        <span style={{ fontSize: "13px", color: "#0284C7", fontWeight: 800, display: "block" }}>
                           {t("mergedToken", language)} #{apt.ticket_id}
                         </span>
                         <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
@@ -1780,7 +1780,7 @@ export default function PatientPage({
         <div style={standaloneCardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div>
-              <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#064E3B", fontWeight: 800 }}>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
                 {t("appointmentHistory", language)}
               </h3>
               <span style={{ fontSize: "12.5px", color: "#64748B" }}>
@@ -1790,8 +1790,8 @@ export default function PatientPage({
           </div>
 
           {/* Name lookup for guests / unmatched users */}
-          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "#F0FDF4", borderRadius: "12px", border: "1px solid #BBF7D0", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#047857" }}>🔍 Look up by name:</span>
+          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "#F0F9FF", borderRadius: "12px", border: "1px solid #BAE6FD", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7" }}>🔍 Look up by name:</span>
             <input
               id="history-search-name"
               type="text"
@@ -1806,7 +1806,7 @@ export default function PatientPage({
                 }
               }}
               placeholder="Enter your full name (e.g. Harshit Singh)"
-              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #A7F3D0", fontSize: "13px", outline: "none" }}
+              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #BAE6FD", fontSize: "13px", outline: "none" }}
             />
             <button
               id="history-search-btn"
@@ -1818,7 +1818,7 @@ export default function PatientPage({
                 fetchUserTicketHistory(aptSearchName.trim());
                 setTimeout(() => setAptSearchLoading(false), 1000);
               }}
-              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#047857", color: "#fff", fontWeight: 700, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
+              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#0284C7", color: "#fff", fontWeight: 700, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
             >
               {aptSearchLoading ? "Searching..." : "Search"}
             </button>
@@ -1836,14 +1836,14 @@ export default function PatientPage({
               {historyTickets.length > 0 && (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", textTransform: "uppercase", letterSpacing: "0.5px" }}>🎫 Walk-in Queue Tickets</span>
-                    <div style={{ flex: 1, height: "1px", background: "#D1FAE5" }} />
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", textTransform: "uppercase", letterSpacing: "0.5px" }}>🎫 Walk-in Queue Tickets</span>
+                    <div style={{ flex: 1, height: "1px", background: "#BAE6FD" }} />
                   </div>
                   {historyTickets.map((tk) => (
                     <div key={tk.ticket_id} style={aptCardRowStyle(tk.status)}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                          <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>#{tk.ticket_id}</span>
+                          <span style={{ fontSize: "15px", fontWeight: 900, color: "#0284C7" }}>#{tk.ticket_id}</span>
                           <span style={aptStatusBadgeStyle(tk.status)}>{getStatusLabel(tk.status || "completed", language)}</span>
                           <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600, padding: "2px 7px", background: "#F1F5F9", borderRadius: "5px", border: "1px solid #E2E8F0" }}>
                             Walk-in
@@ -1862,11 +1862,11 @@ export default function PatientPage({
                           </p>
                         )}
                         {tk.prescription_notes && (
-                          <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
-                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", display: "block" }}>
+                          <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", display: "block" }}>
                               💊 {t("ePrescriptionLabel", language)}
                             </span>
-                            <span style={{ fontSize: "12.5px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
+                            <span style={{ fontSize: "12.5px", color: "#0369A1", fontWeight: 600, fontStyle: "italic" }}>
                               "{tk.prescription_notes}"
                             </span>
                           </div>
@@ -1874,7 +1874,7 @@ export default function PatientPage({
                       </div>
                       <div style={{ textAlign: "right", marginLeft: "14px" }}>
                         <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("finalVisitStatus", language)}</span>
-                        <span style={{ fontSize: "12px", fontWeight: 800, color: tk.status === "completed" ? "#047857" : "#DC2626" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 800, color: tk.status === "completed" ? "#0284C7" : "#DC2626" }}>
                           {getStatusLabel(tk.status || "completed", language)}
                         </span>
                       </div>
@@ -1888,13 +1888,13 @@ export default function PatientPage({
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: historyTickets.length > 0 ? "10px" : "0", marginBottom: "4px" }}>
                     <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", textTransform: "uppercase", letterSpacing: "0.5px" }}>📅 Pre-Scheduled Appointments</span>
-                    <div style={{ flex: 1, height: "1px", background: "#BFDBFE" }} />
+                    <div style={{ flex: 1, height: "1px", background: "#BAE6FD" }} />
                   </div>
                   {historyAppointments.map((apt) => (
                     <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span style={{ fontSize: "15px", fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</span>
+                          <span style={{ fontSize: "15px", fontWeight: 900, color: "#0284C7" }}>{apt.appointment_id}</span>
                           <span style={aptStatusBadgeStyle(apt.status)}>{getStatusLabel(apt.status || "COMPLETED", language)}</span>
                           {apt.ticket_id && (
                             <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
@@ -1910,11 +1910,11 @@ export default function PatientPage({
                         </span>
 
                         {apt.prescription_notes && (
-                          <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
-                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", display: "block" }}>
+                          <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", display: "block" }}>
                               💊 {t("ePrescriptionLabel", language)}
                             </span>
-                            <span style={{ fontSize: "12.5px", color: "#064E3B", fontWeight: 600, fontStyle: "italic" }}>
+                            <span style={{ fontSize: "12.5px", color: "#0369A1", fontWeight: 600, fontStyle: "italic" }}>
                               "{apt.prescription_notes}"
                             </span>
                           </div>
@@ -1925,7 +1925,7 @@ export default function PatientPage({
                         <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>
                           {t("finalVisitStatus", language)}
                         </span>
-                        <span style={{ fontSize: "12px", fontWeight: 800, color: apt.status === "completed" ? "#047857" : "#0284C7" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 800, color: apt.status === "completed" ? "#0284C7" : "#0284C7" }}>
                           {getStatusLabel(apt.status || "completed", language)}
                         </span>
                       </div>
@@ -2036,11 +2036,11 @@ export default function PatientPage({
         <div style={modalBackdropStyle}>
           <div style={modalContentStyle}>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#ECFDF5", color: "#047857", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#F0F9FF", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
                 ⏱️
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
                   Running late?
                 </h3>
                 <span style={{ fontSize: "12px", color: "#64748B" }}>
@@ -2230,9 +2230,9 @@ const aptCardRowStyle = (status) => {
       justifyContent: "space-between",
       alignItems: "center",
       padding: "14px",
-      background: "#ECFDF5",
+      background: "#F0F9FF",
       borderRadius: "12px",
-      border: "1px solid #A7F3D0",
+      border: "1px solid #BAE6FD",
     };
   }
   if (s === "completed" || s === "transferred") {
@@ -2262,8 +2262,8 @@ const aptStatusBadgeStyle = (status) => {
   if (s === "completed") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1" };
   if (s === "transferred") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#E0F2FE", color: "#0284C7", border: "1px solid #BAE6FD" };
   if (s === "serving") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#FEF3C7", color: "#D97706", border: "1px solid #FDE68A" };
-  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" };
-  if (s === "cancelled" || s === "no_show") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" };
+  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F0F9FF", color: "#0284C7", border: "1px solid #BAE6FD" };
+  if (s === "cancelled" || s === "no_show" || s === "expired") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" };
   return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
 };
 
@@ -2272,15 +2272,15 @@ const passStatusBadgeStyle = (status) => ({
   borderRadius: "6px",
   fontSize: "11px",
   fontWeight: 700,
-  background: status === "serving" ? "#ECFDF5" : "#FEF3C7",
-  color: status === "serving" ? "#047857" : "#D97706",
-  border: status === "serving" ? "1px solid #A7F3D0" : "1px solid #FDE68A",
+  background: status === "serving" ? "#F0F9FF" : "#FEF3C7",
+  color: status === "serving" ? "#0284C7" : "#D97706",
+  border: status === "serving" ? "1px solid #BAE6FD" : "1px solid #FDE68A",
 });
 
 const dashboardFooterStyle = {
   marginTop: "36px",
   paddingTop: "20px",
-  borderTop: "1px solid #D8E8DD",
+  borderTop: "1px solid #E2E8F0",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -2292,7 +2292,7 @@ const footerLogoIconStyle = {
   width: "28px",
   height: "28px",
   borderRadius: "8px",
-  background: "#044E3B",
+  background: "#0284C7",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -2320,24 +2320,24 @@ function QueueTelemetrySidebar({
       <div className="telemetry-sidebar-card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981", boxShadow: "0 0 8px #10B981" }} />
-            <span style={{ fontSize: "13px", fontWeight: 800, color: "#064E3B" }}>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#0EA5E9", boxShadow: "0 0 8px #0EA5E9" }} />
+            <span style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A" }}>
               {language === "hi" ? "लाइव कतार मॉनिटर" : "Live Queue Monitor"}
             </span>
           </div>
-          <span style={{ fontSize: "11px", fontWeight: 700, color: "#047857", background: "#ECFDF5", padding: "2px 8px", borderRadius: "6px" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px" }}>
             {analytics ? `${analytics.active_counters} ${language === "hi" ? "डेस्क सक्रिय" : "Desks Active"}` : (language === "hi" ? "2 डेस्क सक्रिय" : "2 Desks Active")}
           </span>
         </div>
 
         {/* Now Serving Highlight */}
-        <div style={{ background: "linear-gradient(135deg, #064E3B 0%, #043828 100%)", borderRadius: "14px", padding: "16px", color: "#FFFFFF" }}>
-          <div style={{ fontSize: "11px", color: "#A7F3D0", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+        <div style={{ background: "linear-gradient(135deg, #0F172A 0%, #1E293B 70%, #0C4A6E 100%)", borderRadius: "14px", padding: "16px", color: "#FFFFFF" }}>
+          <div style={{ fontSize: "11px", color: "#38BDF8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             {t("nowServing", language)}
           </div>
           {primaryServing ? (
             <div style={{ marginTop: "4px" }}>
-              <div style={{ fontSize: "32px", fontWeight: 900, color: "#34D399", lineHeight: 1.1 }}>
+              <div style={{ fontSize: "32px", fontWeight: 900, color: "#38BDF8", lineHeight: 1.1 }}>
                 #{primaryServing.ticket_id}
               </div>
               <div style={{ fontSize: "14px", fontWeight: 700, marginTop: "2px" }}>
@@ -2360,7 +2360,7 @@ function QueueTelemetrySidebar({
             <span style={{ fontSize: "10.5px", color: "#64748B", display: "block" }}>
               {language === "hi" ? "औसत प्रतीक्षा" : "Est. Avg Wait"}
             </span>
-            <span style={{ fontSize: "16px", fontWeight: 800, color: "#047857" }}>
+            <span style={{ fontSize: "16px", fontWeight: 800, color: "#0284C7" }}>
               {analytics ? analytics.avg_wait_minutes : 12} {language === "hi" ? "मिनट" : "min"}
             </span>
           </div>
@@ -2391,7 +2391,7 @@ function QueueTelemetrySidebar({
                     <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{item.name}</span>
                   </div>
                 </div>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#059669" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>
                   ~{item.estimated_wait_minutes}{language === "hi" ? "मि" : "m"}
                 </span>
               </div>

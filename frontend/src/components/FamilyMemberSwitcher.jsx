@@ -69,7 +69,7 @@ export function AddFamilyMemberModal({
       <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
         <div style={modalHeaderStyle}>
           <div>
-            <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#064E3B", fontWeight: 800 }}>
+            <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#0F172A", fontWeight: 800 }}>
               {t("addMemberTitle", language)}
             </h3>
             <span style={{ fontSize: "12px", color: "#64748B" }}>

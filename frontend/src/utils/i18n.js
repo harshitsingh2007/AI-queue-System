@@ -229,6 +229,10 @@ export const TRANSLATIONS = {
     todayApts: "Appointments",
     noServingTickets: "No patient currently being served at this desk.",
     noWaitingInDept: "No patients waiting in this department queue.",
+    expired: "Expired",
+    no_show: "No-Show",
+    scheduled: "Scheduled",
+    waiting: "Waiting",
   },
   hi: {
     systemTitle: "अस्पताल कतार प्रणाली",
@@ -453,6 +457,10 @@ export const TRANSLATIONS = {
     todayApts: "अपॉइंटमेंट्स",
     noServingTickets: "वर्तमान में इस डेस्क पर कोई मरीज़ सेवारत नहीं है।",
     noWaitingInDept: "इस विभाग की कतार में कोई मरीज़ प्रतीक्षारत नहीं है।",
+    expired: "समाप्त",
+    no_show: "अनुपस्थित",
+    scheduled: "निर्धारित",
+    waiting: "प्रतीक्षारत",
   }
 };
 
@@ -482,6 +490,8 @@ export const getStatusLabel = (status, lang = "en") => {
     scheduled: lang === "hi" ? "निर्धारित" : "Scheduled",
     checked_in: lang === "hi" ? "चेक इन पूर्ण" : "Checked In",
     cancelled: lang === "hi" ? "रद्द" : "Cancelled",
+    expired: lang === "hi" ? "समाप्त" : "Expired",
+    no_show: lang === "hi" ? "अनुपस्थित" : "No-Show",
   };
   return map[status] || status;
 };
