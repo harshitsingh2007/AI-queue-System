@@ -1081,6 +1081,21 @@ async def update_hospital_endpoint(hospital_code: str, payload: HospitalUpdateRe
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/api/v1/superadmin/hospitals/{hospital_code}")
+async def delete_hospital_endpoint(hospital_code: str, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have ownership of this hospital.")
+    try:
+        res = engine.delete_hospital(hospital_code=hospital_code)
+        if res.get("status") == "error":
+            raise HTTPException(status_code=400, detail=res.get("message"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/v1/superadmin/hospitals/{hospital_code}/employees")
 async def get_hospital_employees_endpoint(hospital_code: str, request: Request):
     requester = get_requester_email(request)

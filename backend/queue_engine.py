@@ -1986,7 +1986,7 @@ class PluginQueueEngine:
             # Fetch patient/employee context if available
             pat = conn.execute("SELECT * FROM patients WHERE user_id = %s", (u["id"],)).fetchone()
             emp = conn.execute("""
-                SELECT e.*, h.hospital_code, d.dept_code
+                SELECT e.*, h.hospital_code, h.name AS hospital_name, d.dept_code
                 FROM employees e
                 JOIN hospitals h ON h.id = e.hospital_id
                 LEFT JOIN departments d ON d.id = e.department_id
@@ -2014,17 +2014,22 @@ class PluginQueueEngine:
             if emp:
                 e_dict = dict(emp)
                 res["hospital_code"] = e_dict.get("hospital_code", "city-hospital-01")
+                res["hospital_name"] = e_dict.get("hospital_name", "City General Hospital")
                 res["department"] = e_dict.get("dept_code", "all")
                 res["employee_id"] = e_dict.get("employee_code", "")
             elif owned_h:
                 res["hospital_code"] = owned_h[1]
                 res["hospital_name"] = owned_h[2]
+            elif u.get("role") in ["doctor", "staff", "admin", "receptionist"]:
+                # Default fallback if employee row isn't linked
+                res["hospital_code"] = "city-hospital-01"
+                res["hospital_name"] = "City General Hospital"
 
             return res
 
     def get_user_by_email(self, email: str) -> Optional[dict]:
         with self._get_db() as conn:
-            r = conn.execute("SELECT id, email, username, role, status, phone, created_at, last_login_at FROM users WHERE email = %s", (email.strip().lower(),)).fetchone()
+            r = conn.execute("SELECT id, email, username, role, status, phone, created_at, last_login_at FROM users WHERE LOWER(email) = %s", (email.strip().lower(),)).fetchone()
             if not r:
                 return None
             u = dict(r)
@@ -2034,6 +2039,27 @@ class PluginQueueEngine:
                 u["medical_id"] = p.get("medical_id", "")
                 u["age"] = p.get("age", 0)
                 u["gender"] = p.get("gender", "")
+            emp = conn.execute("""
+                SELECT e.*, h.hospital_code, h.name AS hospital_name, d.dept_code
+                FROM employees e
+                JOIN hospitals h ON h.id = e.hospital_id
+                LEFT JOIN departments d ON d.id = e.department_id
+                WHERE e.user_id = %s
+            """, (u["id"],)).fetchone()
+            if emp:
+                e_dict = dict(emp)
+                u["hospital_code"] = e_dict.get("hospital_code", "city-hospital-01")
+                u["hospital_name"] = e_dict.get("hospital_name", "City General Hospital")
+                u["department"] = e_dict.get("dept_code", "all")
+                u["employee_id"] = e_dict.get("employee_code", "")
+            else:
+                owned_h = conn.execute("SELECT id, hospital_code, name FROM hospitals WHERE owner_user_id = %s", (u["id"],)).fetchone()
+                if owned_h:
+                    u["hospital_code"] = owned_h[1]
+                    u["hospital_name"] = owned_h[2]
+                elif u.get("role") in ["doctor", "staff", "admin", "receptionist"]:
+                    u["hospital_code"] = "city-hospital-01"
+                    u["hospital_name"] = "City General Hospital"
             return u
 
     def update_user_profile(
@@ -2153,16 +2179,12 @@ class PluginQueueEngine:
             if not u:
                 return False
 
-            uid, role = u[0], u[1]
+            uid, role = u[0], (u[1] or "").lower()
 
-            # 1. Super Admin owns the hospital or created it
-            if role == "superadmin":
+            # 1. Super Admin strictly owns the hospital
+            if role in ("superadmin", "super_admin", "hospital_owner"):
                 h = conn.execute("SELECT id FROM hospitals WHERE hospital_code = %s AND owner_user_id = %s", (h_code, uid)).fetchone()
-                if h:
-                    return True
-                # Allow default hospital if superadmin
-                if h_code in ("city-hospital-01", "default"):
-                    return True
+                return bool(h)
 
             # 2. Hospital Admin / Doctor / Staff belongs to this hospital
             emp = conn.execute("""
@@ -2179,25 +2201,101 @@ class PluginQueueEngine:
     # ------------------------------------------------------------------
     def get_superadmin_overview(self, requester_email: str = "") -> dict:
         with self._get_db() as conn:
-            h_count = conn.execute("SELECT count(*) FROM hospitals WHERE status = 'active'").fetchone()[0]
-            u_count = conn.execute("SELECT count(*) FROM users").fetchone()[0]
-            t_count = conn.execute("SELECT count(*) FROM tickets").fetchone()[0]
-            d_count = conn.execute("SELECT count(*) FROM desks").fetchone()[0]
+            owner_uid = None
+            if requester_email:
+                u = conn.execute("SELECT id, role FROM users WHERE email = %s", (requester_email.strip().lower(),)).fetchone()
+                if u and (u[1] or "").lower() in ("superadmin", "super_admin", "hospital_owner"):
+                    owner_uid = u[0]
+
+            if owner_uid:
+                # Scoped to hospitals owned by this Super Admin
+                total_h = conn.execute("SELECT count(*) FROM hospitals WHERE owner_user_id = %s", (owner_uid,)).fetchone()[0]
+                h_count = conn.execute("SELECT count(*) FROM hospitals WHERE owner_user_id = %s AND status = 'active'", (owner_uid,)).fetchone()[0]
+                
+                h_rows = conn.execute("SELECT id, hospital_code FROM hospitals WHERE owner_user_id = %s", (owner_uid,)).fetchall()
+                h_ids = [r[0] for r in h_rows]
+                h_codes = [r[1] for r in h_rows]
+
+                if h_ids:
+                    total_emp = conn.execute("SELECT count(*) FROM employees WHERE hospital_id = ANY(%s) AND status = 'active'", (h_ids,)).fetchone()[0]
+                    active_docs = conn.execute("""
+                        SELECT count(DISTINCT e.id) 
+                        FROM employees e 
+                        JOIN users u ON u.id = e.user_id 
+                        WHERE e.hospital_id = ANY(%s) AND (u.role = 'doctor' OR u.role = 'admin') AND e.status = 'active'
+                    """, (h_ids,)).fetchone()[0]
+                    total_desks = conn.execute("SELECT count(*) FROM desks WHERE hospital_id = ANY(%s)", (h_ids,)).fetchone()[0]
+                    active_desks = conn.execute("SELECT count(*) FROM desks WHERE hospital_id = ANY(%s) AND status IN ('AVAILABLE', 'OCCUPIED', 'BUSY')", (h_ids,)).fetchone()[0]
+                    today_tickets = conn.execute("""
+                        SELECT count(*) FROM tickets 
+                        WHERE hospital_id = ANY(%s) AND (queue_date = CURRENT_DATE OR DATE(created_at) = CURRENT_DATE)
+                    """, (h_ids,)).fetchone()[0]
+                    active_queues = conn.execute("""
+                        SELECT count(*) FROM tickets 
+                        WHERE hospital_id = ANY(%s) AND status IN ('WAITING', 'CALLED', 'SERVING')
+                    """, (h_ids,)).fetchone()[0]
+                    total_tickets = conn.execute("SELECT count(*) FROM tickets WHERE hospital_id = ANY(%s)", (h_ids,)).fetchone()[0]
+                    total_users = conn.execute("""
+                        SELECT count(DISTINCT u.id) FROM users u
+                        LEFT JOIN employees e ON e.user_id = u.id AND e.hospital_id = ANY(%s)
+                        WHERE e.id IS NOT NULL OR u.id = %s
+                    """, (h_ids, owner_uid)).fetchone()[0]
+                else:
+                    total_emp = 0
+                    active_docs = 0
+                    total_desks = 0
+                    active_desks = 0
+                    today_tickets = 0
+                    active_queues = 0
+                    total_tickets = 0
+                    total_users = 1
+            else:
+                total_h = conn.execute("SELECT count(*) FROM hospitals").fetchone()[0]
+                h_count = conn.execute("SELECT count(*) FROM hospitals WHERE status = 'active'").fetchone()[0]
+                total_emp = conn.execute("SELECT count(*) FROM employees WHERE status = 'active'").fetchone()[0]
+                active_docs = conn.execute("""
+                    SELECT count(DISTINCT e.id) 
+                    FROM employees e 
+                    JOIN users u ON u.id = e.user_id 
+                    WHERE (u.role = 'doctor' OR u.role = 'admin') AND e.status = 'active'
+                """).fetchone()[0]
+                total_desks = conn.execute("SELECT count(*) FROM desks").fetchone()[0]
+                active_desks = conn.execute("SELECT count(*) FROM desks WHERE status IN ('AVAILABLE', 'OCCUPIED', 'BUSY')").fetchone()[0]
+                today_tickets = conn.execute("SELECT count(*) FROM tickets WHERE queue_date = CURRENT_DATE OR DATE(created_at) = CURRENT_DATE").fetchone()[0]
+                active_queues = conn.execute("SELECT count(*) FROM tickets WHERE status IN ('WAITING', 'CALLED', 'SERVING')").fetchone()[0]
+                total_tickets = conn.execute("SELECT count(*) FROM tickets").fetchone()[0]
+                total_users = conn.execute("SELECT count(*) FROM users").fetchone()[0]
 
             return {
+                "total_hospitals": total_h,
                 "active_hospitals": h_count,
-                "total_users": u_count,
-                "total_tickets": t_count,
-                "total_desks": d_count,
+                "total_employees": total_emp,
+                "active_doctors": active_docs,
+                "total_desks": total_desks,
+                "active_desks": active_desks,
+                "patients_today": today_tickets,
+                "active_queues": active_queues,
+                "total_users": total_users,
+                "total_tickets": total_tickets,
             }
 
     def get_all_hospitals(self, requester_email: str = "") -> List[dict]:
         with self._get_db() as conn:
             if requester_email:
                 u = conn.execute("SELECT id, role FROM users WHERE email = %s", (requester_email.strip().lower(),)).fetchone()
-                if u and u[1] == "superadmin":
-                    rows = conn.execute("SELECT * FROM hospitals WHERE owner_user_id = %s OR owner_user_id IS NULL ORDER BY id ASC", (u[0],)).fetchall()
-                    return [dict(r) for r in rows]
+                if u:
+                    uid, role = u[0], (u[1] or "").lower()
+                    if role in ("superadmin", "super_admin", "hospital_owner"):
+                        rows = conn.execute("SELECT * FROM hospitals WHERE owner_user_id = %s ORDER BY id ASC", (uid,)).fetchall()
+                        return [dict(r) for r in rows]
+                    else:
+                        rows = conn.execute("""
+                            SELECT h.* FROM hospitals h
+                            JOIN employees e ON e.hospital_id = h.id
+                            WHERE e.user_id = %s
+                            ORDER BY h.id ASC
+                        """, (uid,)).fetchall()
+                        return [dict(r) for r in rows]
 
             rows = conn.execute("SELECT * FROM hospitals ORDER BY id ASC").fetchall()
             return [dict(r) for r in rows]
@@ -2280,6 +2378,28 @@ class PluginQueueEngine:
                 raise ValueError(f"Hospital with code '{hospital_code}' not found.")
 
             return dict(res)
+
+    def delete_hospital(self, hospital_code: str) -> dict:
+        clean_code = hospital_code.strip()
+        with self._get_db() as conn:
+            h = conn.execute("SELECT id, name FROM hospitals WHERE hospital_code = %s", (clean_code,)).fetchone()
+            if not h:
+                return {"status": "error", "message": f"Hospital '{clean_code}' not found."}
+            h_id = h["id"]
+
+            # Safe cleanup of child entities
+            conn.execute("DELETE FROM service_logs WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM tickets WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM appointments WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM desks WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM employees WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM departments WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM kiosks WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM tenant_mapping WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM tenant_config WHERE hospital_id = %s", (h_id,))
+            conn.execute("DELETE FROM hospitals WHERE id = %s", (h_id,))
+
+            return {"status": "success", "message": f"Hospital '{h['name']}' ({clean_code}) successfully deleted."}
 
     # ------------------------------------------------------------------
     # Employee Provisioning (Super Admin / Admin Only)

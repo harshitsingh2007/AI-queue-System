@@ -1000,6 +1000,36 @@ export default function MandatoryAuthScreen({
                     {isHindi ? "खाता बनाएं" : "Create an account"}
                   </button>
                 </div>
+
+                {/* Quick Demo Fill Bar */}
+                <div className="pl-demo-bar">
+                  <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>
+                    {isHindi ? "त्वरित लॉगिन:" : "Quick Login:"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginIdentifier("superadmin@hospital.com");
+                      setLoginPassword("admin123");
+                    }}
+                    className="pl-demo-pill"
+                    style={{ background: "#F0F9FF", borderColor: "#BAE6FD", color: "#0369A1" }}
+                    title="Super Admin / Hospital Network Owner"
+                  >
+                    👑 Super Admin
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginIdentifier("patient@hospital.com");
+                      setLoginPassword("pass123");
+                    }}
+                    className="pl-demo-pill"
+                    title="Patient Self-Service Account"
+                  >
+                    👤 Patient
+                  </button>
+                </div>
               </form>
             )}
 

@@ -302,17 +302,17 @@ export default function StaffPage({
         }
 
         .tab-button-modern:hover {
-          border-color: #A7F3D0;
-          background: #F0FDF4;
+          border-color: #BAE6FD;
+          background: #F0F9FF;
           transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(4, 78, 59, 0.08);
+          box-shadow: 0 6px 16px rgba(2, 132, 199, 0.08);
         }
 
         .tab-button-modern.active {
-          background: linear-gradient(135deg, #044E3B 0%, #065F46 100%);
-          border-color: #044E3B;
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+          border-color: #0284C7;
           color: #FFFFFF;
-          box-shadow: 0 8px 20px rgba(4, 78, 59, 0.25);
+          box-shadow: 0 8px 20px rgba(2, 132, 199, 0.25);
           transform: translateY(-2px);
         }
 
@@ -329,12 +329,12 @@ export default function StaffPage({
 
         .tab-button-modern.active .tab-icon-wrapper {
           background: rgba(255, 255, 255, 0.18);
-          color: #A7F3D0;
+          color: #BAE6FD;
         }
 
         .tab-button-modern.inactive .tab-icon-wrapper {
-          background: #ECFDF5;
-          color: #047857;
+          background: #F0F9FF;
+          color: #0284C7;
         }
 
         .tab-title-text {
@@ -388,7 +388,7 @@ export default function StaffPage({
           border-radius: 20px;
           border: 1px solid #E2E8F0;
           padding: 20px;
-          box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
+          box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
           display: flex;
           flex-direction: column;
           gap: 16px;
@@ -402,20 +402,20 @@ export default function StaffPage({
           padding: 12px 20px;
           border-radius: 12px;
           border: none;
-          background: linear-gradient(135deg, #044E3B 0%, #065F46 100%);
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
           color: #FFFFFF;
           font-size: 13.5px;
           font-weight: 800;
           cursor: pointer;
-          box-shadow: 0 4px 14px rgba(4, 78, 59, 0.25);
+          box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
           transition: all 0.2s ease;
           outline: none;
         }
 
         .admin-action-btn-primary:hover {
-          background: #033E2F;
+          background: #0369A1;
           transform: translateY(-1px);
-          box-shadow: 0 6px 18px rgba(4, 78, 59, 0.35);
+          box-shadow: 0 6px 18px rgba(2, 132, 199, 0.35);
         }
 
         .admin-action-btn-primary:active {
@@ -460,14 +460,14 @@ export default function StaffPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "ops" ? "#34D399" : "#044E3B",
-                    color: activeTab === "ops" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "ops" ? "#38BDF8" : "#E0F2FE",
+                    color: activeTab === "ops" ? "#0F172A" : "#0284C7",
                   }}
                 >
                   {servingTickets.length}
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "ops" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "ops" ? "#BAE6FD" : "#64748B" }}>
                 {language === "hi" ? "कॉलिंग एवं ई-प्रिस्क्रिप्शन" : "Calling & E-Prescribe"}
               </span>
             </div>
@@ -495,14 +495,14 @@ export default function StaffPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "queue" ? "#34D399" : "#044E3B",
-                    color: activeTab === "queue" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "queue" ? "#38BDF8" : "#E0F2FE",
+                    color: activeTab === "queue" ? "#0F172A" : "#0284C7",
                   }}
                 >
                   {queueSnapshot.length}
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "queue" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "queue" ? "#BAE6FD" : "#64748B" }}>
                 {language === "hi" ? "AI प्राथमिकता सूची" : "AI Prioritized Order"}
               </span>
             </div>
@@ -530,14 +530,14 @@ export default function StaffPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "apts" ? "#34D399" : "#044E3B",
-                    color: activeTab === "apts" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "apts" ? "#38BDF8" : "#E0F2FE",
+                    color: activeTab === "apts" ? "#0F172A" : "#0284C7",
                   }}
                 >
                   {appointments.length}
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "apts" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "apts" ? "#BAE6FD" : "#64748B" }}>
                 {language === "hi" ? "शेड्यूल एवं चेक-इन" : "Roster & Priority Merge"}
               </span>
             </div>
@@ -562,14 +562,14 @@ export default function StaffPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "ml" ? "#34D399" : "#044E3B",
-                    color: activeTab === "ml" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "ml" ? "#38BDF8" : "#E0F2FE",
+                    color: activeTab === "ml" ? "#0F172A" : "#0284C7",
                   }}
                 >
                   AI
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "ml" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "ml" ? "#BAE6FD" : "#64748B" }}>
                 {language === "hi" ? "मॉडल ट्रेनिंग एवं सटीकता" : "Training & Accuracy"}
               </span>
             </div>
@@ -609,7 +609,7 @@ export default function StaffPage({
               </div>
 
               {announceFeedbackMsg && (
-                <div style={{ marginBottom: "16px", padding: "12px 16px", borderRadius: "12px", background: "#ECFDF5", border: "1px solid #10B981", color: "#047857", fontSize: "13px", fontWeight: 700, textAlign: "center" }}>
+                <div style={{ marginBottom: "16px", padding: "12px 16px", borderRadius: "12px", background: "#F0F9FF", border: "1px solid #BAE6FD", color: "#0369A1", fontSize: "13px", fontWeight: 700, textAlign: "center" }}>
                   {announceFeedbackMsg}
                 </div>
               )}
@@ -619,7 +619,7 @@ export default function StaffPage({
                 <span style={{ fontSize: "12px", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   {t("nowServingAt", language)} {getCategoryLabel(adminDept, language)}
                 </span>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#047857", background: "#ECFDF5", padding: "2px 8px", borderRadius: "6px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
                   {servingTickets.length} {language === "hi" ? "सक्रिय" : "Active"}
                 </span>
               </div>
@@ -641,10 +641,10 @@ export default function StaffPage({
                       key={ticket.ticket_id}
                       style={{
                         background: "#FFFFFF",
-                        border: "1.5px solid #A7F3D0",
+                        border: "1.5px solid #BAE6FD",
                         borderRadius: "16px",
                         padding: "18px 20px",
-                        boxShadow: "0 4px 16px -2px rgba(4, 78, 59, 0.06)",
+                        boxShadow: "0 4px 16px -2px rgba(2, 132, 199, 0.08)",
                         display: "flex",
                         flexDirection: "column",
                         gap: "14px",
@@ -652,7 +652,7 @@ export default function StaffPage({
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                          <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "#044E3B", color: "#34D399", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: 900 }}>
+                          <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "#0F172A", color: "#38BDF8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: 900 }}>
                             #{ticket.ticket_id}
                           </div>
                           <div>
@@ -716,11 +716,11 @@ export default function StaffPage({
 
                       {/* Attached E-Prescription Box */}
                       {ticket.prescription_notes && (
-                        <div style={{ padding: "10px 14px", background: "#ECFDF5", borderRadius: "10px", border: "1px solid #A7F3D0" }}>
-                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", display: "block", marginBottom: "2px" }}>
+                        <div style={{ padding: "10px 14px", background: "#F0F9FF", borderRadius: "10px", border: "1px solid #BAE6FD" }}>
+                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", display: "block", marginBottom: "2px" }}>
                             💊 {t("ePrescriptionAttached", language)}:
                           </span>
-                          <p style={{ margin: 0, fontSize: "13px", color: "#064E3B", fontStyle: "italic" }}>
+                          <p style={{ margin: 0, fontSize: "13px", color: "#0F172A", fontStyle: "italic" }}>
                             "{ticket.prescription_notes}"
                           </p>
                         </div>
@@ -784,7 +784,7 @@ export default function StaffPage({
                           <td style={staffTdStyle}>
                             <span style={{ fontWeight: 800, color: "#64748B" }}>#{ticket.position}</span>
                           </td>
-                          <td style={{ ...staffTdStyle, fontWeight: 900, color: "#047857" }}>
+                          <td style={{ ...staffTdStyle, fontWeight: 900, color: "#0284C7" }}>
                             #{ticket.ticket_id}
                           </td>
                           <td style={{ ...staffTdStyle, fontWeight: 700, color: "#0F172A" }}>
@@ -804,7 +804,7 @@ export default function StaffPage({
                               {ticket.complexity_score || 1.0}x
                             </span>
                           </td>
-                          <td style={{ ...staffTdStyle, fontWeight: 800, color: "#059669" }}>
+                          <td style={{ ...staffTdStyle, fontWeight: 800, color: "#0284C7" }}>
                             {ticket.estimated_wait_minutes} {language === "hi" ? "मिनट" : "min"}
                           </td>
                         </tr>
@@ -871,7 +871,7 @@ export default function StaffPage({
                     <tbody>
                       {appointments.map((apt) => (
                         <tr key={apt.appointment_id}>
-                          <td style={{ ...staffTdStyle, fontWeight: 900, color: "#047857" }}>{apt.appointment_id}</td>
+                          <td style={{ ...staffTdStyle, fontWeight: 900, color: "#0284C7" }}>{apt.appointment_id}</td>
                           <td style={{ ...staffTdStyle, fontWeight: 700 }}>{apt.patient_name}</td>
                           <td style={{ ...staffTdStyle, fontWeight: 700, color: "#0284C7" }}>
                             {getCategoryLabel(apt.service_category, language)}
@@ -919,10 +919,10 @@ export default function StaffPage({
               <div style={standaloneCardStyle}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px" }}>
                   <div>
-                    <span style={{ fontSize: "11px", color: "#047857", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       Machine Learning Engine
                     </span>
-                    <h2 style={{ margin: "4px 0 0 0", color: "#064E3B", fontSize: "22px", fontWeight: 800 }}>
+                    <h2 style={{ margin: "4px 0 0 0", color: "#0F172A", fontSize: "22px", fontWeight: 800 }}>
                       {language === "hi" ? "अस्पताल एमएल स्टूडियो एवं ट्रेनिंग पाइपलाइन" : "Hospital ML Studio & Model Pipeline"}
                     </h2>
                     <p style={{ margin: "4px 0 0 0", color: "#64748B", fontSize: "13px" }}>
@@ -949,7 +949,7 @@ export default function StaffPage({
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px" }}>
                   <div style={staffStatCardStyle}>
                     <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>Active Model</span>
-                    <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#047857", margin: "4px 0" }}>
+                    <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#0284C7", margin: "4px 0" }}>
                       {modelStatus.is_tenant_specific ? "Tenant Specialized" : "Global Baseline"}
                     </h3>
                     <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>{modelStatus.model_name || "GradientBoosting"}</span>
@@ -963,7 +963,7 @@ export default function StaffPage({
                   </div>
                   <div style={staffStatCardStyle}>
                     <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>MAE Accuracy</span>
-                    <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#10B981", margin: "4px 0" }}>
+                    <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#16A34A", margin: "4px 0" }}>
                       ±{modelStatus.mae || "1.47"} min
                     </h3>
                     <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>Mean Absolute Error</span>
@@ -980,7 +980,7 @@ export default function StaffPage({
 
               {/* Dataset Ingestion Dropzone Card */}
               <div style={standaloneCardStyle}>
-                <h3 style={{ margin: "0 0 14px 0", fontSize: "17px", color: "#064E3B", fontWeight: 800 }}>
+                <h3 style={{ margin: "0 0 14px 0", fontSize: "17px", color: "#0F172A", fontWeight: 800 }}>
                   {language === "hi" ? "ऐतिहासिक अस्पताल डेटासेट अपलोड करें" : "Ingest Historical Hospital Dataset"}
                 </h3>
 
@@ -1005,13 +1005,13 @@ export default function StaffPage({
                 )}
 
                 {ingestStatus && (
-                  <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "10px", background: ingestStatus.error ? "#FEF2F2" : "#ECFDF5", border: `1px solid ${ingestStatus.error ? "#FECACA" : "#A7F3D0"}`, color: ingestStatus.error ? "#DC2626" : "#047857", fontSize: "12px", fontWeight: 700 }}>
+                  <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "10px", background: ingestStatus.error ? "#FEF2F2" : "#F0F9FF", border: `1px solid ${ingestStatus.error ? "#FECACA" : "#BAE6FD"}`, color: ingestStatus.error ? "#DC2626" : "#0369A1", fontSize: "12px", fontWeight: 700 }}>
                     {ingestStatus.message}
                   </div>
                 )}
 
                 {trainStatus && (
-                  <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#047857", fontSize: "12px", fontWeight: 700 }}>
+                  <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD", color: "#0369A1", fontSize: "12px", fontWeight: 700 }}>
                     ✓ Training Successful! Model MAE: ±{trainStatus.mae || "1.24"} min
                   </div>
                 )}
@@ -1026,24 +1026,24 @@ export default function StaffPage({
           <div className="telemetry-sidebar-card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981", boxShadow: "0 0 8px #10B981" }} />
-                <span style={{ fontSize: "13px", fontWeight: 800, color: "#064E3B" }}>
+                <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#0EA5E9", boxShadow: "0 0 8px #0EA5E9" }} />
+                <span style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A" }}>
                   {language === "hi" ? "लाइव कतार मॉनिटर" : "Live Queue Monitor"}
                 </span>
               </div>
-              <span style={{ fontSize: "11px", fontWeight: 700, color: "#047857", background: "#ECFDF5", padding: "2px 8px", borderRadius: "6px" }}>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "#0369A1", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
                 {analytics ? `${analytics.active_counters} ${language === "hi" ? "डेस्क सक्रिय" : "Desks Active"}` : (language === "hi" ? "2 डेस्क सक्रिय" : "2 Desks Active")}
               </span>
             </div>
 
-            {/* Now Serving Highlight in Dark Emerald Gradient */}
-            <div style={{ background: "linear-gradient(135deg, #064E3B 0%, #043828 100%)", borderRadius: "14px", padding: "16px", color: "#FFFFFF" }}>
-              <div style={{ fontSize: "11px", color: "#A7F3D0", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            {/* Now Serving Highlight in Dark Ocean / Slate Gradient */}
+            <div style={{ background: "linear-gradient(135deg, #0F172A 0%, #1E293B 70%, #0C4A6E 100%)", borderRadius: "14px", padding: "16px", color: "#FFFFFF" }}>
+              <div style={{ fontSize: "11px", color: "#BAE6FD", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 {t("nowServing", language)}
               </div>
               {primaryServing ? (
                 <div style={{ marginTop: "4px" }}>
-                  <div style={{ fontSize: "32px", fontWeight: 900, color: "#34D399", lineHeight: 1.1 }}>
+                  <div style={{ fontSize: "32px", fontWeight: 900, color: "#38BDF8", lineHeight: 1.1 }}>
                     #{primaryServing.ticket_id}
                   </div>
                   <div style={{ fontSize: "14px", fontWeight: 700, marginTop: "2px" }}>
@@ -1066,7 +1066,7 @@ export default function StaffPage({
                 <span style={{ fontSize: "10.5px", color: "#64748B", display: "block" }}>
                   {language === "hi" ? "औसत प्रतीक्षा" : "Est. Avg Wait"}
                 </span>
-                <span style={{ fontSize: "16px", fontWeight: 800, color: "#047857" }}>
+                <span style={{ fontSize: "16px", fontWeight: 800, color: "#0284C7" }}>
                   {analytics ? analytics.avg_wait_minutes : 12} {language === "hi" ? "मिनट" : "min"}
                 </span>
               </div>
@@ -1097,7 +1097,7 @@ export default function StaffPage({
                         <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{item.name}</span>
                       </div>
                     </div>
-                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#059669" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>
                       ~{item.estimated_wait_minutes}{language === "hi" ? "मि" : "m"}
                     </span>
                   </div>
@@ -1163,11 +1163,11 @@ export default function StaffPage({
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#ECFDF5", color: "#047857", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#F0F9FF", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
                   💊
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
+                  <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
                     {t("transferModalTitle", language)}
                   </h3>
                   <span style={{ fontSize: "12px", color: "#64748B" }}>
@@ -1219,7 +1219,7 @@ export default function StaffPage({
               </div>
 
               {transferStatusMsg && (
-                <div style={{ padding: "10px 14px", borderRadius: "8px", background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#047857", fontSize: "12px", fontWeight: 700, textAlign: "center" }}>
+                <div style={{ padding: "10px 14px", borderRadius: "8px", background: "#F0F9FF", border: "1px solid #BAE6FD", color: "#0369A1", fontSize: "12px", fontWeight: 700, textAlign: "center" }}>
                   {transferStatusMsg}
                 </div>
               )}
@@ -1255,9 +1255,9 @@ export default function StaffPage({
 const standaloneCardStyle = {
   background: "#FFFFFF",
   borderRadius: "20px",
-  border: "1px solid #E2E8F0",
+  border: "1.5px solid #E2E8F0",
   padding: "24px 28px",
-  boxShadow: "0 4px 20px -2px rgba(0, 0, 0, 0.03)",
+  boxShadow: "0 4px 20px -2px rgba(2, 132, 199, 0.04)",
 };
 
 const staffStatCardStyle = {
@@ -1302,7 +1302,7 @@ const finishBtnStyle = {
   padding: "8px 14px",
   borderRadius: "10px",
   border: "none",
-  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#FFFFFF",
   fontWeight: 800,
   fontSize: "12px",
@@ -1310,14 +1310,14 @@ const finishBtnStyle = {
   display: "inline-flex",
   alignItems: "center",
   gap: "6px",
-  boxShadow: "0 2px 6px rgba(5, 150, 105, 0.2)",
+  boxShadow: "0 2px 6px rgba(2, 132, 199, 0.25)",
   transition: "all 0.15s ease",
 };
 
 const refreshBtnStyle = {
   padding: "8px 14px",
   borderRadius: "10px",
-  border: "1px solid #E2E8F0",
+  border: "1px solid #CBD5E1",
   background: "#F8FAFC",
   color: "#334155",
   fontWeight: 700,
@@ -1352,14 +1352,15 @@ const staffTdStyle = {
 };
 
 const checkInRosterBtnStyle = {
-  padding: "6px 12px",
+  padding: "6px 14px",
   borderRadius: "8px",
   border: "none",
-  background: "#044E3B",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#FFFFFF",
   fontWeight: 800,
   fontSize: "11px",
   cursor: "pointer",
+  boxShadow: "0 2px 6px rgba(2, 132, 199, 0.25)",
 };
 
 const badgePrioStyle = (color) => ({
@@ -1377,17 +1378,17 @@ const aptStatusBadgeStyle = (status) => {
   if (s === "completed") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1" };
   if (s === "transferred") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#E0F2FE", color: "#0284C7", border: "1px solid #BAE6FD" };
   if (s === "serving") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#FEF3C7", color: "#D97706", border: "1px solid #FDE68A" };
-  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" };
+  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F0FDF4", color: "#166534", border: "1px solid #BBF7D0" };
   if (s === "cancelled" || s === "no_show") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" };
   return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
 };
 
 const dropzoneStyle = {
-  border: "2px dashed #A7F3D0",
+  border: "2px dashed #BAE6FD",
   borderRadius: "14px",
   padding: "24px",
   textAlign: "center",
-  background: "#F0FDF4",
+  background: "#F0F9FF",
 };
 
 const secondaryBtnStyle = {

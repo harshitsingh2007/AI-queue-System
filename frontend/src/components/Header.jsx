@@ -283,7 +283,7 @@ export default function Header({
         <div
           style={{ display: "flex", alignItems: "center", gap: "14px", cursor: "pointer", flexShrink: 0 }}
           onClick={() => {
-            if (currentUser?.role === "super_admin") {
+            if (currentUser?.role === "super_admin" || currentUser?.role === "superadmin") {
               navigateTo("superadmin");
             } else if (["admin", "doctor", "staff", "receptionist"].includes(currentUser?.role)) {
               navigateTo("staff");
@@ -310,7 +310,7 @@ export default function Header({
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#0F172A", letterSpacing: "-0.4px", lineHeight: "1.2", maxWidth: "260px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#0F172A", letterSpacing: "-0.4px", lineHeight: "1.2", maxWidth: "340px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {currentUser?.hospital_name || HOSPITAL_CONFIG.name}
               </span>
               <span style={{ padding: "2px 7px", borderRadius: "20px", background: "#F0F9FF", color: "#0284C7", fontSize: "10px", fontWeight: 800, border: "1px solid #BAE6FD", whiteSpace: "nowrap" }}>
@@ -333,7 +333,8 @@ export default function Header({
         {/* 2. Center: Quick Hospital Support & Emergency Hotline */}
         <nav style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           {/* Super Admin Navigation Button */}
-          {currentUser?.role === "super_admin" && (
+          {(currentUser?.role === "super_admin" || currentUser?.role === "superadmin") && (
+
             <button
               type="button"
               onClick={() => navigateTo("superadmin")}
@@ -370,16 +371,18 @@ export default function Header({
             </button>
           )}
 
-          {/* TV Kiosk Waiting Room Display */}
-          <button
-            type="button"
-            onClick={() => navigateTo("kiosk")}
-            className={`header-nav-btn ${activePage === "kiosk" ? "active" : ""}`}
-            title="Public Waiting Room TV Kiosk"
-          >
-            <span>📺</span>
-            <span>{language === "hi" ? "टीवी कियोस्क" : "TV Kiosk"}</span>
-          </button>
+          {/* TV Kiosk Waiting Room Display (Hidden for Super Admin) */}
+          {activePage !== "superadmin" && (!currentUser || currentUser.role !== "super_admin") && (
+            <button
+              type="button"
+              onClick={() => navigateTo("kiosk")}
+              className={`header-nav-btn ${activePage === "kiosk" ? "active" : ""}`}
+              title="Public Waiting Room TV Kiosk"
+            >
+              <span>📺</span>
+              <span>{language === "hi" ? "टीवी कियोस्क" : "TV Kiosk"}</span>
+            </button>
+          )}
 
           {/* Emergency 24/7 Hotline Button */}
           <button
@@ -478,40 +481,29 @@ export default function Header({
                 }}
                 className="header-pill-btn"
                 style={{
-                  padding: "5px 14px 5px 6px",
+                  padding: "5px 12px 5px 6px",
                   borderColor: profileDropdownOpen ? "#0284C7" : "#CBD5E1",
                   background: profileDropdownOpen ? "#F0F9FF" : "#FFFFFF",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
                 }}
               >
                 {/* User Avatar Circle */}
-                <div style={dropdownAvatarStyle}>
+                <div style={{ ...dropdownAvatarStyle, width: "28px", height: "28px", fontSize: "12px" }}>
                   {activeDisplayName.charAt(0).toUpperCase()}
                 </div>
-                <div style={{ textAlign: "left", lineHeight: 1.15 }}>
-                  <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {activeDisplayName}
-                  </div>
-                  <span style={{ fontSize: "10px", color: "#0284C7", fontWeight: 700 }}>
-                    {activeFamilyMember
-                      ? activeDisplayRelation
-                      : (currentUser.role === "super_admin"
-                        ? "SUPER ADMIN"
-                        : currentUser.role === "doctor"
-                          ? "DOCTOR"
-                          : currentUser.role === "staff"
-                            ? "STAFF"
-                            : currentUser.role === "admin"
-                              ? "HOSPITAL ADMIN"
-                              : (language === "hi" ? "मरीज़ खाता" : "Patient Account"))}
-                  </span>
-                </div>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "4px" }}>
+                <span style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {activeDisplayName}
+                </span>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "2px" }}>
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </button>
 
+
               {profileDropdownOpen && (
-                <div className="header-dropdown-menu" style={{ width: "280px", padding: "10px" }}>
+                <div className="header-dropdown-menu" style={{ width: "290px", padding: "10px" }}>
                   {/* Account Header */}
                   <div style={{ padding: "10px 12px 12px 12px", marginBottom: "8px", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -532,14 +524,25 @@ export default function Header({
                             </span>
                           )}
                         </div>
-                        {currentUser.hospital_name && (
-                          <span style={{ fontSize: "10.5px", color: "#64748B", display: "block", marginTop: "2px" }}>
-                            🏥 {currentUser.hospital_name}
-                          </span>
-                        )}
                       </div>
                     </div>
+
+                    {/* Prominent Hospital Affiliation Box for Staff/Doctor */}
+                    {["admin", "doctor", "staff", "receptionist", "super_admin", "superadmin"].includes(currentUser.role) && (
+                      <div style={{ padding: "8px 10px", marginTop: "8px", background: "#F0F9FF", borderRadius: "8px", border: "1px solid #BAE6FD", fontSize: "11px", color: "#0369A1" }}>
+                        <div style={{ fontWeight: 800, display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>🏥</span>
+                          <span>{currentUser.hospital_name || HOSPITAL_CONFIG.name}</span>
+                        </div>
+                        {currentUser.department && currentUser.department !== "all" && (
+                          <div style={{ fontSize: "10px", color: "#0284C7", marginTop: "2px", fontWeight: 600 }}>
+                            Department: {currentUser.department.toUpperCase()} {currentUser.employee_id ? `• ID: ${currentUser.employee_id}` : ""}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
+
 
                   {/* Profile Switcher — Only for patient/user role */}
                   {isPatientUser && (
@@ -656,9 +659,25 @@ export default function Header({
                     </>
                   )}
 
-                  {/* Logged-in account info for non-patient roles */}
-                  {!isPatientUser && (
-                    <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
+                  {/* Super Admin Switch Shortcut (Strictly for Super Admin Only) */}
+                  {(currentUser?.role === "super_admin" || currentUser?.role === "superadmin") && (
+                    <>
+                      <button
+                        type="button"
+                        className="header-dropdown-item"
+                        onClick={() => {
+                          setProfileDropdownOpen(false);
+                          navigateTo("superadmin");
+                        }}
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+                          <path d="M9 10h6M12 7v6" />
+                        </svg>
+                        <span>{language === "hi" ? "सुपर एडमिन पोर्टल" : "Super Admin Portal"}</span>
+                      </button>
+                      <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
+                    </>
                   )}
 
                   {/* Sign Out Button */}
@@ -689,12 +708,12 @@ export default function Header({
                 padding: "8px 16px",
                 borderRadius: "12px",
                 border: "none",
-                background: "linear-gradient(135deg, #044E3B 0%, #065F46 100%)",
+                background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
                 color: "#FFFFFF",
                 fontSize: "12.5px",
                 fontWeight: 800,
                 cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(4, 78, 59, 0.2)",
+                boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",
@@ -916,7 +935,7 @@ const dropdownAvatarStyle = {
 };
 
 const userRoleTagStyle = (role) => {
-  if (role === "super_admin") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A", marginTop: "2px" };
+  if (role === "super_admin" || role === "superadmin") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A", marginTop: "2px" };
   if (role === "doctor") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#F0F9FF", color: "#0369A1", border: "1px solid #BAE6FD", marginTop: "2px" };
   if (role === "admin") return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", marginTop: "2px" };
   return { display: "inline-block", padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, textTransform: "uppercase", background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1", marginTop: "2px" };

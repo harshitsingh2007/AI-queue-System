@@ -25,22 +25,41 @@ import SuperAdminPage from "./pages/SuperAdminPage";
 import { announceTicketVoice } from "./utils/voiceSynthesizer";
 
 function getInitialPage(user) {
+  let effectiveUser = user;
+  if (!effectiveUser && typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem("ai_queue_user");
+      if (saved) effectiveUser = JSON.parse(saved);
+    } catch (e) {}
+  }
+  const userRole = effectiveUser ? (effectiveUser.role || "").toLowerCase() : "";
+  const isSuperAdminUser = userRole === "super_admin" || userRole === "superadmin";
+  const isStaffUser = ["admin", "doctor", "staff", "receptionist"].includes(userRole);
+
   const params = new URLSearchParams(window.location.search);
   const pageParam = params.get("page") || params.get("view");
-  if (pageParam && pageParam.toLowerCase() !== "hub") return pageParam.toLowerCase();
+  if (pageParam && pageParam.toLowerCase() !== "hub") {
+    const p = pageParam.toLowerCase();
+    if (p === "patient" && isSuperAdminUser) return "superadmin";
+    if (p === "patient" && isStaffUser) return "staff";
+    return p;
+  }
 
   const path = window.location.pathname.toLowerCase();
   if (path.includes("superadmin") || path.includes("super_admin")) return "superadmin";
-  if (path.includes("patient")) return "patient";
+  if (path.includes("kiosk") || path.includes("tv")) return "kiosk";
   if (path.includes("staff") || path.includes("doctor")) return "staff";
   if (path.includes("admin") || path.includes("ml")) return "admin";
   if (path.includes("db") || path.includes("database")) return "db";
-  if (path.includes("kiosk") || path.includes("tv")) return "kiosk";
-
-  if (user) {
-    if (user.role === "super_admin") return "superadmin";
-    if (["admin", "doctor", "staff", "receptionist"].includes(user.role)) return "staff";
+  if (path.includes("patient")) {
+    if (isSuperAdminUser) return "superadmin";
+    if (isStaffUser) return "staff";
+    return "patient";
   }
+
+  if (isSuperAdminUser) return "superadmin";
+  if (isStaffUser) return "staff";
+
   return "patient";
 }
 
@@ -102,6 +121,41 @@ export default function App() {
     window.dispatchEvent(new Event("popstate"));
   }, []);
 
+  // Auto-redirect privileged roles away from patient self-service page
+  useEffect(() => {
+    if (currentUser) {
+      const r = (currentUser.role || "").toLowerCase();
+      if ((r === "super_admin" || r === "superadmin") && activePage === "patient") {
+        navigateTo("superadmin");
+      } else if (["admin", "doctor", "staff", "receptionist"].includes(r) && activePage === "patient") {
+        navigateTo("staff");
+      }
+    }
+  }, [currentUser, activePage, navigateTo]);
+
+  // Sync latest user profile and hospital affiliation on mount
+  useEffect(() => {
+    if (currentUser?.email && !currentUser.hospital_name) {
+      fetch(`${API_BASE}/api/v1/auth/me?email=${encodeURIComponent(currentUser.email)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.status === "success" && data.user) {
+            setCurrentUser((prev) => {
+              const updated = { ...prev, ...data.user };
+              try {
+                localStorage.setItem("ai_queue_user", JSON.stringify(updated));
+              } catch (e) {}
+              return updated;
+            });
+            if (data.user.hospital_code && data.user.hospital_code !== "all") {
+              setCurrentHospitalTenant(data.user.hospital_code);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [currentUser?.email, currentUser?.hospital_name]);
+
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState("login");
 
@@ -126,7 +180,7 @@ export default function App() {
     }
 
     // Role-based auto dashboard direct redirect (zero patient interference)
-    if (userData.role === "super_admin") {
+    if (userData.role === "super_admin" || userData.role === "superadmin") {
       navigateTo("superadmin");
     } else if (["admin", "doctor", "staff", "receptionist"].includes(userData.role)) {
       navigateTo("staff");
@@ -238,7 +292,7 @@ export default function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const isSuperAdmin = currentUser && currentUser.role === "super_admin";
+  const isSuperAdmin = currentUser && (currentUser.role === "super_admin" || currentUser.role === "superadmin");
   const isStaffOrAdmin = currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role);
   const isAdmin = isStaffOrAdmin;
   const adminDepartment = currentUser && currentUser.department ? currentUser.department.toLowerCase() : "all";

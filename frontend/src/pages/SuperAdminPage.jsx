@@ -18,6 +18,143 @@ import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel } from "../utils/i18n";
 import Footer from "../components/Footer";
 
+// Clean Professional Enterprise SVG Icon Components
+const IconShield = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </svg>
+);
+
+const IconHospital = ({ size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+    <path d="M9 10h6M12 7v6" />
+  </svg>
+);
+
+const IconUsers = ({ size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const IconDesk = ({ size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="20" height="14" rx="2" />
+    <line x1="8" y1="21" x2="16" y2="21" />
+    <line x1="12" y1="17" x2="12" y2="21" />
+  </svg>
+);
+
+const IconChart = ({ size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+  </svg>
+);
+
+const IconBuilding = ({ size = 18, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="2" width="16" height="20" rx="2" />
+    <line x1="9" y1="6" x2="9.01" y2="6" />
+    <line x1="15" y1="6" x2="15.01" y2="6" />
+    <line x1="9" y1="10" x2="9.01" y2="10" />
+    <line x1="15" y1="10" x2="15.01" y2="10" />
+    <line x1="9" y1="14" x2="9.01" y2="14" />
+    <line x1="15" y1="14" x2="15.01" y2="14" />
+    <line x1="9" y1="18" x2="15" y2="18" />
+  </svg>
+);
+
+const IconTrash = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
+  </svg>
+);
+
+const IconEdit = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+);
+
+const IconCopy = ({ size = 13, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="9" y="9" width="13" height="13" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+const IconClock = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
+const IconTrendingUp = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+    <polyline points="17 6 23 6 23 12" />
+  </svg>
+);
+
+const IconCpu = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="4" width="16" height="16" rx="2" />
+    <rect x="9" y="9" width="6" height="6" />
+    <line x1="9" y1="1" x2="9" y2="4" />
+    <line x1="15" y1="1" x2="15" y2="4" />
+    <line x1="9" y1="20" x2="9" y2="23" />
+    <line x1="15" y1="20" x2="15" y2="23" />
+    <line x1="20" y1="9" x2="23" y2="9" />
+    <line x1="20" y1="14" x2="23" y2="14" />
+    <line x1="1" y1="9" x2="4" y2="9" />
+    <line x1="1" y1="14" x2="4" y2="14" />
+  </svg>
+);
+
+const IconPlus = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const IconCheckCircle = ({ size = 16, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+    <polyline points="22 4 12 14.01 9 11.01" />
+  </svg>
+);
+
+const IconStethoscope = ({ size = 16, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4.5 3v5a4.5 4.5 0 0 0 9 0V3M18 10h1.5A3.5 3.5 0 0 1 23 13.5v.5a3.5 3.5 0 0 1-3.5 3.5H18M9 12.5V17a4 4 0 0 0 4 4h1a4 4 0 0 0 4-4v-3.5" />
+  </svg>
+);
+
+const IconMapPin = ({ size = 13, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
+const IconPhone = ({ size = 13, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+  </svg>
+);
+
 export default function SuperAdminPage({
   currentUser,
   language = "en",
@@ -267,6 +404,31 @@ export default function SuperAdminPage({
     }
   };
 
+  // Delete Hospital Handler
+  const handleDeleteHospital = async (hosp) => {
+    if (!window.confirm(isHi ? `क्या आप वाकई अस्पताल '${hosp.name}' (${hosp.hospital_code}) को हटाना चाहते हैं?` : `Are you sure you want to delete hospital '${hosp.name}' (${hosp.hospital_code}) and all its associated staff, departments, and desks?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hosp.hospital_code}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        notify(isHi ? `🗑️ अस्पताल '${hosp.name}' सफलतापूर्वक हटा दिया गया!` : `🗑️ Hospital '${hosp.name}' successfully deleted!`);
+        fetchGlobalData();
+        if (selectedHospital?.hospital_code === hosp.hospital_code) {
+          setSelectedHospital(null);
+        }
+      } else {
+        alert(data.detail || data.message || "Failed to delete hospital.");
+      }
+    } catch (err) {
+      alert(`Error deleting hospital: ${err.message}`);
+    }
+  };
+
   // 5. Add Employee Handler (Doctor, Staff, Admin)
   const handleAddEmployeeSubmit = async (e) => {
     e.preventDefault();
@@ -487,7 +649,7 @@ export default function SuperAdminPage({
   });
 
   return (
-    <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "0 8px 40px 8px" }}>
+    <div style={{ width: "100%", maxWidth: "100%", margin: "0 auto", padding: "0 4px 40px 4px", boxSizing: "border-box" }}>
       {/* Dynamic CSS Styling matching PatientPage.jsx and HeroBanner.jsx */}
       <style>{`
         .superadmin-hero-container {
@@ -496,9 +658,9 @@ export default function SuperAdminPage({
           align-items: stretch;
           border-radius: 28px;
           overflow: hidden;
-          background: #064E3B;
-          box-shadow: 0 16px 36px -8px rgba(6, 78, 59, 0.22), 0 4px 12px rgba(0, 0, 0, 0.05);
-          border: 1px solid rgba(16, 185, 129, 0.25);
+          background: #0F172A;
+          box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(2, 132, 199, 0.05);
+          border: 1px solid rgba(2, 132, 199, 0.2);
           margin-bottom: 24px;
           position: relative;
           min-height: 280px;
@@ -510,9 +672,9 @@ export default function SuperAdminPage({
           padding: 36px 38px;
           display: flex;
           flex-direction: column;
-          justifyContent: space-between;
+          justify-content: space-between;
           z-index: 2;
-          background: linear-gradient(135deg, #064E3B 0%, #043828 75%, #032b1f 100%);
+          background: linear-gradient(135deg, #0F172A 0%, #1E293B 70%, #0C4A6E 100%);
           position: relative;
         }
 
@@ -520,13 +682,13 @@ export default function SuperAdminPage({
           .superadmin-hero-left-col {
             padding-right: 40px;
             margin-right: 0;
-            border-right: 1px solid rgba(16, 185, 129, 0.25);
+            border-right: 1px solid rgba(2, 132, 199, 0.2);
           }
         }
 
         .superadmin-hero-right-col {
           flex: 0.95;
-          background: linear-gradient(180deg, #EBF5FB 0%, #E2F0F7 100%);
+          background: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
           display: flex;
           align-items: center;
           justifyContent: center;
@@ -545,11 +707,11 @@ export default function SuperAdminPage({
         }
 
         .superadmin-hero-title-highlight {
-          color: #34D399;
+          color: #38BDF8;
         }
 
         .superadmin-hero-subtitle {
-          color: rgba(220, 245, 235, 0.85);
+          color: rgba(224, 242, 254, 0.88);
           font-size: 13.5px;
           line-height: 1.5;
           margin-top: 10px;
@@ -566,10 +728,10 @@ export default function SuperAdminPage({
         }
 
         .superadmin-hero-stat-card {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.08);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.18);
+          border: 1px solid rgba(255, 255, 255, 0.15);
           border-radius: 14px;
           padding: 10px 12px;
           display: flex;
@@ -581,7 +743,7 @@ export default function SuperAdminPage({
         }
 
         .superadmin-hero-stat-card:hover {
-          background: rgba(255, 255, 255, 0.16);
+          background: rgba(255, 255, 255, 0.15);
           transform: translateY(-2px);
         }
 
@@ -589,12 +751,12 @@ export default function SuperAdminPage({
           width: 34px;
           height: 34px;
           border-radius: 10px;
-          background: rgba(255, 255, 255, 0.18);
+          background: rgba(255, 255, 255, 0.15);
           display: flex;
           align-items: center;
           justifyContent: center;
           flex-shrink: 0;
-          color: #A7F3D0;
+          color: #38BDF8;
         }
 
         .superadmin-hero-stat-value {
@@ -608,7 +770,7 @@ export default function SuperAdminPage({
         .superadmin-hero-stat-label {
           font-size: 10px;
           font-weight: 600;
-          color: rgba(255, 255, 255, 0.78);
+          color: rgba(255, 255, 255, 0.8);
           line-height: 1.2;
           margin-top: 2px;
         }
@@ -619,7 +781,7 @@ export default function SuperAdminPage({
           border: 1px solid #E2E8F0;
           padding: 20px;
           margin-bottom: 24px;
-          box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
+          box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
         }
 
         .superadmin-nav-header {
@@ -637,7 +799,7 @@ export default function SuperAdminPage({
           gap: 8px;
           font-size: 14px;
           font-weight: 800;
-          color: #064E3B;
+          color: #0F172A;
           letter-spacing: -0.2px;
         }
 
@@ -664,17 +826,17 @@ export default function SuperAdminPage({
         }
 
         .tab-button-modern:hover {
-          border-color: #A7F3D0;
-          background: #F0FDF4;
+          border-color: #BAE6FD;
+          background: #F0F9FF;
           transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(4, 78, 59, 0.08);
+          box-shadow: 0 6px 16px rgba(2, 132, 199, 0.1);
         }
 
         .tab-button-modern.active {
-          background: linear-gradient(135deg, #044E3B 0%, #065F46 100%);
-          border-color: #044E3B;
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+          border-color: #0284C7;
           color: #FFFFFF;
-          box-shadow: 0 8px 20px rgba(4, 78, 59, 0.25);
+          box-shadow: 0 8px 20px rgba(2, 132, 199, 0.28);
           transform: translateY(-2px);
         }
 
@@ -690,13 +852,13 @@ export default function SuperAdminPage({
         }
 
         .tab-button-modern.active .tab-icon-wrapper {
-          background: rgba(255, 255, 255, 0.18);
-          color: #A7F3D0;
+          background: rgba(255, 255, 255, 0.2);
+          color: #FFFFFF;
         }
 
         .tab-button-modern.inactive .tab-icon-wrapper {
-          background: #ECFDF5;
-          color: #047857;
+          background: #F0F9FF;
+          color: #0284C7;
         }
 
         .tab-title-text {
@@ -751,7 +913,7 @@ export default function SuperAdminPage({
             padding: 28px 22px;
             margin-right: 0;
             border-right: none !important;
-            border-bottom: 1px solid rgba(16, 185, 129, 0.25);
+            border-bottom: 1px solid rgba(2, 132, 199, 0.2);
           }
           .superadmin-hero-right-col {
             min-height: 200px;
@@ -767,7 +929,7 @@ export default function SuperAdminPage({
           border-radius: 20px;
           border: 1px solid #E2E8F0;
           padding: 20px;
-          box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
+          box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
           display: flex;
           flex-direction: column;
           gap: 16px;
@@ -781,21 +943,21 @@ export default function SuperAdminPage({
           padding: 12px 20px;
           border-radius: 12px;
           border: none;
-          background: linear-gradient(135deg, #044E3B 0%, #065F46 100%);
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
           color: #FFFFFF;
           font-size: 13.5px;
           font-weight: 800;
           cursor: pointer;
-          box-shadow: 0 4px 14px rgba(4, 78, 59, 0.25);
+          box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
           transition: all 0.2s ease;
           outline: none;
           width: 100%;
         }
 
         .admin-action-btn-primary:hover {
-          background: #033E2F;
+          background: #0369A1;
           transform: translateY(-1px);
-          box-shadow: 0 6px 18px rgba(4, 78, 59, 0.35);
+          box-shadow: 0 6px 18px rgba(2, 132, 199, 0.35);
         }
       `}</style>
 
@@ -803,8 +965,8 @@ export default function SuperAdminPage({
       <section className="superadmin-hero-container">
         <div className="superadmin-hero-left-col">
           <div>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 10px", borderRadius: "9999px", background: "rgba(52, 211, 153, 0.2)", border: "1px solid rgba(52, 211, 153, 0.4)", color: "#34D399", fontSize: "11px", fontWeight: 800, marginBottom: "10px" }}>
-              <span>👑</span>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 12px", borderRadius: "9999px", background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.35)", color: "#38BDF8", fontSize: "11px", fontWeight: 800, marginBottom: "10px" }}>
+              <IconShield size={13} color="#38BDF8" />
               <span>{isHi ? "सुपर एडमिन कंसोल" : "SUPER ADMIN / HOSPITAL NETWORK HQ"}</span>
             </div>
 
@@ -833,8 +995,8 @@ export default function SuperAdminPage({
           {/* 4 Real-Data Stats Cards */}
           <div className="superadmin-hero-stats-row">
             <div className="superadmin-hero-stat-card">
-              <div className="superadmin-hero-stat-icon-wrap">
-                <span style={{ fontSize: "16px" }}>🏥</span>
+              <div className="superadmin-hero-stat-icon-wrap" style={{ color: "#38BDF8" }}>
+                <IconHospital size={18} />
               </div>
               <div>
                 <div className="superadmin-hero-stat-value">{overview.total_hospitals}</div>
@@ -843,8 +1005,8 @@ export default function SuperAdminPage({
             </div>
 
             <div className="superadmin-hero-stat-card">
-              <div className="superadmin-hero-stat-icon-wrap">
-                <span style={{ fontSize: "16px" }}>👥</span>
+              <div className="superadmin-hero-stat-icon-wrap" style={{ color: "#38BDF8" }}>
+                <IconUsers size={18} />
               </div>
               <div>
                 <div className="superadmin-hero-stat-value">{overview.total_employees}</div>
@@ -853,11 +1015,11 @@ export default function SuperAdminPage({
             </div>
 
             <div className="superadmin-hero-stat-card">
-              <div className="superadmin-hero-stat-icon-wrap" style={{ color: "#6EE7B7" }}>
-                <span style={{ fontSize: "16px" }}>🪑</span>
+              <div className="superadmin-hero-stat-icon-wrap" style={{ color: "#38BDF8" }}>
+                <IconDesk size={18} />
               </div>
               <div>
-                <div className="superadmin-hero-stat-value" style={{ color: "#34D399" }}>
+                <div className="superadmin-hero-stat-value" style={{ color: "#38BDF8" }}>
                   {overview.active_desks} / {overview.total_desks}
                 </div>
                 <div className="superadmin-hero-stat-label">{isHi ? "सक्रिय डेस्क" : "Active Desks"}</div>
@@ -865,8 +1027,8 @@ export default function SuperAdminPage({
             </div>
 
             <div className="superadmin-hero-stat-card">
-              <div className="superadmin-hero-stat-icon-wrap">
-                <span style={{ fontSize: "16px" }}>📊</span>
+              <div className="superadmin-hero-stat-icon-wrap" style={{ color: "#FDE047" }}>
+                <IconChart size={18} />
               </div>
               <div>
                 <div className="superadmin-hero-stat-value" style={{ color: "#FDE047" }}>
@@ -878,9 +1040,63 @@ export default function SuperAdminPage({
           </div>
         </div>
 
-        {/* Right Column: Hospital Vector Illustration */}
-        <div className="superadmin-hero-right-col">
-          <SuperAdminHospitalIllustration />
+        {/* Right Column: Live Network Telemetry & Hospital Vector */}
+        <div className="superadmin-hero-right-col" style={{ padding: "24px 28px", display: "flex", flexDirection: "column", justifyContent: "space-between", position: "relative", boxSizing: "border-box" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", zIndex: 3, flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(8px)", padding: "4px 12px", borderRadius: "9999px", border: "1px solid #BAE6FD", boxShadow: "0 2px 8px rgba(2, 132, 199, 0.08)" }}>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
+              <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", letterSpacing: "0.2px" }}>
+                {isHi ? "लाइव नेटवर्क टेलीमेट्री" : "LIVE CLOUD TELEMETRY"}
+              </span>
+            </div>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "#0369A1", background: "rgba(255, 255, 255, 0.85)", padding: "4px 10px", borderRadius: "8px", border: "1px solid #BAE6FD", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+              <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#0284C7" }} />
+              <span>4s Real-Time Sync</span>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", width: "100%", margin: "14px 0", zIndex: 3 }}>
+            <div style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "सक्रिय कतारें" : "Active In Queue"}</span>
+                <span style={{ color: "#0284C7" }}><IconClock size={16} /></span>
+              </div>
+              <div style={{ fontSize: "22px", fontWeight: 800, color: "#0284C7", lineHeight: 1.1 }}>
+                {overview.active_queues || 0}
+              </div>
+              <span style={{ fontSize: "10px", color: "#0369A1", fontWeight: 600, display: "block", marginTop: "2px" }}>
+                {isHi ? "प्रतीक्षारत / सेवारत टोकन" : "Waiting & Serving Tokens"}
+              </span>
+            </div>
+
+            <div style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "कुल विज़िट" : "Lifetime Visits"}</span>
+                <span style={{ color: "#16A34A" }}><IconTrendingUp size={16} /></span>
+              </div>
+              <div style={{ fontSize: "22px", fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
+                {overview.total_tickets || 0}
+              </div>
+              <span style={{ fontSize: "10px", color: "#16A34A", fontWeight: 700, display: "block", marginTop: "2px" }}>
+                ✓ {overview.total_users || 0} {isHi ? "पंजीकृत उपयोगकर्ता" : "Registered Accounts"}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", zIndex: 3, background: "rgba(255, 255, 255, 0.8)", padding: "6px 12px", borderRadius: "10px", border: "1px solid rgba(186, 230, 253, 0.6)" }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "#0F172A", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <IconCpu size={14} color="#0284C7" />
+              <span>{isHi ? "AI कतार एल्गोरिदम" : "AI Routing Engine"}: <strong style={{ color: "#0284C7" }}>v2.4 Online</strong></span>
+            </span>
+            <span style={{ fontSize: "10.5px", fontWeight: 800, color: "#059669" }}>
+              ● 99.98% System Uptime
+            </span>
+          </div>
+
+          {/* Background Vector Graphic Silhouette */}
+          <div style={{ position: "absolute", right: "-10px", bottom: "-10px", opacity: 0.12, pointerEvents: "none", zIndex: 1, width: "240px", maxHeight: "200px" }}>
+            <SuperAdminHospitalIllustration />
+          </div>
         </div>
       </section>
 
@@ -895,7 +1111,7 @@ export default function SuperAdminPage({
       <section className="superadmin-nav-section">
         <div className="superadmin-nav-header">
           <div className="superadmin-nav-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
               <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
               <path d="M12 11h4" />
@@ -906,8 +1122,8 @@ export default function SuperAdminPage({
             <span>{isHi ? "सुपर एडमिन नियंत्रण हब" : "Super Admin Network Hub & Operations"}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
-            <span style={{ fontSize: "11px", fontWeight: 700, color: "#047857" }}>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#0EA5E9", display: "inline-block" }} />
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>
               {isHi ? "लाइव डेटा सिंक सक्रिय" : "Live Telemetry Active (Real-Time)"}
             </span>
           </div>
@@ -921,7 +1137,7 @@ export default function SuperAdminPage({
             className={`tab-button-modern ${activeTab === "hospitals" ? "active" : "inactive"}`}
           >
             <div className="tab-icon-wrapper">
-              <span style={{ fontSize: "20px" }}>🏥</span>
+              <IconHospital size={20} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -931,14 +1147,14 @@ export default function SuperAdminPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "hospitals" ? "#34D399" : "#044E3B",
-                    color: activeTab === "hospitals" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "hospitals" ? "#FFFFFF" : "#0284C7",
+                    color: activeTab === "hospitals" ? "#0284C7" : "#FFFFFF",
                   }}
                 >
                   {hospitals.length}
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "hospitals" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "hospitals" ? "#E0F2FE" : "#64748B" }}>
                 {isHi ? "शाखा एवं सेटिंग्स" : "Directory & Facilities"}
               </span>
             </div>
@@ -951,7 +1167,7 @@ export default function SuperAdminPage({
             className={`tab-button-modern ${activeTab === "employees" ? "active" : "inactive"}`}
           >
             <div className="tab-icon-wrapper">
-              <span style={{ fontSize: "20px" }}>👥</span>
+              <IconUsers size={20} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -961,14 +1177,14 @@ export default function SuperAdminPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "employees" ? "#34D399" : "#044E3B",
-                    color: activeTab === "employees" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "employees" ? "#FFFFFF" : "#0284C7",
+                    color: activeTab === "employees" ? "#0284C7" : "#FFFFFF",
                   }}
                 >
                   {hospitalEmployees.length}
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "employees" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "employees" ? "#E0F2FE" : "#64748B" }}>
                 {isHi ? "जोड़ें / हटाएं / भूमिका" : "Add, Remove & Roles"}
               </span>
             </div>
@@ -981,7 +1197,7 @@ export default function SuperAdminPage({
             className={`tab-button-modern ${activeTab === "desks" ? "active" : "inactive"}`}
           >
             <div className="tab-icon-wrapper">
-              <span style={{ fontSize: "20px" }}>🪑</span>
+              <IconDesk size={20} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -991,14 +1207,14 @@ export default function SuperAdminPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "desks" ? "#34D399" : "#044E3B",
-                    color: activeTab === "desks" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "desks" ? "#FFFFFF" : "#0284C7",
+                    color: activeTab === "desks" ? "#0284C7" : "#FFFFFF",
                   }}
                 >
                   {hospitalDesksData.active_desks || 0}/{hospitalDesksData.total_desks || 0}
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "desks" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "desks" ? "#E0F2FE" : "#64748B" }}>
                 {isHi ? "जोड़ें / हटाएं / स्थिति" : "Add, Remove & Status"}
               </span>
             </div>
@@ -1011,7 +1227,7 @@ export default function SuperAdminPage({
             className={`tab-button-modern ${activeTab === "depts" ? "active" : "inactive"}`}
           >
             <div className="tab-icon-wrapper">
-              <span style={{ fontSize: "20px" }}>🏢</span>
+              <IconBuilding size={20} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1021,14 +1237,14 @@ export default function SuperAdminPage({
                 <span
                   className="tab-count-badge"
                   style={{
-                    background: activeTab === "depts" ? "#34D399" : "#044E3B",
-                    color: activeTab === "depts" ? "#044E3B" : "#FFFFFF",
+                    background: activeTab === "depts" ? "#FFFFFF" : "#0284C7",
+                    color: activeTab === "depts" ? "#0284C7" : "#FFFFFF",
                   }}
                 >
                   {hospitalDepts.length}
                 </span>
               </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "depts" ? "#A7F3D0" : "#64748B" }}>
+              <span className="tab-sub-text" style={{ color: activeTab === "depts" ? "#E0F2FE" : "#64748B" }}>
                 {isHi ? "जोड़ें / हटाएं / OPD, Lab" : "Add, Remove Categories"}
               </span>
             </div>
@@ -1072,16 +1288,16 @@ export default function SuperAdminPage({
                     key={hosp.hospital_code}
                     style={{
                       ...hospitalCardStyle,
-                      borderColor: selectedHospital?.hospital_code === hosp.hospital_code ? "#10B981" : "#E2E8F0",
-                      background: selectedHospital?.hospital_code === hosp.hospital_code ? "#F0FDF4" : "#FFFFFF",
+                      borderColor: selectedHospital?.hospital_code === hosp.hospital_code ? "#0284C7" : "#E2E8F0",
+                      background: selectedHospital?.hospital_code === hosp.hospital_code ? "#F0F9FF" : "#FFFFFF",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "10px" }}>
                       <div>
-                        <h3 style={{ margin: 0, fontSize: "17px", color: "#064E3B", fontWeight: 800 }}>
+                        <h3 style={{ margin: 0, fontSize: "17px", color: "#0F172A", fontWeight: 800 }}>
                           {hosp.name}
                         </h3>
-                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", background: "#ECFDF5", padding: "2px 8px", borderRadius: "6px", display: "inline-block", marginTop: "4px" }}>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", background: "#F0F9FF", border: "1px solid #BAE6FD", padding: "2px 8px", borderRadius: "6px", display: "inline-block", marginTop: "4px" }}>
                           Code: {hosp.hospital_code.toUpperCase()}
                         </span>
                       </div>
@@ -1102,7 +1318,7 @@ export default function SuperAdminPage({
                       </div>
                       <div style={{ textAlign: "center" }}>
                         <span style={{ fontSize: "9.5px", color: "#64748B", fontWeight: 700, display: "block" }}>Docs</span>
-                        <span style={{ fontSize: "13px", fontWeight: 800, color: "#047857" }}>{hosp.doctor_count}</span>
+                        <span style={{ fontSize: "13px", fontWeight: 800, color: "#0284C7" }}>{hosp.doctor_count}</span>
                       </div>
                       <div style={{ textAlign: "center" }}>
                         <span style={{ fontSize: "9.5px", color: "#64748B", fontWeight: 700, display: "block" }}>Desks</span>
@@ -1143,7 +1359,19 @@ export default function SuperAdminPage({
                         }}
                         style={secondarySmallBtnStyle}
                       >
-                        ⚙️ {isHi ? "नाम बदलें / सेटिंग्स" : "Edit Info"}
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <IconEdit size={12} />
+                          <span>{isHi ? "संपादित" : "Edit"}</span>
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteHospital(hosp)}
+                        style={deleteSmallBtnStyle}
+                        title={isHi ? "अस्पताल हटाएं" : "Delete Hospital"}
+                      >
+                        <IconTrash size={14} color="#EF4444" />
                       </button>
                     </div>
                   </div>
@@ -1160,8 +1388,9 @@ export default function SuperAdminPage({
                   <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
                     {isHi ? "डॉक्टर एवं कर्मचारी रोस्टर" : "Doctor & Employee Roster"}
                   </h2>
-                  <span style={{ fontSize: "12px", color: "#047857", fontWeight: 700 }}>
-                    🏥 {selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalEmployees.length} Staff Members)
+                  <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <IconHospital size={14} color="#0284C7" />
+                    <span>{selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalEmployees.length} Staff Members)</span>
                   </span>
                 </div>
 
@@ -1170,7 +1399,7 @@ export default function SuperAdminPage({
                   onClick={() => setShowAddEmployeeModal(true)}
                   style={actionBtnStyle}
                 >
-                  <span>+</span>
+                  <IconPlus size={14} color="#FFFFFF" />
                   <span>{isHi ? "डॉक्टर / कर्मचारी जोड़ें" : "+ Add Doctor / Staff"}</span>
                 </button>
               </div>
@@ -1203,7 +1432,7 @@ export default function SuperAdminPage({
                             <div style={{ fontWeight: 800, color: "#0F172A" }}>{emp.username}</div>
                             <span style={{ fontSize: "11px", color: "#64748B" }}>{emp.email}</span>
                           </td>
-                          <td style={{ ...tableTdStyle, fontWeight: 700, color: "#047857" }}>
+                          <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
                             {emp.employee_id || `EMP-${emp.id}`}
                           </td>
                           <td style={tableTdStyle}>
@@ -1228,12 +1457,12 @@ export default function SuperAdminPage({
                                 type="button"
                                 onClick={() => {
                                   navigator.clipboard.writeText(`Email ID: ${emp.email}\nRole: ${emp.role.toUpperCase()}\nDepartment: ${emp.department}`);
-                                  notify(isHi ? `📋 '${emp.username}' के लॉगिन क्रेडेंशियल कॉपी किए गए!` : `📋 Login ID for '${emp.username}' copied to clipboard!`);
+                                  notify(isHi ? `'${emp.username}' के लॉगिन क्रेडेंशियल कॉपी किए गए!` : `Login ID for '${emp.username}' copied to clipboard!`);
                                 }}
                                 style={copySmallBtnStyle}
                                 title={isHi ? "लॉगिन आईडी कॉपी करें" : "Copy Login ID"}
                               >
-                                📋
+                                <IconCopy size={13} color="#0284C7" />
                               </button>
                               <button
                                 type="button"
@@ -1251,7 +1480,10 @@ export default function SuperAdminPage({
                                 }}
                                 style={editSmallBtnStyle}
                               >
-                                {isHi ? "संपादित" : "Edit"}
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <IconEdit size={11} />
+                                  <span>{isHi ? "संपादित" : "Edit"}</span>
+                                </span>
                               </button>
                               <button
                                 type="button"
@@ -1259,7 +1491,7 @@ export default function SuperAdminPage({
                                 style={deleteSmallBtnStyle}
                                 title={isHi ? "कर्मचारी हटाएं" : "Remove Employee"}
                               >
-                                🗑️
+                                <IconTrash size={14} color="#EF4444" />
                               </button>
                             </div>
                           </td>
@@ -1280,8 +1512,9 @@ export default function SuperAdminPage({
                   <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
                     {isHi ? "सक्रिय काउंटर एवं डेस्क प्रबंधन" : "Active Desk & Counter Management"}
                   </h2>
-                  <span style={{ fontSize: "12px", color: "#047857", fontWeight: 700 }}>
-                    🏥 {selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalDesksData.active_desks || 0} / {hospitalDesksData.total_desks || 0} Active Desks)
+                  <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <IconHospital size={14} color="#0284C7" />
+                    <span>{selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalDesksData.active_desks || 0} / {hospitalDesksData.total_desks || 0} Active Desks)</span>
                   </span>
                 </div>
 
@@ -1290,7 +1523,7 @@ export default function SuperAdminPage({
                   onClick={() => setShowAddDeskModal(true)}
                   style={actionBtnStyle}
                 >
-                  <span>+</span>
+                  <IconPlus size={14} color="#FFFFFF" />
                   <span>{isHi ? "नया डेस्क जोड़ें" : "+ Add New Desk"}</span>
                 </button>
               </div>
@@ -1301,12 +1534,12 @@ export default function SuperAdminPage({
                   <div key={deptGroup.dept_code} style={deptDeskBoxStyle}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid #E2E8F0", paddingBottom: "6px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span style={{ fontSize: "16px" }}>🩺</span>
-                        <h4 style={{ margin: 0, fontSize: "15px", color: "#064E3B", fontWeight: 800 }}>
+                        <IconStethoscope size={16} color="#0284C7" />
+                        <h4 style={{ margin: 0, fontSize: "15px", color: "#0F172A", fontWeight: 800 }}>
                           {getCategoryLabel(deptGroup.dept_code, language)}
                         </h4>
                       </div>
-                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", background: "#ECFDF5", padding: "2px 8px", borderRadius: "6px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", background: "#F0F9FF", border: "1px solid #BAE6FD", padding: "2px 8px", borderRadius: "6px" }}>
                         {deptGroup.active_desks} / {deptGroup.total_desks} Active
                       </span>
                     </div>
@@ -1359,8 +1592,9 @@ export default function SuperAdminPage({
                   <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
                     {isHi ? "क्लिनिकल विभाग सूची" : "Clinical Departments & Wings"}
                   </h2>
-                  <span style={{ fontSize: "12px", color: "#047857", fontWeight: 700 }}>
-                    🏥 {selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalDepts.length} Departments)
+                  <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <IconHospital size={14} color="#0284C7" />
+                    <span>{selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalDepts.length} Departments)</span>
                   </span>
                 </div>
 
@@ -1369,7 +1603,7 @@ export default function SuperAdminPage({
                   onClick={() => setShowAddDeptModal(true)}
                   style={actionBtnStyle}
                 >
-                  <span>+</span>
+                  <IconPlus size={14} color="#FFFFFF" />
                   <span>{isHi ? "विभाग जोड़ें" : "+ Add Department"}</span>
                 </button>
               </div>
@@ -1379,8 +1613,8 @@ export default function SuperAdminPage({
                   <div key={d.dept_code} style={deptCardStyle}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ fontSize: "16px" }}>🏥</span>
-                        <h4 style={{ margin: 0, fontSize: "14px", color: "#064E3B", fontWeight: 800 }}>
+                        <IconBuilding size={16} color="#0284C7" />
+                        <h4 style={{ margin: 0, fontSize: "14px", color: "#0F172A", fontWeight: 800 }}>
                           {d.name}
                         </h4>
                       </div>
@@ -1390,7 +1624,7 @@ export default function SuperAdminPage({
                         style={deleteDeptIconBtnStyle}
                         title={isHi ? "विभाग हटाएं" : "Remove Department"}
                       >
-                        🗑️
+                        <IconTrash size={14} color="#EF4444" />
                       </button>
                     </div>
                     <span style={{ fontSize: "10.5px", fontWeight: 800, color: "#0284C7", background: "#E0F2FE", padding: "1px 6px", borderRadius: "4px", display: "inline-block" }}>
@@ -1408,53 +1642,11 @@ export default function SuperAdminPage({
 
         {/* RIGHT COLUMN: Telemetry & Live Network Status Sidebar Card */}
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {/* Quick Action Card */}
-          <div className="telemetry-sidebar-card">
-            <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", color: "#064E3B", fontWeight: 800 }}>
-              ⚡ {isHi ? "सुपर एडमिन त्वरित कार्य" : "Executive Quick Actions"}
-            </h3>
-
-            <button
-              type="button"
-              onClick={() => setShowAddHospitalModal(true)}
-              className="admin-action-btn-primary"
-            >
-              <span>+</span>
-              <span>{isHi ? "नया अस्पताल जोड़ें" : "+ Register New Hospital"}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowAddEmployeeModal(true)}
-              style={sidebarSecondaryBtnStyle}
-            >
-              <span>👤</span>
-              <span>{isHi ? "डॉक्टर / कर्मचारी जोड़ें" : "+ Add Doctor / Employee"}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowAddDeskModal(true)}
-              style={sidebarSecondaryBtnStyle}
-            >
-              <span>🪑</span>
-              <span>{isHi ? "नया डेस्क जोड़ें" : "+ Add Service Desk"}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowAddDeptModal(true)}
-              style={sidebarSecondaryBtnStyle}
-            >
-              <span>🏢</span>
-              <span>{isHi ? "नया विभाग जोड़ें" : "+ Add Department"}</span>
-            </button>
-          </div>
-
           {/* Active Hospital Switcher Card */}
           <div className="telemetry-sidebar-card">
-            <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", color: "#064E3B", fontWeight: 800 }}>
-              🏥 {isHi ? "सक्रिय अस्पताल दृश्य" : "Focus Hospital"}
+            <h3 style={{ margin: "0 0 8px 0", fontSize: "16px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "6px" }}>
+              <IconHospital size={16} color="#0284C7" />
+              <span>{isHi ? "सक्रिय अस्पताल दृश्य" : "Focus Hospital"}</span>
             </h3>
             <span style={{ fontSize: "12px", color: "#64748B", marginBottom: "10px", display: "block" }}>
               Select which hospital's data to view and manage:
@@ -1481,10 +1673,16 @@ export default function SuperAdminPage({
             {selectedHospital && (
               <div style={{ marginTop: "12px", padding: "12px", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0", fontSize: "12px" }}>
                 <div style={{ fontWeight: 800, color: "#0F172A", marginBottom: "4px" }}>{selectedHospital.name}</div>
-                <div style={{ color: "#64748B" }}>📍 {selectedHospital.address || "Address not configured"}</div>
-                <div style={{ color: "#64748B", marginTop: "2px" }}>📞 {selectedHospital.phone || "—"}</div>
+                <div style={{ color: "#64748B", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <IconMapPin size={12} color="#64748B" />
+                  <span>{selectedHospital.address || "Address not configured"}</span>
+                </div>
+                <div style={{ color: "#64748B", marginTop: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <IconPhone size={12} color="#64748B" />
+                  <span>{selectedHospital.phone || "—"}</span>
+                </div>
                 <div style={{ marginTop: "8px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  <span style={{ padding: "2px 6px", borderRadius: "4px", background: "#ECFDF5", color: "#047857", fontWeight: 800, fontSize: "10.5px" }}>
+                  <span style={{ padding: "2px 6px", borderRadius: "4px", background: "#F0FDF4", color: "#166534", fontWeight: 800, fontSize: "10.5px", border: "1px solid #BBF7D0" }}>
                     {selectedHospital.doctor_count} Doctors
                   </span>
                   <span style={{ padding: "2px 6px", borderRadius: "4px", background: "#E0F2FE", color: "#0284C7", fontWeight: 800, fontSize: "10.5px" }}>
@@ -1507,8 +1705,9 @@ export default function SuperAdminPage({
         <div style={modalOverlayStyle} onClick={() => setShowAddHospitalModal(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                🏥 {isHi ? "नया अस्पताल जोड़ें" : "+ Add New Hospital"}
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconHospital size={18} color="#0284C7" />
+                <span>{isHi ? "नया अस्पताल जोड़ें" : "Add New Hospital"}</span>
               </h3>
               <button type="button" onClick={() => setShowAddHospitalModal(false)} style={modalCloseIconBtnStyle}>✕</button>
             </div>
@@ -1601,8 +1800,9 @@ export default function SuperAdminPage({
         <div style={modalOverlayStyle} onClick={() => setShowEditHospitalModal(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                ⚙️ {isHi ? "अस्पताल जानकारी संपादित करें" : "Edit Hospital Details"}
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconEdit size={18} color="#0284C7" />
+                <span>{isHi ? "अस्पताल जानकारी संपादित करें" : "Edit Hospital Details"}</span>
               </h3>
               <button type="button" onClick={() => setShowEditHospitalModal(false)} style={modalCloseIconBtnStyle}>✕</button>
             </div>
@@ -1690,14 +1890,15 @@ export default function SuperAdminPage({
         <div style={modalOverlayStyle} onClick={() => setShowAddEmployeeModal(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                👤 {isHi ? "नया डॉक्टर / कर्मचारी जोड़ें" : "+ Add Doctor / Employee"}
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconUsers size={18} color="#0284C7" />
+                <span>{isHi ? "नया डॉक्टर / कर्मचारी जोड़ें" : "Add Doctor / Employee"}</span>
               </h3>
               <button type="button" onClick={() => setShowAddEmployeeModal(false)} style={modalCloseIconBtnStyle}>✕</button>
             </div>
 
             <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "#EFF6FF", border: "1px solid #BFDBFE", fontSize: "12px", color: "#1E40AF" }}>
-              <strong>🔑 Staff Desk Provisioning:</strong> Enter the Login Email ID and Password for this doctor or staff member. They will use these exact credentials to sign in to their clinical desk.
+              <strong>Staff Desk Provisioning:</strong> Enter the Login Email ID and Password for this doctor or staff member. They will use these exact credentials to sign in to their clinical desk.
             </div>
 
             <form onSubmit={handleAddEmployeeSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -1811,14 +2012,15 @@ export default function SuperAdminPage({
         <div style={modalOverlayStyle} onClick={() => setCreatedCredentials(null)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                ✅ {isHi ? "कर्मचारी क्रेडेंशियल तैयार हैं" : "Employee Account Provisioned!"}
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconCheckCircle size={18} color="#16A34A" />
+                <span>{isHi ? "कर्मचारी क्रेडेंशियल तैयार हैं" : "Employee Account Provisioned"}</span>
               </h3>
               <button type="button" onClick={() => setCreatedCredentials(null)} style={modalCloseIconBtnStyle}>✕</button>
             </div>
 
-            <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "#F0FDF4", border: "1px solid #BBF7D0", fontSize: "12px", color: "#166534" }}>
-              <strong>📋 Account Created:</strong> Share the assigned Employee ID (or Login Email) and temporary password with this doctor or staff member so they can sign in.
+            <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD", fontSize: "12px", color: "#0369A1" }}>
+              <strong>Account Created:</strong> Share the assigned Employee ID (or Login Email) and temporary password with this doctor or staff member so they can sign in.
             </div>
 
             <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "12px", padding: "14px", marginBottom: "16px" }}>
@@ -1829,7 +2031,7 @@ export default function SuperAdminPage({
                 </div>
                 <div>
                   <span style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Role</span>
-                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#047857", textTransform: "uppercase" }}>{createdCredentials.role}</div>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#0284C7", textTransform: "uppercase" }}>{createdCredentials.role}</div>
                 </div>
               </div>
 
@@ -1844,7 +2046,7 @@ export default function SuperAdminPage({
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
                 <div>
                   <span style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Temporary Password</span>
                   <div style={{ fontSize: "13px", fontWeight: 800, color: "#DC2626", fontFamily: "monospace" }}>{createdCredentials.password}</div>
@@ -1862,11 +2064,12 @@ export default function SuperAdminPage({
                 onClick={() => {
                   const text = `Hospital: ${createdCredentials.hospital_name}\nRole: ${createdCredentials.role.toUpperCase()}\nName: ${createdCredentials.name}\nAssigned ID: ${createdCredentials.employee_id}\nEmail: ${createdCredentials.email}\nPassword: ${createdCredentials.password}`;
                   navigator.clipboard.writeText(text);
-                  notify(isHi ? "📋 क्रेडेंशियल कॉपी हो गए!" : "📋 Credentials copied to clipboard!");
+                  notify(isHi ? "क्रेडेंशियल कॉपी हो गए!" : "Credentials copied to clipboard!");
                 }}
-                style={{ ...modalSubmitBtnStyle, background: "#0284C7" }}
+                style={{ ...modalSubmitBtnStyle, background: "#0284C7", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
               >
-                📋 {isHi ? "क्रेडेंशियल कॉपी करें" : "Copy Credentials"}
+                <IconCopy size={14} />
+                <span>{isHi ? "क्रेडेंशियल कॉपी करें" : "Copy Credentials"}</span>
               </button>
               <button
                 type="button"
@@ -1885,8 +2088,9 @@ export default function SuperAdminPage({
         <div style={modalOverlayStyle} onClick={() => setShowEditEmployeeModal(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                ✏️ {isHi ? "कर्मचारी रिकॉर्ड संपादित करें" : "Edit Employee Record"}
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconEdit size={18} color="#0284C7" />
+                <span>{isHi ? "कर्मचारी रिकॉर्ड संपादित करें" : "Edit Employee Record"}</span>
               </h3>
               <button type="button" onClick={() => setShowEditEmployeeModal(false)} style={modalCloseIconBtnStyle}>✕</button>
             </div>
@@ -1986,8 +2190,9 @@ export default function SuperAdminPage({
         <div style={modalOverlayStyle} onClick={() => setShowAddDeptModal(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                🏢 {isHi ? "नया विभाग जोड़ें" : "+ Add Clinical Department"}
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconBuilding size={18} color="#0284C7" />
+                <span>{isHi ? "नया विभाग जोड़ें" : "Add Clinical Department"}</span>
               </h3>
               <button type="button" onClick={() => setShowAddDeptModal(false)} style={modalCloseIconBtnStyle}>✕</button>
             </div>
@@ -2046,8 +2251,9 @@ export default function SuperAdminPage({
         <div style={modalOverlayStyle} onClick={() => setShowAddDeskModal(false)}>
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ margin: 0, fontSize: "18px", color: "#064E3B", fontWeight: 800 }}>
-                🪑 {isHi ? "नया सेवा डेस्क जोड़ें" : "+ Add New Service Desk"}
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconDesk size={18} color="#0284C7" />
+                <span>{isHi ? "नया सेवा डेस्क जोड़ें" : "Add New Service Desk"}</span>
               </h3>
               <button type="button" onClick={() => setShowAddDeskModal(false)} style={modalCloseIconBtnStyle}>✕</button>
             </div>
@@ -2130,9 +2336,9 @@ function SuperAdminHospitalIllustration() {
       <rect width="540" height="320" fill="url(#skyGrad)" />
       <defs>
         <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#E6F2FA" />
-          <stop offset="60%" stopColor="#EFF7FC" />
-          <stop offset="100%" stopColor="#F5FBF7" />
+          <stop offset="0%" stopColor="#F0F9FF" />
+          <stop offset="60%" stopColor="#E0F2FE" />
+          <stop offset="100%" stopColor="#BAE6FD" />
         </linearGradient>
       </defs>
 
@@ -2142,12 +2348,12 @@ function SuperAdminHospitalIllustration() {
 
       {/* Hospital Modern Building */}
       <rect x="140" y="70" width="260" height="210" rx="12" fill="#FFFFFF" stroke="#CBD5E1" strokeWidth="2" />
-      <rect x="230" y="45" width="80" height="30" rx="6" fill="#044E3B" />
+      <rect x="230" y="45" width="80" height="30" rx="6" fill="#0284C7" />
       <text x="270" y="65" textAnchor="middle" fill="#FFFFFF" fontSize="13" fontWeight="900" fontFamily="sans-serif">HQ</text>
 
       {/* Medical Cross Sign */}
-      <circle cx="270" cy="110" r="18" fill="#ECFDF5" stroke="#10B981" strokeWidth="2" />
-      <path d="M270 100v20M260 110h20" stroke="#047857" strokeWidth="4" strokeLinecap="round" />
+      <circle cx="270" cy="110" r="18" fill="#F0F9FF" stroke="#0284C7" strokeWidth="2" />
+      <path d="M270 100v20M260 110h20" stroke="#0369A1" strokeWidth="4" strokeLinecap="round" />
 
       {/* Windows Grid */}
       <rect x="160" y="145" width="34" height="24" rx="4" fill="#BAE6FD" />
@@ -2161,15 +2367,15 @@ function SuperAdminHospitalIllustration() {
       <rect x="346" y="185" width="34" height="24" rx="4" fill="#BAE6FD" />
 
       {/* Main Glass Door */}
-      <rect x="245" y="215" width="50" height="65" rx="4" fill="#064E3B" />
+      <rect x="245" y="215" width="50" height="65" rx="4" fill="#0F172A" />
       <rect x="250" y="220" width="18" height="55" rx="2" fill="#7DD3FC" opacity="0.8" />
       <rect x="272" y="220" width="18" height="55" rx="2" fill="#7DD3FC" opacity="0.8" />
 
       {/* Trees & Landscaping */}
-      <circle cx="90" cy="255" r="28" fill="#10B981" opacity="0.9" />
-      <rect x="86" y="270" width="8" height="15" fill="#044E3B" />
-      <circle cx="450" cy="255" r="32" fill="#059669" opacity="0.9" />
-      <rect x="446" y="270" width="8" height="15" fill="#044E3B" />
+      <circle cx="90" cy="255" r="28" fill="#0EA5E9" opacity="0.85" />
+      <rect x="86" y="270" width="8" height="15" fill="#0F172A" />
+      <circle cx="450" cy="255" r="32" fill="#0284C7" opacity="0.85" />
+      <rect x="446" y="270" width="8" height="15" fill="#0F172A" />
     </svg>
   );
 }
@@ -2182,20 +2388,20 @@ const standaloneCardStyle = {
   borderRadius: "24px",
   border: "1.5px solid #E2E8F0",
   padding: "26px",
-  boxShadow: "0 4px 20px -2px rgba(0, 0, 0, 0.03)",
+  boxShadow: "0 4px 20px -2px rgba(2, 132, 199, 0.04)",
 };
 
 const feedbackToastStyle = {
   margin: "0 0 18px 0",
   padding: "12px 20px",
   borderRadius: "12px",
-  background: "#ECFDF5",
-  border: "1px solid #10B981",
-  color: "#047857",
+  background: "#F0F9FF",
+  border: "1px solid #BAE6FD",
+  color: "#0369A1",
   fontSize: "13.5px",
   fontWeight: 700,
   textAlign: "center",
-  boxShadow: "0 4px 12px rgba(16, 185, 129, 0.15)",
+  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.12)",
 };
 
 const searchInputStyle = {
@@ -2223,21 +2429,22 @@ const hospitalStatusBadgeStyle = (status) => ({
   fontWeight: 800,
   padding: "2px 7px",
   borderRadius: "6px",
-  background: status === "active" ? "#ECFDF5" : "#FEF2F2",
-  color: status === "active" ? "#047857" : "#DC2626",
-  border: status === "active" ? "1px solid #A7F3D0" : "1px solid #FECACA",
+  background: status === "active" ? "#F0FDF4" : "#FEF2F2",
+  color: status === "active" ? "#166534" : "#DC2626",
+  border: status === "active" ? "1px solid #BBF7D0" : "1px solid #FECACA",
 });
 
 const primarySmallBtnStyle = {
   flex: 1,
   padding: "9px 12px",
   borderRadius: "10px",
-  background: "#044E3B",
+  background: "#0284C7",
   color: "#FFFFFF",
   border: "none",
   fontWeight: 800,
   fontSize: "12px",
   cursor: "pointer",
+  transition: "background 0.15s ease",
 };
 
 const secondarySmallBtnStyle = {
@@ -2257,13 +2464,13 @@ const actionBtnStyle = {
   gap: "6px",
   padding: "9px 16px",
   borderRadius: "10px",
-  background: "#044E3B",
+  background: "#0284C7",
   color: "#FFFFFF",
   border: "none",
   fontWeight: 800,
   fontSize: "12.5px",
   cursor: "pointer",
-  boxShadow: "0 2px 8px rgba(4, 78, 59, 0.2)",
+  boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
 };
 
 const sidebarSecondaryBtnStyle = {
@@ -2310,10 +2517,10 @@ const tableTdStyle = {
 };
 
 const roleBadgeStyle = (role) => {
-  if (role === "doctor") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" };
+  if (role === "doctor") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F0F9FF", color: "#0284C7", border: "1px solid #BAE6FD" };
   if (role === "admin") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#FEF3C7", color: "#D97706", border: "1px solid #FDE68A" };
   if (role === "receptionist") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
-  return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#E0F2FE", color: "#0284C7", border: "1px solid #BAE6FD" };
+  return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE" };
 };
 
 const empStatusBadgeStyle = (status) => ({
@@ -2321,8 +2528,8 @@ const empStatusBadgeStyle = (status) => ({
   fontWeight: 800,
   padding: "2px 6px",
   borderRadius: "4px",
-  background: status === "inactive" ? "#FEF2F2" : "#ECFDF5",
-  color: status === "inactive" ? "#DC2626" : "#047857",
+  background: status === "inactive" ? "#FEF2F2" : "#F0FDF4",
+  color: status === "inactive" ? "#DC2626" : "#166534",
 });
 
 const copySmallBtnStyle = {
@@ -2366,17 +2573,17 @@ const deptDeskBoxStyle = {
 const deskCardItemStyle = (status) => ({
   padding: "12px",
   borderRadius: "10px",
-  background: status === "ACTIVE" ? "#ECFDF5" : status === "BUSY" ? "#FFFBEB" : status === "AVAILABLE" ? "#F0FDF4" : "#FFFFFF",
-  border: status === "ACTIVE" ? "1.5px solid #10B981" : status === "BUSY" ? "1.5px solid #F59E0B" : "1px solid #CBD5E1",
+  background: status === "ACTIVE" ? "#F0F9FF" : status === "BUSY" ? "#FFFBEB" : status === "AVAILABLE" ? "#F8FAFC" : "#FFFFFF",
+  border: status === "ACTIVE" ? "1.5px solid #0284C7" : status === "BUSY" ? "1.5px solid #F59E0B" : "1px solid #CBD5E1",
   display: "flex",
   flexDirection: "column",
   gap: "5px",
 });
 
 const deskStatusPillStyle = (status) => {
-  if (status === "ACTIVE") return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "#047857", color: "#FFFFFF" };
+  if (status === "ACTIVE") return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "#0284C7", color: "#FFFFFF" };
   if (status === "BUSY") return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "#D97706", color: "#FFFFFF" };
-  if (status === "AVAILABLE") return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "#34D399", color: "#064E3B" };
+  if (status === "AVAILABLE") return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "#E0F2FE", color: "#0284C7" };
   return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "#94A3B8", color: "#FFFFFF" };
 };
 
@@ -2488,9 +2695,10 @@ const modalSubmitBtnStyle = {
   padding: "10px",
   borderRadius: "10px",
   border: "none",
-  background: "linear-gradient(135deg, #044E3B 0%, #065F46 100%)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#FFFFFF",
   fontWeight: 800,
   fontSize: "13px",
   cursor: "pointer",
+  boxShadow: "0 4px 14px rgba(2, 132, 199, 0.25)",
 };

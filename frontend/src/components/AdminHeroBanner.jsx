@@ -3,9 +3,11 @@
  * -------------------
  * Executive Doctor & Hospital Operations Dashboard Hero Section.
  * Matches design and aesthetics of User Portal HeroBanner with:
- * - Desktop: 2-column layout (Left operational controls + stats, Right doctor clinical illustration)
+ * - Desktop: 2-column layout (Left operational controls + stats, Right clinical AI telemetry console)
  * - Tablet & Mobile: Responsive flex and stacked layout
  * - Integrated active counter adjusters (+ / -)
+ * - Theme: Medical Ocean Blue & Cyan Clinical Palette
+ * - Zero overlapping elements: Uses high-precision responsive glassmorphism CSS cards.
  */
 
 import React from "react";
@@ -26,6 +28,14 @@ export default function AdminHeroBanner({
   const isHi = language === "hi";
   const deptLabel = getCategoryLabel(adminDept, language);
 
+  const displayServing = servingTicket
+    ? `#${servingTicket.ticket_id}`
+    : typeof servingCount === "number" && servingCount > 0
+    ? `${servingCount} Active`
+    : analytics && typeof analytics.currently_serving === "number" && analytics.currently_serving > 0
+    ? `${analytics.currently_serving} Active`
+    : "0 Active";
+
   return (
     <div style={heroContainerStyle} className="admin-hero-banner-container">
       <style>{`
@@ -35,60 +45,63 @@ export default function AdminHeroBanner({
           align-items: stretch;
           border-radius: 28px;
           overflow: hidden;
-          background: #064E3B;
-          box-shadow: 0 16px 36px -8px rgba(6, 78, 59, 0.22), 0 4px 12px rgba(0, 0, 0, 0.05);
-          border: 1px solid rgba(16, 185, 129, 0.25);
+          background: #0F172A;
+          box-shadow: 0 16px 36px -8px rgba(2, 132, 199, 0.25), 0 4px 12px rgba(0, 0, 0, 0.12);
+          border: 1px solid rgba(56, 189, 248, 0.28);
           margin-bottom: 24px;
           position: relative;
-          min-height: 280px;
+          min-height: 290px;
           width: 100%;
         }
 
         .admin-hero-left-col {
-          flex: 1.25;
-          padding: 34px 36px;
+          flex: 1.15;
+          padding: 32px 34px;
           display: flex;
           flex-direction: column;
           justifyContent: space-between;
           z-index: 2;
-          background: linear-gradient(135deg, #064E3B 0%, #043828 75%, #032b1f 100%);
+          background: linear-gradient(135deg, #0F172A 0%, #0F2744 75%, #0C4A6E 100%);
           position: relative;
         }
 
         @media (min-width: 900px) {
           .admin-hero-left-col {
-            padding-right: 40px;
+            padding-right: 36px;
             margin-right: 0;
-            border-right: 1px solid rgba(16, 185, 129, 0.25);
+            border-right: 1px solid rgba(56, 189, 248, 0.25);
           }
         }
 
         .admin-hero-right-col {
-          flex: 0.95;
-          background: linear-gradient(180deg, #EBF5FB 0%, #E2F0F7 100%);
+          flex: 1;
+          background: linear-gradient(135deg, #08172E 0%, #0F2C54 50%, #062238 100%);
           display: flex;
           align-items: center;
-          justify-content: center;
+          justifyContent: center;
           position: relative;
           overflow: hidden;
-          min-height: 260px;
+          min-height: 280px;
+          padding: 24px;
+          box-sizing: border-box;
         }
 
         .admin-hero-title {
-          font-size: 30px;
+          font-size: 28px;
           font-weight: 800;
-          line-height: 1.18;
+          line-height: 1.2;
           letter-spacing: -0.5px;
           color: #FFFFFF;
           margin: 0;
         }
 
         .admin-hero-title-highlight {
-          color: #34D399;
+          color: #38BDF8;
+          text-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
         }
 
         .admin-hero-subtitle {
-          color: rgba(220, 245, 235, 0.85);
+          color: rgba(224, 242, 254, 0.85);
           font-size: 13px;
           line-height: 1.5;
           margin-top: 10px;
@@ -105,10 +118,10 @@ export default function AdminHeroBanner({
         }
 
         .admin-hero-stat-card {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.08);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.16);
+          border: 1px solid rgba(255, 255, 255, 0.15);
           border-radius: 14px;
           padding: 10px 12px;
           display: flex;
@@ -116,11 +129,12 @@ export default function AdminHeroBanner({
           gap: 9px;
           min-width: 0;
           box-sizing: border-box;
-          transition: transform 0.2s ease, background 0.2s ease;
+          transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
         }
 
         .admin-hero-stat-card:hover {
-          background: rgba(255, 255, 255, 0.15);
+          background: rgba(255, 255, 255, 0.14);
+          border-color: rgba(56, 189, 248, 0.5);
           transform: translateY(-2px);
         }
 
@@ -128,12 +142,10 @@ export default function AdminHeroBanner({
           width: 32px;
           height: 32px;
           border-radius: 10px;
-          background: rgba(255, 255, 255, 0.16);
           display: flex;
           align-items: center;
           justifyContent: center;
           flex-shrink: 0;
-          color: #A7F3D0;
         }
 
         .admin-hero-stat-value {
@@ -177,9 +189,238 @@ export default function AdminHeroBanner({
         }
 
         .counter-adjust-btn:hover {
-          background: #34D399;
-          color: #064E3B;
-          border-color: #34D399;
+          background: #0284C7;
+          color: #FFFFFF;
+          border-color: #38BDF8;
+        }
+
+        /* RIGHT COLUMN: Modern Clinical Telemetry Hub (Zero Overlaps) */
+        .telemetry-hub-container {
+          width: 100%;
+          max-width: 440px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          position: relative;
+          z-index: 2;
+        }
+
+        .telemetry-main-console {
+          background: rgba(15, 23, 42, 0.75);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          border: 1px solid rgba(56, 189, 248, 0.35);
+          border-radius: 18px;
+          padding: 14px 16px;
+          box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 0 20px rgba(56, 189, 248, 0.12);
+        }
+
+        .console-header {
+          display: flex;
+          align-items: center;
+          justifyContent: space-between;
+          margin-bottom: 12px;
+          padding-bottom: 8px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .console-title-group {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .live-pulse-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #38BDF8;
+          box-shadow: 0 0 10px #38BDF8;
+          display: inline-block;
+          animation: telemetryPulse 2s infinite ease-in-out;
+        }
+
+        @keyframes telemetryPulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.3); opacity: 0.6; }
+        }
+
+        .console-title-text {
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          color: #FFFFFF;
+          text-transform: uppercase;
+        }
+
+        .console-priority-badge {
+          background: rgba(251, 146, 60, 0.2);
+          border: 1px solid #FB923C;
+          color: #FB923C;
+          font-size: 9px;
+          font-weight: 800;
+          padding: 2px 8px;
+          border-radius: 9999px;
+          letter-spacing: 0.4px;
+        }
+
+        .console-patient-strip {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(56, 189, 248, 0.15);
+          border-radius: 10px;
+          padding: 8px 12px;
+          display: flex;
+          align-items: center;
+          justifyContent: space-between;
+          margin-bottom: 10px;
+        }
+
+        .patient-strip-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .patient-avatar-circle {
+          width: 28px;
+          height: 28px;
+          border-radius: 8px;
+          background: rgba(56, 189, 248, 0.18);
+          color: #38BDF8;
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          font-size: 13px;
+        }
+
+        .patient-strip-name {
+          font-size: 12px;
+          font-weight: 700;
+          color: #FFFFFF;
+          line-height: 1.2;
+        }
+
+        .patient-strip-dept {
+          font-size: 9.5px;
+          color: #94A3B8;
+          font-weight: 500;
+        }
+
+        .fast-track-pill {
+          background: rgba(56, 189, 248, 0.15);
+          color: #38BDF8;
+          border: 1px solid rgba(56, 189, 248, 0.3);
+          font-size: 9px;
+          font-weight: 700;
+          padding: 2px 7px;
+          border-radius: 6px;
+          white-space: nowrap;
+        }
+
+        /* ECG Waveform Container */
+        .console-ecg-box {
+          background: #041424;
+          border: 1px solid rgba(56, 189, 248, 0.2);
+          border-radius: 8px;
+          height: 38px;
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          padding: 0 8px;
+          margin-bottom: 10px;
+          position: relative;
+          overflow: hidden;
+        }
+
+        .ecg-grid-overlay {
+          position: absolute;
+          inset: 0;
+          background-image: linear-gradient(rgba(12, 74, 110, 0.3) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(12, 74, 110, 0.3) 1px, transparent 1px);
+          background-size: 16px 16px;
+        }
+
+        /* 3 Vitals Metrics Row */
+        .console-vitals-row {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+
+        .vital-chip {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          padding: 5px 8px;
+          display: flex;
+          align-items: baseline;
+          justifyContent: space-between;
+        }
+
+        .vital-val {
+          font-size: 12px;
+          font-weight: 800;
+          letter-spacing: -0.2px;
+        }
+
+        .vital-unit {
+          font-size: 8.5px;
+          color: #94A3B8;
+          font-weight: 600;
+        }
+
+        /* Bottom Dual Badges */
+        .telemetry-bottom-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+        }
+
+        .telemetry-sub-badge {
+          background: rgba(15, 23, 42, 0.65);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(56, 189, 248, 0.25);
+          border-radius: 12px;
+          padding: 8px 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .sub-badge-icon {
+          width: 26px;
+          height: 26px;
+          border-radius: 7px;
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          font-size: 12px;
+          font-weight: 800;
+          flex-shrink: 0;
+        }
+
+        .sub-badge-info {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+        }
+
+        .sub-badge-title {
+          font-size: 10px;
+          font-weight: 800;
+          color: #FFFFFF;
+          line-height: 1.2;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .sub-badge-status {
+          font-size: 8.5px;
+          font-weight: 700;
+          line-height: 1.2;
+          margin-top: 1px;
         }
 
         @media (max-width: 1240px) {
@@ -193,14 +434,13 @@ export default function AdminHeroBanner({
             flex-direction: column;
           }
           .admin-hero-left-col {
-            clip-path: none !important;
             padding: 28px 22px;
-            margin-right: 0;
             border-right: none !important;
-            border-bottom: 1px solid rgba(16, 185, 129, 0.25);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.25);
           }
           .admin-hero-right-col {
-            min-height: 200px;
+            min-height: auto;
+            padding: 20px;
             width: 100%;
           }
         }
@@ -213,6 +453,9 @@ export default function AdminHeroBanner({
             grid-template-columns: 1fr 1fr;
             gap: 8px;
           }
+          .telemetry-bottom-row {
+            grid-template-columns: 1fr;
+          }
         }
       `}</style>
 
@@ -220,15 +463,16 @@ export default function AdminHeroBanner({
       <div className="admin-hero-left-col">
         <div>
           {/* Department Security Tag & Hospital Tag */}
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px", flexWrap: "wrap" }}>
-            <span style={{ padding: "3px 10px", borderRadius: "9999px", background: "rgba(52, 211, 153, 0.2)", border: "1px solid rgba(52, 211, 153, 0.4)", color: "#34D399", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+            <span style={{ padding: "4px 12px", borderRadius: "9999px", background: "rgba(2, 132, 199, 0.25)", border: "1px solid rgba(56, 189, 248, 0.4)", color: "#38BDF8", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
               🏥 {hospitalName}
             </span>
-            <span style={{ padding: "3px 10px", borderRadius: "9999px", background: "rgba(255, 255, 255, 0.15)", border: "1px solid rgba(255, 255, 255, 0.25)", color: "#A7F3D0", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
+            <span style={{ padding: "4px 12px", borderRadius: "9999px", background: "rgba(255, 255, 255, 0.12)", border: "1px solid rgba(255, 255, 255, 0.25)", color: "#BAE6FD", fontSize: "11px", fontWeight: 800, letterSpacing: "0.5px" }}>
               🛡️ {adminDept === "all" ? (isHi ? "सुपर एडमिन कंसोल" : "ALL DEPARTMENTS") : `${deptLabel.toUpperCase()}`}
             </span>
-            <span style={{ fontSize: "11.5px", color: "rgba(255,255,255,0.75)", fontWeight: 600 }}>
-              ● {isHi ? "AI ट्राइएज लाइव" : "AI Triage Active"}
+            <span style={{ fontSize: "11.5px", color: "rgba(255,255,255,0.75)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+              <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#38BDF8", boxShadow: "0 0 8px #38BDF8" }} />
+              {isHi ? "AI ट्राइएज लाइव" : "AI Triage Active"}
             </span>
           </div>
 
@@ -258,7 +502,7 @@ export default function AdminHeroBanner({
         <div className="admin-hero-stats-row">
           {/* 1. Patients Waiting */}
           <div className="admin-hero-stat-card">
-            <div className="admin-hero-stat-icon-wrap">
+            <div className="admin-hero-stat-icon-wrap" style={{ color: "#FDE047", background: "rgba(253, 224, 71, 0.15)" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                 <circle cx="9" cy="7" r="4" />
@@ -268,7 +512,7 @@ export default function AdminHeroBanner({
             </div>
             <div>
               <div className="admin-hero-stat-value" style={{ color: "#FDE047" }}>
-                {waitingCount !== undefined ? waitingCount : (analytics ? analytics.currently_waiting : 0)}
+                {waitingCount !== undefined ? waitingCount : (analytics?.currently_waiting || 0)}
               </div>
               <div className="admin-hero-stat-label">
                 {isHi ? "प्रतीक्षारत मरीज़" : "Waiting Patients"}
@@ -278,21 +522,15 @@ export default function AdminHeroBanner({
 
           {/* 2. Currently Serving */}
           <div className="admin-hero-stat-card">
-            <div className="admin-hero-stat-icon-wrap">
+            <div className="admin-hero-stat-icon-wrap" style={{ color: "#38BDF8", background: "rgba(56, 189, 248, 0.18)" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="12 6 12 12 16 14" />
               </svg>
             </div>
             <div>
-              <div className="admin-hero-stat-value" style={{ color: "#34D399" }}>
-                {servingTicket
-                  ? `#${servingTicket.ticket_id}`
-                  : servingCount > 0
-                  ? `${servingCount} Active`
-                  : analytics
-                  ? `${analytics.currently_serving} Active`
-                  : "0 Active"}
+              <div className="admin-hero-stat-value" style={{ color: "#38BDF8" }}>
+                {displayServing}
               </div>
               <div className="admin-hero-stat-label">
                 {isHi ? "सेवारत टोकन" : "Now Serving"}
@@ -302,7 +540,7 @@ export default function AdminHeroBanner({
 
           {/* 3. Today's Booked Appointments */}
           <div className="admin-hero-stat-card">
-            <div className="admin-hero-stat-icon-wrap">
+            <div className="admin-hero-stat-icon-wrap" style={{ color: "#60A5FA", background: "rgba(96, 165, 250, 0.18)" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
                 <line x1="16" y1="2" x2="16" y2="6" />
@@ -311,7 +549,7 @@ export default function AdminHeroBanner({
               </svg>
             </div>
             <div>
-              <div className="admin-hero-stat-value" style={{ color: "#38BDF8" }}>
+              <div className="admin-hero-stat-value" style={{ color: "#60A5FA" }}>
                 {appointmentsCount}
               </div>
               <div className="admin-hero-stat-label">
@@ -322,7 +560,7 @@ export default function AdminHeroBanner({
 
           {/* 4. Active Doctor Desks with +/- adjusters */}
           <div className="admin-hero-stat-card">
-            <div className="admin-hero-stat-icon-wrap">
+            <div className="admin-hero-stat-icon-wrap" style={{ color: "#FB923C", background: "rgba(251, 146, 60, 0.18)" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
                 <line x1="8" y1="21" x2="16" y2="21" />
@@ -361,83 +599,93 @@ export default function AdminHeroBanner({
         </div>
       </div>
 
-      {/* RIGHT COLUMN: Doctor & Hospital Clinical Operations Illustration */}
+      {/* RIGHT COLUMN: Clean, High-Tech Clinical Telemetry Hub (Zero Overlaps) */}
       <div className="admin-hero-right-col">
-        <DoctorClinicalIllustration />
+        <div className="telemetry-hub-container">
+          {/* Main Clinical Console Card */}
+          <div className="telemetry-main-console">
+            {/* Header */}
+            <div className="console-header">
+              <div className="console-title-group">
+                <span className="live-pulse-dot" />
+                <span className="console-title-text">AI Clinical Telemetry</span>
+              </div>
+              <span className="console-priority-badge">PRIORITY 1</span>
+            </div>
+
+            {/* Patient Consultation Info */}
+            <div className="console-patient-strip">
+              <div className="patient-strip-left">
+                <div className="patient-avatar-circle">
+                  🩺
+                </div>
+                <div>
+                  <div className="patient-strip-name">Patient #T-104 • OPD</div>
+                  <div className="patient-strip-dept">Cardiology Desk • Token Verified</div>
+                </div>
+              </div>
+              <div className="fast-track-pill">⚡ Fast-Track</div>
+            </div>
+
+            {/* ECG Waveform Display */}
+            <div className="console-ecg-box">
+              <div className="ecg-grid-overlay" />
+              <svg viewBox="0 0 400 38" preserveAspectRatio="none" style={{ width: "100%", height: "100%", position: "relative", zIndex: 1 }}>
+                <path
+                  d="M0 19 L40 19 L48 10 L56 30 L64 4 L72 34 L80 19 L150 19 L158 11 L166 27 L174 5 L182 33 L190 19 L260 19 L268 10 L276 29 L284 4 L292 34 L300 19 L370 19 L378 12 L386 28 L394 6 L400 19"
+                  stroke="#38BDF8"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
+
+            {/* 3 Vital Metrics */}
+            <div className="console-vitals-row">
+              <div className="vital-chip">
+                <span className="vital-val" style={{ color: "#F87171" }}>♥ 74</span>
+                <span className="vital-unit">BPM</span>
+              </div>
+              <div className="vital-chip">
+                <span className="vital-val" style={{ color: "#38BDF8" }}>99%</span>
+                <span className="vital-unit">SpO₂</span>
+              </div>
+              <div className="vital-chip">
+                <span className="vital-val" style={{ color: "#4ADE80" }}>120/80</span>
+                <span className="vital-unit">BP</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Dual Badges Row: Doctor On Duty & E-Prescription */}
+          <div className="telemetry-bottom-row">
+            {/* Badge 1: Doctor Credential */}
+            <div className="telemetry-sub-badge">
+              <div className="sub-badge-icon" style={{ background: "rgba(56, 189, 248, 0.2)", color: "#38BDF8" }}>
+                👨‍⚕️
+              </div>
+              <div className="sub-badge-info">
+                <span className="sub-badge-title">DR. ON DUTY</span>
+                <span className="sub-badge-status" style={{ color: "#22C55E" }}>● ACTIVE</span>
+              </div>
+            </div>
+
+            {/* Badge 2: E-Prescription Status */}
+            <div className="telemetry-sub-badge">
+              <div className="sub-badge-icon" style={{ background: "rgba(2, 132, 199, 0.25)", color: "#BAE6FD" }}>
+                Rx
+              </div>
+              <div className="sub-badge-info">
+                <span className="sub-badge-title">E-PRESCRIPTION</span>
+                <span className="sub-badge-status" style={{ color: "#38BDF8" }}>VERIFIED ✓</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-  );
-}
-
-/**
- * DoctorClinicalIllustration
- * --------------------------
- * Vector clinical artwork featuring a doctor workstation, medical tablet,
- * stethoscope, ECG pulse screen, and clinical badge.
- */
-function DoctorClinicalIllustration() {
-  return (
-    <svg width="100%" height="100%" viewBox="0 0 460 260" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
-      {/* Background Soft Gradients */}
-      <circle cx="230" cy="130" r="140" fill="#E0F2FE" fillOpacity="0.6" />
-      <circle cx="340" cy="70" r="70" fill="#ECFDF5" fillOpacity="0.8" />
-      <circle cx="100" cy="190" r="60" fill="#F0FDF4" fillOpacity="0.7" />
-
-      {/* Modern Medical Desk / Glass Console Table */}
-      <ellipse cx="230" cy="225" rx="190" ry="22" fill="#CBD5E1" fillOpacity="0.5" />
-      <rect x="90" y="200" width="280" height="12" rx="6" fill="#044E3B" fillOpacity="0.8" />
-
-      {/* Doctor Central Figure */}
-      <g transform="translate(195, 75)">
-        {/* Head */}
-        <circle cx="35" cy="26" r="20" fill="#FBBF24" />
-        {/* Hair */}
-        <path d="M15 24 C15 10, 55 10, 55 24 C55 14, 45 6, 35 6 C25 6, 15 14, 15 24 Z" fill="#1E293B" />
-        {/* Medical Mask */}
-        <path d="M22 28 C22 28, 35 38, 48 28 C48 38, 22 38, 22 28 Z" fill="#E0F2FE" />
-        {/* Doctor White Coat */}
-        <path d="M8 52 C8 44, 22 42, 35 42 C48 42, 62 44, 62 52 L68 125 L2 125 Z" fill="#FFFFFF" stroke="#CBD5E1" strokeWidth="2" />
-        {/* Medical Scrubs Inner */}
-        <path d="M26 42 L35 62 L44 42 Z" fill="#059669" />
-        {/* Stethoscope */}
-        <path d="M22 46 C22 68, 48 68, 48 46" stroke="#0284C7" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-        <circle cx="35" cy="72" r="5" fill="#0284C7" />
-        {/* Doctor ID Badge */}
-        <rect x="46" y="65" width="12" height="16" rx="2" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="1" />
-        <line x1="48" y1="70" x2="56" y2="70" stroke="#064E3B" strokeWidth="1" />
-        <line x1="48" y1="74" x2="54" y2="74" stroke="#064E3B" strokeWidth="1" />
-      </g>
-
-      {/* Left: ECG Patient Vitals Monitor */}
-      <g transform="translate(60, 60)">
-        <rect x="0" y="0" width="110" height="90" rx="12" fill="#0F172A" stroke="#334155" strokeWidth="2" />
-        <rect x="6" y="6" width="98" height="78" rx="8" fill="#022C22" />
-        {/* Live Heartbeat Line */}
-        <path d="M12 45 L32 45 L38 25 L44 65 L50 35 L56 50 L98 50" stroke="#34D399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        {/* Monitor Stats */}
-        <text x="14" y="22" fill="#38BDF8" fontSize="10" fontWeight="bold" fontFamily="sans-serif">HR: 74 BPM</text>
-        <text x="64" y="22" fill="#34D399" fontSize="10" fontWeight="bold" fontFamily="sans-serif">SPO2: 99%</text>
-        {/* Stand */}
-        <rect x="48" y="90" width="14" height="45" fill="#64748B" />
-        <ellipse cx="55" cy="135" rx="25" ry="5" fill="#475569" />
-      </g>
-
-      {/* Right: Electronic Prescription & Medical Tablet */}
-      <g transform="translate(300, 70)">
-        <rect x="0" y="0" width="95" height="115" rx="12" fill="#FFFFFF" stroke="#059669" strokeWidth="2" />
-        {/* Header Bar */}
-        <rect x="8" y="8" width="79" height="18" rx="4" fill="#ECFDF5" />
-        <text x="14" y="21" fill="#065F46" fontSize="9" fontWeight="800" fontFamily="sans-serif">Rx PRESCRIPTION</text>
-        {/* Lines */}
-        <line x1="12" y1="36" x2="65" y2="36" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" />
-        <line x1="12" y1="46" x2="80" y2="46" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" />
-        <line x1="12" y1="56" x2="72" y2="56" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" />
-        <line x1="12" y1="66" x2="60" y2="66" stroke="#CBD5E1" strokeWidth="2" strokeLinecap="round" />
-        {/* Signature Stamp */}
-        <circle cx="68" cy="92" r="14" fill="#E0F2FE" stroke="#0284C7" strokeWidth="1" strokeDasharray="2 2" />
-        <text x="59" y="95" fill="#0284C7" fontSize="7" fontWeight="bold" fontFamily="sans-serif">VERIFIED</text>
-      </g>
-    </svg>
   );
 }
 

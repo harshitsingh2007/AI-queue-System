@@ -2,7 +2,7 @@
  * AccessDeniedGuard.jsx
  * ---------------------
  * Access Protection Shield for Restricted Role Pages.
- * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
+ * Theme: Medical Ocean Blue & Slate (Clean Professional Palette)
  */
 
 import React, { useState } from "react";
@@ -10,42 +10,70 @@ import { API_BASE } from "../config/hospitalConfig";
 import { t } from "../utils/i18n";
 
 export default function AccessDeniedGuard({ requiredRole, pageName, currentUser, onLoginSuccess, navigateTo, language = "en" }) {
-  const isTargetingAdmin = requiredRole === "admin";
+  const isSuperAdminTarget = requiredRole === "super_admin" || requiredRole === "superadmin";
+  const isStaffTarget = requiredRole === "admin" || requiredRole === "staff";
+  const isTargetingAdmin = isSuperAdminTarget || isStaffTarget;
 
   return (
     <div style={{ maxWidth: "550px", margin: "40px auto", textAlign: "center" }}>
       <div style={standaloneCardStyle}>
         <div style={shieldIconCircleStyle}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
           </svg>
         </div>
 
-        <h2 style={{ margin: "0 0 10px 0", color: "#DC2626", fontSize: "22px", fontWeight: 800 }}>
-          {t("restrictedAccess", language)} — {isTargetingAdmin ? t("staffAdminRequired", language) : t("consumerOnly", language)}
+        <h2 style={{ margin: "0 0 10px 0", color: "#0F172A", fontSize: "22px", fontWeight: 800 }}>
+          {isSuperAdminTarget
+            ? (language === "hi" ? "सुपर एडमिन प्रमाणीकरण आवश्यक" : "Super Admin Access Required")
+            : (isStaffTarget
+              ? (language === "hi" ? "स्टाफ / डॉक्टर प्रमाणीकरण आवश्यक" : "Staff / Doctor Desk Required")
+              : (language === "hi" ? "प्रतिबंधित पहुंच" : "Restricted Access"))}
         </h2>
         <p style={{ color: "#475569", fontSize: "14px", lineHeight: "1.6", marginBottom: "20px" }}>
           {isTargetingAdmin ? (
-            <>The <strong>{pageName}</strong> {t("accessDeniedDesc", language)}</>
+            <>
+              {language === "hi"
+                ? <><strong>{pageName}</strong> तक पहुंचने के लिए कृपया अधिकृत क्रेडेंशियल्स से साइन इन करें।</>
+                : <>The <strong>{pageName}</strong> requires verified administrative permissions. Please authenticate below.</>}
+            </>
           ) : (
-            <>You are currently logged in as a <strong>Staff Admin</strong>. Patient check-in controls are dedicated for patient self-service screens.</>
+            <>
+              {language === "hi"
+                ? "आप वर्तमान में प्रशासनिक खाते से लॉगिन हैं। मरीज पोर्टल केवल मरीजों के लिए है।"
+                : "You are currently logged in as Staff/Admin. Patient self-service is dedicated for patient profiles."}
+            </>
           )}
         </p>
 
         {currentUser && (
-          <div style={{ padding: "14px", borderRadius: "10px", background: "#F8FAFC", border: "1px solid #CBD5E1", marginBottom: "20px" }}>
-            <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-              {t("currentStatus", language)}: <strong style={{ color: "#047857" }}>{currentUser.username} ({currentUser.email})</strong> — {t("accountRole", language)}: <span style={{ color: "#DC2626", fontWeight: 700 }}>{currentUser.role.toUpperCase()}</span>.
+          <div style={{ padding: "14px", borderRadius: "12px", background: "#F0F9FF", border: "1px solid #BAE6FD", marginBottom: "20px", textAlign: "left" }}>
+            <p style={{ margin: 0, color: "#0369A1", fontSize: "12.5px", fontWeight: 600 }}>
+              {language === "hi" ? "वर्तमान उपयोगकर्ता" : "Current Account"}: <strong style={{ color: "#0F172A" }}>{currentUser.username} ({currentUser.email})</strong>
+            </p>
+            <p style={{ margin: "4px 0 0 0", color: "#64748B", fontSize: "11.5px" }}>
+              {language === "hi" ? "भूमिका" : "Active Role"}: <span style={{ color: "#0284C7", fontWeight: 800, textTransform: "uppercase" }}>{currentUser.role}</span>
             </p>
           </div>
         )}
 
         {isTargetingAdmin ? (
-          <AuthModalInline onLoginSuccess={onLoginSuccess} defaultRole="admin" language={language} />
+          <AuthModalInline onLoginSuccess={onLoginSuccess} defaultRole={requiredRole} language={language} />
         ) : (
-          <button onClick={() => navigateTo("staff")} style={primaryBtnStyle}>
-            {t("switchToDesk", language)}
+          <button
+            onClick={() => {
+              if (currentUser?.role === "super_admin" || currentUser?.role === "superadmin") {
+                navigateTo("superadmin");
+              } else {
+                navigateTo("staff");
+              }
+            }}
+            style={primaryBtnStyle}
+          >
+            {currentUser?.role === "super_admin" || currentUser?.role === "superadmin"
+              ? (language === "hi" ? "सुपर एडमिन पोर्टल पर जाएं" : "Go to Super Admin Portal")
+              : (language === "hi" ? "स्टाफ डेस्क पर जाएं" : "Switch to Staff Desk")}
           </button>
         )}
       </div>
@@ -54,8 +82,8 @@ export default function AccessDeniedGuard({ requiredRole, pageName, currentUser,
 }
 
 function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
+  const [identifier, setIdentifier] = useState(defaultRole === "super_admin" || defaultRole === "superadmin" ? "superadmin@hospital.com" : "");
+  const [password, setPassword] = useState(defaultRole === "super_admin" || defaultRole === "superadmin" ? "admin123" : "");
   const [errorMsg, setErrorMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -73,8 +101,8 @@ function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
       const data = await res.json();
       setLoading(false);
       if (res.ok && data.status === "success") {
-        if (!["admin", "doctor", "staff", "super_admin", "receptionist"].includes(data.user.role)) {
-          setErrorMsg("Login failed: Account does not have staff permissions.");
+        if (!["admin", "doctor", "staff", "super_admin", "superadmin", "receptionist"].includes(data.user.role)) {
+          setErrorMsg("Login failed: Account does not have administrative permissions.");
           return;
         }
         onLoginSuccess(data.user);
@@ -88,16 +116,38 @@ function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
   };
 
   return (
-    <div style={{ textAlign: "left", background: "#F8FAFC", padding: "18px", borderRadius: "12px", border: "1px solid #CBD5E1" }}>
-      <h4 style={{ margin: "0 0 12px 0", color: "#047857", fontSize: "14px", fontWeight: 700 }}>
-        {t("accountSignIn", language)}:
-      </h4>
+    <div style={{ textAlign: "left", background: "#F8FAFC", padding: "20px", borderRadius: "14px", border: "1px solid #E2E8F0" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+        <h4 style={{ margin: 0, color: "#0F172A", fontSize: "14px", fontWeight: 800 }}>
+          {language === "hi" ? "एडमिन साइन इन" : "Administrative Sign In"}:
+        </h4>
+        <button
+          type="button"
+          onClick={() => {
+            setIdentifier("superadmin@hospital.com");
+            setPassword("admin123");
+          }}
+          style={{
+            padding: "4px 8px",
+            borderRadius: "6px",
+            background: "#E0F2FE",
+            border: "1px solid #BAE6FD",
+            color: "#0369A1",
+            fontSize: "11px",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {language === "hi" ? "⚡ सुपर एडमिन ऑटो-फिल" : "⚡ Fill Super Admin"}
+        </button>
+      </div>
+
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: "12px" }}>
-          <label style={fieldLabelStyle}>Email / Assigned ID</label>
+          <label style={fieldLabelStyle}>{language === "hi" ? "ईमेल / असाइन आईडी" : "Email / Assigned ID"}</label>
           <input
             type="text"
-            placeholder="name@hospital.com or DOC-1024"
+            placeholder="superadmin@hospital.com"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
             required
@@ -105,7 +155,7 @@ function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
           />
         </div>
         <div style={{ marginBottom: "14px" }}>
-          <label style={fieldLabelStyle}>{t("password", language)}</label>
+          <label style={fieldLabelStyle}>{language === "hi" ? "पासवर्ड" : "Password"}</label>
           <input
             type="password"
             placeholder="••••••••"
@@ -116,7 +166,7 @@ function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
           />
         </div>
         <button type="submit" disabled={loading} style={primaryBtnStyle}>
-          {loading ? "..." : t("authenticateBtn", language)}
+          {loading ? (language === "hi" ? "प्रमाणीकरण हो रहा है..." : "Authenticating...") : (language === "hi" ? "प्रवेश करें →" : "Sign In & Unlock →")}
         </button>
       </form>
       {errorMsg && <p style={{ color: "#DC2626", fontSize: "12px", marginTop: "10px", margin: 0, fontWeight: 600 }}>{errorMsg}</p>}
@@ -126,34 +176,36 @@ function AuthModalInline({ onLoginSuccess, defaultRole, language = "en" }) {
 
 const standaloneCardStyle = {
   background: "#FFFFFF",
-  borderRadius: "18px",
-  border: "1px solid #D8E8DD",
-  padding: "28px",
-  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+  borderRadius: "20px",
+  border: "1.5px solid #E2E8F0",
+  padding: "32px",
+  boxShadow: "0 10px 30px -5px rgba(2, 132, 199, 0.08)",
 };
 
 const shieldIconCircleStyle = {
-  width: "60px",
-  height: "60px",
+  width: "64px",
+  height: "64px",
   borderRadius: "50%",
-  background: "#FEF2F2",
-  border: "1px solid #FECACA",
+  background: "#F0F9FF",
+  border: "1.5px solid #BAE6FD",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  marginBottom: "16px",
+  marginBottom: "18px",
 };
 
-const fieldLabelStyle = { display: "block", fontSize: "12px", color: "#475569", marginBottom: "6px", fontWeight: 600 };
+const fieldLabelStyle = { display: "block", fontSize: "12px", color: "#475569", marginBottom: "6px", fontWeight: 700 };
 
 const fieldInputStyle = {
   width: "100%",
-  padding: "12px 14px",
+  padding: "11px 14px",
   borderRadius: "10px",
   border: "1px solid #CBD5E1",
   background: "#FFFFFF",
   color: "#0F172A",
   fontSize: "13px",
+  boxSizing: "border-box",
+  outline: "none",
 };
 
 const primaryBtnStyle = {
@@ -161,10 +213,10 @@ const primaryBtnStyle = {
   padding: "12px",
   borderRadius: "10px",
   border: "none",
-  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#ffffff",
   fontWeight: 800,
-  fontSize: "12px",
+  fontSize: "13px",
   cursor: "pointer",
-  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.3)",
+  boxShadow: "0 4px 14px rgba(2, 132, 199, 0.3)",
 };
