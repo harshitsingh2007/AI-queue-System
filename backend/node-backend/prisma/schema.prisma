@@ -1,0 +1,371 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model appointment_status_history {
+  id                 Int          @id @default(autoincrement())
+  appointment_id     String       @db.VarChar(100)
+  old_status         String?      @db.VarChar(50)
+  new_status         String       @db.VarChar(50)
+  changed_by_user_id Int?
+  reason             String?      @default("")
+  created_at         DateTime     @default(now()) @db.Timestamptz(6)
+  appointments       appointments @relation(fields: [appointment_id], references: [appointment_id], onDelete: Cascade, onUpdate: NoAction)
+  users              users?       @relation(fields: [changed_by_user_id], references: [id], onUpdate: NoAction)
+}
+
+model appointments {
+  id                         Int                          @id @default(autoincrement())
+  appointment_id             String                       @unique @db.VarChar(100)
+  hospital_id                Int
+  patient_id                 Int?
+  department_id              Int?
+  consumer_type              String                       @default("hospital") @db.VarChar(50)
+  service_category           String                       @db.VarChar(100)
+  appointment_date           DateTime                     @db.Date
+  time_slot                  String                       @db.VarChar(50)
+  status                     String                       @default("scheduled") @db.VarChar(50)
+  ticket_id                  String?                      @default("") @db.VarChar(100)
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  appointment_status_history appointment_status_history[]
+  departments                departments?                 @relation(fields: [department_id], references: [id], onUpdate: NoAction)
+  hospitals                  hospitals                    @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  patients                   patients?                    @relation(fields: [patient_id], references: [id], onUpdate: NoAction)
+  tickets                    tickets[]
+
+  @@index([hospital_id, appointment_date], map: "idx_appointments_hospital_date")
+  @@index([hospital_id, appointment_date, status], map: "idx_appointments_hospital_date_status")
+  @@index([patient_id], map: "idx_appointments_patient")
+}
+
+model audit_logs {
+  id          Int        @id @default(autoincrement())
+  hospital_id Int?
+  user_id     Int?
+  action      String     @db.VarChar(100)
+  entity_type String     @db.VarChar(100)
+  entity_id   String     @db.VarChar(100)
+  old_values  Json?      @default("{}")
+  new_values  Json?      @default("{}")
+  created_at  DateTime   @default(now()) @db.Timestamptz(6)
+  hospitals   hospitals? @relation(fields: [hospital_id], references: [id], onUpdate: NoAction)
+  users       users?     @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([hospital_id, created_at], map: "idx_audit_logs_hospital_created")
+  @@index([user_id], map: "idx_audit_logs_user")
+}
+
+model departments {
+  id           Int            @id @default(autoincrement())
+  hospital_id  Int
+  dept_code    String         @db.VarChar(100)
+  name         String         @db.VarChar(255)
+  description  String?        @default("")
+  status       String         @default("active") @db.VarChar(50)
+  created_at   DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime       @default(now()) @db.Timestamptz(6)
+  appointments appointments[]
+  hospitals    hospitals      @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  desks        desks[]
+  employees    employees[]
+  kiosks       kiosks[]
+  service_logs service_logs[]
+  tickets      tickets[]
+
+  @@unique([hospital_id, dept_code])
+  @@index([hospital_id], map: "idx_departments_hospital")
+}
+
+model desks {
+  id                   Int         @id @default(autoincrement())
+  hospital_id          Int
+  department_id        Int
+  desk_number          Int
+  desk_name            String      @db.VarChar(255)
+  assigned_employee_id Int?
+  status               String      @default("AVAILABLE") @db.VarChar(50)
+  current_ticket_id    String?     @default("") @db.VarChar(100)
+  last_active_at       DateTime?   @db.Timestamptz(6)
+  created_at           DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime    @default(now()) @db.Timestamptz(6)
+  employees            employees?  @relation(fields: [assigned_employee_id], references: [id], onUpdate: NoAction)
+  departments          departments @relation(fields: [department_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  hospitals            hospitals   @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([hospital_id, department_id, desk_number])
+  @@index([hospital_id, department_id], map: "idx_desks_hospital_dept")
+}
+
+model employees {
+  id            Int          @id @default(autoincrement())
+  user_id       Int
+  hospital_id   Int
+  department_id Int?
+  employee_code String?      @default("") @db.VarChar(100)
+  name          String       @db.VarChar(255)
+  phone         String?      @default("") @db.VarChar(100)
+  status        String       @default("active") @db.VarChar(50)
+  created_at    DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime     @default(now()) @db.Timestamptz(6)
+  desks         desks[]
+  departments   departments? @relation(fields: [department_id], references: [id], onUpdate: NoAction)
+  hospitals     hospitals    @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users         users        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([hospital_id, user_id])
+  @@index([department_id], map: "idx_employees_department")
+  @@index([hospital_id], map: "idx_employees_hospital")
+  @@index([user_id], map: "idx_employees_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model family_members {
+  id         String    @id @db.VarChar(100)
+  user_id    Int
+  patient_id Int?
+  name       String    @db.VarChar(255)
+  relation   String    @db.VarChar(50)
+  age        Int?      @default(25)
+  gender     String?   @default("male") @db.VarChar(50)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime  @default(now()) @db.Timestamptz(6)
+  phone      String?   @default("") @db.VarChar(100)
+  patients   patients? @relation(fields: [patient_id], references: [id], onUpdate: NoAction)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_family_members_user")
+}
+
+model hospitals {
+  id                     Int                      @id @default(autoincrement())
+  hospital_code          String                   @unique @db.VarChar(100)
+  name                   String                   @db.VarChar(255)
+  address                String?                  @default("")
+  phone                  String?                  @default("") @db.VarChar(100)
+  email                  String?                  @default("") @db.VarChar(255)
+  description            String?                  @default("")
+  logo_url               String?                  @default("")
+  status                 String                   @default("active") @db.VarChar(50)
+  owner_user_id          Int?
+  created_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime                 @default(now()) @db.Timestamptz(6)
+  appointments           appointments[]
+  audit_logs             audit_logs[]
+  departments            departments[]
+  desks                  desks[]
+  employees              employees[]
+  users                  users?                   @relation(fields: [owner_user_id], references: [id], onUpdate: NoAction)
+  kiosks                 kiosks[]
+  queue_events           queue_events[]
+  service_logs           service_logs[]
+  tenant_config          tenant_config?
+  tenant_historical_data tenant_historical_data[]
+  tenant_mapping         tenant_mapping?
+  tickets                tickets[]
+
+  @@index([hospital_code], map: "idx_hospitals_code")
+}
+
+model kiosks {
+  id            Int          @id @default(autoincrement())
+  hospital_id   Int
+  department_id Int?
+  kiosk_code    String       @db.VarChar(100)
+  name          String       @db.VarChar(255)
+  location      String       @db.VarChar(255)
+  status        String       @default("online") @db.VarChar(50)
+  last_seen_at  DateTime?    @db.Timestamptz(6)
+  is_active     Boolean      @default(true)
+  created_at    DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime     @default(now()) @db.Timestamptz(6)
+  departments   departments? @relation(fields: [department_id], references: [id], onUpdate: NoAction)
+  hospitals     hospitals    @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([hospital_id, kiosk_code])
+  @@index([hospital_id, department_id], map: "idx_kiosks_hospital_dept")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model patients {
+  id             Int              @id @default(autoincrement())
+  user_id        Int?
+  medical_id     String?          @default("") @db.VarChar(100)
+  name           String           @db.VarChar(255)
+  phone          String?          @default("") @db.VarChar(100)
+  gender         String?          @default("other") @db.VarChar(50)
+  age            Int?             @default(0)
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime         @default(now()) @db.Timestamptz(6)
+  appointments   appointments[]
+  family_members family_members[]
+  users          users?           @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+  tickets        tickets[]
+
+  @@index([user_id], map: "idx_patients_user")
+}
+
+model queue_events {
+  id                   Int       @id @default(autoincrement())
+  hospital_id          Int
+  ticket_id            String    @db.VarChar(100)
+  event_type           String    @db.VarChar(50)
+  old_status           String?   @db.VarChar(50)
+  new_status           String?   @db.VarChar(50)
+  old_position         Int?
+  new_position         Int?
+  performed_by_user_id Int?
+  metadata             Json?     @default("{}")
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+  hospitals            hospitals @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                users?    @relation(fields: [performed_by_user_id], references: [id], onUpdate: NoAction)
+  tickets              tickets   @relation(fields: [ticket_id], references: [ticket_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([hospital_id, created_at], map: "idx_queue_events_hospital_created")
+  @@index([ticket_id], map: "idx_queue_events_ticket")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model service_logs {
+  id                       Int          @id @default(autoincrement())
+  hospital_id              Int
+  ticket_id                String       @db.VarChar(100)
+  department_id            Int?
+  consumer_type            String       @default("hospital") @db.VarChar(50)
+  service_category         String       @db.VarChar(100)
+  hour_of_day              Int
+  day_of_week              Int
+  queue_length             Int
+  active_staff_counters    Int
+  is_peak_hour             Int
+  complexity_score         Float        @default(1.0)
+  historical_avg_speed     Float        @default(15.0)
+  service_duration_minutes Float
+  completed_at             DateTime     @default(now()) @db.Timestamptz(6)
+  queue_date               DateTime?    @default(dbgenerated("CURRENT_DATE")) @db.Date
+  departments              departments? @relation(fields: [department_id], references: [id], onUpdate: NoAction)
+  hospitals                hospitals    @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([hospital_id, queue_date], map: "idx_service_logs_hospital_date")
+  @@index([hospital_id, department_id], map: "idx_service_logs_hospital_dept")
+}
+
+model tenant_config {
+  hospital_id      Int       @id
+  legacy_tenant_id String?   @db.VarChar(100)
+  active_counters  Int?      @default(2)
+  updated_at       DateTime? @default(now()) @db.Timestamptz(6)
+  hospitals        hospitals @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tenant_historical_data {
+  id                       Int        @id @default(autoincrement())
+  hospital_id              Int?
+  legacy_tenant_id         String     @db.VarChar(100)
+  consumer_type            String     @default("hospital") @db.VarChar(50)
+  timestamp                DateTime?  @db.Timestamptz(6)
+  queue_length             Int
+  active_staff_counters    Int
+  service_category         String     @db.VarChar(100)
+  service_duration_minutes Float
+  complexity_score         Float      @default(1.0)
+  hour_of_day              Int
+  day_of_week              Int
+  is_peak_hour             Int
+  imported_at              DateTime   @default(now()) @db.Timestamptz(6)
+  queue_date               DateTime?  @db.Date
+  hospitals                hospitals? @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([hospital_id, queue_date], map: "idx_tenant_historical_date")
+}
+
+model tenant_mapping {
+  hospital_id      Int       @id
+  legacy_tenant_id String?   @db.VarChar(100)
+  mapping_json     Json      @default("{}")
+  updated_at       DateTime? @default(now()) @db.Timestamptz(6)
+  hospitals        hospitals @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model test_table {
+  id         Int       @id @default(autoincrement())
+  name       String?   @db.VarChar(100)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tickets {
+  id                        Int            @id @default(autoincrement())
+  ticket_id                 String         @unique @db.VarChar(100)
+  hospital_id               Int
+  department_id             Int?
+  patient_id                Int?
+  appointment_id            String?        @db.VarChar(100)
+  consumer_type             String         @default("hospital") @db.VarChar(50)
+  service_category          String         @db.VarChar(100)
+  name                      String         @db.VarChar(255)
+  priority_level            Int            @default(2)
+  join_timestamp            DateTime       @default(now()) @db.Timestamptz(6)
+  status                    String         @default("waiting") @db.VarChar(50)
+  predicted_service_minutes Float?         @default(10.0)
+  estimated_wait_minutes    Float?         @default(0.0)
+  position                  Int?           @default(0)
+  serve_start_time          DateTime?      @db.Timestamptz(6)
+  serve_end_time            DateTime?      @db.Timestamptz(6)
+  actual_service_minutes    Float?
+  medical_condition         String?        @default("general_checkup") @db.VarChar(100)
+  pre_existing_condition    String?        @default("none") @db.VarChar(100)
+  complexity_score          Float?         @default(1.0)
+  prescription_notes        String?        @default("")
+  parent_ticket_id          String?        @default("") @db.VarChar(100)
+  transferred_from_dept     String?        @default("") @db.VarChar(100)
+  source                    String?        @default("patient_portal") @db.VarChar(50)
+  kiosk_code                String?        @default("") @db.VarChar(100)
+  effective_timestamp       DateTime?      @db.Timestamptz(6)
+  adjustment_count          Int?           @default(0)
+  last_adjusted_at          DateTime?      @db.Timestamptz(6)
+  cancellation_reason       String?        @default("")
+  cancelled_at              DateTime?      @db.Timestamptz(6)
+  created_at                DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime       @default(now()) @db.Timestamptz(6)
+  queue_date                DateTime?      @default(dbgenerated("CURRENT_DATE")) @db.Date
+  queue_events              queue_events[]
+  appointments              appointments?  @relation(fields: [appointment_id], references: [appointment_id], onUpdate: NoAction)
+  departments               departments?   @relation(fields: [department_id], references: [id], onUpdate: NoAction)
+  hospitals                 hospitals      @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  patients                  patients?      @relation(fields: [patient_id], references: [id], onUpdate: NoAction)
+
+  @@index([department_id, status], map: "idx_tickets_dept_status")
+  @@index([hospital_id, queue_date], map: "idx_tickets_hospital_date")
+  @@index([hospital_id, department_id, queue_date, status], map: "idx_tickets_hospital_dept_date_status")
+  @@index([hospital_id, status], map: "idx_tickets_hospital_status")
+  @@index([patient_id], map: "idx_tickets_patient")
+}
+
+model users {
+  id                         Int                          @id @default(autoincrement())
+  email                      String                       @unique @db.VarChar(255)
+  username                   String                       @db.VarChar(255)
+  password_hash              String
+  role                       String                       @default("user") @db.VarChar(50)
+  status                     String                       @default("active") @db.VarChar(50)
+  phone                      String?                      @default("") @db.VarChar(100)
+  created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime                     @default(now()) @db.Timestamptz(6)
+  last_login_at              DateTime?                    @db.Timestamptz(6)
+  appointment_status_history appointment_status_history[]
+  audit_logs                 audit_logs[]
+  employees                  employees[]
+  family_members             family_members[]
+  hospitals                  hospitals[]
+  patients                   patients[]
+  queue_events               queue_events[]
+
+  @@index([email], map: "idx_users_email")
+}
