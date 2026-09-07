@@ -1,0 +1,11 @@
+{
+  "name": "ai-queue-backend-root",
+  "version": "1.0.0",
+  "description": "AI Queue System Backend Entry Point",
+  "scripts": {
+    "start": "npm start --prefix node-backend",
+    "dev": "npm run dev --prefix node-backend",
+    "test": "npm test --prefix node-backend",
+    "start:ai": "python python-ai/ai_service.py"
+  }
+}

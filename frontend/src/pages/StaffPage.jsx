@@ -428,12 +428,15 @@ export default function StaffPage({
         language={language}
         adminDept={adminDept}
         hospitalName={currentUser?.hospital_name || "City General Hospital"}
+        currentUser={currentUser}
         analytics={analytics}
         waitingCount={queueSnapshot.length}
         servingCount={servingTickets.length}
         servingTicket={primaryServing}
+        nextTicket={queueSnapshot.length > 0 ? queueSnapshot[0] : null}
         appointmentsCount={appointments.length}
         handleCounterChange={handleCounterChange}
+        handleServeNext={handleServeNext}
         navigateTo={navigateTo}
       />
 
