@@ -235,6 +235,54 @@ export default function PatientPage({
     fetchUserAppointments();
   }, [currentUser, fetchUserAppointments]);
 
+  // Tenant Customization & Branding (White-Labeling) State
+  const [hospitalBranding, setHospitalBranding] = useState(null);
+
+  useEffect(() => {
+    const hospCode = tenantId || currentUser?.hospital_code || "city-hospital-01";
+    fetch(`${API_BASE}/api/v1/hospital/branding/${hospCode}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status === "success" && d.branding) {
+          setHospitalBranding(d.branding);
+        }
+      })
+      .catch((e) => console.log("Branding fetch error:", e));
+  }, [tenantId, currentUser?.hospital_code]);
+
+  // Operational Schedule & Registration Cutoff Status
+  const registrationStatus = (() => {
+    if (!hospitalBranding) return { isClosed: false, reason: "" };
+    const now = new Date();
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const todayName = days[now.getDay()];
+
+    if (Array.isArray(hospitalBranding.operating_days) && hospitalBranding.operating_days.length > 0) {
+      if (!hospitalBranding.operating_days.includes(todayName)) {
+        return {
+          isClosed: true,
+          reason: language === "hi" ? `आज (${todayName}) ओपीडी बंद है।` : `OPD is closed today (${todayName}).`,
+        };
+      }
+    }
+
+    if (hospitalBranding.registration_cutoff_time) {
+      const [cutH, cutM] = hospitalBranding.registration_cutoff_time.split(":").map(Number);
+      const curH = now.getHours();
+      const curM = now.getMinutes();
+      if (curH > cutH || (curH === cutH && curM >= cutM)) {
+        return {
+          isClosed: true,
+          reason: language === "hi"
+            ? `आज का पंजीकरण कटऑफ समय (${hospitalBranding.registration_cutoff_time}) समाप्त हो चुका है।`
+            : `Today's registration cutoff (${hospitalBranding.registration_cutoff_time}) has passed.`,
+        };
+      }
+    }
+
+    return { isClosed: false, reason: "" };
+  })();
+
   const fetchUserTicketHistory = useCallback((overrideName) => {
     const ident =
       overrideName ||
@@ -1229,6 +1277,61 @@ export default function PatientPage({
                     </div>
                   )}
 
+                  {/* Operating Hours & Cutoff Status Banner */}
+                  {registrationStatus.isClosed ? (
+                    <div
+                      style={{
+                        marginBottom: "18px",
+                        padding: "14px 16px",
+                        borderRadius: "12px",
+                        background: "#FFFBEB",
+                        border: "1.5px solid #FDE68A",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "12px",
+                      }}
+                    >
+                      <span style={{ fontSize: "22px", flexShrink: 0 }}>⚠️</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 800, color: "#B45309", fontSize: "13.5px" }}>
+                          {language === "hi" ? "दैनिक ओपीडी पंजीकरण बंद है" : "OPD Registration Currently Closed"}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#92400E", marginTop: "2px", lineHeight: 1.4 }}>
+                          {hospitalBranding?.closed_notice ||
+                            (language === "hi"
+                              ? "आज के लिए ओपीडी पंजीकरण बंद है। आपातकालीन (Emergency) मरीज 24/7 कभी भी रजिस्टर कर सकते हैं।"
+                              : "Registrations are closed for today. Emergency triage registrations remain active 24/7.")}
+                        </div>
+                        <div style={{ fontSize: "11.5px", color: "#B45309", marginTop: "4px", fontWeight: 700 }}>
+                          ℹ️ {registrationStatus.reason}
+                        </div>
+                      </div>
+                    </div>
+                  ) : hospitalBranding?.registration_cutoff_time ? (
+                    <div
+                      style={{
+                        marginBottom: "16px",
+                        padding: "8px 14px",
+                        borderRadius: "10px",
+                        background: "#F0FDF4",
+                        border: "1px solid #BBF7D0",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        fontSize: "12px",
+                        color: "#166534",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <span>🟢</span>
+                      <span>
+                        {language === "hi"
+                          ? `ओपीडी पंजीकरण खुला है • दैनिक कटऑफ: ${hospitalBranding.registration_cutoff_time} तक`
+                          : `OPD Registration Open • Daily Cutoff: ${hospitalBranding.registration_cutoff_time}`}
+                      </span>
+                    </div>
+                  ) : null}
+
                   <form onSubmit={handleJoinQueue}>
                     {/* Row 1: Patient Full Name & Patient Age & Gender */}
                     <div className="form-grid-2col">
@@ -1637,7 +1740,14 @@ export default function PatientPage({
                 familyTickets={familyTickets}
                 ticketQrData={ticketQrData}
                 language={language}
-                onPrint={() => printTokenPass(activeTicket, tenantId)}
+                onPrint={() =>
+                  printTokenPass(
+                    activeTicket,
+                    ticketQrData?.qr_code_base64 || ticketQrData?.qr_base64,
+                    language,
+                    hospitalBranding
+                  )
+                }
                 onOpenAdjustModal={() => {
                   setAdjustError("");
                   setAdjustSuccessMsg("");
@@ -2141,7 +2251,11 @@ export default function PatientPage({
       )}
 
       {/* 6. Footer (Matching Image 2) */}
-      <Footer language={language} />
+      <Footer
+        language={language}
+        hospitalName={currentUser?.hospital_name || HOSPITAL_CONFIG.name}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

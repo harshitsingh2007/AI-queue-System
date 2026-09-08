@@ -4,7 +4,7 @@
   "description": "Enterprise Multi-Hospital AI Queue System Backend in Node.js & Express with Prisma ORM and Socket.IO",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
+    "start": "node --watch src/server.js",
     "dev": "node --watch src/server.js",
     "prisma:pull": "prisma db pull",
     "prisma:generate": "prisma generate",

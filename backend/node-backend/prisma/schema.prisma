@@ -151,6 +151,7 @@ model hospitals {
   email                  String?                  @default("") @db.VarChar(255)
   description            String?                  @default("")
   logo_url               String?                  @default("")
+  branding_json          Json?                    @default("{}")
   status                 String                   @default("active") @db.VarChar(50)
   owner_user_id          Int?
   created_at             DateTime                 @default(now()) @db.Timestamptz(6)

@@ -1249,7 +1249,11 @@ export default function StaffPage({
       )}
 
       {/* 5. FOOTER WITH ECG HEARTBEAT */}
-      <Footer language={language} />
+      <Footer
+        language={language}
+        hospitalName={currentUser?.hospital_name || "City General Hospital"}
+        currentUser={currentUser}
+      />
     </div>
   );
 }

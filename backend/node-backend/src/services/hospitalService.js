@@ -18,6 +18,21 @@ const STANDARD_DEPARTMENTS = [
   ["billing", "Central Billing & Cashier", "Hospital services billing, insurance and receipts"],
 ];
 
+const DEFAULT_BRANDING = {
+  logo_url: "",
+  primary_color: "#0284C7",
+  secondary_color: "#0369A1",
+  accent_color: "#F0F9FF",
+  tagline: "Care you can trust • NABH Accredited",
+  emergency_helpline: "Emergency Helpline: 108 / +91 98765 43210",
+  slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
+  opd_start_time: "08:00",
+  opd_end_time: "20:00",
+  registration_cutoff_time: "19:00",
+  operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+};
+
 /**
  * Super Admin Overview: aggregates platform or owner-scoped statistics.
  */
@@ -260,19 +275,111 @@ async function createHospital({
  */
 async function updateHospital(hospitalCode, data) {
   const hCode = String(hospitalCode).trim();
+  const updateData = {
+    name: data.name,
+    address: data.address || "",
+    phone: data.phone || "",
+    email: data.email || "",
+    description: data.description || "",
+    logo_url: data.logo_url || "",
+    status: data.status || "active",
+    updated_at: new Date(),
+  };
+  if (data.branding_json !== undefined) {
+    updateData.branding_json = data.branding_json;
+  }
   return prisma.hospitals.update({
     where: { hospital_code: hCode },
-    data: {
-      name: data.name,
-      address: data.address || "",
-      phone: data.phone || "",
-      email: data.email || "",
-      description: data.description || "",
-      logo_url: data.logo_url || "",
-      status: data.status || "active",
-      updated_at: new Date(),
+    data: updateData,
+  });
+}
+
+/**
+ * Gets tenant branding, custom slip settings, and operating hours.
+ */
+async function getHospitalBranding(hospitalCode) {
+  const hCode = String(hospitalCode).trim();
+  const hosp = await prisma.hospitals.findUnique({
+    where: { hospital_code: hCode },
+    select: {
+      id: true,
+      hospital_code: true,
+      name: true,
+      logo_url: true,
+      phone: true,
+      email: true,
+      address: true,
+      description: true,
+      branding_json: true,
+      status: true,
     },
   });
+
+  if (!hosp) {
+    const err = new Error(`Hospital '${hCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const raw = hosp.branding_json || {};
+  return {
+    ...DEFAULT_BRANDING,
+    ...raw,
+    hospital_name: hosp.name,
+    hospital_code: hosp.hospital_code,
+    logo_url: raw.logo_url || hosp.logo_url || "",
+    phone: hosp.phone || "",
+    email: hosp.email || "",
+    address: hosp.address || "",
+    status: hosp.status || "active",
+  };
+}
+
+/**
+ * Updates tenant branding, token slip settings, and operating hours.
+ */
+async function updateHospitalBranding(hospitalCode, brandingData) {
+  const hCode = String(hospitalCode).trim();
+  const hosp = await prisma.hospitals.findUnique({
+    where: { hospital_code: hCode },
+  });
+
+  if (!hosp) {
+    const err = new Error(`Hospital '${hCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const existing = hosp.branding_json || {};
+  const merged = {
+    ...DEFAULT_BRANDING,
+    ...existing,
+    ...brandingData,
+  };
+
+  const updatePayload = {
+    branding_json: merged,
+    updated_at: new Date(),
+  };
+
+  if (brandingData.logo_url !== undefined) {
+    updatePayload.logo_url = brandingData.logo_url;
+  }
+
+  const updatedHosp = await prisma.hospitals.update({
+    where: { hospital_code: hCode },
+    data: updatePayload,
+  });
+
+  return {
+    status: "success",
+    hospital_code: hCode,
+    branding: {
+      ...merged,
+      hospital_name: updatedHosp.name,
+      logo_url: updatedHosp.logo_url || merged.logo_url,
+    },
+  };
 }
 
 /**
@@ -326,15 +433,18 @@ async function getHospitalEmployees(hospitalCode) {
   });
 
   return employees.map((e) => ({
+    id: e.id,
     employee_id_num: e.id,
     employee_id: e.employee_code || `EMP-${e.id}`,
     name: e.name,
+    username: e.name || e.users?.username || "",
     email: e.users?.email || "",
     phone: e.phone || "",
     role: e.users?.role || "staff",
     department: e.departments?.dept_code || "all",
     department_name: e.departments?.name || "All Departments",
     status: e.status,
+    user_id: e.user_id,
   }));
 }
 
@@ -432,16 +542,33 @@ async function addHospitalEmployee({
 }
 
 /**
- * Updates an employee's details.
+ * Updates an employee's details, including optional password.
  */
-async function updateHospitalEmployee(userId, { name, phone = "", role = "staff", department = "consultation", employeeId = "", status = "active" }) {
-  await prisma.users.update({
-    where: { id: parseInt(userId, 10) },
-    data: { username: name, role, phone, status, updated_at: new Date() },
-  });
+async function updateHospitalEmployee(userId, { name, phone = "", role = "staff", department = "consultation", employeeId = "", status = "active", password = null }) {
+  let uid = parseInt(userId, 10);
+  let user = await prisma.users.findUnique({ where: { id: uid } });
+  if (!user) {
+    const empLookup = await prisma.employees.findUnique({ where: { id: uid } });
+    if (empLookup && empLookup.user_id) {
+      uid = empLookup.user_id;
+      user = await prisma.users.findUnique({ where: { id: uid } });
+    }
+  }
+
+  const userData = { username: name, role, phone, status, updated_at: new Date() };
+  if (password && String(password).trim().length > 0) {
+    userData.password_hash = await hashPassword(String(password).trim());
+  }
+
+  if (user) {
+    await prisma.users.update({
+      where: { id: uid },
+      data: userData,
+    });
+  }
 
   const emp = await prisma.employees.findFirst({
-    where: { user_id: parseInt(userId, 10) },
+    where: { user_id: uid },
   });
 
   if (emp) {
@@ -465,7 +592,42 @@ async function updateHospitalEmployee(userId, { name, phone = "", role = "staff"
     });
   }
 
-  return { user_id: parseInt(userId, 10), name, role, status };
+  return { user_id: uid, name, role, status };
+}
+
+/**
+ * Updates an employee or doctor's password directly.
+ */
+async function updateEmployeePassword(userId, newPassword) {
+  let uid = parseInt(userId, 10);
+  let user = await prisma.users.findUnique({ where: { id: uid } });
+  if (!user) {
+    const empLookup = await prisma.employees.findUnique({ where: { id: uid } });
+    if (empLookup && empLookup.user_id) {
+      uid = empLookup.user_id;
+      user = await prisma.users.findUnique({ where: { id: uid } });
+    }
+  }
+
+  if (!user) {
+    const err = new Error(`User or Employee #${userId} not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const pwdHash = await hashPassword(String(newPassword).trim());
+  await prisma.users.update({
+    where: { id: uid },
+    data: { password_hash: pwdHash, updated_at: new Date() },
+  });
+
+  return {
+    user_id: uid,
+    email: user.email,
+    name: user.username,
+    role: user.role,
+    status: "success",
+  };
 }
 
 /**
@@ -689,10 +851,13 @@ module.exports = {
   getHospitalByCode,
   createHospital,
   updateHospital,
+  getHospitalBranding,
+  updateHospitalBranding,
   deleteHospital,
   getHospitalEmployees,
   addHospitalEmployee,
   updateHospitalEmployee,
+  updateEmployeePassword,
   deleteHospitalEmployee,
   getHospitalDepartments,
   addHospitalDepartment,

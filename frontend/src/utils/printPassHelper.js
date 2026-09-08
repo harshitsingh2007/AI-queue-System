@@ -43,10 +43,16 @@ function triggerIframePrint(htmlContent) {
 /**
  * Print live queue token pass with QR code and optional clinical prescription.
  */
-export function printTokenPass(ticket, qrBase64, lang = "en") {
+export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
   if (!ticket) return;
 
-  const hospitalName = t("hospitalName", lang);
+  const hospitalName = (branding && (branding.hospital_name || branding.name)) || ticket.hospital_name || t("hospitalName", lang);
+  const brandPrimary = (branding && branding.primary_color) || "#047857";
+  const brandTagline = (branding && branding.tagline) || (lang === "hi" ? "भरोसेमंद स्वास्थ्य सेवा • एनएबीएच मान्यता प्राप्त" : "Care you can trust • Official Clinical Pass");
+  const emergencyHelpline = (branding && branding.emergency_helpline) || "";
+  const customFooter = (branding && branding.slip_footer_text) || (lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड • कृपया परामर्श समाप्ति तक संभाल कर रखें" : "Non-transferable official patient record • Retain until consultation is complete");
+  const logoUrl = (branding && branding.logo_url) || "";
+
   const now = new Date();
   const formattedDateTime = now.toLocaleDateString(lang === "hi" ? "hi-IN" : "en-US", {
     weekday: "short",
@@ -64,7 +70,7 @@ export function printTokenPass(ticket, qrBase64, lang = "en") {
   const minStr = t("unit_min", lang);
   const passTitle = t("officialQueuePass", lang);
   const noticeStr = t("presentedAtDesk", lang);
-  const footerStr = t("hospitalFooterNote", lang);
+  const footerStr = `${hospitalName} • ${customFooter}`;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -92,14 +98,23 @@ export function printTokenPass(ticket, qrBase64, lang = "en") {
     }
     .header {
       text-align: center;
-      border-bottom: 2px solid #0f172a;
+      border-bottom: 2px solid ${brandPrimary};
       padding-bottom: 10px;
       margin-bottom: 12px;
+    }
+    .logo-img {
+      max-height: 48px;
+      max-width: 140px;
+      object-fit: contain;
+      margin-bottom: 6px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
     }
     .hospital-title {
       font-size: 17px;
       font-weight: 900;
-      color: #064e3b;
+      color: ${brandPrimary};
       letter-spacing: -0.2px;
       margin: 0;
       text-transform: uppercase;
@@ -109,7 +124,7 @@ export function printTokenPass(ticket, qrBase64, lang = "en") {
       font-weight: 700;
       color: #475569;
       margin-top: 3px;
-      letter-spacing: 0.8px;
+      letter-spacing: 0.6px;
       text-transform: uppercase;
     }
     .issue-time {
@@ -117,10 +132,21 @@ export function printTokenPass(ticket, qrBase64, lang = "en") {
       color: #64748b;
       margin-top: 2px;
     }
+    .helpline-box {
+      margin: 8px 0;
+      padding: 5px 8px;
+      border-radius: 6px;
+      background: #FEF2F2;
+      border: 1px solid #FECACA;
+      color: #DC2626;
+      font-size: 10.5px;
+      font-weight: 800;
+      text-align: center;
+    }
     .token-banner {
       text-align: center;
-      background: #ecfdf5;
-      border: 1px solid #a7f3d0;
+      background: #F8FAFC;
+      border: 2px solid ${brandPrimary};
       border-radius: 8px;
       padding: 14px 10px;
       margin: 12px 0;
@@ -128,14 +154,14 @@ export function printTokenPass(ticket, qrBase64, lang = "en") {
     .token-label {
       font-size: 10px;
       font-weight: 800;
-      color: #065f46;
+      color: #475569;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
     .token-num {
       font-size: 42px;
       font-weight: 900;
-      color: #047857;
+      color: ${brandPrimary};
       line-height: 1;
       margin: 4px 0 6px 0;
     }
@@ -232,9 +258,11 @@ export function printTokenPass(ticket, qrBase64, lang = "en") {
 </head>
 <body>
   <div class="header">
+    ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="Logo" />` : ""}
     <h1 class="hospital-title">${hospitalName}</h1>
-    <div class="slip-subtitle">${passTitle}</div>
+    <div class="slip-subtitle">${brandTagline}</div>
     <div class="issue-time">${formattedDateTime}</div>
+    ${emergencyHelpline ? `<div class="helpline-box">📞 ${emergencyHelpline}</div>` : ""}
   </div>
 
   <div class="token-banner">
@@ -306,7 +334,7 @@ export function printAppointmentRecord(apt, lang = "en") {
   const deptName = getCategoryLabel(apt.service_category, lang);
   const statusName = getStatusLabel(apt.status, lang);
   const slipTitle = t("officialRxSlip", lang);
-  const footerStr = t("hospitalFooterNote", lang);
+  const footerStr = `${hospitalName} • ${lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड" : "Non-transferable official patient record"}`;
 
   const html = `<!DOCTYPE html>
 <html>

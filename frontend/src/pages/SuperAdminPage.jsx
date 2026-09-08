@@ -155,6 +155,21 @@ const IconPhone = ({ size = 13, color = "currentColor" }) => (
   </svg>
 );
 
+const IconKey = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 2l-2 2m-1.5 1.5L14 9a5 5 0 1 0 3 3l3-3 2-2z" />
+    <circle cx="7.5" cy="16.5" r="1.5" />
+    <path d="M15.5 7.5L18 10" />
+  </svg>
+);
+
+const IconEye = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
 export default function SuperAdminPage({
   currentUser,
   language = "en",
@@ -200,6 +215,26 @@ export default function SuperAdminPage({
   const [showAddDeskModal, setShowAddDeskModal] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState(null);
 
+  // Hospital Branding & White-Labeling States
+  const [showBrandingModal, setShowBrandingModal] = useState(false);
+  const [brandingTargetHospital, setBrandingTargetHospital] = useState(null);
+  const [brandingForm, setBrandingForm] = useState({
+    logo_url: "",
+    primary_color: "#0284C7",
+    secondary_color: "#0369A1",
+    accent_color: "#F0F9FF",
+    tagline: "Care you can trust • NABH Accredited",
+    emergency_helpline: "Emergency Helpline: 108 / +91 98765 43210",
+    slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
+    opd_start_time: "08:00",
+    opd_end_time: "20:00",
+    registration_cutoff_time: "19:00",
+    operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+  });
+  const [isSavingBranding, setIsSavingBranding] = useState(false);
+  const [activeBrandingTab, setActiveBrandingTab] = useState("theme"); // "theme" | "slip" | "hours"
+
   const getAuthHeaders = useCallback(() => ({
     "Content-Type": "application/json",
     ...(currentUser?.email ? { "X-User-Email": currentUser.email } : {})
@@ -244,6 +279,7 @@ export default function SuperAdminPage({
     department: "consultation",
     employee_id: "",
     status: "active",
+    password: "",
   });
 
   const [newDeptForm, setNewDeptForm] = useState({
@@ -258,10 +294,97 @@ export default function SuperAdminPage({
     status: "AVAILABLE",
   });
 
+  // Edit Department & Desk Modal States
+  const [showEditDeptModal, setShowEditDeptModal] = useState(false);
+  const [editDeptForm, setEditDeptForm] = useState({
+    dept_code: "",
+    name: "",
+    description: "",
+  });
+
+  const [showEditDeskModal, setShowEditDeskModal] = useState(false);
+  const [editDeskForm, setEditDeskForm] = useState({
+    id: null,
+    desk_name: "",
+    dept_code: "",
+    status: "AVAILABLE",
+  });
+
+  // Normalize desks data ensuring department grouping and desk counters are always populated
+  const normalizeDesksData = useCallback((rawDesks, deptsList = []) => {
+    if (!rawDesks) return { total_desks: 0, active_desks: 0, departments: [] };
+    if (!Array.isArray(rawDesks) && Array.isArray(rawDesks.departments)) {
+      return rawDesks;
+    }
+    const deskList = Array.isArray(rawDesks) ? rawDesks : (rawDesks.list || rawDesks.raw || []);
+    const deptMap = {};
+    (deptsList || []).forEach((d) => {
+      deptMap[d.dept_code] = {
+        dept_code: d.dept_code,
+        name: d.name,
+        description: d.description || "",
+        total_desks: 0,
+        active_desks: 0,
+        desks: [],
+      };
+    });
+    let activeCount = 0;
+    deskList.forEach((desk) => {
+      const dCode = desk.dept_code || "consultation";
+      if (!deptMap[dCode]) {
+        deptMap[dCode] = {
+          dept_code: dCode,
+          name: desk.department_name || dCode,
+          description: "",
+          total_desks: 0,
+          active_desks: 0,
+          desks: [],
+        };
+      }
+      deptMap[dCode].total_desks += 1;
+      const st = (desk.status || "").toUpperCase();
+      if (["ACTIVE", "AVAILABLE", "OCCUPIED", "BUSY"].includes(st)) {
+        deptMap[dCode].active_desks += 1;
+        activeCount += 1;
+      }
+      deptMap[dCode].desks.push({
+        ...desk,
+        staff_name: desk.assigned_employee_name || desk.staff_name || "",
+      });
+    });
+    return {
+      total_desks: deskList.length,
+      active_desks: activeCount,
+      departments: Object.values(deptMap),
+    };
+  }, []);
+
+  // Search & Pagination inside Drill-In View
+  const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
+  const [employeePage, setEmployeePage] = useState(1);
+  const [deskSearchQuery, setDeskSearchQuery] = useState("");
+  const [deskPage, setDeskPage] = useState(1);
+
+  // Change Password Modal States for Doctors & Staff
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [passwordTargetEmployee, setPasswordTargetEmployee] = useState(null);
+  const [newPasswordValue, setNewPasswordValue] = useState("");
+  const [showPasswordText, setShowPasswordText] = useState(true);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [passwordUpdateSuccess, setPasswordUpdateSuccess] = useState(null);
+
   const notify = (msg) => {
     setFeedbackMsg(msg);
     setTimeout(() => setFeedbackMsg(""), 4000);
   };
+
+  // Reset drill-in search & pagination whenever selected hospital changes
+  useEffect(() => {
+    setEmployeeSearchQuery("");
+    setEmployeePage(1);
+    setDeskSearchQuery("");
+    setDeskPage(1);
+  }, [selectedHospital?.hospital_code]);
 
   useEffect(() => {
     selectedHospitalRef.current = selectedHospital;
@@ -320,16 +443,17 @@ export default function SuperAdminPage({
       if (empRes.status === "success") {
         setHospitalEmployees(empRes.employees);
       }
-      if (desksRes.status === "success") {
-        setHospitalDesksData(desksRes.desks);
-      }
+      const depts = deptsRes.status === "success" ? deptsRes.departments : [];
       if (deptsRes.status === "success") {
-        setHospitalDepts(deptsRes.departments);
+        setHospitalDepts(depts);
+      }
+      if (desksRes.status === "success") {
+        setHospitalDesksData(normalizeDesksData(desksRes.desks, depts));
       }
     } catch (e) {
       console.log("Deep dive fetch error:", e);
     }
-  }, [getAuthHeaders]);
+  }, [getAuthHeaders, normalizeDesksData]);
 
   // Initial Fetch & Live Data Polling (Banner reflects live real data every 4 seconds)
   useEffect(() => {
@@ -429,6 +553,81 @@ export default function SuperAdminPage({
     }
   };
 
+  // 4.5. Hospital Branding & White-Labeling Handlers
+  const handleOpenBrandingModal = async (hosp) => {
+    setBrandingTargetHospital(hosp);
+    setActiveBrandingTab("theme");
+    // Preload current values or defaults
+    setBrandingForm({
+      logo_url: hosp.logo_url || "",
+      primary_color: "#0284C7",
+      secondary_color: "#0369A1",
+      accent_color: "#F0F9FF",
+      tagline: "Care you can trust • NABH Accredited",
+      emergency_helpline: "Emergency Helpline: 108 / +91 98765 43210",
+      slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
+      opd_start_time: "08:00",
+      opd_end_time: "20:00",
+      registration_cutoff_time: "19:00",
+      operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+      closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+    });
+    setShowBrandingModal(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hosp.hospital_code}/branding`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.branding) {
+        setBrandingForm({
+          logo_url: data.branding.logo_url || hosp.logo_url || "",
+          primary_color: data.branding.primary_color || "#0284C7",
+          secondary_color: data.branding.secondary_color || "#0369A1",
+          accent_color: data.branding.accent_color || "#F0F9FF",
+          tagline: data.branding.tagline || "Care you can trust • NABH Accredited",
+          emergency_helpline: data.branding.emergency_helpline || "Emergency Helpline: 108 / +91 98765 43210",
+          slip_footer_text: data.branding.slip_footer_text || "Non-transferable official patient record. Please keep until consultation is complete.",
+          opd_start_time: data.branding.opd_start_time || "08:00",
+          opd_end_time: data.branding.opd_end_time || "20:00",
+          registration_cutoff_time: data.branding.registration_cutoff_time || "19:00",
+          operating_days: Array.isArray(data.branding.operating_days) ? data.branding.operating_days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+          closed_notice: data.branding.closed_notice || "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+        });
+      }
+    } catch (e) {
+      console.log("Error loading branding:", e);
+    }
+  };
+
+  const handleSaveBrandingSubmit = async (e) => {
+    e.preventDefault();
+    if (!brandingTargetHospital) return;
+    setIsSavingBranding(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${brandingTargetHospital.hospital_code}/branding`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(brandingForm),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        setShowBrandingModal(false);
+        notify(isHi ? `🎨 '${brandingTargetHospital.name}' का ब्रांडिंग व समय सेटिंग्स सहेजा गया!` : `🎨 Branding & operating hours updated for '${brandingTargetHospital.name}'!`);
+        fetchGlobalData();
+        if (selectedHospital?.hospital_code === brandingTargetHospital.hospital_code) {
+          fetchHospitalDeepDive(selectedHospital.hospital_code);
+        }
+      } else {
+        alert(data.detail || data.message || "Failed to save branding settings.");
+      }
+    } catch (err) {
+      alert(`Error saving branding: ${err.message}`);
+    } finally {
+      setIsSavingBranding(false);
+    }
+  };
+
   // 5. Add Employee Handler (Doctor, Staff, Admin)
   const handleAddEmployeeSubmit = async (e) => {
     e.preventDefault();
@@ -476,15 +675,20 @@ export default function SuperAdminPage({
     e.preventDefault();
     if (!selectedHospital || !editEmployeeForm.id) return;
     try {
+      const payload = { ...editEmployeeForm };
+      if (!payload.password || !payload.password.trim()) {
+        delete payload.password;
+      }
       const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/employees/${editEmployeeForm.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editEmployeeForm),
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {
         setShowEditEmployeeModal(false);
-        notify(isHi ? `✓ कर्मचारी रिकॉर्ड अपडेट हुआ!` : `✓ Employee record updated!`);
+        setEditEmployeeForm({ ...editEmployeeForm, password: "" });
+        notify(isHi ? `✓ कर्मचारी रिकॉर्ड एवं पासवर्ड अपडेट हुआ!` : `✓ Employee record and credentials updated!`);
         fetchHospitalDeepDive(selectedHospital.hospital_code);
         fetchGlobalData();
       } else {
@@ -498,18 +702,20 @@ export default function SuperAdminPage({
   // 7. Delete Employee Handler
   const handleDeleteEmployee = async (emp) => {
     if (!selectedHospital) return;
+    const empName = emp.name || emp.username || emp.email;
     const confirmMsg = isHi
-      ? `क्या आप वाकई कर्मचारी/डॉक्टर '${emp.username}' को हटाना चाहते हैं?`
-      : `Are you sure you want to remove employee/doctor '${emp.username}'?`;
+      ? `क्या आप वाकई कर्मचारी/डॉक्टर '${empName}' को हटाना चाहते हैं?`
+      : `Are you sure you want to remove employee/doctor '${empName}'?`;
     if (!window.confirm(confirmMsg)) return;
 
     try {
-      const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/employees/${emp.id}`, {
+      const empId = emp.id || emp.employee_id_num;
+      const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/employees/${empId}`, {
         method: "DELETE",
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {
-        notify(isHi ? `🗑️ कर्मचारी '${emp.username}' हटा दिया गया!` : `🗑️ Employee '${emp.username}' removed!`);
+        notify(isHi ? `🗑️ कर्मचारी '${empName}' हटा दिया गया!` : `🗑️ Employee '${empName}' removed!`);
         fetchHospitalDeepDive(selectedHospital.hospital_code);
         fetchGlobalData();
       } else {
@@ -573,16 +779,24 @@ export default function SuperAdminPage({
   const handleAddDeskSubmit = async (e) => {
     e.preventDefault();
     if (!selectedHospital) return;
+    if (!newDeskForm.dept_code) {
+      alert(isHi ? "कृपया पहले एक विभाग चुनें।" : "Please select a department for this desk.");
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/desks`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(newDeskForm),
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {
         setShowAddDeskModal(false);
-        setNewDeskForm({ dept_code: "consultation", desk_name: "", status: "AVAILABLE" });
+        setNewDeskForm({
+          dept_code: hospitalDepts[0]?.dept_code || "consultation",
+          desk_name: "",
+          status: "AVAILABLE",
+        });
         notify(isHi ? `🪑 नया डेस्क '${data.desk.desk_name}' जोड़ा गया!` : `🪑 New desk '${data.desk.desk_name}' added!`);
         fetchHospitalDeepDive(selectedHospital.hospital_code);
         fetchGlobalData();
@@ -605,6 +819,7 @@ export default function SuperAdminPage({
     try {
       const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/desks/${desk.id}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {
@@ -626,7 +841,7 @@ export default function SuperAdminPage({
     try {
       const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/desks/${desk.id}/status`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ status: nextStatus }),
       });
       if (res.ok) {
@@ -635,6 +850,155 @@ export default function SuperAdminPage({
       }
     } catch (e) {
       console.log("Desk update error:", e);
+    }
+  };
+
+  // 13. Update Department Handler
+  const handleUpdateDepartmentSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedHospital) return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/departments/${editDeptForm.dept_code}`,
+        {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            name: editDeptForm.name,
+            description: editDeptForm.description,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        setShowEditDeptModal(false);
+        notify(isHi ? `✓ विभाग जानकारी अद्यतन की गई!` : `✓ Department '${data.department.name}' updated!`);
+        fetchHospitalDeepDive(selectedHospital.hospital_code);
+      } else {
+        alert(data.detail || "Failed to update department.");
+      }
+    } catch (err) {
+      alert(`Error updating department: ${err.message}`);
+    }
+  };
+
+  // 14. Update Desk Handler
+  const handleUpdateDeskSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedHospital || !editDeskForm.id) return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/desks/${editDeskForm.id}`,
+        {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            desk_name: editDeskForm.desk_name,
+            dept_code: editDeskForm.dept_code,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        setShowEditDeskModal(false);
+        notify(isHi ? `✓ डेस्क अद्यतन किया गया!` : `✓ Desk '${data.desk.desk_name}' updated!`);
+        fetchHospitalDeepDive(selectedHospital.hospital_code);
+        fetchGlobalData();
+      } else {
+        alert(data.detail || "Failed to update desk.");
+      }
+    } catch (err) {
+      alert(`Error updating desk: ${err.message}`);
+    }
+  };
+
+  // 15. Bulk Update Desk Status by Department
+  const handleBulkDeskStatus = async (deptCode, targetStatus) => {
+    if (!selectedHospital) return;
+    const confirmMsg = isHi
+      ? `क्या आप वाकई विभाग '${deptCode}' के सभी डेस्क को ${targetStatus === "AVAILABLE" ? "सक्रिय" : "निष्क्रिय"} करना चाहते हैं?`
+      : `Are you sure you want to set all desks in department '${deptCode}' to ${targetStatus}?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/desks/bulk-status`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ dept_code: deptCode, status: targetStatus }),
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        notify(
+          isHi
+            ? `✓ ${data.result.updated_count} डेस्क अपडेट किए गए!`
+            : `✓ Successfully set ${data.result.updated_count} desks to ${targetStatus}!`
+        );
+        fetchHospitalDeepDive(selectedHospital.hospital_code);
+        fetchGlobalData();
+      } else {
+        alert(data.detail || "Failed to update desks in bulk.");
+      }
+    } catch (err) {
+      alert(`Error updating desks in bulk: ${err.message}`);
+    }
+  };
+
+
+  // 16. Update Employee / Doctor Password Handler
+  const handleUpdatePasswordSubmit = async (e) => {
+    e.preventDefault();
+    if (!selectedHospital || !passwordTargetEmployee) return;
+    if (!newPasswordValue || newPasswordValue.trim().length < 4) {
+      alert(isHi ? "पासवर्ड कम से कम 4 अक्षरों का होना चाहिए।" : "Password must be at least 4 characters.");
+      return;
+    }
+    setIsUpdatingPassword(true);
+    try {
+      const empId = passwordTargetEmployee.user_id || passwordTargetEmployee.id || passwordTargetEmployee.employee_id_num;
+      const res = await fetch(
+        `${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/employees/${empId}/password`,
+        {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            new_password: newPasswordValue.trim(),
+            password: newPasswordValue.trim(),
+          }),
+        }
+      );
+      
+      const contentType = res.headers.get("content-type") || "";
+      let data = {};
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 160)}`);
+      }
+
+      if (res.ok && data.status === "success") {
+        setPasswordUpdateSuccess({
+          name: passwordTargetEmployee.name || passwordTargetEmployee.username,
+          email: passwordTargetEmployee.email,
+          role: passwordTargetEmployee.role,
+          password: newPasswordValue.trim(),
+          hospital_name: selectedHospital.name,
+        });
+        notify(
+          isHi
+            ? `🔑 '${passwordTargetEmployee.name || passwordTargetEmployee.username}' का पासवर्ड सफलतापूर्वक अपडेट किया गया!`
+            : `🔑 Password for '${passwordTargetEmployee.name || passwordTargetEmployee.username}' updated successfully!`
+        );
+      } else {
+        alert(data.detail || data.message || "Failed to update password.");
+      }
+    } catch (err) {
+      alert(`Error updating password: ${err.message}`);
+    } finally {
+      setIsUpdatingPassword(false);
     }
   };
 
@@ -1249,6 +1613,7 @@ export default function SuperAdminPage({
               </span>
             </div>
           </button>
+
         </div>
       </section>
 
@@ -1367,6 +1732,23 @@ export default function SuperAdminPage({
 
                       <button
                         type="button"
+                        onClick={() => handleOpenBrandingModal(hosp)}
+                        style={{
+                          ...secondarySmallBtnStyle,
+                          background: "#F5F3FF",
+                          color: "#7C3AED",
+                          borderColor: "#DDD6FE",
+                        }}
+                        title={isHi ? "ब्रांडिंग और संचालन समय" : "Branding & Operating Hours"}
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <span>🎨</span>
+                          <span>{isHi ? "ब्रांडिंग" : "Branding"}</span>
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => handleDeleteHospital(hosp)}
                         style={deleteSmallBtnStyle}
                         title={isHi ? "अस्पताल हटाएं" : "Delete Hospital"}
@@ -1381,208 +1763,478 @@ export default function SuperAdminPage({
           )}
 
           {/* TAB 2: EMPLOYEES & DOCTORS ROSTER (Add & Remove Staff/Doctors) */}
-          {activeTab === "employees" && (
-            <div style={standaloneCardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
-                <div>
-                  <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
-                    {isHi ? "डॉक्टर एवं कर्मचारी रोस्टर" : "Doctor & Employee Roster"}
-                  </h2>
-                  <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                    <IconHospital size={14} color="#0284C7" />
-                    <span>{selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalEmployees.length} Staff Members)</span>
+          {activeTab === "employees" && (() => {
+            const filteredEmployees = hospitalEmployees.filter((emp) => {
+              if (!employeeSearchQuery.trim()) return true;
+              const q = employeeSearchQuery.trim().toLowerCase();
+              return (
+                (emp.name || "").toLowerCase().includes(q) ||
+                (emp.username || "").toLowerCase().includes(q) ||
+                (emp.email || "").toLowerCase().includes(q) ||
+                (emp.employee_id || "").toLowerCase().includes(q) ||
+                (emp.role || "").toLowerCase().includes(q)
+              );
+            });
+            const EMP_PAGE_SIZE = 10;
+            const totalEmpPages = Math.ceil(filteredEmployees.length / EMP_PAGE_SIZE) || 1;
+            const paginatedEmployees = filteredEmployees.slice(
+              (employeePage - 1) * EMP_PAGE_SIZE,
+              employeePage * EMP_PAGE_SIZE
+            );
+
+            return (
+              <div style={standaloneCardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
+                  <div>
+                    <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
+                      {isHi ? "डॉक्टर एवं कर्मचारी रोस्टर" : "Doctor & Employee Roster"}
+                    </h2>
+                    <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                      <IconHospital size={14} color="#0284C7" />
+                      <span>{selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalEmployees.length} Staff Members)</span>
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    {selectedHospital && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBrandingModal(selectedHospital)}
+                        style={{
+                          ...secondarySmallBtnStyle,
+                          background: "#F5F3FF",
+                          color: "#7C3AED",
+                          borderColor: "#DDD6FE",
+                          padding: "8px 14px",
+                          fontWeight: 800,
+                        }}
+                        title={isHi ? "ब्रांडिंग और समय सेटिंग्स" : "Branding & Operating Hours"}
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <span>🎨</span>
+                          <span>{isHi ? "ब्रांडिंग सेटिंग्स" : "Branding & Hours"}</span>
+                        </span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowAddEmployeeModal(true)}
+                      style={actionBtnStyle}
+                    >
+                      <IconPlus size={14} color="#FFFFFF" />
+                      <span>{isHi ? "डॉक्टर / कर्मचारी जोड़ें" : "+ Add Doctor / Staff"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Search & Filter Bar */}
+                <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                  <div style={{ position: "relative", minWidth: "260px", flex: "1 1 260px" }}>
+                    <input
+                      type="text"
+                      placeholder={isHi ? "नाम, ईमेल या आईडी से खोजें..." : "Filter by name, email, or employee ID..."}
+                      value={employeeSearchQuery}
+                      onChange={(e) => { setEmployeeSearchQuery(e.target.value); setEmployeePage(1); }}
+                      style={{ ...fieldInputStyle, paddingLeft: "32px", fontSize: "12.5px" }}
+                    />
+                    <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }}>
+                      🔍
+                    </span>
+                  </div>
+                  <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
+                    Showing {filteredEmployees.length} of {hospitalEmployees.length} Staff Members
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowAddEmployeeModal(true)}
-                  style={actionBtnStyle}
-                >
-                  <IconPlus size={14} color="#FFFFFF" />
-                  <span>{isHi ? "डॉक्टर / कर्मचारी जोड़ें" : "+ Add Doctor / Staff"}</span>
-                </button>
-              </div>
-
-              {/* Roster Table with Edit and Delete Action */}
-              <div style={{ overflowX: "auto", borderRadius: "14px", border: "1px solid #E2E8F0" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
-                  <thead>
-                    <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
-                      <th style={tableThStyle}>{isHi ? "नाम" : "Name"}</th>
-                      <th style={tableThStyle}>{isHi ? "आईडी" : "Emp ID"}</th>
-                      <th style={tableThStyle}>{isHi ? "भूमिका" : "Role"}</th>
-                      <th style={tableThStyle}>{isHi ? "विभाग" : "Department"}</th>
-                      <th style={tableThStyle}>{isHi ? "ईमेल / फोन" : "Contact"}</th>
-                      <th style={tableThStyle}>{isHi ? "स्थिति" : "Status"}</th>
-                      <th style={tableThStyle}>{isHi ? "कार्रवाई" : "Actions"}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hospitalEmployees.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" style={{ textAlign: "center", padding: "24px", color: "#64748B" }}>
-                          No staff or doctors found for this hospital. Click "+ Add Doctor / Staff" above.
-                        </td>
+                {/* Roster Table with Edit and Delete Action */}
+                <div style={{ overflowX: "auto", borderRadius: "14px", border: "1px solid #E2E8F0" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
+                    <thead>
+                      <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
+                        <th style={tableThStyle}>{isHi ? "नाम" : "Name"}</th>
+                        <th style={tableThStyle}>{isHi ? "आईडी" : "Emp ID"}</th>
+                        <th style={tableThStyle}>{isHi ? "भूमिका" : "Role"}</th>
+                        <th style={tableThStyle}>{isHi ? "विभाग" : "Department"}</th>
+                        <th style={tableThStyle}>{isHi ? "ईमेल / फोन" : "Contact"}</th>
+                        <th style={tableThStyle}>{isHi ? "स्थिति" : "Status"}</th>
+                        <th style={tableThStyle}>{isHi ? "कार्रवाई" : "Actions"}</th>
                       </tr>
-                    ) : (
-                      hospitalEmployees.map((emp) => (
-                        <tr key={emp.id} style={{ borderBottom: "1px solid #F1F5F9" }}>
-                          <td style={tableTdStyle}>
-                            <div style={{ fontWeight: 800, color: "#0F172A" }}>{emp.username}</div>
-                            <span style={{ fontSize: "11px", color: "#64748B" }}>{emp.email}</span>
-                          </td>
-                          <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
-                            {emp.employee_id || `EMP-${emp.id}`}
-                          </td>
-                          <td style={tableTdStyle}>
-                            <span style={roleBadgeStyle(emp.role)}>
-                              {emp.role.toUpperCase()}
-                            </span>
-                          </td>
-                          <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
-                            {getCategoryLabel(emp.department, language)}
-                          </td>
-                          <td style={tableTdStyle}>
-                            {emp.phone || "—"}
-                          </td>
-                          <td style={tableTdStyle}>
-                            <span style={empStatusBadgeStyle(emp.status)}>
-                              ● {(emp.status || "active").toUpperCase()}
-                            </span>
-                          </td>
-                          <td style={tableTdStyle}>
-                            <div style={{ display: "flex", gap: "6px" }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText(`Email ID: ${emp.email}\nRole: ${emp.role.toUpperCase()}\nDepartment: ${emp.department}`);
-                                  notify(isHi ? `'${emp.username}' के लॉगिन क्रेडेंशियल कॉपी किए गए!` : `Login ID for '${emp.username}' copied to clipboard!`);
-                                }}
-                                style={copySmallBtnStyle}
-                                title={isHi ? "लॉगिन आईडी कॉपी करें" : "Copy Login ID"}
-                              >
-                                <IconCopy size={13} color="#0284C7" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditEmployeeForm({
-                                    id: emp.id,
-                                    name: emp.username,
-                                    phone: emp.phone || "",
-                                    role: emp.role,
-                                    department: emp.department || "consultation",
-                                    employee_id: emp.employee_id || "",
-                                    status: emp.status || "active",
-                                  });
-                                  setShowEditEmployeeModal(true);
-                                }}
-                                style={editSmallBtnStyle}
-                              >
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                  <IconEdit size={11} />
-                                  <span>{isHi ? "संपादित" : "Edit"}</span>
-                                </span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteEmployee(emp)}
-                                style={deleteSmallBtnStyle}
-                                title={isHi ? "कर्मचारी हटाएं" : "Remove Employee"}
-                              >
-                                <IconTrash size={14} color="#EF4444" />
-                              </button>
-                            </div>
+                    </thead>
+                    <tbody>
+                      {paginatedEmployees.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" style={{ textAlign: "center", padding: "24px", color: "#64748B" }}>
+                            {employeeSearchQuery ? "No staff members match the search query." : "No staff or doctors found for this hospital. Click '+ Add Doctor / Staff' above."}
                           </td>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: ACTIVE DESKS (Add & Remove Desks) */}
-          {activeTab === "desks" && (
-            <div style={standaloneCardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "10px" }}>
-                <div>
-                  <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
-                    {isHi ? "सक्रिय काउंटर एवं डेस्क प्रबंधन" : "Active Desk & Counter Management"}
-                  </h2>
-                  <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                    <IconHospital size={14} color="#0284C7" />
-                    <span>{selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalDesksData.active_desks || 0} / {hospitalDesksData.total_desks || 0} Active Desks)</span>
-                  </span>
+                      ) : (
+                        paginatedEmployees.map((emp) => (
+                          <tr key={emp.id || emp.employee_id_num} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                            <td style={tableTdStyle}>
+                              <div style={{ fontWeight: 800, color: "#0F172A", fontSize: "13.5px" }}>
+                                {emp.name || emp.username || "Staff Member"}
+                              </div>
+                              <span style={{ fontSize: "11px", color: "#64748B", display: "block", marginTop: "2px" }}>
+                                {emp.email}
+                              </span>
+                            </td>
+                            <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
+                              {emp.employee_id || `EMP-${emp.id || emp.employee_id_num}`}
+                            </td>
+                            <td style={tableTdStyle}>
+                              <span style={roleBadgeStyle(emp.role)}>
+                                {emp.role.toUpperCase()}
+                              </span>
+                            </td>
+                            <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
+                              {getCategoryLabel(emp.department, language)}
+                            </td>
+                            <td style={tableTdStyle}>
+                              {emp.phone || "—"}
+                            </td>
+                            <td style={tableTdStyle}>
+                              <span style={empStatusBadgeStyle(emp.status)}>
+                                ● {(emp.status || "active").toUpperCase()}
+                              </span>
+                            </td>
+                            <td style={tableTdStyle}>
+                              <div style={{ display: "flex", gap: "6px" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(`Name: ${emp.name || emp.username}\nEmail ID: ${emp.email}\nRole: ${emp.role.toUpperCase()}\nDepartment: ${emp.department}`);
+                                    notify(isHi ? `'${emp.name || emp.username}' के लॉगिन क्रेडेंशियल कॉपी किए गए!` : `Login ID for '${emp.name || emp.username}' copied to clipboard!`);
+                                  }}
+                                  style={copySmallBtnStyle}
+                                  title={isHi ? "लॉगिन आईडी कॉपी करें" : "Copy Login ID"}
+                                >
+                                  <IconCopy size={13} color="#0284C7" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditEmployeeForm({
+                                      id: emp.id || emp.employee_id_num,
+                                      name: emp.name || emp.username || "",
+                                      phone: emp.phone || "",
+                                      role: emp.role,
+                                      department: emp.department || "consultation",
+                                      employee_id: emp.employee_id || "",
+                                      status: emp.status || "active",
+                                      password: "",
+                                    });
+                                    setShowEditEmployeeModal(true);
+                                  }}
+                                  style={editSmallBtnStyle}
+                                >
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                    <IconEdit size={11} />
+                                    <span>{isHi ? "संपादित" : "Edit"}</span>
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPasswordTargetEmployee(emp);
+                                    setNewPasswordValue("pass" + Math.floor(1000 + Math.random() * 9000));
+                                    setShowPasswordText(true);
+                                    setPasswordUpdateSuccess(null);
+                                    setShowChangePasswordModal(true);
+                                  }}
+                                  style={{
+                                    ...editSmallBtnStyle,
+                                    background: "#FEF3C7",
+                                    color: "#B45309",
+                                    border: "1px solid #FDE68A",
+                                  }}
+                                  title={isHi ? "पासवर्ड बदलें" : "Change Password"}
+                                >
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                    <IconKey size={12} color="#B45309" />
+                                    <span>{isHi ? "पासवर्ड" : "Password"}</span>
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteEmployee(emp)}
+                                  style={deleteSmallBtnStyle}
+                                  title={isHi ? "कर्मचारी हटाएं" : "Remove Employee"}
+                                >
+                                  <IconTrash size={14} color="#EF4444" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowAddDeskModal(true)}
-                  style={actionBtnStyle}
-                >
-                  <IconPlus size={14} color="#FFFFFF" />
-                  <span>{isHi ? "नया डेस्क जोड़ें" : "+ Add New Desk"}</span>
-                </button>
-              </div>
-
-              {/* Department Desks */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {(hospitalDesksData.departments || []).map((deptGroup) => (
-                  <div key={deptGroup.dept_code} style={deptDeskBoxStyle}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid #E2E8F0", paddingBottom: "6px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <IconStethoscope size={16} color="#0284C7" />
-                        <h4 style={{ margin: 0, fontSize: "15px", color: "#0F172A", fontWeight: 800 }}>
-                          {getCategoryLabel(deptGroup.dept_code, language)}
-                        </h4>
-                      </div>
-                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", background: "#F0F9FF", border: "1px solid #BAE6FD", padding: "2px 8px", borderRadius: "6px" }}>
-                        {deptGroup.active_desks} / {deptGroup.total_desks} Active
-                      </span>
-                    </div>
-
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
-                      {deptGroup.desks.map((desk) => (
-                        <div key={desk.id} style={deskCardItemStyle(desk.status)}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A" }}>
-                              {desk.desk_name}
-                            </span>
-                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                              <span style={deskStatusPillStyle(desk.status)}>
-                                {desk.status}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteDesk(desk)}
-                                style={deleteDeskIconBtnStyle}
-                                title={isHi ? "डेस्क हटाएं" : "Remove Desk"}
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                          <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>
-                            {desk.staff_name ? `Staff: ${desk.staff_name}` : "Auto-Assigned Bay"}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleDeskStatus(desk)}
-                            style={toggleDeskBtnStyle}
-                          >
-                            {isHi ? "स्थिति बदलें" : "Toggle Status"}
-                          </button>
-                        </div>
-                      ))}
+                {/* Pagination Controls */}
+                {totalEmpPages > 1 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px", padding: "4px 2px" }}>
+                    <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
+                      Page {employeePage} of {totalEmpPages}
+                    </span>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        type="button"
+                        disabled={employeePage <= 1}
+                        onClick={() => setEmployeePage((p) => Math.max(1, p - 1))}
+                        style={{
+                          background: "#F8FAFC",
+                          border: "1px solid #CBD5E1",
+                          borderRadius: "6px",
+                          padding: "5px 12px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          color: "#334155",
+                          cursor: employeePage <= 1 ? "not-allowed" : "pointer",
+                          opacity: employeePage <= 1 ? 0.5 : 1,
+                        }}
+                      >
+                        Previous
+                      </button>
+                      <button
+                        type="button"
+                        disabled={employeePage >= totalEmpPages}
+                        onClick={() => setEmployeePage((p) => Math.min(totalEmpPages, p + 1))}
+                        style={{
+                          background: "#F8FAFC",
+                          border: "1px solid #CBD5E1",
+                          borderRadius: "6px",
+                          padding: "5px 12px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          color: "#334155",
+                          cursor: employeePage >= totalEmpPages ? "not-allowed" : "pointer",
+                          opacity: employeePage >= totalEmpPages ? 0.5 : 1,
+                        }}
+                      >
+                        Next
+                      </button>
                     </div>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
+
+          {/* TAB 3: ACTIVE DESKS (Add & Remove Desks) */}
+          {activeTab === "desks" && (() => {
+            const q = deskSearchQuery.trim().toLowerCase();
+            const rawGroups = hospitalDesksData.departments || [];
+            const filteredDeptGroups = rawGroups.map((deptGroup) => {
+              if (!q) return deptGroup;
+              const matchesDept = (deptGroup.dept_code || "").toLowerCase().includes(q) ||
+                (deptGroup.name || "").toLowerCase().includes(q) ||
+                getCategoryLabel(deptGroup.dept_code, language).toLowerCase().includes(q);
+              const matchingDesks = (deptGroup.desks || []).filter(
+                (desk) => matchesDept || (desk.desk_name || "").toLowerCase().includes(q)
+              );
+              return {
+                ...deptGroup,
+                desks: matchingDesks,
+              };
+            }).filter((g) => (g.desks && g.desks.length > 0) || (!q && hospitalDepts.some((d) => d.dept_code === g.dept_code)));
+
+            return (
+              <div style={standaloneCardStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+                  <div>
+                    <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
+                      {isHi ? "सक्रिय काउंटर एवं डेस्क प्रबंधन" : "Active Desk & Counter Management"}
+                    </h2>
+                    <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                      <IconHospital size={14} color="#0284C7" />
+                      <span>{selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalDesksData.active_desks || 0} / {hospitalDesksData.total_desks || 0} Active Desks)</span>
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (hospitalDepts.length === 0) {
+                        alert(isHi ? "डेस्क जोड़ने से पहले कृपया कम से कम एक विभाग बनाएं।" : "Please create at least one clinical department in the Departments tab before adding a desk.");
+                        return;
+                      }
+                      setNewDeskForm({
+                        dept_code: hospitalDepts[0]?.dept_code || "consultation",
+                        desk_name: "",
+                        status: "AVAILABLE",
+                      });
+                      setShowAddDeskModal(true);
+                    }}
+                    style={actionBtnStyle}
+                  >
+                    <IconPlus size={14} color="#FFFFFF" />
+                    <span>{isHi ? "नया डेस्क जोड़ें" : "+ Add New Desk"}</span>
+                  </button>
+                </div>
+
+                {/* Desk Search Input */}
+                <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                  <div style={{ position: "relative", minWidth: "260px", flex: "1 1 260px" }}>
+                    <input
+                      type="text"
+                      placeholder={isHi ? "डेस्क या विभाग से खोजें..." : "Filter desks by name or department..."}
+                      value={deskSearchQuery}
+                      onChange={(e) => { setDeskSearchQuery(e.target.value); setDeskPage(1); }}
+                      style={{ ...fieldInputStyle, paddingLeft: "32px", fontSize: "12.5px" }}
+                    />
+                    <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }}>
+                      🔍
+                    </span>
+                  </div>
+                  {deskSearchQuery && (
+                    <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
+                      Filtered across {filteredDeptGroups.length} departments
+                    </span>
+                  )}
+                </div>
+
+                {/* Department Desks */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {filteredDeptGroups.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "32px", color: "#64748B", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
+                      {deskSearchQuery ? "No desks match your filter." : "No desks found for this hospital. Click '+ Add New Desk' above."}
+                    </div>
+                  ) : (
+                    filteredDeptGroups.map((deptGroup) => (
+                      <div key={deptGroup.dept_code} style={deptDeskBoxStyle}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", borderBottom: "1px solid #E2E8F0", paddingBottom: "6px", flexWrap: "wrap", gap: "8px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <IconStethoscope size={16} color="#0284C7" />
+                            <h4 style={{ margin: 0, fontSize: "15px", color: "#0F172A", fontWeight: 800 }}>
+                              {getCategoryLabel(deptGroup.dept_code, language)}
+                            </h4>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", background: "#F0F9FF", border: "1px solid #BAE6FD", padding: "2px 8px", borderRadius: "6px" }}>
+                              {deptGroup.active_desks} / {deptGroup.total_desks} Active
+                            </span>
+                            {/* Bulk Deactivate / Activate per Department */}
+                            <button
+                              type="button"
+                              onClick={() => handleBulkDeskStatus(deptGroup.dept_code, "UNAVAILABLE")}
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                padding: "3px 8px",
+                                background: "#FEE2E2",
+                                color: "#DC2626",
+                                border: "1px solid #FCA5A5",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                              }}
+                              title="Deactivate all desks in this department"
+                            >
+                              Deactivate All
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleBulkDeskStatus(deptGroup.dept_code, "AVAILABLE")}
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                padding: "3px 8px",
+                                background: "#DCFCE7",
+                                color: "#16A34A",
+                                border: "1px solid #86EFAC",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                              }}
+                              title="Activate all desks in this department"
+                            >
+                              Activate All
+                            </button>
+                          </div>
+                        </div>
+
+                        {(!deptGroup.desks || deptGroup.desks.length === 0) ? (
+                          <div style={{ padding: "14px 16px", background: "#F8FAFC", borderRadius: "8px", border: "1px dashed #CBD5E1", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+                            <span style={{ fontSize: "12px", color: "#64748B" }}>
+                              {isHi ? "इस विभाग में अभी कोई डेस्क नहीं है।" : "No desks created in this department yet."}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewDeskForm({
+                                  dept_code: deptGroup.dept_code,
+                                  desk_name: "",
+                                  status: "AVAILABLE",
+                                });
+                                setShowAddDeskModal(true);
+                              }}
+                              style={{ ...actionBtnStyle, padding: "5px 12px", fontSize: "11.5px" }}
+                            >
+                              <IconPlus size={12} color="#FFFFFF" />
+                              <span>{isHi ? "डेस्क जोड़ें" : "+ Add Desk"}</span>
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
+                            {deptGroup.desks.map((desk) => (
+                              <div key={desk.id} style={deskCardItemStyle(desk.status)}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <span style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A" }}>
+                                    {desk.desk_name}
+                                  </span>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                    <span style={deskStatusPillStyle(desk.status)}>
+                                      {desk.status}
+                                    </span>
+                                    {/* Edit Desk Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditDeskForm({
+                                          id: desk.id,
+                                          desk_name: desk.desk_name,
+                                          dept_code: deptGroup.dept_code,
+                                          status: desk.status || "AVAILABLE",
+                                        });
+                                        setShowEditDeskModal(true);
+                                      }}
+                                      style={{ ...deleteDeskIconBtnStyle, color: "#0284C7" }}
+                                      title={isHi ? "डेस्क संपादित करें" : "Edit Desk"}
+                                    >
+                                      <IconEdit size={12} color="#0284C7" />
+                                    </button>
+                                    {/* Delete Desk Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteDesk(desk)}
+                                      style={deleteDeskIconBtnStyle}
+                                      title={isHi ? "डेस्क हटाएं" : "Remove Desk"}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
+                                <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>
+                                  {desk.staff_name ? `Staff: ${desk.staff_name}` : "Auto-Assigned Bay"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleDeskStatus(desk)}
+                                  style={toggleDeskBtnStyle}
+                                >
+                                  {isHi ? "स्थिति बदलें" : "Toggle Status"}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* TAB 4: CLINICAL DEPARTMENTS (Add & Remove Departments) */}
           {activeTab === "depts" && (
@@ -1618,14 +2270,41 @@ export default function SuperAdminPage({
                           {d.name}
                         </h4>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteDepartment(d)}
-                        style={deleteDeptIconBtnStyle}
-                        title={isHi ? "विभाग हटाएं" : "Remove Department"}
-                      >
-                        <IconTrash size={14} color="#EF4444" />
-                      </button>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditDeptForm({
+                              dept_code: d.dept_code,
+                              name: d.name,
+                              description: d.description || "",
+                            });
+                            setShowEditDeptModal(true);
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: "4px",
+                            borderRadius: "4px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "#0284C7",
+                          }}
+                          title={isHi ? "विभाग संपादित करें" : "Edit Department"}
+                        >
+                          <IconEdit size={14} color="#0284C7" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDepartment(d)}
+                          style={deleteDeptIconBtnStyle}
+                          title={isHi ? "विभाग हटाएं" : "Remove Department"}
+                        >
+                          <IconTrash size={14} color="#EF4444" />
+                        </button>
+                      </div>
                     </div>
                     <span style={{ fontSize: "10.5px", fontWeight: 800, color: "#0284C7", background: "#E0F2FE", padding: "1px 6px", borderRadius: "4px", display: "inline-block" }}>
                       Code: {d.dept_code}
@@ -1638,6 +2317,8 @@ export default function SuperAdminPage({
               </div>
             </div>
           )}
+
+
         </div>
 
         {/* RIGHT COLUMN: Telemetry & Live Network Status Sidebar Card */}
@@ -2172,6 +2853,19 @@ export default function SuperAdminPage({
                 </select>
               </div>
 
+              <div>
+                <label style={fieldLabelStyle}>
+                  {isHi ? "नया पासवर्ड (अपरिवर्तित रखने हेतु खाली छोड़ें)" : "New Password (leave blank to keep unchanged)"}
+                </label>
+                <input
+                  type="text"
+                  placeholder={isHi ? "उदा. DocPass#2026" : "e.g. DocPass#2026"}
+                  value={editEmployeeForm.password || ""}
+                  onChange={(e) => setEditEmployeeForm({ ...editEmployeeForm, password: e.target.value })}
+                  style={fieldInputStyle}
+                />
+              </div>
+
               <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
                 <button type="button" onClick={() => setShowEditEmployeeModal(false)} style={modalCancelBtnStyle}>
                   {isHi ? "रद्द करें" : "Cancel"}
@@ -2181,6 +2875,180 @@ export default function SuperAdminPage({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4.5: SUPER ADMIN CHANGE PASSWORD MODAL */}
+      {showChangePasswordModal && passwordTargetEmployee && (
+        <div style={modalOverlayStyle} onClick={() => { setShowChangePasswordModal(false); setPasswordUpdateSuccess(null); }}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconKey size={18} color="#D97706" />
+                <span>{isHi ? "डॉक्टर / स्टाफ पासवर्ड अपडेट करें" : "Update Doctor / Staff Password"}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => { setShowChangePasswordModal(false); setPasswordUpdateSuccess(null); }}
+                style={modalCloseIconBtnStyle}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Target Employee Info Banner */}
+            <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: "12px", padding: "12px 14px", marginBottom: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <span style={{ fontSize: "14px", fontWeight: 800, color: "#92400E" }}>
+                  {passwordTargetEmployee.name || passwordTargetEmployee.username}
+                </span>
+                <span style={{ ...roleBadgeStyle(passwordTargetEmployee.role), fontSize: "10px" }}>
+                  {passwordTargetEmployee.role?.toUpperCase()}
+                </span>
+              </div>
+              <div style={{ fontSize: "12px", color: "#B45309", display: "flex", flexWrap: "wrap", gap: "12px" }}>
+                <span><strong>Email:</strong> {passwordTargetEmployee.email}</span>
+                <span><strong>ID:</strong> {passwordTargetEmployee.employee_id || `EMP-${passwordTargetEmployee.id || passwordTargetEmployee.employee_id_num}`}</span>
+                <span><strong>Hospital:</strong> {selectedHospital?.name || "Selected Facility"}</span>
+              </div>
+            </div>
+
+            {passwordUpdateSuccess ? (
+              <div>
+                <div style={{ padding: "14px", borderRadius: "12px", background: "#F0FDF4", border: "1px solid #BBF7D0", marginBottom: "16px", textAlign: "center" }}>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#16A34A", fontWeight: 800, fontSize: "15px", marginBottom: "6px" }}>
+                    <IconCheckCircle size={18} color="#16A34A" />
+                    <span>{isHi ? "पासवर्ड सफलतापूर्वक बदला गया!" : "Password Updated Successfully!"}</span>
+                  </div>
+                  <p style={{ margin: "4px 0 10px 0", fontSize: "12.5px", color: "#15803D" }}>
+                    {isHi ? "नए क्रेडेंशियल कर्मचारी को उपलब्ध कराएं:" : "Share these new login credentials with the user:"}
+                  </p>
+                  <div style={{ background: "#FFFFFF", border: "1px solid #86EFAC", borderRadius: "8px", padding: "10px", textAlign: "left", fontSize: "12px", fontFamily: "monospace", color: "#166534" }}>
+                    <div><strong>User:</strong> {passwordUpdateSuccess.name}</div>
+                    <div><strong>Email / ID:</strong> {passwordUpdateSuccess.email}</div>
+                    <div><strong>New Password:</strong> {passwordUpdateSuccess.password}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = `Hospital: ${passwordUpdateSuccess.hospital_name}\nRole: ${passwordUpdateSuccess.role?.toUpperCase()}\nUser: ${passwordUpdateSuccess.name}\nEmail: ${passwordUpdateSuccess.email}\nNew Password: ${passwordUpdateSuccess.password}`;
+                      navigator.clipboard.writeText(text);
+                      notify(isHi ? "क्रेडेंशियल कॉपी हो गए!" : "New credentials copied to clipboard!");
+                    }}
+                    style={{ ...modalSubmitBtnStyle, background: "#16A34A", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "6px" }}
+                  >
+                    <IconCopy size={14} />
+                    <span>{isHi ? "नए क्रेडेंशियल कॉपी करें" : "Copy New Credentials"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowChangePasswordModal(false);
+                      setPasswordUpdateSuccess(null);
+                    }}
+                    style={modalCancelBtnStyle}
+                  >
+                    {isHi ? "बंद करें" : "Done"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleUpdatePasswordSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <label style={fieldLabelStyle}>{isHi ? "नया पासवर्ड सेट करें" : "Set New Password"} *</label>
+                    <button
+                      type="button"
+                      onClick={() => setNewPasswordValue("pass" + Math.floor(1000 + Math.random() * 9000))}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#0284C7",
+                        fontSize: "11.5px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        padding: 0,
+                        textDecoration: "underline",
+                      }}
+                    >
+                      {isHi ? "🔄 रैंडम पासवर्ड बनाएं" : "🔄 Generate Random PIN"}
+                    </button>
+                  </div>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <input
+                      type={showPasswordText ? "text" : "password"}
+                      required
+                      value={newPasswordValue}
+                      onChange={(e) => setNewPasswordValue(e.target.value)}
+                      placeholder={isHi ? "उदा. Pass@2026 या PIN" : "e.g. Pass@2026 or PIN"}
+                      style={{
+                        ...fieldInputStyle,
+                        paddingRight: "70px",
+                        fontWeight: 700,
+                        fontFamily: showPasswordText ? "monospace" : "inherit",
+                        letterSpacing: showPasswordText ? "0.05em" : "normal",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordText(!showPasswordText)}
+                      style={{
+                        position: "absolute",
+                        right: "8px",
+                        background: "#F1F5F9",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: "6px",
+                        padding: "3px 8px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#475569",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                    >
+                      <IconEye size={12} color="#475569" />
+                      <span>{showPasswordText ? (isHi ? "छिपाएं" : "Hide") : (isHi ? "दिखाएं" : "Show")}</span>
+                    </button>
+                  </div>
+                  <span style={{ fontSize: "11px", color: "#64748B", marginTop: "4px", display: "block" }}>
+                    {isHi ? "सुपर एडमिन सीधे डॉक्टर या स्टाफ सदस्य का पासवर्ड रीसेट कर सकता है।" : "Super Admin can directly overwrite the password without needing current password."}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowChangePasswordModal(false);
+                      setPasswordUpdateSuccess(null);
+                    }}
+                    style={modalCancelBtnStyle}
+                  >
+                    {isHi ? "रद्द करें" : "Cancel"}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isUpdatingPassword}
+                    style={{
+                      ...modalSubmitBtnStyle,
+                      background: "linear-gradient(135deg, #D97706 0%, #B45309 100%)",
+                      opacity: isUpdatingPassword ? 0.7 : 1,
+                      cursor: isUpdatingPassword ? "wait" : "pointer",
+                    }}
+                  >
+                    {isUpdatingPassword
+                      ? (isHi ? "अपडेट हो रहा है..." : "Updating...")
+                      : (isHi ? "🔑 पासवर्ड अपडेट करें" : "🔑 Update Password")}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
@@ -2261,18 +3129,24 @@ export default function SuperAdminPage({
             <form onSubmit={handleAddDeskSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
               <div>
                 <label style={fieldLabelStyle}>{isHi ? "विभाग चुनें" : "Assign to Department"} *</label>
-                <select
-                  value={newDeskForm.dept_code}
-                  onChange={(e) => setNewDeskForm({ ...newDeskForm, dept_code: e.target.value })}
-                  style={fieldInputStyle}
-                  required
-                >
-                  {hospitalDepts.map((d) => (
-                    <option key={d.dept_code} value={d.dept_code}>
-                      {d.name} ({d.dept_code})
-                    </option>
-                  ))}
-                </select>
+                {hospitalDepts.length === 0 ? (
+                  <div style={{ padding: "10px 12px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: "8px", color: "#991B1B", fontSize: "12.5px" }}>
+                    ⚠️ {isHi ? "इस अस्पताल में कोई विभाग नहीं मिला। कृपया डेस्क जोड़ने से पहले 'विभाग' टैब में एक नया विभाग बनाएं।" : "No departments found for this hospital. Please create at least one clinical department in the Departments tab before adding a desk."}
+                  </div>
+                ) : (
+                  <select
+                    value={newDeskForm.dept_code}
+                    onChange={(e) => setNewDeskForm({ ...newDeskForm, dept_code: e.target.value })}
+                    style={fieldInputStyle}
+                    required
+                  >
+                    {hospitalDepts.map((d) => (
+                      <option key={d.dept_code} value={d.dept_code}>
+                        {d.name} ({d.dept_code})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               <div>
@@ -2304,8 +3178,677 @@ export default function SuperAdminPage({
                 <button type="button" onClick={() => setShowAddDeskModal(false)} style={modalCancelBtnStyle}>
                   {isHi ? "रद्द करें" : "Cancel"}
                 </button>
-                <button type="submit" style={modalSubmitBtnStyle}>
+                <button
+                  type="submit"
+                  disabled={hospitalDepts.length === 0}
+                  style={{
+                    ...modalSubmitBtnStyle,
+                    opacity: hospitalDepts.length === 0 ? 0.6 : 1,
+                    cursor: hospitalDepts.length === 0 ? "not-allowed" : "pointer"
+                  }}
+                >
                   {isHi ? "डेस्क जोड़ें" : "Add Desk"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: EDIT DEPARTMENT */}
+      {showEditDeptModal && selectedHospital && (
+        <div style={modalOverlayStyle} onClick={() => setShowEditDeptModal(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconBuilding size={18} color="#0284C7" />
+                <span>{isHi ? "क्लिनिकल विभाग संपादित करें" : "Edit Clinical Department"}</span>
+              </h3>
+              <button type="button" onClick={() => setShowEditDeptModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+            </div>
+
+            <form onSubmit={handleUpdateDepartmentSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={fieldLabelStyle}>{isHi ? "विभाग कोड (स्थिर)" : "Dept Code (Read-Only)"}</label>
+                <input
+                  type="text"
+                  readOnly
+                  disabled
+                  value={editDeptForm.dept_code}
+                  style={{ ...fieldInputStyle, background: "#F1F5F9", cursor: "not-allowed", color: "#64748B" }}
+                />
+                <span style={{ fontSize: "11px", color: "#64748B", marginTop: "3px", display: "block" }}>
+                  {isHi
+                    ? "विदेशी कुंजी के रूप में उपयोग होने के कारण विभाग कोड बदला नहीं जा सकता।"
+                    : "Dept code cannot be modified directly as it links desks and employee profiles."}
+                </span>
+              </div>
+
+              <div>
+                <label style={fieldLabelStyle}>{isHi ? "विभाग का नाम" : "Department Name"} *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Cardiology & ECG"
+                  value={editDeptForm.name}
+                  onChange={(e) => setEditDeptForm({ ...editDeptForm, name: e.target.value })}
+                  style={fieldInputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={fieldLabelStyle}>{isHi ? "विवरण" : "Description"}</label>
+                <textarea
+                  rows="2"
+                  placeholder="Clinical procedures overview..."
+                  value={editDeptForm.description}
+                  onChange={(e) => setEditDeptForm({ ...editDeptForm, description: e.target.value })}
+                  style={{ ...fieldInputStyle, resize: "none" }}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button type="button" onClick={() => setShowEditDeptModal(false)} style={modalCancelBtnStyle}>
+                  {isHi ? "रद्द करें" : "Cancel"}
+                </button>
+                <button type="submit" style={modalSubmitBtnStyle}>
+                  {isHi ? "परिवर्तन सहेजें" : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 8: EDIT DESK */}
+      {showEditDeskModal && selectedHospital && (
+        <div style={modalOverlayStyle} onClick={() => setShowEditDeskModal(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                <IconDesk size={18} color="#0284C7" />
+                <span>{isHi ? "सेवा डेस्क संपादित करें" : "Edit Service Desk"}</span>
+              </h3>
+              <button type="button" onClick={() => setShowEditDeskModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+            </div>
+
+            <form onSubmit={handleUpdateDeskSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div>
+                <label style={fieldLabelStyle}>{isHi ? "विभाग बदलें" : "Assign to Department"} *</label>
+                <select
+                  value={editDeskForm.dept_code}
+                  onChange={(e) => setEditDeskForm({ ...editDeskForm, dept_code: e.target.value })}
+                  style={fieldInputStyle}
+                  required
+                >
+                  {hospitalDepts.map((d) => (
+                    <option key={d.dept_code} value={d.dept_code}>
+                      {d.name} ({d.dept_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={fieldLabelStyle}>{isHi ? "डेस्क नाम / संख्या" : "Desk Name / Number"} *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. OPD Consultation Desk 3"
+                  value={editDeskForm.desk_name}
+                  onChange={(e) => setEditDeskForm({ ...editDeskForm, desk_name: e.target.value })}
+                  style={fieldInputStyle}
+                />
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+                <button type="button" onClick={() => setShowEditDeskModal(false)} style={modalCancelBtnStyle}>
+                  {isHi ? "रद्द करें" : "Cancel"}
+                </button>
+                <button type="submit" style={modalSubmitBtnStyle}>
+                  {isHi ? "परिवर्तन सहेजें" : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 9: TENANT BRANDING & WHITE-LABELING */}
+      {showBrandingModal && brandingTargetHospital && (
+        <div style={modalOverlayStyle} onClick={() => setShowBrandingModal(false)}>
+          <div
+            style={{
+              ...modalContentStyle,
+              maxWidth: "820px",
+              padding: "24px 28px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "18px", borderBottom: "1px solid #E2E8F0", paddingBottom: "14px" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "22px" }}>🎨</span>
+                  <h3 style={{ margin: 0, fontSize: "19px", color: "#0F172A", fontWeight: 800 }}>
+                    {isHi ? "अस्पताल ब्रांडिंग एवं संचालन समय (White-Labeling)" : "Hospital Branding & Operating Hours"}
+                  </h3>
+                </div>
+                <div style={{ marginTop: "4px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 700, color: brandingForm.primary_color || "#0284C7" }}>
+                    {brandingTargetHospital.name}
+                  </span>
+                  <span style={{ fontSize: "11px", background: "#F1F5F9", color: "#475569", padding: "1px 7px", borderRadius: "5px", fontFamily: "monospace", fontWeight: 700 }}>
+                    {brandingTargetHospital.hospital_code}
+                  </span>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowBrandingModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+            </div>
+
+            {/* Navigation Tabs */}
+            <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid #E2E8F0", paddingBottom: "10px", marginBottom: "20px" }}>
+              <button
+                type="button"
+                onClick={() => setActiveBrandingTab("theme")}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: activeBrandingTab === "theme" ? (brandingForm.primary_color || "#0284C7") : "#F1F5F9",
+                  color: activeBrandingTab === "theme" ? "#FFFFFF" : "#475569",
+                  fontWeight: 800,
+                  fontSize: "12.5px",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <span>🎨</span>
+                <span>{isHi ? "थीम और लोगो" : "Theme & Logo"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveBrandingTab("slip")}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: activeBrandingTab === "slip" ? (brandingForm.primary_color || "#0284C7") : "#F1F5F9",
+                  color: activeBrandingTab === "slip" ? "#FFFFFF" : "#475569",
+                  fontWeight: 800,
+                  fontSize: "12.5px",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <span>🎫</span>
+                <span>{isHi ? "टोकन पर्ची (Token Slip)" : "Token Slip & Helpline"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveBrandingTab("hours")}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: activeBrandingTab === "hours" ? (brandingForm.primary_color || "#0284C7") : "#F1F5F9",
+                  color: activeBrandingTab === "hours" ? "#FFFFFF" : "#475569",
+                  fontWeight: 800,
+                  fontSize: "12.5px",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <span>⏰</span>
+                <span>{isHi ? "संचालन समय व कटऑफ" : "Operating Hours & Cutoff"}</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBrandingSubmit} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+              {/* TAB 1: VISUAL THEME & LOGO */}
+              {activeBrandingTab === "theme" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {/* Curated Color Presets */}
+                  <div>
+                    <label style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
+                      {isHi ? "त्वरित रंग पट्टियाँ (One-Click Presets)" : "Quick Healthcare Color Palettes"}
+                    </label>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "8px" }}>
+                      {[
+                        { name: "Ocean Blue", primary: "#0284C7", secondary: "#0369A1", accent: "#F0F9FF" },
+                        { name: "Emerald Healing", primary: "#059669", secondary: "#047857", accent: "#ECFDF5" },
+                        { name: "Royal Purple", primary: "#7C3AED", secondary: "#6D28D9", accent: "#F5F3FF" },
+                        { name: "Crimson Care", primary: "#DC2626", secondary: "#B91C1C", accent: "#FEF2F2" },
+                        { name: "Slate Teal", primary: "#0D9488", secondary: "#0F766E", accent: "#F0FDFA" },
+                        { name: "Sunset Amber", primary: "#D97706", secondary: "#B45309", accent: "#FFFBEB" },
+                      ].map((pal) => (
+                        <button
+                          key={pal.name}
+                          type="button"
+                          onClick={() => setBrandingForm({
+                            ...brandingForm,
+                            primary_color: pal.primary,
+                            secondary_color: pal.secondary,
+                            accent_color: pal.accent,
+                          })}
+                          style={{
+                            padding: "8px",
+                            borderRadius: "10px",
+                            border: brandingForm.primary_color === pal.primary ? "2px solid #0F172A" : "1px solid #E2E8F0",
+                            background: "#FFFFFF",
+                            cursor: "pointer",
+                            textAlign: "center",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "5px",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <div style={{ display: "flex", width: "100%", height: "18px", borderRadius: "6px", overflow: "hidden" }}>
+                            <div style={{ flex: 2, background: pal.primary }} />
+                            <div style={{ flex: 1, background: pal.secondary }} />
+                            <div style={{ flex: 1, background: pal.accent, border: "0.5px solid #CBD5E1" }} />
+                          </div>
+                          <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#334155" }}>{pal.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Custom Hex Color Pickers */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", background: "#F8FAFC", padding: "14px", borderRadius: "14px", border: "1px solid #E2E8F0" }}>
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "प्राथमिक रंग (Primary)" : "Primary Brand Color"}</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="color"
+                          value={brandingForm.primary_color || "#0284C7"}
+                          onChange={(e) => setBrandingForm({ ...brandingForm, primary_color: e.target.value })}
+                          style={{ width: "36px", height: "36px", border: "none", borderRadius: "8px", cursor: "pointer", padding: 0 }}
+                        />
+                        <input
+                          type="text"
+                          value={brandingForm.primary_color || "#0284C7"}
+                          onChange={(e) => setBrandingForm({ ...brandingForm, primary_color: e.target.value })}
+                          style={{ ...fieldInputStyle, padding: "6px 8px", fontSize: "12px", fontFamily: "monospace" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "द्वितीयक रंग (Secondary)" : "Secondary Color"}</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="color"
+                          value={brandingForm.secondary_color || "#0369A1"}
+                          onChange={(e) => setBrandingForm({ ...brandingForm, secondary_color: e.target.value })}
+                          style={{ width: "36px", height: "36px", border: "none", borderRadius: "8px", cursor: "pointer", padding: 0 }}
+                        />
+                        <input
+                          type="text"
+                          value={brandingForm.secondary_color || "#0369A1"}
+                          onChange={(e) => setBrandingForm({ ...brandingForm, secondary_color: e.target.value })}
+                          style={{ ...fieldInputStyle, padding: "6px 8px", fontSize: "12px", fontFamily: "monospace" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "बैकग्राउंड एक्सेंट (Accent)" : "Accent Tint"}</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="color"
+                          value={brandingForm.accent_color || "#F0F9FF"}
+                          onChange={(e) => setBrandingForm({ ...brandingForm, accent_color: e.target.value })}
+                          style={{ width: "36px", height: "36px", border: "none", borderRadius: "8px", cursor: "pointer", padding: 0 }}
+                        />
+                        <input
+                          type="text"
+                          value={brandingForm.accent_color || "#F0F9FF"}
+                          onChange={(e) => setBrandingForm({ ...brandingForm, accent_color: e.target.value })}
+                          style={{ ...fieldInputStyle, padding: "6px 8px", fontSize: "12px", fontFamily: "monospace" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hospital Logo URL and Presets */}
+                  <div style={{ background: "#F8FAFC", padding: "14px", borderRadius: "14px", border: "1px solid #E2E8F0" }}>
+                    <label style={fieldLabelStyle}>{isHi ? "अस्पताल का लोगो (Logo)" : "Hospital Brand Logo"}</label>
+                    
+                    {/* Quick Preset Logos */}
+                    <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
+                      {[
+                        { label: "Shield Cross", url: "https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=120&auto=format&fit=crop&q=80" },
+                        { label: "Modern Cross", url: "https://cdn-icons-png.flaticon.com/512/2966/2966327.png" },
+                        { label: "Red Cross", url: "https://cdn-icons-png.flaticon.com/512/883/883407.png" },
+                        { label: "Heartbeat", url: "https://cdn-icons-png.flaticon.com/512/2966/2966384.png" },
+                        { label: "Clear (Default)", url: "" },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => setBrandingForm({ ...brandingForm, logo_url: item.url })}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: "8px",
+                            border: brandingForm.logo_url === item.url ? "1.5px solid #0284C7" : "1px solid #CBD5E1",
+                            background: brandingForm.logo_url === item.url ? "#E0F2FE" : "#FFFFFF",
+                            color: brandingForm.logo_url === item.url ? "#0369A1" : "#475569",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="url"
+                          placeholder="https://example.com/hospital-logo.png"
+                          value={brandingForm.logo_url || ""}
+                          onChange={(e) => setBrandingForm({ ...brandingForm, logo_url: e.target.value })}
+                          style={fieldInputStyle}
+                        />
+                      </div>
+                      <div style={{
+                        width: "48px",
+                        height: "48px",
+                        borderRadius: "10px",
+                        border: "1.5px solid #CBD5E1",
+                        background: "#FFFFFF",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        overflow: "hidden",
+                        flexShrink: 0,
+                      }}>
+                        {brandingForm.logo_url ? (
+                          <img
+                            src={brandingForm.logo_url}
+                            alt="Logo"
+                            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                            onError={(e) => { e.target.style.display = "none"; }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: "22px" }}>🏥</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: TOKEN SLIP & HELPLINE SETTINGS + LIVE PREVIEW */}
+              {activeBrandingTab === "slip" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: "18px" }}>
+                  {/* Form Controls */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "अस्पताल टैगलाइन (Tagline)" : "Hospital Tagline / Motto"}</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Care You Can Trust • NABH Accredited"
+                        value={brandingForm.tagline || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, tagline: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "आपातकालीन हेल्पलाइन (Emergency Helpline)" : "24x7 Emergency Helpline Text"}</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Emergency Helpline: 108 / +91 11 2658 8500"
+                        value={brandingForm.emergency_helpline || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, emergency_helpline: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                      <span style={{ fontSize: "11px", color: "#64748B", marginTop: "3px", display: "block" }}>
+                        {isHi ? "यह प्रत्येक मरीज के टोकन पास पर प्रमुखता से छपता है।" : "Printed boldly on every printed patient ticket pass."}
+                      </span>
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "पर्ची पाद लेख सूचना (Footer Notice)" : "Token Slip Footer Notice"}</label>
+                      <textarea
+                        rows="3"
+                        placeholder="e.g. Non-transferable official patient record. Please keep until consultation is complete."
+                        value={brandingForm.slip_footer_text || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, slip_footer_text: e.target.value })}
+                        style={{ ...fieldInputStyle, resize: "none" }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Live Thermal Pass Preview */}
+                  <div>
+                    <span style={{ ...fieldLabelStyle, marginBottom: "6px" }}>
+                      👁️ {isHi ? "लाइव टोकन पर्ची पूर्वावलोकन" : "Live Printed Pass Preview"}
+                    </span>
+                    <div
+                      style={{
+                        background: "#FFFFFF",
+                        borderRadius: "14px",
+                        border: `2px solid ${brandingForm.primary_color || "#0284C7"}`,
+                        padding: "16px",
+                        boxShadow: "0 8px 24px -4px rgba(0,0,0,0.12)",
+                        fontSize: "11px",
+                        fontFamily: "monospace, sans-serif",
+                      }}
+                    >
+                      {/* Pass Header */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", borderBottom: `2px solid ${brandingForm.primary_color || "#0284C7"}`, paddingBottom: "8px", marginBottom: "8px" }}>
+                        <div style={{ width: "32px", height: "32px", borderRadius: "6px", background: brandingForm.accent_color || "#F0F9FF", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                          {brandingForm.logo_url ? (
+                            <img src={brandingForm.logo_url} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                          ) : (
+                            <span style={{ fontSize: "16px" }}>🏥</span>
+                          )}
+                        </div>
+                        <div style={{ overflow: "hidden" }}>
+                          <div style={{ fontWeight: 900, fontSize: "13px", color: brandingForm.primary_color || "#0284C7", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {brandingTargetHospital.name}
+                          </div>
+                          <div style={{ fontSize: "9px", color: "#64748B" }}>
+                            {brandingForm.tagline || "Care you can trust"}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Helpline Banner */}
+                      <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "6px", padding: "4px 8px", marginBottom: "8px", color: "#DC2626", fontWeight: 800, fontSize: "10px", textAlign: "center" }}>
+                        📞 {brandingForm.emergency_helpline || "Emergency: 108"}
+                      </div>
+
+                      {/* Token Box */}
+                      <div style={{ textAlign: "center", border: `2px dashed ${brandingForm.primary_color || "#0284C7"}`, borderRadius: "10px", padding: "10px", margin: "8px 0", background: brandingForm.accent_color || "#F0F9FF" }}>
+                        <div style={{ fontSize: "9px", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>YOUR QUEUE TOKEN</div>
+                        <div style={{ fontSize: "28px", fontWeight: 900, color: brandingForm.primary_color || "#0284C7", letterSpacing: "1px" }}>P-104</div>
+                        <div style={{ fontSize: "10px", fontWeight: 800, color: "#166534" }}>PRIORITY: STANDARD</div>
+                      </div>
+
+                      {/* Ticket Details */}
+                      <div style={{ fontSize: "10.5px", color: "#334155", lineHeight: 1.5, borderBottom: "1px dashed #CBD5E1", paddingBottom: "8px", marginBottom: "8px" }}>
+                        <div><strong>Patient:</strong> Ramesh Sharma (38Y / M)</div>
+                        <div><strong>Dept:</strong> General OPD • Desk 02</div>
+                        <div><strong>Time:</strong> Today at 09:30 AM</div>
+                      </div>
+
+                      {/* Footer notice */}
+                      <div style={{ fontSize: "8.5px", color: "#64748B", textAlign: "center", fontStyle: "italic" }}>
+                        {brandingForm.slip_footer_text || "Non-transferable official patient record."}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: OPERATING HOURS & CUTOFF */}
+              {activeBrandingTab === "hours" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {/* Hours Grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px", background: "#F8FAFC", padding: "16px", borderRadius: "14px", border: "1px solid #E2E8F0" }}>
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "ओपीडी खुलने का समय" : "OPD Opening Time"}</label>
+                      <input
+                        type="time"
+                        value={brandingForm.opd_start_time || "08:00"}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, opd_start_time: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "ओपीडी बंद होने का समय" : "OPD Closing Time"}</label>
+                      <input
+                        type="time"
+                        value={brandingForm.opd_end_time || "20:00"}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, opd_end_time: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ ...fieldLabelStyle, color: "#DC2626" }}>
+                        {isHi ? "दैनिक पंजीकरण कटऑफ समय *" : "Registration Cutoff Time *"}
+                      </label>
+                      <input
+                        type="time"
+                        value={brandingForm.registration_cutoff_time || "19:00"}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, registration_cutoff_time: e.target.value })}
+                        style={{ ...fieldInputStyle, borderColor: "#FECACA", background: "#FFF5F5" }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cutoff Explanation Banner */}
+                  <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "20px" }}>ℹ️</span>
+                    <span style={{ fontSize: "12px", color: "#1E40AF", lineHeight: 1.4 }}>
+                      {isHi
+                        ? "कटऑफ समय के बाद गैर-आपातकालीन (Standard/Vulnerable) मरीज टोकन जनरेट नहीं कर सकते। आपातकालीन (Emergency) मरीज 24/7 कभी भी रजिस्टर कर सकते हैं।"
+                        : "Non-emergency patients cannot register or join the queue after this cutoff time. Emergency triage registrations remain active 24/7."}
+                    </span>
+                  </div>
+
+                  {/* Operating Days Selector */}
+                  <div>
+                    <label style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
+                      {isHi ? "सक्रिय ओपीडी संचालन दिवस (Operating Days)" : "Weekly OPD Operating Days"}
+                    </label>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => {
+                        const isChecked = (brandingForm.operating_days || []).includes(day);
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => {
+                              const currentDays = brandingForm.operating_days || [];
+                              const newDays = isChecked
+                                ? currentDays.filter((d) => d !== day)
+                                : [...currentDays, day];
+                              setBrandingForm({ ...brandingForm, operating_days: newDays });
+                            }}
+                            style={{
+                              padding: "7px 14px",
+                              borderRadius: "8px",
+                              border: isChecked ? `1.5px solid ${brandingForm.primary_color || "#0284C7"}` : "1px solid #CBD5E1",
+                              background: isChecked ? (brandingForm.primary_color || "#0284C7") : "#FFFFFF",
+                              color: isChecked ? "#FFFFFF" : "#475569",
+                              fontWeight: 700,
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            {isChecked ? "✓ " : ""}{day}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Closed Notice */}
+                  <div>
+                    <label style={fieldLabelStyle}>{isHi ? "क्लिनिक बंद होने की सूचना (Closed Notice)" : "Off-Hours Closed Notice to Patients"}</label>
+                    <textarea
+                      rows="2"
+                      placeholder="Registrations are closed for today..."
+                      value={brandingForm.closed_notice || ""}
+                      onChange={(e) => setBrandingForm({ ...brandingForm, closed_notice: e.target.value })}
+                      style={{ ...fieldInputStyle, resize: "none" }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Modal Actions */}
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px", borderTop: "1px solid #E2E8F0", paddingTop: "14px" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowBrandingModal(false)}
+                  style={modalCancelBtnStyle}
+                >
+                  {isHi ? "रद्द करें" : "Cancel"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setBrandingForm({
+                    logo_url: "",
+                    primary_color: "#0284C7",
+                    secondary_color: "#0369A1",
+                    accent_color: "#F0F9FF",
+                    tagline: "Care you can trust • NABH Accredited",
+                    emergency_helpline: "Emergency Helpline: 108 / +91 98765 43210",
+                    slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
+                    opd_start_time: "08:00",
+                    opd_end_time: "20:00",
+                    registration_cutoff_time: "19:00",
+                    operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+                    closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+                  })}
+                  style={{
+                    ...modalCancelBtnStyle,
+                    color: "#D97706",
+                    borderColor: "#FDE68A",
+                    background: "#FFFBEB",
+                  }}
+                >
+                  {isHi ? "डिफ़ॉल्ट रीसेट" : "Reset Defaults"}
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSavingBranding}
+                  style={{
+                    ...modalSubmitBtnStyle,
+                    background: `linear-gradient(135deg, ${brandingForm.primary_color || "#0284C7"} 0%, ${brandingForm.secondary_color || "#0369A1"} 100%)`,
+                    opacity: isSavingBranding ? 0.7 : 1,
+                    cursor: isSavingBranding ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {isSavingBranding
+                    ? (isHi ? "सहेज रहा है..." : "Saving Settings...")
+                    : (isHi ? "ब्रांडिंग सेटिंग्स सहेजें" : "Save Branding Settings")}
                 </button>
               </div>
             </form>
@@ -2315,7 +3858,11 @@ export default function SuperAdminPage({
 
       {/* FOOTER */}
       <div style={{ marginTop: "40px" }}>
-        <Footer language={language} />
+        <Footer
+          language={language}
+          hospitalName={selectedHospital?.name || currentUser?.hospital_name || "City General Hospital"}
+          currentUser={currentUser}
+        />
       </div>
     </div>
   );

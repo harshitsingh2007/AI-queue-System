@@ -1,18 +1,44 @@
 /**
  * Footer.jsx
  * ----------
- * User Dashboard Footer matching IMAGE 2.
+ * User & Staff Dashboard Dynamic Footer.
  * Features:
- * - Hospital shield / logo with white medical cross
- * - City General Hospital & "Care you can trust"
- * - Copyright: "© 2024 City General Hospital. All rights reserved."
+ * - Dynamic Hospital shield / logo with white medical cross
+ * - Dynamic Hospital Name & localized tagline ("Care you can trust")
+ * - Dynamic Copyright: "© {currentYear} {hospitalName}. All rights reserved."
  * - Healthcare heartbeat graphic (ECG pulse waveform)
+ * - Automatic reactivity to selected hospital, logged-in user hospital, or global config.
  */
 
 import React from "react";
 import { HOSPITAL_CONFIG } from "../config/hospitalConfig";
 
-export default function Footer({ language = "en" }) {
+export default function Footer({ language = "en", hospitalName, currentUser }) {
+  // Derive the active hospital name from props, currentUser, localStorage, or fallback
+  const getDynamicHospitalName = () => {
+    if (hospitalName && typeof hospitalName === "string" && hospitalName.trim()) {
+      return hospitalName.trim();
+    }
+    if (currentUser?.hospital_name && typeof currentUser.hospital_name === "string" && currentUser.hospital_name.trim()) {
+      return currentUser.hospital_name.trim();
+    }
+    try {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("ai_queue_user");
+        if (saved) {
+          const u = JSON.parse(saved);
+          if (u && u.hospital_name && typeof u.hospital_name === "string" && u.hospital_name.trim()) {
+            return u.hospital_name.trim();
+          }
+        }
+      }
+    } catch (e) {}
+    return HOSPITAL_CONFIG.name || "City General Hospital";
+  };
+
+  const effectiveHospitalName = getDynamicHospitalName();
+  const currentYear = new Date().getFullYear();
+
   return (
     <footer style={footerWrapperStyle} className="user-dashboard-footer">
       <style>{`
@@ -47,7 +73,7 @@ export default function Footer({ language = "en" }) {
         }
       `}</style>
 
-      {/* 1. Left: Hospital Logo & Tagline */}
+      {/* 1. Left: Hospital Logo & Dynamic Name & Tagline */}
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
         <div style={footerLogoShieldStyle}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -66,7 +92,7 @@ export default function Footer({ language = "en" }) {
         </div>
         <div style={{ textAlign: "left" }}>
           <div style={{ fontWeight: 800, fontSize: "14px", color: "#0F172A", letterSpacing: "-0.2px", lineHeight: "1.2" }}>
-            {HOSPITAL_CONFIG.name || "City General Hospital"}
+            {effectiveHospitalName}
           </div>
           <div style={{ fontSize: "11px", color: "#64748B", fontWeight: 500, marginTop: "1px" }}>
             {language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा" : "Care you can trust"}
@@ -74,11 +100,11 @@ export default function Footer({ language = "en" }) {
         </div>
       </div>
 
-      {/* 2. Center: Copyright */}
+      {/* 2. Center: Dynamic Copyright with Hospital Name */}
       <div style={{ fontSize: "12.5px", color: "#64748B", fontWeight: 500 }}>
         {language === "hi"
-          ? "© 2024 सिटी जनरल अस्पताल. सर्वाधिकार सुरक्षित."
-          : "© 2024 City General Hospital. All rights reserved."}
+          ? `© ${currentYear} ${effectiveHospitalName}. सर्वाधिकार सुरक्षित.`
+          : `© ${currentYear} ${effectiveHospitalName}. All rights reserved.`}
       </div>
 
       {/* 3. Right: Healthcare Heartbeat Graphic (ECG Pulse Waveform) */}

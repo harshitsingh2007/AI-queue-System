@@ -239,10 +239,22 @@ class PluginQueueEngine:
         """Looks up integer department_id from hospital_id and dept_code."""
         clean_code = (dept_code or "consultation").strip().lower()
         r = conn.execute(
-            "SELECT id FROM departments WHERE hospital_id = %s AND dept_code = %s",
+            "SELECT id FROM departments WHERE hospital_id = %s AND LOWER(dept_code) = %s",
             (hospital_id, clean_code)
         ).fetchone()
         return r[0] if r else None
+
+    def _resolve_user_id(self, conn, email_or_id: Any) -> Optional[int]:
+        """Looks up integer user_id from email or existing id."""
+        if not email_or_id:
+            return None
+        if isinstance(email_or_id, int):
+            return email_or_id
+        val_str = str(email_or_id).strip().lower()
+        if val_str.isdigit():
+            return int(val_str)
+        ur = conn.execute("SELECT id FROM users WHERE LOWER(email) = %s", (val_str,)).fetchone()
+        return ur[0] if ur else None
 
     def _resolve_patient_id(self, conn, user_email: str, name: str, phone: str = "", gender: str = "other", age: int = 30) -> Optional[int]:
         """Finds or creates a patient record linked to user_email or patient name."""
@@ -431,8 +443,8 @@ class PluginQueueEngine:
                 action,
                 entity_type,
                 str(entity_id),
-                json.dumps(old_values or {}),
-                json.dumps(new_values or {})
+                json.dumps(old_values or {}, default=str),
+                json.dumps(new_values or {}, default=str)
             ))
         except Exception as e:
             print(f"[WARN] Failed to write audit_log: {e}")
@@ -2362,10 +2374,19 @@ class PluginQueueEngine:
         email: str = "",
         description: str = "",
         logo_url: str = "",
-        status: str = "active"
+        status: str = "active",
+        requester_email: str = ""
     ) -> dict:
         h_code = hospital_code.strip()
         with self._get_db() as conn:
+            old_h = conn.execute("""
+                SELECT id, hospital_code, name, address, phone, email, description, logo_url, status
+                FROM hospitals WHERE hospital_code = %s
+            """, (h_code,)).fetchone()
+            if not old_h:
+                raise ValueError(f"Hospital with code '{hospital_code}' not found.")
+            old_vals = dict(old_h)
+
             res = conn.execute("""
                 UPDATE hospitals
                 SET name = %s, address = %s, phone = %s, email = %s,
@@ -2374,18 +2395,21 @@ class PluginQueueEngine:
                 RETURNING id, hospital_code, name, address, phone, email, status;
             """, (name, address, phone, email, description, logo_url, status, h_code)).fetchone()
 
-            if not res:
-                raise ValueError(f"Hospital with code '{hospital_code}' not found.")
+            new_vals = dict(res)
+            uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, old_vals["id"], uid, "UPDATE_HOSPITAL", "hospital", str(old_vals["id"]), old_values=old_vals, new_values=new_vals)
+            return new_vals
 
-            return dict(res)
-
-    def delete_hospital(self, hospital_code: str) -> dict:
+    def delete_hospital(self, hospital_code: str, requester_email: str = "") -> dict:
         clean_code = hospital_code.strip()
         with self._get_db() as conn:
-            h = conn.execute("SELECT id, name FROM hospitals WHERE hospital_code = %s", (clean_code,)).fetchone()
+            h = conn.execute("SELECT id, hospital_code, name, address, phone, email FROM hospitals WHERE hospital_code = %s", (clean_code,)).fetchone()
             if not h:
                 return {"status": "error", "message": f"Hospital '{clean_code}' not found."}
             h_id = h["id"]
+            old_vals = dict(h)
+            uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, h_id, uid, "DELETE_HOSPITAL", "hospital", str(h_id), old_values=old_vals, new_values=None)
 
             # Safe cleanup of child entities
             conn.execute("DELETE FROM service_logs WHERE hospital_id = %s", (h_id,))
@@ -2408,8 +2432,8 @@ class PluginQueueEngine:
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, hospital_code)
             rows = conn.execute("""
-                SELECT e.id as employee_id_num, e.employee_code as employee_id, e.name, u.email,
-                       e.phone, u.role, d.dept_code as department, d.name as department_name, e.status
+                SELECT e.id, e.id as employee_id_num, e.employee_code as employee_id, e.name, e.name as username, u.email,
+                       e.phone, u.role, d.dept_code as department, d.name as department_name, e.status, e.user_id
                 FROM employees e
                 JOIN users u ON u.id = e.user_id
                 LEFT JOIN departments d ON d.id = e.department_id
@@ -2427,7 +2451,8 @@ class PluginQueueEngine:
         department: str,
         employee_id: str = "",
         phone: str = "",
-        password: str = "pass123"
+        password: str = "pass123",
+        requester_email: str = ""
     ) -> dict:
         email = email.strip().lower()
         pwd_hash = self._hash_password(password)
@@ -2463,7 +2488,12 @@ class PluginQueueEngine:
                 RETURNING id;
             """, (uid, hid, dept_id, employee_id or f"EMP-{uid}", name, phone, "active")).fetchone()
 
-            self._log_audit(conn, hid, None, "PROVISION_EMPLOYEE", "employee", str(emp_res[0]), None, {"email": email, "role": role})
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(
+                conn, hid, actor_uid, "PROVISION_EMPLOYEE", "employee", str(emp_res[0]),
+                old_values=None,
+                new_values={"email": email, "role": role, "name": name, "department": department}
+            )
 
             return {
                 "user_id": uid,
@@ -2483,14 +2513,33 @@ class PluginQueueEngine:
         role: str = "staff",
         department: str = "consultation",
         employee_id: str = "",
-        status: str = "active"
+        status: str = "active",
+        password: Optional[str] = None,
+        requester_email: str = ""
     ) -> dict:
         with self._get_db() as conn:
-            conn.execute("UPDATE users SET username = %s, role = %s, phone = %s, status = %s, updated_at = NOW() WHERE id = %s", (name, role, phone, status, user_id))
+            old_u = conn.execute("SELECT id, username, email, role, phone, status FROM users WHERE id = %s", (user_id,)).fetchone()
+            old_emp = conn.execute("""
+                SELECT e.id, e.hospital_id, e.department_id, e.employee_code, e.name, e.phone, e.status, d.dept_code
+                FROM employees e
+                LEFT JOIN departments d ON d.id = e.department_id
+                WHERE e.user_id = %s
+            """, (user_id,)).fetchone()
 
-            emp = conn.execute("SELECT hospital_id FROM employees WHERE user_id = %s", (user_id,)).fetchone()
-            if emp:
-                hid = emp[0]
+            old_vals = {
+                "user": dict(old_u) if old_u else {},
+                "employee": dict(old_emp) if old_emp else {}
+            }
+
+            if password and password.strip():
+                pwd_hash = self._hash_password(password.strip())
+                conn.execute("UPDATE users SET username = %s, role = %s, phone = %s, status = %s, password_hash = %s, updated_at = NOW() WHERE id = %s", (name, role, phone, status, pwd_hash, user_id))
+            else:
+                conn.execute("UPDATE users SET username = %s, role = %s, phone = %s, status = %s, updated_at = NOW() WHERE id = %s", (name, role, phone, status, user_id))
+
+            hid = None
+            if old_emp:
+                hid = old_emp["hospital_id"]
                 dept_id = self._resolve_department_id(conn, hid, department)
                 conn.execute("""
                     UPDATE employees
@@ -2498,13 +2547,103 @@ class PluginQueueEngine:
                     WHERE user_id = %s AND hospital_id = %s;
                 """, (name, phone, dept_id, employee_id, status, user_id, hid))
 
+            new_vals = {
+                "user_id": user_id,
+                "name": name,
+                "role": role,
+                "phone": phone,
+                "department": department,
+                "employee_id": employee_id,
+                "status": status,
+                "password_updated": bool(password and password.strip())
+            }
+
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "UPDATE_EMPLOYEE", "employee", str(user_id), old_values=old_vals, new_values=new_vals)
+
             return {"user_id": user_id, "name": name, "role": role, "status": status}
 
-    def delete_hospital_employee(self, user_id: int) -> dict:
+    def update_employee_password(self, user_id: int, new_password: str, requester_email: str = "") -> dict:
+        """Allows super admin / facility owner to update doctor or staff member's password."""
+        if not new_password or len(new_password.strip()) < 4:
+            raise ValueError("Password must be at least 4 characters long.")
+        pwd_hash = self._hash_password(new_password.strip())
         with self._get_db() as conn:
+            u = conn.execute("SELECT id, username, email, role FROM users WHERE id = %s", (user_id,)).fetchone()
+            if not u:
+                raise ValueError(f"User #{user_id} not found.")
+            conn.execute("UPDATE users SET password_hash = %s, updated_at = NOW() WHERE id = %s", (pwd_hash, user_id))
+
+            emp = conn.execute("SELECT hospital_id FROM employees WHERE user_id = %s", (user_id,)).fetchone()
+            hid = emp["hospital_id"] if emp else None
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "UPDATE_PASSWORD", "user", str(user_id), None, {"email": u["email"], "username": u["username"]})
+
+            return {"user_id": user_id, "email": u["email"], "name": u["username"], "role": u["role"], "status": "success"}
+
+    def delete_hospital_employee(self, user_id: int, requester_email: str = "") -> dict:
+        with self._get_db() as conn:
+            old_u = conn.execute("SELECT id, username, email, role FROM users WHERE id = %s", (user_id,)).fetchone()
+            old_emp = conn.execute("SELECT id, hospital_id, employee_code, name FROM employees WHERE user_id = %s", (user_id,)).fetchone()
+            old_vals = {
+                "user": dict(old_u) if old_u else {},
+                "employee": dict(old_emp) if old_emp else {}
+            }
+            hid = old_emp["hospital_id"] if old_emp else None
+
             conn.execute("DELETE FROM employees WHERE user_id = %s", (user_id,))
             conn.execute("UPDATE users SET status = 'inactive', updated_at = NOW() WHERE id = %s", (user_id,))
+
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "DELETE_EMPLOYEE", "employee", str(user_id), old_values=old_vals, new_values=None)
             return {"success": True, "deleted_user_id": user_id}
+
+    # ------------------------------------------------------------------
+    # Hospital Branding & Operating Hours (White-Labeling)
+    # ------------------------------------------------------------------
+    def get_hospital_branding(self, hospital_code: str) -> dict:
+        with self._get_db() as conn:
+            row = conn.execute("SELECT id, hospital_code, name, logo_url, phone, email, address, description, branding_json FROM hospitals WHERE hospital_code = %s", (hospital_code,)).fetchone()
+            if not row:
+                raise ValueError(f"Hospital '{hospital_code}' not found.")
+            d = dict(row)
+            raw = d.get("branding_json") or {}
+            defaults = {
+                "logo_url": "",
+                "primary_color": "#0284C7",
+                "secondary_color": "#0369A1",
+                "accent_color": "#F0F9FF",
+                "tagline": "Care you can trust • NABH Accredited",
+                "emergency_helpline": "Emergency Helpline: 108 / +91 98765 43210",
+                "slip_footer_text": "Non-transferable official patient record. Please keep until consultation is complete.",
+                "opd_start_time": "08:00",
+                "opd_end_time": "20:00",
+                "registration_cutoff_time": "19:00",
+                "operating_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+                "closed_notice": "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+            }
+            defaults.update(raw)
+            defaults["hospital_name"] = d.get("name")
+            defaults["hospital_code"] = d.get("hospital_code")
+            if not defaults.get("logo_url") and d.get("logo_url"):
+                defaults["logo_url"] = d.get("logo_url")
+            return defaults
+
+    def update_hospital_branding(self, hospital_code: str, branding_data: dict, requester_email: str = "") -> dict:
+        with self._get_db() as conn:
+            row = conn.execute("SELECT id, name, logo_url, branding_json FROM hospitals WHERE hospital_code = %s", (hospital_code,)).fetchone()
+            if not row:
+                raise ValueError(f"Hospital '{hospital_code}' not found.")
+            current_branding = dict(row).get("branding_json") or {}
+            current_branding.update(branding_data)
+            logo_url = branding_data.get("logo_url", dict(row).get("logo_url") or "")
+            import json
+            conn.execute("UPDATE hospitals SET branding_json = %s, logo_url = %s, updated_at = NOW() WHERE hospital_code = %s", (json.dumps(current_branding), logo_url, hospital_code))
+            actor_uid = self._resolve_user_id(conn, row["id"] if isinstance(row, dict) else row[0], requester_email)
+            self._log_audit(conn, row["id"] if isinstance(row, dict) else row[0], actor_uid, "UPDATE_BRANDING", "hospital", hospital_code, None, current_branding)
+            current_branding["hospital_name"] = dict(row).get("name")
+            current_branding["hospital_code"] = hospital_code
+            return {"status": "success", "hospital_code": hospital_code, "branding": current_branding}
 
     # ------------------------------------------------------------------
     # Departments & Desks Management
@@ -2515,7 +2654,7 @@ class PluginQueueEngine:
             rows = conn.execute("SELECT * FROM departments WHERE hospital_id = %s ORDER BY id ASC", (hid,)).fetchall()
             return [dict(r) for r in rows]
 
-    def add_hospital_department(self, hospital_code: str, dept_code: str, name: str, description: str = "") -> dict:
+    def add_hospital_department(self, hospital_code: str, dept_code: str, name: str, description: str = "", requester_email: str = "") -> dict:
         d_code = dept_code.strip().lower()
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, hospital_code)
@@ -2527,13 +2666,60 @@ class PluginQueueEngine:
                     description = EXCLUDED.description
                 RETURNING id, dept_code, name, description, status;
             """, (hid, d_code, name, description, "active")).fetchone()
-            return dict(res)
 
-    def delete_hospital_department(self, hospital_code: str, dept_code: str) -> dict:
+            dept_dict = dict(res)
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "ADD_DEPARTMENT", "department", d_code, old_values=None, new_values=dept_dict)
+            return dept_dict
+
+    def update_hospital_department(
+        self,
+        hospital_code: str,
+        dept_code: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        requester_email: str = ""
+    ) -> dict:
+        """
+        Updates department name and description.
+        dept_code is immutable because it serves as a foreign key reference for desks and employees.
+        If dept_code must change, delete and recreate the department explicitly.
+        """
+        d_code = dept_code.strip().lower()
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, hospital_code)
-            conn.execute("DELETE FROM departments WHERE hospital_id = %s AND dept_code = %s", (hid, dept_code.strip().lower()))
-            return {"success": True, "deleted_dept": dept_code}
+            old_dept = conn.execute("SELECT id, dept_code, name, description, status FROM departments WHERE hospital_id = %s AND dept_code = %s", (hid, d_code)).fetchone()
+            if not old_dept:
+                raise ValueError(f"Department '{dept_code}' not found in hospital '{hospital_code}'.")
+
+            old_vals = dict(old_dept)
+            new_name = name.strip() if name is not None and name.strip() != "" else old_vals["name"]
+            new_desc = description.strip() if description is not None else (old_vals["description"] or "")
+
+            res = conn.execute("""
+                UPDATE departments
+                SET name = %s, description = %s, updated_at = NOW()
+                WHERE hospital_id = %s AND dept_code = %s
+                RETURNING id, dept_code, name, description, status;
+            """, (new_name, new_desc, hid, d_code)).fetchone()
+
+            new_vals = dict(res)
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "UPDATE_DEPARTMENT", "department", d_code, old_values=old_vals, new_values=new_vals)
+            return new_vals
+
+    def delete_hospital_department(self, hospital_code: str, dept_code: str, requester_email: str = "") -> dict:
+        d_code = dept_code.strip().lower()
+        with self._get_db() as conn:
+            hid = self._resolve_hospital_id(conn, hospital_code)
+            old_dept = conn.execute("SELECT id, dept_code, name, description FROM departments WHERE hospital_id = %s AND dept_code = %s", (hid, d_code)).fetchone()
+            if not old_dept:
+                raise ValueError(f"Department '{dept_code}' not found.")
+            old_vals = dict(old_dept)
+            conn.execute("DELETE FROM departments WHERE hospital_id = %s AND dept_code = %s", (hid, d_code))
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "DELETE_DEPARTMENT", "department", d_code, old_values=old_vals, new_values=None)
+            return {"success": True, "deleted_dept": d_code}
 
     def get_hospital_desks(self, hospital_code: str) -> List[dict]:
         with self._get_db() as conn:
@@ -2549,10 +2735,12 @@ class PluginQueueEngine:
             """, (hid,)).fetchall()
             return [dict(r) for r in rows]
 
-    def add_hospital_desk(self, hospital_code: str, dept_code: str, desk_name: str, status: str = "AVAILABLE") -> dict:
+    def add_hospital_desk(self, hospital_code: str, dept_code: str, desk_name: str, status: str = "AVAILABLE", requester_email: str = "") -> dict:
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, hospital_code)
             dept_id = self._resolve_department_id(conn, hid, dept_code)
+            if not dept_id:
+                raise ValueError(f"Department '{dept_code}' not found for hospital '{hospital_code}'.")
 
             # Auto-increment desk number for this department
             max_num = conn.execute("SELECT COALESCE(MAX(desk_number), 0) FROM desks WHERE hospital_id = %s AND department_id = %s", (hid, dept_id)).fetchone()[0]
@@ -2564,19 +2752,161 @@ class PluginQueueEngine:
                 RETURNING id, desk_number, desk_name, status;
             """, (hid, dept_id, desk_num, desk_name, status)).fetchone()
 
-            return dict(res)
+            desk_dict = dict(res)
+            desk_dict["dept_code"] = dept_code
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "ADD_DESK", "desk", str(desk_dict["id"]), old_values=None, new_values=desk_dict)
+            return desk_dict
 
-    def delete_hospital_desk(self, desk_id: int) -> dict:
+    def update_hospital_desk(
+        self,
+        hospital_code: str,
+        desk_id: int,
+        desk_name: Optional[str] = None,
+        dept_code: Optional[str] = None,
+        requester_email: str = ""
+    ) -> dict:
+        """Updates desk name and allows moving desk to a different department within the hospital."""
         with self._get_db() as conn:
+            hid = self._resolve_hospital_id(conn, hospital_code)
+            old_desk = conn.execute("""
+                SELECT d.id, d.hospital_id, d.department_id, d.desk_number, d.desk_name, d.status, dept.dept_code
+                FROM desks d
+                JOIN departments dept ON dept.id = d.department_id
+                WHERE d.id = %s AND d.hospital_id = %s
+            """, (desk_id, hid)).fetchone()
+            if not old_desk:
+                raise ValueError(f"Desk #{desk_id} not found in hospital '{hospital_code}'.")
+
+            old_vals = dict(old_desk)
+            target_dept_id = old_vals["department_id"]
+            if dept_code:
+                new_dept_id = self._resolve_department_id(conn, hid, dept_code)
+                if not new_dept_id:
+                    raise ValueError(f"Department '{dept_code}' not found in hospital '{hospital_code}'.")
+                target_dept_id = new_dept_id
+
+            target_name = desk_name.strip() if desk_name is not None and desk_name.strip() != "" else old_vals["desk_name"]
+
+            res = conn.execute("""
+                UPDATE desks
+                SET desk_name = %s, department_id = %s, updated_at = NOW()
+                WHERE id = %s AND hospital_id = %s
+                RETURNING id, desk_number, desk_name, department_id, status;
+            """, (target_name, target_dept_id, desk_id, hid)).fetchone()
+
+            new_vals = dict(res)
+            target_dept_code = dept_code or old_vals.get("dept_code")
+            new_vals["dept_code"] = target_dept_code
+
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "UPDATE_DESK", "desk", str(desk_id), old_values=old_vals, new_values=new_vals)
+            return new_vals
+
+    def delete_hospital_desk(self, desk_id: int, requester_email: str = "") -> dict:
+        with self._get_db() as conn:
+            old_desk = conn.execute("SELECT id, hospital_id, desk_number, desk_name, status FROM desks WHERE id = %s", (desk_id,)).fetchone()
+            if not old_desk:
+                raise ValueError(f"Desk #{desk_id} not found.")
+            old_vals = dict(old_desk)
+            hid = old_vals["hospital_id"]
+
             conn.execute("DELETE FROM desks WHERE id = %s", (desk_id,))
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "DELETE_DESK", "desk", str(desk_id), old_values=old_vals, new_values=None)
             return {"success": True, "deleted_desk_id": desk_id}
 
-    def update_desk_status(self, desk_id: int, status: str) -> dict:
+    def update_desk_status(self, desk_id: int, status: str, requester_email: str = "") -> dict:
         with self._get_db() as conn:
-            res = conn.execute("UPDATE desks SET status = %s, last_active_at = NOW(), updated_at = NOW() WHERE id = %s RETURNING id, desk_number, desk_name, status", (status, desk_id)).fetchone()
-            if not res:
+            old_desk = conn.execute("SELECT id, hospital_id, desk_number, desk_name, status FROM desks WHERE id = %s", (desk_id,)).fetchone()
+            if not old_desk:
                 raise ValueError(f"Desk #{desk_id} not found.")
-            return dict(res)
+            old_vals = dict(old_desk)
+            hid = old_vals["hospital_id"]
+
+            res = conn.execute("UPDATE desks SET status = %s, last_active_at = NOW(), updated_at = NOW() WHERE id = %s RETURNING id, desk_number, desk_name, status", (status, desk_id)).fetchone()
+            new_vals = dict(res)
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "UPDATE_DESK_STATUS", "desk", str(desk_id), old_values=old_vals, new_values=new_vals)
+            return new_vals
+
+    def bulk_update_desk_status(self, hospital_code: str, dept_code: str, status: str, requester_email: str = "") -> dict:
+        """Updates status of all desks in a department in a single query."""
+        with self._get_db() as conn:
+            hid = self._resolve_hospital_id(conn, hospital_code)
+            dept_id = self._resolve_department_id(conn, hid, dept_code)
+            if not dept_id:
+                raise ValueError(f"Department '{dept_code}' not found in hospital '{hospital_code}'.")
+
+            res = conn.execute("""
+                UPDATE desks
+                SET status = %s, last_active_at = NOW(), updated_at = NOW()
+                WHERE hospital_id = %s AND department_id = %s
+                RETURNING id;
+            """, (status, hid, dept_id)).fetchall()
+            updated_count = len(res)
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(
+                conn,
+                hid,
+                actor_uid,
+                "BULK_UPDATE_DESK_STATUS",
+                "desk",
+                f"{dept_code}:all",
+                old_values={"dept_code": dept_code},
+                new_values={"dept_code": dept_code, "status": status, "count": updated_count}
+            )
+            return {"success": True, "dept_code": dept_code, "status": status, "updated_count": updated_count}
+
+    def get_audit_logs(
+        self,
+        hospital_code: Optional[str] = None,
+        entity_type: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[dict]:
+        """Returns rows from audit_logs joined to users (actor) and hospitals, ordered by created_at DESC."""
+        with self._get_db() as conn:
+            query = """
+                SELECT a.id, a.hospital_id, a.user_id, a.action, a.entity_type, a.entity_id,
+                       a.old_values, a.new_values, a.created_at,
+                       u.email as actor_email, u.username as actor_name,
+                       h.hospital_code, h.name as hospital_name
+                FROM audit_logs a
+                LEFT JOIN users u ON u.id = a.user_id
+                LEFT JOIN hospitals h ON h.id = a.hospital_id
+                WHERE 1=1
+            """
+            params = []
+            if hospital_code and hospital_code.strip().lower() not in ("all", ""):
+                hid = self._resolve_hospital_id(conn, hospital_code)
+                query += " AND a.hospital_id = %s"
+                params.append(hid)
+            if entity_type and entity_type.strip().lower() not in ("all", ""):
+                query += " AND LOWER(a.entity_type) = %s"
+                params.append(entity_type.strip().lower())
+
+            query += " ORDER BY a.created_at DESC LIMIT %s OFFSET %s"
+            params.extend([max(1, min(limit, 200)), max(0, offset)])
+
+            rows = conn.execute(query, tuple(params)).fetchall()
+            logs = []
+            for r in rows:
+                item = dict(r)
+                if isinstance(item.get("created_at"), datetime):
+                    item["created_at"] = item["created_at"].isoformat()
+                if isinstance(item.get("old_values"), str):
+                    try:
+                        item["old_values"] = json.loads(item["old_values"])
+                    except Exception:
+                        pass
+                if isinstance(item.get("new_values"), str):
+                    try:
+                        item["new_values"] = json.loads(item["new_values"])
+                    except Exception:
+                        pass
+                logs.append(item)
+            return logs
 
     def get_hospital_info(self, hospital_code: str) -> dict:
         with self._get_db() as conn:

@@ -10,10 +10,13 @@ const {
   getHospitalByCode,
   createHospital,
   updateHospital,
+  getHospitalBranding,
+  updateHospitalBranding,
   deleteHospital,
   getHospitalEmployees,
   addHospitalEmployee,
   updateHospitalEmployee,
+  updateEmployeePassword,
   deleteHospitalEmployee,
   getHospitalDepartments,
   addHospitalDepartment,
@@ -151,6 +154,40 @@ async function updateHospitalEndpoint(req, res, next) {
   }
 }
 
+async function getHospitalBrandingEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const branding = await getHospitalBranding(hospitalCode);
+    return res.status(200).json({
+      status: "success",
+      hospital_code: hospitalCode,
+      branding,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateHospitalBrandingEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    if (req.user) {
+      const allowed = await verifyHospitalAccess(hospitalCode, req.user);
+      if (!allowed) {
+        return res.status(403).json({
+          status: "error",
+          message: "Forbidden: You do not have permission to customize this hospital's branding.",
+        });
+      }
+    }
+
+    const result = await updateHospitalBranding(hospitalCode, req.body);
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 async function deleteHospitalEndpoint(req, res, next) {
   try {
     const hospitalCode = req.params.hospital_code;
@@ -256,6 +293,41 @@ async function updateHospitalEmployeeEndpoint(req, res, next) {
     return res.status(200).json({
       status: "success",
       employee: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateEmployeePasswordEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const userId = req.params.user_id;
+    const { new_password, password } = req.body;
+    const targetPassword = new_password || password;
+
+    if (!targetPassword || String(targetPassword).trim().length < 4) {
+      return res.status(400).json({
+        status: "error",
+        detail: "Password must be at least 4 characters.",
+      });
+    }
+
+    if (req.user) {
+      const allowed = await verifyHospitalAccess(hospitalCode, req.user);
+      if (!allowed) {
+        return res.status(403).json({
+          status: "error",
+          detail: "Forbidden: You do not have access to manage this employee's credentials.",
+        });
+      }
+    }
+
+    const result = await updateEmployeePassword(userId, targetPassword);
+    return res.status(200).json({
+      status: "success",
+      result,
+      message: "Password updated successfully",
     });
   } catch (error) {
     next(error);
@@ -450,10 +522,13 @@ module.exports = {
   createHospitalEndpoint,
   getHospitalDetailEndpoint,
   updateHospitalEndpoint,
+  getHospitalBrandingEndpoint,
+  updateHospitalBrandingEndpoint,
   deleteHospitalEndpoint,
   getHospitalEmployeesEndpoint,
   addHospitalEmployeeEndpoint,
   updateHospitalEmployeeEndpoint,
+  updateEmployeePasswordEndpoint,
   deleteHospitalEmployeeEndpoint,
   getHospitalDepartmentsEndpoint,
   addHospitalDepartmentEndpoint,

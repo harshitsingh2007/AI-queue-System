@@ -11,10 +11,12 @@ const { closeAndExpirePreviousDayQueues } = require("../services/dailyClosureSer
 const { getIo, broadcastQueueUpdate } = require("../socket");
 const { PRIORITY_EMERGENCY, PRIORITY_ROUTINE, PRIORITY_STANDARD } = require("../utils/clinicalComplexity");
 const { getCurrentQueueDate, parseQueueDate } = require("../utils/timezone");
+const { getHospitalBranding } = require("../services/hospitalService");
 
-function urgencyToPriority(consumerType, urgency) {
+function urgencyToPriority(consumerType, urgency, priorityVal) {
+  if (priorityVal === 1 || priorityVal === "1" || priorityVal === PRIORITY_EMERGENCY) return PRIORITY_EMERGENCY;
   if (consumerType !== "hospital") return PRIORITY_STANDARD;
-  if (urgency === "emergency") return PRIORITY_EMERGENCY;
+  if (urgency === "emergency" || urgency === 1 || urgency === "1") return PRIORITY_EMERGENCY;
   return PRIORITY_ROUTINE;
 }
 
@@ -26,6 +28,7 @@ async function joinQueueEndpoint(req, res, next) {
       service_category = "consultation",
       name = "Patient",
       urgency,
+      priority: explicitPriority,
       user_email = "",
       age = 30,
       gender = "other",
@@ -34,7 +37,54 @@ async function joinQueueEndpoint(req, res, next) {
       family_member_id = null,
     } = req.body;
 
-    const priority = urgencyToPriority(consumer_type, urgency);
+    const priority = urgencyToPriority(consumer_type, urgency, explicitPriority);
+
+    // Enforce daily registration cutoff and operating days unless emergency ticket
+    if (priority !== PRIORITY_EMERGENCY) {
+      try {
+        const branding = await getHospitalBranding(tenant_id);
+        if (branding) {
+          const now = new Date();
+          // Operating days validation
+          if (Array.isArray(branding.operating_days) && branding.operating_days.length > 0) {
+            const currentDayName = now.toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", weekday: "long" });
+            const isOperatingDay = branding.operating_days.some(
+              (d) => String(d).toLowerCase() === currentDayName.toLowerCase()
+            );
+            if (!isOperatingDay) {
+              return res.status(403).json({
+                status: "error",
+                detail: branding.closed_notice || `Facility OPD is closed on ${currentDayName}s. Emergency triage is open.`,
+                is_registration_closed: true,
+              });
+            }
+          }
+
+          // Registration cutoff time validation
+          if (branding.registration_cutoff_time) {
+            const timeParts = now.toLocaleTimeString("en-US", {
+              timeZone: "Asia/Kolkata",
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit",
+            }).split(":");
+            const currentMins = parseInt(timeParts[0], 10) * 60 + parseInt(timeParts[1], 10);
+            const cutoffParts = branding.registration_cutoff_time.split(":");
+            const cutoffMins = parseInt(cutoffParts[0], 10) * 60 + parseInt(cutoffParts[1], 10);
+
+            if (currentMins > cutoffMins) {
+              return res.status(403).json({
+                status: "error",
+                detail: branding.closed_notice || `Daily registration cutoff was at ${branding.registration_cutoff_time}. Token issuance is closed for today.`,
+                is_registration_closed: true,
+              });
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback gracefully if hospital branding lookup fails
+      }
+    }
 
     let patientId = null;
     if (family_member_id && (user_email || req.user?.email)) {
