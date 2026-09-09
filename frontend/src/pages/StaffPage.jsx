@@ -32,10 +32,54 @@ export default function StaffPage({
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [targetDept, setTargetDept] = useState("pharmacy");
+  const [hospitalDepartments, setHospitalDepartments] = useState([]);
   const [rxNotes, setRxNotes] = useState("");
   const [transferStatusMsg, setTransferStatusMsg] = useState("");
   const [announceFeedbackMsg, setAnnounceFeedbackMsg] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
+
+  // Doctor Prescription Modal State
+  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+  const [prescriptionTicket, setPrescriptionTicket] = useState(null);
+  const [rxDiagnosis, setRxDiagnosis] = useState("");
+  const [rxMedicines, setRxMedicines] = useState([
+    { name: "", dosage: "500mg", frequency: "1-0-1", duration: "5 days", instructions: "After food" },
+  ]);
+  const [rxLabTests, setRxLabTests] = useState("");
+  const [rxAdvice, setRxAdvice] = useState("");
+  const [rxFollowUp, setRxFollowUp] = useState("");
+  const [rxSaving, setRxSaving] = useState(false);
+  const [rxStatusMsg, setRxStatusMsg] = useState("");
+
+  const effectiveHospitalCode =
+    tenantId ||
+    (currentUser && currentUser.hospital_code && currentUser.hospital_code !== "all"
+      ? currentUser.hospital_code
+      : null) ||
+    HOSPITAL_CONFIG.tenantId ||
+    "city-hospital-01";
+
+  useEffect(() => {
+    if (!effectiveHospitalCode) return;
+    let isMounted = true;
+    const fetchDepartments = () => {
+      fetch(`${API_BASE}/api/v1/hospitals/${encodeURIComponent(effectiveHospitalCode)}/departments`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (isMounted && data && data.status === "success" && Array.isArray(data.departments) && data.departments.length > 0) {
+            setHospitalDepartments(data.departments);
+          }
+        })
+        .catch(() => {});
+    };
+    fetchDepartments();
+    const handleHospUpdate = () => fetchDepartments();
+    window.addEventListener("hospital_departments_updated", handleHospUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("hospital_departments_updated", handleHospUpdate);
+    };
+  }, [effectiveHospitalCode]);
 
   // ML Studio State (Embedded)
   const [selectedFile, setSelectedFile] = useState(null);
@@ -50,6 +94,46 @@ export default function StaffPage({
 
   const adminDept = currentUser && currentUser.department ? currentUser.department.toLowerCase() : "all";
   const primaryServing = servingTickets.length > 0 ? servingTickets[0] : null;
+
+  // STRICT CLINICAL RULE: A doctor can only serve one patient at a time
+  const doctorId = currentUser?.id;
+  const doctorEmail = currentUser?.email;
+  const doctorName = currentUser?.name;
+
+  const myServingTicket = servingTickets.find(
+    (t) =>
+      (t.served_by_doctor_id && doctorId && String(t.served_by_doctor_id) === String(doctorId)) ||
+      (t.served_by_doctor_email && doctorEmail && String(t.served_by_doctor_email).toLowerCase() === String(doctorEmail).toLowerCase()) ||
+      (t.served_by_doctor_name && doctorName && String(t.served_by_doctor_name).trim().toLowerCase() === String(doctorName).trim().toLowerCase())
+  ) || (servingTickets.length > 0 ? servingTickets[0] : null);
+
+  const isDoctorBusy = Boolean(myServingTicket);
+  const [serveFeedbackMsg, setServeFeedbackMsg] = useState("");
+
+  useEffect(() => {
+    const handleServeErr = (e) => {
+      if (e.detail?.message) {
+        setServeFeedbackMsg(e.detail.message);
+        setTimeout(() => setServeFeedbackMsg(""), 6000);
+      }
+    };
+    window.addEventListener("queue_serve_error", handleServeErr);
+    return () => window.removeEventListener("queue_serve_error", handleServeErr);
+  }, []);
+
+  const onCallNextPatient = () => {
+    if (isDoctorBusy && myServingTicket) {
+      setServeFeedbackMsg(
+        language === "hi"
+          ? `⚠️ डॉक्टर एक समय में केवल 1 मरीज़ को देख सकते हैं। आप वर्तमान में #${myServingTicket.ticket_id} (${myServingTicket.name}) का परामर्श कर रहे हैं। अगला टोकन बुलाने से पहले यह परामर्श पूर्ण (Complete) करें।`
+          : `⚠️ A doctor can only serve one patient at a time. You are currently consulting with Patient #${myServingTicket.ticket_id} (${myServingTicket.name}). Please complete or transfer this consultation before calling the next patient.`
+      );
+      setTimeout(() => setServeFeedbackMsg(""), 6000);
+      return;
+    }
+    setServeFeedbackMsg("");
+    handleServeNext();
+  };
 
   const handleReAnnounce = async (ticket) => {
     try {
@@ -138,6 +222,153 @@ export default function StaffPage({
       }
     } catch (err) {
       setTransferStatusMsg(`Transfer error: ${err.message}`);
+    }
+  };
+
+  const handleOpenPrescriptionModal = (ticket) => {
+    setPrescriptionTicket(ticket);
+    setRxStatusMsg("");
+    setRxSaving(false);
+
+    let parsed = null;
+    if (ticket.prescription_notes) {
+      try {
+        if (typeof ticket.prescription_notes === "object") {
+          parsed = ticket.prescription_notes;
+        } else if (typeof ticket.prescription_notes === "string") {
+          let trimmed = ticket.prescription_notes.trim();
+          while (
+            (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+            (trimmed.startsWith("'") && trimmed.endsWith("'"))
+          ) {
+            trimmed = trimmed.slice(1, -1).trim();
+          }
+          if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            parsed = JSON.parse(trimmed);
+          } else {
+            const direct = JSON.parse(ticket.prescription_notes);
+            if (typeof direct === "object" && direct !== null) parsed = direct;
+            else if (typeof direct === "string" && direct.trim().startsWith("{")) parsed = JSON.parse(direct);
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (parsed && typeof parsed === "object") {
+      setRxDiagnosis(parsed.diagnosis || "");
+      setRxMedicines(
+        Array.isArray(parsed.medicines) && parsed.medicines.length > 0
+          ? parsed.medicines
+          : [{ name: "", dosage: "500mg", frequency: "1-0-1", duration: "5 days", instructions: "After food" }]
+      );
+      setRxLabTests(parsed.lab_tests || "");
+      setRxAdvice(parsed.advice || "");
+      setRxFollowUp(parsed.follow_up || "");
+    } else {
+      setRxDiagnosis(
+        ticket.medical_condition && ticket.medical_condition !== "general_checkup"
+          ? ticket.medical_condition
+          : ""
+      );
+      setRxMedicines([
+        { name: "", dosage: "500mg", frequency: "1-0-1", duration: "5 days", instructions: "After food" },
+      ]);
+      setRxLabTests("");
+      setRxAdvice(typeof ticket.prescription_notes === "string" ? ticket.prescription_notes : "");
+      setRxFollowUp("After 5 days or if needed");
+    }
+    setShowPrescriptionModal(true);
+  };
+
+  const handleAddMedicineRow = () => {
+    setRxMedicines((prev) => [
+      ...prev,
+      { name: "", dosage: "500mg", frequency: "1-0-1", duration: "5 days", instructions: "After food" },
+    ]);
+  };
+
+  const handleRemoveMedicineRow = (idx) => {
+    setRxMedicines((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleMedicineChange = (idx, field, val) => {
+    setRxMedicines((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], [field]: val };
+      return copy;
+    });
+  };
+
+  const buildPrescriptionPayload = () => {
+    return {
+      doctor_name: currentUser?.name || "Dr. Staff Desk",
+      doctor_department: prescriptionTicket?.service_category || currentUser?.department || "General Consultation",
+      doctor_employee_id: currentUser?.employee_id || "",
+      diagnosis: rxDiagnosis || "Consultation & Clinical Assessment",
+      medicines: rxMedicines.filter((m) => m.name && m.name.trim() !== ""),
+      lab_tests: rxLabTests,
+      advice: rxAdvice,
+      follow_up: rxFollowUp,
+      prescribed_at: new Date().toISOString(),
+    };
+  };
+
+  const handleSavePrescription = async (andComplete = false) => {
+    if (!prescriptionTicket) return;
+    setRxSaving(true);
+    setRxStatusMsg(language === "hi" ? "दवा पर्ची सहेजी जा रही है..." : "Saving E-Prescription...");
+
+    const payload = buildPrescriptionPayload();
+
+    try {
+      if (andComplete) {
+        if (handleCompleteTicket) {
+          await handleCompleteTicket(prescriptionTicket.ticket_id, payload);
+        }
+        setRxStatusMsg(
+          language === "hi"
+            ? "✓ परामर्श पूर्ण हुआ एवं ई-प्रिस्क्रिप्शन मरीज़ पोर्टल पर प्रेषित!"
+            : "✓ Consultation Completed & E-Prescription Sent to Patient Portal!"
+        );
+        setTimeout(() => {
+          setShowPrescriptionModal(false);
+          setPrescriptionTicket(null);
+          setRxSaving(false);
+          setRxStatusMsg("");
+          if (refreshData) refreshData();
+        }, 1000);
+      } else {
+        const res = await fetch(`${API_BASE}/api/v1/plugin/save-prescription`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            ticket_id: prescriptionTicket.ticket_id,
+            prescription: payload,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setRxStatusMsg(
+            language === "hi"
+              ? "✓ ई-प्रिस्क्रिप्शन सफलतापूर्वक सहेजा गया!"
+              : "✓ E-Prescription saved & updated on Patient Portal!"
+          );
+          if (refreshData) refreshData();
+          setTimeout(() => {
+            setShowPrescriptionModal(false);
+            setPrescriptionTicket(null);
+            setRxSaving(false);
+            setRxStatusMsg("");
+          }, 1200);
+        } else {
+          setRxStatusMsg(data.message || "Failed to save prescription.");
+          setRxSaving(false);
+        }
+      }
+    } catch (err) {
+      setRxStatusMsg("Error saving prescription: " + err.message);
+      setRxSaving(false);
     }
   };
 
@@ -436,7 +667,9 @@ export default function StaffPage({
         nextTicket={queueSnapshot.length > 0 ? queueSnapshot[0] : null}
         appointmentsCount={appointments.length}
         handleCounterChange={handleCounterChange}
-        handleServeNext={handleServeNext}
+        handleServeNext={onCallNextPatient}
+        isDoctorBusy={isDoctorBusy}
+        myServingTicket={myServingTicket}
         navigateTo={navigateTo}
       />
 
@@ -600,16 +833,83 @@ export default function StaffPage({
 
                 <button
                   type="button"
-                  onClick={handleServeNext}
-                  className="admin-action-btn-primary"
-                  title="Call Next Patient in AI Priority Order"
+                  onClick={onCallNextPatient}
+                  className={`admin-action-btn-primary ${isDoctorBusy ? "busy-disabled" : ""}`}
+                  style={
+                    isDoctorBusy
+                      ? {
+                          background: "#F1F5F9",
+                          color: "#64748B",
+                          border: "1.5px solid #CBD5E1",
+                          cursor: "not-allowed",
+                          boxShadow: "none",
+                          opacity: 0.9,
+                        }
+                      : {}
+                  }
+                  title={
+                    isDoctorBusy
+                      ? (language === "hi"
+                          ? `वर्तमान में टोकन #${myServingTicket.ticket_id} का परामर्श चल रहा है। 1 डॉक्टर = 1 मरीज़।`
+                          : `Currently consulting #${myServingTicket.ticket_id}. Finish first to call next patient.`)
+                      : "Call Next Patient in AI Priority Order"
+                  }
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                  <span>{t("callNextTicket", language)}</span>
+                  {isDoctorBusy ? (
+                    <>
+                      <span style={{ fontSize: "14px" }}>🔒</span>
+                      <span>
+                        {language === "hi"
+                          ? `परामर्श जारी (#${myServingTicket.ticket_id})`
+                          : `In Consultation (#${myServingTicket.ticket_id})`}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                      <span>{t("callNextTicket", language)}</span>
+                    </>
+                  )}
                 </button>
               </div>
+
+              {serveFeedbackMsg && (
+                <div
+                  style={{
+                    marginBottom: "16px",
+                    padding: "12px 16px",
+                    borderRadius: "12px",
+                    background: "#FFFBEB",
+                    border: "1.5px solid #FDE68A",
+                    color: "#92400E",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    boxShadow: "0 2px 8px rgba(245, 158, 11, 0.08)",
+                  }}
+                >
+                  <span style={{ fontSize: "18px" }}>⚠️</span>
+                  <div style={{ flex: 1 }}>{serveFeedbackMsg}</div>
+                  <button
+                    type="button"
+                    onClick={() => setServeFeedbackMsg("")}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#92400E",
+                      fontSize: "16px",
+                      cursor: "pointer",
+                      padding: "0 4px",
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
 
               {announceFeedbackMsg && (
                 <div style={{ marginBottom: "16px", padding: "12px 16px", borderRadius: "12px", background: "#F0F9FF", border: "1px solid #BAE6FD", color: "#0369A1", fontSize: "13px", fontWeight: 700, textAlign: "center" }}>
@@ -618,13 +918,20 @@ export default function StaffPage({
               )}
 
               {/* Now Serving List */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
                 <span style={{ fontSize: "12px", fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   {t("nowServingAt", language)} {getCategoryLabel(adminDept, language)}
                 </span>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
-                  {servingTickets.length} {language === "hi" ? "सक्रिय" : "Active"}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
+                    {servingTickets.length} {language === "hi" ? "सक्रिय" : "Active"}
+                  </span>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: isDoctorBusy ? "#D97706" : "#059669", background: isDoctorBusy ? "#FEF3C7" : "#ECFDF5", padding: "2px 8px", borderRadius: "6px", border: isDoctorBusy ? "1px solid #FDE68A" : "1px solid #A7F3D0" }}>
+                    {isDoctorBusy
+                      ? (language === "hi" ? "डॉक्टर व्यस्त (1/1 क्षमता)" : "Doctor Busy (1/1 Capacity)")
+                      : (language === "hi" ? "डॉक्टर उपलब्ध (0/1)" : "Doctor Ready (0/1)")}
+                  </span>
+                </div>
               </div>
 
               {servingTickets.length === 0 ? (
@@ -666,6 +973,11 @@ export default function StaffPage({
                               <span style={{ padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0284C7", fontSize: "11px", fontWeight: 700 }}>
                                 {getCategoryLabel(ticket.service_category, language)}
                               </span>
+                              {ticket.served_by_doctor_name && (
+                                <span style={{ padding: "2px 8px", borderRadius: "6px", background: "#F1F5F9", color: "#475569", fontSize: "11px", fontWeight: 700 }}>
+                                  👨‍⚕️ {ticket.served_by_doctor_name}
+                                </span>
+                              )}
                             </div>
                             <span style={{ fontSize: "12px", color: "#64748B", marginTop: "2px", display: "block" }}>
                               {ticket.age || 35} {language === "hi" ? "वर्ष" : "yrs"} • {t(ticket.gender || "male", language)} • {language === "hi" ? "लक्षण:" : "Symptom:"} {(ticket.medical_condition || "general").replace(/_/g, " ")}
@@ -673,8 +985,8 @@ export default function StaffPage({
                           </div>
                         </div>
 
-                        {/* Action Buttons: Re-Announce, Transfer/Prescribe, Complete */}
-                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        {/* Action Buttons: Re-Announce, Prescribe, Transfer, Complete */}
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
                             onClick={() => handleReAnnounce(ticket)}
@@ -688,11 +1000,39 @@ export default function StaffPage({
                             <span>{t("reAnnounce", language)}</span>
                           </button>
 
+                          {/* Write E-Prescription (Rx) Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPrescriptionModal(ticket)}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: "10px",
+                              border: ticket.prescription_notes ? "1.5px solid #059669" : "1.5px solid #0284C7",
+                              background: ticket.prescription_notes ? "#ECFDF5" : "#F0F9FF",
+                              color: ticket.prescription_notes ? "#065F46" : "#0369A1",
+                              fontWeight: 800,
+                              fontSize: "12.5px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              cursor: "pointer",
+                              transition: "all 0.2s ease",
+                            }}
+                            title="Write Full Doctor E-Prescription (Rx)"
+                          >
+                            <span style={{ fontSize: "14px" }}>📝</span>
+                            <span>
+                              {ticket.prescription_notes
+                                ? (language === "hi" ? "पर्ची संपादित करें (Rx)" : "Edit Rx")
+                                : (language === "hi" ? "दवा पर्ची (Rx)" : "Prescribe (Rx)")}
+                            </span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleOpenTransferModal(ticket)}
                             style={transferTriggerBtnStyle}
-                            title="Write E-Prescription & Route Patient"
+                            title="Route Patient to Another Department"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -718,16 +1058,63 @@ export default function StaffPage({
                       </div>
 
                       {/* Attached E-Prescription Box */}
-                      {ticket.prescription_notes && (
-                        <div style={{ padding: "10px 14px", background: "#F0F9FF", borderRadius: "10px", border: "1px solid #BAE6FD" }}>
-                          <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", display: "block", marginBottom: "2px" }}>
-                            💊 {t("ePrescriptionAttached", language)}:
-                          </span>
-                          <p style={{ margin: 0, fontSize: "13px", color: "#0F172A", fontStyle: "italic" }}>
-                            "{ticket.prescription_notes}"
-                          </p>
-                        </div>
-                      )}
+                      {ticket.prescription_notes && (() => {
+                        let parsedRx = null;
+                        try {
+                          if (typeof ticket.prescription_notes === "object") {
+                            parsedRx = ticket.prescription_notes;
+                          } else if (typeof ticket.prescription_notes === "string") {
+                            let trimmed = ticket.prescription_notes.trim();
+                            while (
+                              (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+                              (trimmed.startsWith("'") && trimmed.endsWith("'"))
+                            ) {
+                              trimmed = trimmed.slice(1, -1).trim();
+                            }
+                            if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+                              parsedRx = JSON.parse(trimmed);
+                            } else {
+                              const direct = JSON.parse(ticket.prescription_notes);
+                              if (typeof direct === "object" && direct !== null) parsedRx = direct;
+                              else if (typeof direct === "string" && direct.trim().startsWith("{")) parsedRx = JSON.parse(direct);
+                            }
+                          }
+                        } catch (e) {}
+
+                        return (
+                          <div style={{ padding: "12px 14px", background: "#F0FDF4", borderRadius: "10px", border: "1px solid #BBF7D0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
+                            <div style={{ flex: 1, minWidth: "220px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                                <span style={{ fontSize: "11px", fontWeight: 800, color: "#15803D", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                  ℞ {language === "hi" ? "संलग्न दवा पर्ची (ई-प्रिस्क्रिप्शन)" : "Active E-Prescription Attached"}
+                                </span>
+                                {parsedRx && parsedRx.diagnosis && (
+                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#0F172A", background: "#DCFCE7", padding: "1px 7px", borderRadius: "4px" }}>
+                                    {parsedRx.diagnosis}
+                                  </span>
+                                )}
+                              </div>
+                              {parsedRx && Array.isArray(parsedRx.medicines) && parsedRx.medicines.length > 0 ? (
+                                <div style={{ fontSize: "12.5px", color: "#166534" }}>
+                                  <strong>{parsedRx.medicines.length} {language === "hi" ? "दवाएं निर्धारित" : "Medicines"}:</strong>{" "}
+                                  {parsedRx.medicines.map((m) => `${m.name} (${m.dosage || ""})`).join(", ")}
+                                </div>
+                              ) : (
+                                <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontStyle: "italic" }}>
+                                  "{parsedRx?.advice || (typeof ticket.prescription_notes === "string" && !ticket.prescription_notes.startsWith("{") ? ticket.prescription_notes : "Clinical prescription on record")}"
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPrescriptionModal(ticket)}
+                              style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid #86EFAC", background: "#FFFFFF", color: "#15803D", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}
+                            >
+                              ✏️ {language === "hi" ? "पर्ची संपादित करें" : "Edit Prescription"}
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -1197,13 +1584,23 @@ export default function StaffPage({
                   onChange={(e) => setTargetDept(e.target.value)}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "13px", outline: "none", background: "#FFF" }}
                 >
-                  <option value="pharmacy">💊 Pharmacy (Medication Dispensing)</option>
-                  <option value="pathology">🧪 Pathology (Blood & Specimen Lab)</option>
-                  <option value="radiology">🩻 Radiology (X-Ray & MRI Imaging)</option>
-                  <option value="cardiology">❤️ Cardiology OPD</option>
-                  <option value="orthopedics">🦴 Orthopedics / Fracture Clinic</option>
-                  <option value="pulmonology">🫁 Pulmonology & Respiratory</option>
-                  <option value="consultation">🏥 General OPD Follow-Up</option>
+                  {hospitalDepartments && hospitalDepartments.length > 0 ? (
+                    hospitalDepartments.map((d) => (
+                      <option key={d.dept_code} value={d.dept_code}>
+                        🏢 {d.name || getCategoryLabel(d.dept_code, language)}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="pharmacy">💊 Pharmacy (Medication Dispensing)</option>
+                      <option value="pathology">🧪 Pathology (Blood & Specimen Lab)</option>
+                      <option value="radiology">🩻 Radiology (X-Ray & MRI Imaging)</option>
+                      <option value="cardiology">❤️ Cardiology OPD</option>
+                      <option value="orthopedics">🦴 Orthopedics / Fracture Clinic</option>
+                      <option value="pulmonology">🫁 Pulmonology & Respiratory</option>
+                      <option value="consultation">🏥 General OPD Follow-Up</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -1244,6 +1641,314 @@ export default function StaffPage({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4b. DOCTOR E-PRESCRIPTION (Rx) CLINICAL MODAL */}
+      {showPrescriptionModal && prescriptionTicket && (
+        <div style={modalOverlayStyle} onClick={() => setShowPrescriptionModal(false)}>
+          <div
+            style={{
+              ...modalContentStyle,
+              maxWidth: "720px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              padding: "24px 28px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header with Rx Seal */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "18px", borderBottom: "1.5px solid #F1F5F9", paddingBottom: "14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{ width: "42px", height: "42px", borderRadius: "12px", background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", fontWeight: 900, boxShadow: "0 4px 12px rgba(2, 132, 199, 0.25)" }}>
+                  ℞
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "19px", color: "#0F172A", fontWeight: 800 }}>
+                    {language === "hi" ? "चिकित्सकीय दवा पर्ची (ई-प्रिस्क्रिप्शन)" : "Doctor Clinical E-Prescription (Rx)"}
+                  </h3>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#0284C7" }}>
+                      Token #{prescriptionTicket.ticket_id}
+                    </span>
+                    <span style={{ color: "#94A3B8" }}>•</span>
+                    <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155" }}>
+                      {prescriptionTicket.name} ({prescriptionTicket.age || 30} yrs, {prescriptionTicket.gender || "Patient"})
+                    </span>
+                    <span style={{ color: "#94A3B8" }}>•</span>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#0369A1", background: "#E0F2FE", padding: "1px 6px", borderRadius: "4px" }}>
+                      {getCategoryLabel(prescriptionTicket.service_category, language)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPrescriptionModal(false)}
+                style={{ background: "none", border: "none", fontSize: "20px", color: "#94A3B8", cursor: "pointer", padding: "4px" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Doctor Attribution Info */}
+            <div style={{ background: "#F8FAFC", padding: "10px 14px", borderRadius: "10px", border: "1px solid #E2E8F0", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#334155" }}>
+                <span>👨‍⚕️</span>
+                <strong>{currentUser?.name || "Attending Consultant"}</strong>
+                <span style={{ color: "#64748B" }}>
+                  ({currentUser?.department ? getCategoryLabel(currentUser.department, language) : getCategoryLabel(prescriptionTicket.service_category, language)})
+                </span>
+              </div>
+              <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>
+                📅 {new Date().toLocaleDateString()} • {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+
+            {/* Form Fields */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* 1. Provisional Diagnosis */}
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>
+                  🩺 {language === "hi" ? "रोग निदान / मुख्य लक्षण (Provisional Diagnosis)" : "Clinical Diagnosis & Findings"}
+                </label>
+                <input
+                  type="text"
+                  placeholder={language === "hi" ? "उदा. एक्यूट फैरिंजाइटिस, वायरल फीवर, माइल्ड हाइपरटेंशन..." : "e.g. Acute Pharyngitis, Viral Fever, Grade 1 Hypertension, Musculoskeletal Strain..."}
+                  value={rxDiagnosis}
+                  onChange={(e) => setRxDiagnosis(e.target.value)}
+                  style={{ width: "100%", padding: "10px 14px", borderRadius: "10px", border: "1.5px solid #CBD5E1", fontSize: "13px", outline: "none", boxSizing: "border-box" }}
+                />
+                {/* Quick Diagnosis Suggestions */}
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
+                  {["Viral Fever / Flu", "Acute Pharyngitis", "Hypertension", "GERD / Gastritis", "Type 2 Diabetes", "Routine Checkup"].map((quick) => (
+                    <button
+                      key={quick}
+                      type="button"
+                      onClick={() => setRxDiagnosis(quick)}
+                      style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "6px", background: "#F1F5F9", border: "1px solid #E2E8F0", color: "#475569", cursor: "pointer" }}
+                    >
+                      + {quick}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Prescribed Medications Table */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <label style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A" }}>
+                    💊 {language === "hi" ? "दवाएं एवं खुराक (Prescribed Medications)" : "Prescribed Medicines & Dosage"}
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleAddMedicineRow}
+                    style={{ fontSize: "11.5px", fontWeight: 800, color: "#0284C7", background: "#F0F9FF", border: "1px solid #BAE6FD", padding: "4px 10px", borderRadius: "8px", cursor: "pointer" }}
+                  >
+                    + {language === "hi" ? "दवा जोड़ें" : "Add Medicine"}
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {rxMedicines.map((med, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1.8fr 1fr 1.2fr 1fr 1.2fr auto",
+                        gap: "8px",
+                        alignItems: "center",
+                        padding: "10px",
+                        background: "#F8FAFC",
+                        borderRadius: "10px",
+                        border: "1px solid #E2E8F0",
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontSize: "10px", color: "#64748B", display: "block", fontWeight: 700 }}>Medicine Name</span>
+                        <input
+                          type="text"
+                          placeholder="e.g. Paracetamol"
+                          value={med.name}
+                          onChange={(e) => handleMedicineChange(idx, "name", e.target.value)}
+                          style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12.5px", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: "10px", color: "#64748B", display: "block", fontWeight: 700 }}>Dosage</span>
+                        <input
+                          type="text"
+                          placeholder="500mg"
+                          value={med.dosage}
+                          onChange={(e) => handleMedicineChange(idx, "dosage", e.target.value)}
+                          style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12.5px", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: "10px", color: "#64748B", display: "block", fontWeight: 700 }}>Frequency</span>
+                        <select
+                          value={med.frequency}
+                          onChange={(e) => handleMedicineChange(idx, "frequency", e.target.value)}
+                          style={{ width: "100%", padding: "7px 8px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFF", boxSizing: "border-box" }}
+                        >
+                          <option value="1-0-1">1-0-1 (Twice daily)</option>
+                          <option value="1-0-0">1-0-0 (Morning)</option>
+                          <option value="0-0-1">0-0-1 (Night)</option>
+                          <option value="1-1-1">1-1-1 (Thrice daily)</option>
+                          <option value="SOS">SOS (As needed)</option>
+                          <option value="Once weekly">Once weekly</option>
+                        </select>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: "10px", color: "#64748B", display: "block", fontWeight: 700 }}>Duration</span>
+                        <input
+                          type="text"
+                          placeholder="5 days"
+                          value={med.duration}
+                          onChange={(e) => handleMedicineChange(idx, "duration", e.target.value)}
+                          style={{ width: "100%", padding: "7px 10px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12.5px", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div>
+                        <span style={{ fontSize: "10px", color: "#64748B", display: "block", fontWeight: 700 }}>Instructions</span>
+                        <select
+                          value={med.instructions}
+                          onChange={(e) => handleMedicineChange(idx, "instructions", e.target.value)}
+                          style={{ width: "100%", padding: "7px 8px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12px", background: "#FFF", boxSizing: "border-box" }}
+                        >
+                          <option value="After food">After food</option>
+                          <option value="Before food">Before food</option>
+                          <option value="Empty stomach">Empty stomach</option>
+                          <option value="Bedtime">Bedtime</option>
+                        </select>
+                      </div>
+                      <div style={{ paddingTop: "14px" }}>
+                        {rxMedicines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMedicineRow(idx)}
+                            style={{ background: "#FEE2E2", border: "none", color: "#DC2626", width: "28px", height: "28px", borderRadius: "6px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                            title="Remove Medicine"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Lab Tests & Diagnostics */}
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>
+                  🧪 {language === "hi" ? "जांच निर्देश / टेस्ट (Lab Investigations)" : "Diagnostic Tests & Lab Orders (Optional)"}
+                </label>
+                <input
+                  type="text"
+                  placeholder={language === "hi" ? "उदा. सीबीसी, लिपिड प्रोफाइल, सीने का एक्स-रे, यूरिन रूटीन..." : "e.g. CBC, Serum Creatinine, Fasting Lipid Panel, Chest X-Ray PA View..."}
+                  value={rxLabTests}
+                  onChange={(e) => setRxLabTests(e.target.value)}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "13px", outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
+
+              {/* 4. Clinical Advice / Instructions */}
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>
+                  📋 {language === "hi" ? "चिकित्सकीय सलाह एवं परहेज (Diet & Lifestyle Advice)" : "Doctor Advice & Dietary Guidelines"}
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder={language === "hi" ? "उदा. पर्याप्त गर्म पानी पिएं, नमक कम खाएं, भारी काम से बचें..." : "e.g. Hydrate well, low-sodium diet, warm saline gargle 3 times daily, avoid heavy exertion..."}
+                  value={rxAdvice}
+                  onChange={(e) => setRxAdvice(e.target.value)}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "13px", outline: "none", resize: "vertical", boxSizing: "border-box" }}
+                />
+              </div>
+
+              {/* 5. Follow-Up Schedule */}
+              <div>
+                <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>
+                  🗓️ {language === "hi" ? "पुनः परामर्श / फॉलो-अप (Follow-Up Advice)" : "Follow-Up Consultation"}
+                </label>
+                <input
+                  type="text"
+                  placeholder={language === "hi" ? "उदा. 5 दिन बाद जांच रिपोर्ट के साथ आएं" : "e.g. Review after 5 days with lab reports, or SOS if fever spikes"}
+                  value={rxFollowUp}
+                  onChange={(e) => setRxFollowUp(e.target.value)}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: "10px", border: "1px solid #CBD5E1", fontSize: "13px", outline: "none", boxSizing: "border-box" }}
+                />
+              </div>
+
+              {/* Status feedback message */}
+              {rxStatusMsg && (
+                <div style={{ padding: "10px 14px", borderRadius: "8px", background: rxStatusMsg.includes("✓") ? "#F0FDF4" : "#F0F9FF", border: rxStatusMsg.includes("✓") ? "1px solid #86EFAC" : "1px solid #BAE6FD", color: rxStatusMsg.includes("✓") ? "#166534" : "#0369A1", fontSize: "12.5px", fontWeight: 700, textAlign: "center" }}>
+                  {rxStatusMsg}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPrescriptionModal(false)}
+                  style={{ flex: 1, padding: "11px 16px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#64748B", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                >
+                  {t("cancelBtn", language)}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={rxSaving}
+                  onClick={() => handleSavePrescription(false)}
+                  style={{
+                    flex: 1.5,
+                    padding: "11px 16px",
+                    borderRadius: "10px",
+                    border: "1.5px solid #0284C7",
+                    background: "#F0F9FF",
+                    color: "#0369A1",
+                    fontWeight: 800,
+                    fontSize: "13px",
+                    cursor: rxSaving ? "wait" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>💾</span>
+                  <span>{language === "hi" ? "पर्ची सहेजें (परामर्श जारी)" : "Save Rx (Keep Serving)"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={rxSaving}
+                  onClick={() => handleSavePrescription(true)}
+                  style={{
+                    flex: 2,
+                    padding: "11px 18px",
+                    borderRadius: "10px",
+                    border: "none",
+                    background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+                    color: "#FFFFFF",
+                    fontWeight: 900,
+                    fontSize: "13px",
+                    cursor: rxSaving ? "wait" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    boxShadow: "0 2px 10px rgba(5, 150, 105, 0.25)",
+                  }}
+                >
+                  <span>✓</span>
+                  <span>{language === "hi" ? "सहेजें एवं परामर्श पूर्ण करें" : "Save Rx & Complete Visit"}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

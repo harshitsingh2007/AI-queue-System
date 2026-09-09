@@ -31,6 +31,28 @@
         max-width: 100%;
         overflow-x: hidden;
       }
+      @media print {
+        body * {
+          visibility: hidden;
+        }
+        #printable-rx-slip, #printable-rx-slip * {
+          visibility: visible;
+        }
+        #printable-rx-slip {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100% !important;
+          max-width: 100% !important;
+          box-shadow: none !important;
+          border: none !important;
+          padding: 15px !important;
+          margin: 0 !important;
+        }
+        #printable-rx-slip button {
+          display: none !important;
+        }
+      }
     </style>
   </head>
   <body>

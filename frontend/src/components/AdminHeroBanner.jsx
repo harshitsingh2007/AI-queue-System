@@ -29,6 +29,8 @@ export default function AdminHeroBanner({
   appointmentsCount = 0,
   handleCounterChange,
   handleServeNext,
+  isDoctorBusy = false,
+  myServingTicket = null,
   navigateTo,
 }) {
   const isHi = language === "hi";
@@ -47,6 +49,11 @@ export default function AdminHeroBanner({
   const activeCounters = analytics && typeof analytics.active_counters === "number" 
     ? analytics.active_counters 
     : 2;
+
+  const formatHospitalName = (name) => {
+    if (!name) return "City General Hospital";
+    return name.replace(/\b\w/g, (l) => l.toUpperCase());
+  };
 
   const doctorName = currentUser?.name || currentUser?.full_name || (isHi ? "डॉ. ऑन ड्यूटी" : "Dr. On Duty");
 
@@ -285,8 +292,6 @@ export default function AdminHeroBanner({
           text-transform: uppercase;
           letter-spacing: 0.5px;
           white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
 
         /* Tactile Stepper Buttons */
@@ -707,7 +712,7 @@ export default function AdminHeroBanner({
           {/* Status Badges Row */}
           <div className="admin-hero-tags-row">
             <span className="hero-tag-hospital">
-              🏥 {hospitalName}
+              🏥 {formatHospitalName(hospitalName)}
             </span>
             <span className="hero-tag-dept">
               🛡️ {adminDept === "all" ? (isHi ? "सुपर एडमिन कंसोल" : "ALL DEPARTMENTS") : `${deptLabel.toUpperCase()}`}
@@ -723,13 +728,18 @@ export default function AdminHeroBanner({
             )}
           </div>
 
+          {/* Operations Overview Label */}
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#94A3B8", letterSpacing: "1.5px", textTransform: "uppercase", marginBottom: "8px" }}>
+            {isHi ? "संचालन अवलोकन" : "OPERATIONS OVERVIEW"}
+          </div>
+
           {/* Dynamic Headline */}
           <h1 className="admin-hero-title">
             {isHi ? (
               <>
-                चिकित्सीय संचालन.
+                क्लीनिकल ऑपरेशंस.
                 <br />
-                <span className="admin-hero-title-gradient">डॉक्टर एवं स्टाफ कंसोल</span>
+                <span className="admin-hero-title-gradient">डॉक्टर एवं स्टाफ कंट्रोल</span>
               </>
             ) : (
               <>
@@ -742,7 +752,7 @@ export default function AdminHeroBanner({
 
           <p className="admin-hero-subtitle">
             {isHi
-              ? "रीयल-टाइम बहु-विभागीय मरीज़ कॉलिंग, ट्राइएज प्राथमिकता वर्गीकरण एवं क्लिनिकल थ्रूपुट प्रबंधन।"
+              ? "रीयल-टाइम बहु-विभागीय मरीज़ कॉलिंग, ट्राइएज वर्गीकरण एवं क्लीनिकल रूटिंग।"
               : "Real-time multi-department patient calling, triage classification & clinical routing."}
           </p>
         </div>
@@ -764,7 +774,7 @@ export default function AdminHeroBanner({
                 {waitingCount !== undefined ? waitingCount : (analytics?.currently_waiting || 0)}
               </div>
               <div className="admin-hero-stat-label">
-                {isHi ? "प्रतीक्षारत मरीज़" : "Waiting Patients"}
+                {isHi ? "प्रतीक्षारत मरीज़" : "WAITING PATIENTS"}
               </div>
             </div>
           </div>
@@ -782,7 +792,7 @@ export default function AdminHeroBanner({
                 {displayServing}
               </div>
               <div className="admin-hero-stat-label">
-                {isHi ? "सेवारत टोकन" : "Now Serving"}
+                {isHi ? "सेवारत" : "NOW SERVING"}
               </div>
             </div>
           </div>
@@ -802,7 +812,7 @@ export default function AdminHeroBanner({
                 {appointmentsCount}
               </div>
               <div className="admin-hero-stat-label">
-                {isHi ? "आज के अपॉइंटमेंट्स" : "Booked Slots"}
+                {isHi ? "बुक्ड स्लॉट्स" : "BOOKED SLOTS"}
               </div>
             </div>
           </div>
@@ -842,7 +852,7 @@ export default function AdminHeroBanner({
                 </div>
               </div>
               <div className="admin-hero-stat-label">
-                {isHi ? "सक्रिय डॉक्टर डेस्क" : "Active Desks"}
+                {isHi ? "सक्रिय डेस्क" : "ACTIVE DESKS"}
               </div>
             </div>
           </div>
@@ -859,7 +869,10 @@ export default function AdminHeroBanner({
               <div className="console-title-group">
                 <span className="triage-pulse-dot" />
                 <span className="console-title-text">
-                  {isHi ? "AI क्लिनिकल टेलीमेट्री" : "AI Clinical Telemetry"}
+                  {isHi ? "AI क्लीनिकल टेलीमेट्री" : "AI CLINICAL TELEMETRY"}
+                </span>
+                <span style={{ fontSize: "9px", color: "#94A3B8", fontWeight: 500, marginLeft: "4px" }}>
+                  {isHi ? "लाइव केयर समन्वय" : "Live care coordination"}
                 </span>
               </div>
               {servingTicket ? (
@@ -918,13 +931,38 @@ export default function AdminHeroBanner({
                     <button
                       type="button"
                       onClick={handleServeNext}
-                      className="telemetry-call-quick-btn"
-                      title="Call Next Patient"
+                      className={`telemetry-call-quick-btn ${isDoctorBusy ? "telemetry-busy-btn" : ""}`}
+                      style={
+                        isDoctorBusy
+                          ? {
+                              background: "rgba(148, 163, 184, 0.15)",
+                              color: "#94A3B8",
+                              borderColor: "rgba(148, 163, 184, 0.3)",
+                              cursor: "not-allowed",
+                            }
+                          : {}
+                      }
+                      title={
+                        isDoctorBusy
+                          ? (isHi
+                              ? `वर्तमान में #${myServingTicket?.ticket_id} का परामर्श चल रहा है। 1 डॉक्टर = 1 समय में 1 मरीज़।`
+                              : `Currently consulting #${myServingTicket?.ticket_id}. Complete consultation first to call next.`)
+                          : "Call Next Patient"
+                      }
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <polyline points="9 18 15 12 9 6" />
-                      </svg>
-                      <span>{isHi ? "बुलाएं" : "Call Next"}</span>
+                      {isDoctorBusy ? (
+                        <>
+                          <span style={{ fontSize: "11px" }}>🔒</span>
+                          <span>{isHi ? `#${myServingTicket?.ticket_id}` : `#${myServingTicket?.ticket_id} Busy`}</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                          <span>{isHi ? "बुलाएं" : "Call Next"}</span>
+                        </>
+                      )}
                     </button>
                   )}
                 </>

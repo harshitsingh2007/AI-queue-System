@@ -2,14 +2,14 @@
  * PatientPage.jsx
  * ---------------
  * Patient Self-Checkin & Pre-scheduled Appointment Booking Kiosk.
- * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
+ * Theme: Unified Medical Blue & Clean White (Clinical Healthcare System)
  * Professional Healthcare Vector Styling matching IMAGE 2.
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
 import { t, getCategoryLabel, getStatusLabel } from "../utils/i18n";
-import { printTokenPass, printAppointmentRecord } from "../utils/printPassHelper";
+import { printTokenPass, printAppointmentRecord, printPrescriptionSlip } from "../utils/printPassHelper";
 import QueueStepper from "../components/QueueStepper";
 import HeroBanner from "../components/HeroBanner";
 import Footer from "../components/Footer";
@@ -39,6 +39,8 @@ export default function PatientPage({
   setActiveFamilyMember: setActiveFamilyMemberProp = null,
   onSwitchProfile = null,
   onFamilyMembersChange = null,
+  currentHospitalTenant = null,
+  onSwitchHospital = null,
 }) {
   // Family Members & Dependents Management
   // Use App-level state when provided, fall back to local state
@@ -103,6 +105,7 @@ export default function PatientPage({
 
   const [selectedMemberId, setSelectedMemberId] = useState("self");
   const [editingMember, setEditingMember] = useState(null);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
 
   // Family Tickets dictionary: { [memberId]: ticketObj }
   const [familyTickets, setFamilyTickets] = useState(() => {
@@ -180,6 +183,184 @@ export default function PatientPage({
   const [adjustError, setAdjustError] = useState("");
   const [adjustSuccessMsg, setAdjustSuccessMsg] = useState("");
 
+  // Digital Prescription Slip Modal State
+  const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
+  const [viewingPrescriptionData, setViewingPrescriptionData] = useState(null);
+
+  // Multi-Hospital Facility Switcher State
+  const [showHospitalModal, setShowHospitalModal] = useState(false);
+  const [hospitalSearchQuery, setHospitalSearchQuery] = useState("");
+  const [hospitalsList, setHospitalsList] = useState([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/v1/hospitals/public`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status === "success" && Array.isArray(d.hospitals)) {
+          setHospitalsList(d.hospitals);
+        }
+      })
+      .catch((e) => console.log("Hospitals fetch error in PatientPage:", e));
+  }, []);
+
+  const handleSelectHospital = (hospCode, hospName = null) => {
+    if (!hospCode) return;
+    const cleanCode = String(hospCode).trim();
+    setActiveHospitalCode(cleanCode);
+    if (onSwitchHospital) {
+      onSwitchHospital(cleanCode, hospName);
+    } else {
+      try {
+        localStorage.setItem("ai_queue_current_hospital", cleanCode);
+        const url = new URL(window.location.href);
+        url.searchParams.set("hospital", cleanCode);
+        window.history.pushState({}, "", url.toString());
+      } catch (e) {}
+      window.dispatchEvent(new CustomEvent("hospital_changed", { detail: cleanCode }));
+    }
+
+    // Immediately fetch new hospital branding
+    fetch(`${API_BASE}/api/v1/hospital/branding/${cleanCode}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status === "success" && d.branding) {
+          setHospitalBranding(d.branding);
+        }
+      })
+      .catch((e) => console.log("Branding error:", e));
+
+    setShowHospitalModal(false);
+  };
+
+  const safeISODate = (val) => {
+    if (!val) return new Date().toISOString();
+    try {
+      if (typeof val === "number") {
+        const ms = val < 1e11 ? val * 1000 : val;
+        const d = new Date(ms);
+        if (!isNaN(d.getTime())) return d.toISOString();
+      }
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        if (/^\d+$/.test(trimmed)) {
+          const num = Number(trimmed);
+          const ms = num < 1e11 ? num * 1000 : num;
+          const d = new Date(ms);
+          if (!isNaN(d.getTime())) return d.toISOString();
+        }
+        const d = new Date(trimmed);
+        if (!isNaN(d.getTime())) return d.toISOString();
+      }
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) return d.toISOString();
+    } catch (e) {}
+    return new Date().toISOString();
+  };
+
+  const formatDateSafe = (dateVal) => {
+    if (!dateVal) return "";
+    try {
+      if (typeof dateVal === "number") {
+        const ms = dateVal < 1e11 ? dateVal * 1000 : dateVal;
+        const d = new Date(ms);
+        if (!isNaN(d.getTime())) return d.toLocaleDateString();
+      }
+      if (typeof dateVal === "string" && /^\d+$/.test(dateVal.trim())) {
+        const num = Number(dateVal.trim());
+        const ms = num < 1e11 ? num * 1000 : num;
+        const d = new Date(ms);
+        if (!isNaN(d.getTime())) return d.toLocaleDateString();
+      }
+      const d = new Date(dateVal);
+      if (!isNaN(d.getTime())) return d.toLocaleDateString();
+    } catch (e) {}
+    return String(dateVal);
+  };
+
+  const parsePrescription = (prescriptionNotes, fallbackTicket = null) => {
+    if (!prescriptionNotes && !fallbackTicket) return null;
+    let parsed = null;
+    if (typeof prescriptionNotes === "object" && prescriptionNotes !== null) {
+      parsed = prescriptionNotes;
+    } else if (typeof prescriptionNotes === "string") {
+      let trimmed = prescriptionNotes.trim();
+      // Strip outer wrapping quotes if double-quoted / escaped string
+      while (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ) {
+        trimmed = trimmed.slice(1, -1).trim();
+      }
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        try {
+          parsed = JSON.parse(trimmed);
+        } catch (e) {
+          try {
+            parsed = JSON.parse(JSON.parse(prescriptionNotes));
+          } catch (e2) {}
+        }
+      } else {
+        try {
+          const direct = JSON.parse(prescriptionNotes);
+          if (typeof direct === "object" && direct !== null) {
+            parsed = direct;
+          } else if (typeof direct === "string" && direct.trim().startsWith("{")) {
+            parsed = JSON.parse(direct);
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (parsed && typeof parsed === "object") {
+      return {
+        doctor_name: parsed.doctor_name || "Consultant Physician",
+        doctor_department: parsed.doctor_department || fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD",
+        doctor_employee_id: parsed.doctor_employee_id || "",
+        diagnosis: parsed.diagnosis || fallbackTicket?.medical_condition || "Clinical Consultation",
+        medicines: Array.isArray(parsed.medicines) ? parsed.medicines : [],
+        lab_tests: parsed.lab_tests || "",
+        advice: parsed.advice || "",
+        follow_up: parsed.follow_up || "",
+        prescribed_at: safeISODate(parsed.prescribed_at || fallbackTicket?.serve_end_time || fallbackTicket?.created_at),
+        patient_name: fallbackTicket?.name || fallbackTicket?.patient_name || parsed.patient_name || (currentUser ? (currentUser.username || currentUser.name) : "Patient"),
+        ticket_id: fallbackTicket?.ticket_id || parsed.ticket_id || "",
+        age: fallbackTicket?.age || 30,
+        gender: fallbackTicket?.gender || "Patient",
+        hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
+      };
+    }
+
+    // Clean fallback for plain text advice
+    let rawStr = typeof prescriptionNotes === "string" ? prescriptionNotes.trim() : "";
+    if (rawStr.startsWith("{") || rawStr.startsWith('"{')) {
+      rawStr = "Clinical prescription available upon request.";
+    }
+
+    return {
+      doctor_name: "Consultant Physician",
+      doctor_department: fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD",
+      diagnosis: fallbackTicket?.medical_condition || "Clinical Consultation",
+      medicines: [],
+      lab_tests: "",
+      advice: rawStr,
+      follow_up: "Review as advised",
+      prescribed_at: safeISODate(fallbackTicket?.serve_end_time || fallbackTicket?.created_at),
+      patient_name: fallbackTicket?.name || fallbackTicket?.patient_name || (currentUser ? (currentUser.username || currentUser.name) : "Patient"),
+      ticket_id: fallbackTicket?.ticket_id || "",
+      age: fallbackTicket?.age || 30,
+      gender: fallbackTicket?.gender || "Patient",
+      hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
+    };
+  };
+
+  const handleOpenPrescriptionSlip = (prescriptionNotes, fallbackTicket) => {
+    const data = parsePrescription(prescriptionNotes, fallbackTicket);
+    if (data) {
+      setViewingPrescriptionData(data);
+      setShowPrescriptionModal(true);
+    }
+  };
+
   // Appointment Booking Form State
   const [aptDate, setAptDate] = useState(() => {
     const today = new Date();
@@ -237,9 +418,20 @@ export default function PatientPage({
 
   // Tenant Customization & Branding (White-Labeling) State
   const [hospitalBranding, setHospitalBranding] = useState(null);
+  const [activeHospitalCode, setActiveHospitalCode] = useState(
+    tenantId || currentHospitalTenant || currentUser?.hospital_code || "city-hospital-01"
+  );
 
   useEffect(() => {
-    const hospCode = tenantId || currentUser?.hospital_code || "city-hospital-01";
+    if (tenantId) setActiveHospitalCode(tenantId);
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (currentHospitalTenant) setActiveHospitalCode(currentHospitalTenant);
+  }, [currentHospitalTenant]);
+
+  useEffect(() => {
+    const hospCode = activeHospitalCode || tenantId || currentHospitalTenant || "city-hospital-01";
     fetch(`${API_BASE}/api/v1/hospital/branding/${hospCode}`)
       .then((r) => r.json())
       .then((d) => {
@@ -248,7 +440,45 @@ export default function PatientPage({
         }
       })
       .catch((e) => console.log("Branding fetch error:", e));
-  }, [tenantId, currentUser?.hospital_code]);
+
+    const handleHospEvent = (e) => {
+      const newCode = (typeof e?.detail === "string" ? e.detail : e?.detail?.hospital_code) || tenantId || "city-hospital-01";
+      setActiveHospitalCode(newCode);
+      fetch(`${API_BASE}/api/v1/hospital/branding/${newCode}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.status === "success" && d.branding) {
+            setHospitalBranding(d.branding);
+          }
+        })
+        .catch((err) => console.log("Branding fetch error:", err));
+    };
+    window.addEventListener("hospital_changed", handleHospEvent);
+    return () => window.removeEventListener("hospital_changed", handleHospEvent);
+  }, [tenantId, currentHospitalTenant, activeHospitalCode]);
+
+  // Dynamically resolved hospital display name across entire patient experience
+  const currentHospitalDisplayName =
+    hospitalBranding?.hospital_name ||
+    hospitalBranding?.name ||
+    hospitalsList.find((h) => String(h.hospital_code) === String(activeHospitalCode))?.name ||
+    (String(currentUser?.hospital_code) === String(activeHospitalCode) ? currentUser?.hospital_name : null) ||
+    HOSPITAL_CONFIG.name;
+
+  // Resolve hospital name for any appointment or ticket history record
+  const getHospitalNameForRecord = useCallback((record) => {
+    if (!record) return currentHospitalDisplayName;
+    if (record.hospital_name && record.hospital_name !== "City General Hospital") {
+      return record.hospital_name;
+    }
+    const code = record.hospital_code || record.tenant_id;
+    if (code && Array.isArray(hospitalsList)) {
+      const match = hospitalsList.find((h) => String(h.hospital_code) === String(code));
+      if (match?.name) return match.name;
+    }
+    if (record.hospital_name) return record.hospital_name;
+    return currentHospitalDisplayName;
+  }, [currentHospitalDisplayName, hospitalsList]);
 
   // Operational Schedule & Registration Cutoff Status
   const registrationStatus = (() => {
@@ -816,7 +1046,7 @@ export default function PatientPage({
 
         .patient-tabs-bar {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(5, 1fr);
           gap: 12px;
           background: #FFFFFF;
           padding: 10px;
@@ -1073,7 +1303,8 @@ export default function PatientPage({
       {/* 1. HERO SECTION (100% Live Real-Time Telemetry) */}
       <HeroBanner
         language={language}
-        hospitalName={currentUser?.hospital_name || "City General Hospital"}
+        hospitalName={currentHospitalDisplayName}
+        onOpenHospitalModal={() => setShowHospitalModal(true)}
         stats={{
           patientsServed: analytics ? `${(analytics.total_completed || 0) + (analytics.currently_serving || 0)}` : "0",
           avgWaitTime: language === "hi"
@@ -1090,7 +1321,7 @@ export default function PatientPage({
 
       {/* 2. Unified Patient Service Navigation Hub */}
       <section className="patient-nav-section">
-        <div className="patient-nav-header">
+        <div className="patient-nav-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
           <div className="patient-nav-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
@@ -1102,9 +1333,39 @@ export default function PatientPage({
             </svg>
             <span>Hospital Patient Services & Queue Desk</span>
           </div>
-          <div className="patient-nav-status-badge">
-            <span className="status-dot-pulse" />
-            <span>AI Orchestration Active</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setShowHospitalModal(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "6px 14px",
+                borderRadius: "10px",
+                background: "#F0F9FF",
+                border: "1.5px solid #BAE6FD",
+                color: "#0369A1",
+                fontSize: "12.5px",
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(2, 132, 199, 0.1)",
+                transition: "all 0.15s ease",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "#F0F9FF"; }}
+              title={language === "hi" ? "अस्पताल बदलें" : "Switch Hospital Facility"}
+            >
+              <span>🏥</span>
+              <span>{currentHospitalDisplayName}</span>
+              <span style={{ fontSize: "11px", color: "#0284C7", background: "#E0F2FE", padding: "2px 7px", borderRadius: "5px", marginLeft: "2px", fontWeight: 800 }}>
+                🔄 {language === "hi" ? "बदलें" : "Change"}
+              </span>
+            </button>
+            <div className="patient-nav-status-badge">
+              <span className="status-dot-pulse" />
+              <span>AI Orchestration Active</span>
+            </div>
           </div>
         </div>
 
@@ -1224,6 +1485,37 @@ export default function PatientPage({
               </span>
             </div>
           </button>
+
+          {/* Tab 5: Family Profiles */}
+          <button
+            type="button"
+            id="patient-tab-family"
+            onClick={() => handleTabChange("family")}
+            className={`tab-button-modern ${activeTab === "family" ? "active" : "inactive"}`}
+          >
+            <div className="tab-icon-wrapper">
+              <span style={{ fontSize: "19px", display: "flex", alignItems: "center", justifyContent: "center" }}>👨‍👩‍👧‍👦</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span className="tab-title-text">
+                  {language === "hi" ? "परिवार" : "Family"}
+                </span>
+                <span
+                  className="tab-count-badge"
+                  style={{
+                    background: activeTab === "family" ? "#38BDF8" : "#0284C7",
+                    color: activeTab === "family" ? "#0F172A" : "#FFFFFF",
+                  }}
+                >
+                  {familyMembers.length}
+                </span>
+              </div>
+              <span className="tab-sub-text" style={{ color: activeTab === "family" ? "#BAE6FD" : "#64748B" }}>
+                {language === "hi" ? "सदस्य प्रबंधित करें" : "Manage Profiles"}
+              </span>
+            </div>
+          </button>
         </div>
       </section>
 
@@ -1237,13 +1529,13 @@ export default function PatientPage({
               {activeTab === "walkin" && (
                 <div>
                   {/* Form Header with Walk-In Badge */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
                     <div>
                       <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.4px" }}>
                         {t("instantWalkin", language)}
                       </h2>
                       <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-                        City General Hospital — Instant Token & Real-Time Wait Tracker
+                        {hospitalBranding?.hospital_name || hospitalBranding?.name || HOSPITAL_CONFIG.name} — {language === "hi" ? "तत्काल टोकन एवं प्रतीक्षा ट्रैकर" : "Instant Token & Real-Time Wait Tracker"}
                       </p>
                     </div>
                     <span
@@ -1260,6 +1552,7 @@ export default function PatientPage({
                       Walk-In
                     </span>
                   </div>
+
 
                   {/* Dependent Booking Notice Banner */}
                   {selectedMember && selectedMember.relation !== "self" && (
@@ -1313,17 +1606,17 @@ export default function PatientPage({
                         marginBottom: "16px",
                         padding: "8px 14px",
                         borderRadius: "10px",
-                        background: "#F0FDF4",
-                        border: "1px solid #BBF7D0",
+                        background: "#F0F9FF",
+                        border: "1px solid #BAE6FD",
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
                         fontSize: "12px",
-                        color: "#166534",
+                        color: "#0369A1",
                         fontWeight: 700,
                       }}
                     >
-                      <span>🟢</span>
+                      <span>ℹ️</span>
                       <span>
                         {language === "hi"
                           ? `ओपीडी पंजीकरण खुला है • दैनिक कटऑफ: ${hospitalBranding.registration_cutoff_time} तक`
@@ -1566,14 +1859,15 @@ export default function PatientPage({
 
               {activeTab === "book" && (
                 <div>
-                  <div style={{ marginBottom: "24px" }}>
+                  <div style={{ marginBottom: "16px" }}>
                     <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.3px" }}>
-                      Book Pre-Scheduled Time Slot
+                      {t("bookSlot", language)}
                     </h2>
                     <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-                      Reserve a future appointment slot. Scan code upon arrival to merge into priority queue line.
+                      {hospitalBranding?.hospital_name || hospitalBranding?.name || HOSPITAL_CONFIG.name} — {language === "hi" ? "भविष्य का समय स्लॉट रिज़र्व करें" : "Reserve a future appointment slot. Scan code upon arrival to merge into priority queue line."}
                     </p>
                   </div>
+
 
                   {/* Dependent Booking Notice Banner */}
                   {selectedMember && selectedMember.relation !== "self" && (
@@ -1849,15 +2143,33 @@ export default function PatientPage({
               {activeAppointments.map((apt) => (
                 <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                       <span style={{ fontSize: "16px", fontWeight: 900, color: "#0284C7" }}>{apt.appointment_id}</span>
                       <span style={aptStatusBadgeStyle(apt.status)}>{apt.status.toUpperCase()}</span>
+                      <span style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "#0369A1",
+                        background: "#F0F9FF",
+                        border: "1px solid #BAE6FD",
+                        padding: "2px 8px",
+                        borderRadius: "6px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}>
+                        🏥 {getHospitalNameForRecord(apt)}
+                      </span>
                     </div>
                     <p style={{ margin: "6px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>
                       {apt.patient_name} — {apt.service_category.toUpperCase()}
                     </p>
-                    <span style={{ fontSize: "12.5px", color: "#64748B" }}>
-                      Date: <strong>{apt.appointment_date}</strong> | Slot: <strong>{apt.time_slot}</strong>
+                    <span style={{ fontSize: "12.5px", color: "#64748B", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                      <span>🏥 <strong>{getHospitalNameForRecord(apt)}</strong></span>
+                      <span>•</span>
+                      <span>Date: <strong>{apt.appointment_date}</strong></span>
+                      <span>•</span>
+                      <span>Slot: <strong>{apt.time_slot}</strong></span>
                     </span>
                   </div>
 
@@ -1885,7 +2197,7 @@ export default function PatientPage({
             </div>
           )}
         </div>
-      ) : (
+      ) : activeTab === "history" ? (
         /* VISIT HISTORY FULL VIEW */
         <div style={standaloneCardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
@@ -1958,13 +2270,34 @@ export default function PatientPage({
                           <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600, padding: "2px 7px", background: "#F1F5F9", borderRadius: "5px", border: "1px solid #E2E8F0" }}>
                             Walk-in
                           </span>
+                          <span style={{
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "#0369A1",
+                            background: "#F0F9FF",
+                            border: "1px solid #BAE6FD",
+                            padding: "2px 8px",
+                            borderRadius: "6px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}>
+                            🏥 {getHospitalNameForRecord(tk)}
+                          </span>
                         </div>
                         <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14.5px" }}>
                           {tk.name} — {getCategoryLabel(tk.service_category || "consultation", language)}
                         </p>
-                        <span style={{ fontSize: "12px", color: "#64748B" }}>
-                          {tk.created_at ? new Date(tk.created_at).toLocaleDateString() : ""}{" "}
-                          {tk.department_name && `| Dept: ${tk.department_name}`}
+                        <span style={{ fontSize: "12px", color: "#64748B", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                          <span>🏥 <strong>{getHospitalNameForRecord(tk)}</strong></span>
+                          <span>•</span>
+                          <span>{tk.created_at ? new Date(tk.created_at).toLocaleDateString() : ""}</span>
+                          {tk.department_name && (
+                            <>
+                              <span>•</span>
+                              <span>Dept: {tk.department_name}</span>
+                            </>
+                          )}
                         </span>
                         {tk.cancellation_reason && (
                           <p style={{ margin: "4px 0 0 0", fontSize: "11.5px", color: "#DC2626", fontStyle: "italic" }}>
@@ -1972,13 +2305,116 @@ export default function PatientPage({
                           </p>
                         )}
                         {tk.prescription_notes && (
-                          <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD" }}>
-                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", display: "block" }}>
-                              💊 {t("ePrescriptionLabel", language)}
-                            </span>
-                            <span style={{ fontSize: "12.5px", color: "#0369A1", fontWeight: 600, fontStyle: "italic" }}>
-                              "{tk.prescription_notes}"
-                            </span>
+                          <div style={{
+                            marginTop: "12px",
+                            padding: "14px 16px",
+                            borderRadius: "14px",
+                            background: "#F0F9FF",
+                            border: "1.5px solid #BAE6FD",
+                            boxShadow: "0 2px 8px rgba(2, 132, 199, 0.06)",
+                          }}>
+                            {(() => {
+                              const rx = parsePrescription(tk.prescription_notes, tk);
+                              if (!rx) return null;
+                              return (
+                                <>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E0F2FE", paddingBottom: "10px", marginBottom: "10px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                      <span style={{ fontSize: "12px", fontWeight: 900, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px" }}>
+                                        <span>💊</span>
+                                        <span>{t("ePrescriptionLabel", language)}</span>
+                                      </span>
+                                      {rx.doctor_name && (
+                                        <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
+                                          👨‍⚕️ {rx.doctor_name} {rx.doctor_department ? `(${getCategoryLabel(rx.doctor_department, language)})` : ""}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenPrescriptionSlip(tk.prescription_notes, tk)}
+                                      style={{
+                                        padding: "6px 14px",
+                                        borderRadius: "8px",
+                                        border: "1.5px solid #0284C7",
+                                        background: "#FFFFFF",
+                                        color: "#0284C7",
+                                        fontSize: "12px",
+                                        fontWeight: 800,
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        boxShadow: "0 1px 3px rgba(2, 132, 199, 0.12)",
+                                        transition: "all 0.15s ease",
+                                      }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
+                                    >
+                                      <span>📄</span>
+                                      <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View Rx Slip"}</span>
+                                    </button>
+                                  </div>
+
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                    {rx.diagnosis && (
+                                      <div style={{ fontSize: "13px", color: "#0369A1" }}>
+                                        <strong style={{ color: "#0F172A" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
+                                        <span style={{ fontWeight: 800, color: "#0284C7", background: "#E0F2FE", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
+                                          {rx.diagnosis}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {rx.medicines && rx.medicines.length > 0 && (
+                                      <div style={{ marginTop: "4px" }}>
+                                        <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#0369A1", textTransform: "uppercase" }}>
+                                          {language === "hi" ? "निर्धारित दवाइयाँ" : "Prescribed Medicines"}:
+                                        </span>
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
+                                          {rx.medicines.map((m, mIdx) => (
+                                            <span
+                                              key={mIdx}
+                                              style={{
+                                                fontSize: "12px",
+                                                fontWeight: 700,
+                                                color: "#0369A1",
+                                                background: "#FFFFFF",
+                                                border: "1px solid #BAE6FD",
+                                                padding: "3px 9px",
+                                                borderRadius: "6px",
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                gap: "4px",
+                                                boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+                                              }}
+                                            >
+                                              <span>💊</span>
+                                              <strong>{m.name}</strong>
+                                              {m.dosage ? ` • ${m.dosage}` : ""}
+                                              {m.frequency ? ` (${m.frequency})` : ""}
+                                              {m.duration ? ` [${m.duration}]` : ""}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {rx.advice && (
+                                      <div style={{ fontSize: "12px", color: "#0369A1", marginTop: "4px", fontStyle: "italic" }}>
+                                        <strong>{language === "hi" ? "सलाह" : "Advice"}:</strong> "{rx.advice}"
+                                      </div>
+                                    )}
+
+                                    {rx.lab_tests && rx.lab_tests !== "no" && (
+                                      <div style={{ fontSize: "12px", color: "#0369A1", marginTop: "2px" }}>
+                                        <strong>🧪 {language === "hi" ? "जाँच" : "Tests"}:</strong> {rx.lab_tests}
+                                      </div>
+                                    )}
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -2003,9 +2439,23 @@ export default function PatientPage({
                   {historyAppointments.map((apt) => (
                     <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                           <span style={{ fontSize: "15px", fontWeight: 900, color: "#0284C7" }}>{apt.appointment_id}</span>
                           <span style={aptStatusBadgeStyle(apt.status)}>{getStatusLabel(apt.status || "COMPLETED", language)}</span>
+                          <span style={{
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "#0369A1",
+                            background: "#F0F9FF",
+                            border: "1px solid #BAE6FD",
+                            padding: "2px 8px",
+                            borderRadius: "6px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}>
+                            🏥 {getHospitalNameForRecord(apt)}
+                          </span>
                           {apt.ticket_id && (
                             <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
                               ({t("tokenLabel", language)} #{apt.ticket_id})
@@ -2015,18 +2465,125 @@ export default function PatientPage({
                         <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14.5px" }}>
                           {apt.patient_name} — {getCategoryLabel(apt.service_category || "consultation", language)}
                         </p>
-                        <span style={{ fontSize: "12px", color: "#64748B" }}>
-                          {t("dateLabel", language)}: {apt.appointment_date} | {t("reservedSlotLabel", language)}: {apt.time_slot}
+                        <span style={{ fontSize: "12px", color: "#64748B", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                          <span>🏥 <strong>{getHospitalNameForRecord(apt)}</strong></span>
+                          <span>•</span>
+                          <span>{t("dateLabel", language)}: {apt.appointment_date}</span>
+                          <span>•</span>
+                          <span>{t("reservedSlotLabel", language)}: {apt.time_slot}</span>
                         </span>
 
                         {apt.prescription_notes && (
-                          <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD" }}>
-                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", display: "block" }}>
-                              💊 {t("ePrescriptionLabel", language)}
-                            </span>
-                            <span style={{ fontSize: "12.5px", color: "#0369A1", fontWeight: 600, fontStyle: "italic" }}>
-                              "{apt.prescription_notes}"
-                            </span>
+                          <div style={{
+                            marginTop: "12px",
+                            padding: "14px 16px",
+                            borderRadius: "14px",
+                            background: "#F0F9FF",
+                            border: "1.5px solid #BAE6FD",
+                            boxShadow: "0 2px 8px rgba(2, 132, 199, 0.06)",
+                          }}>
+                            {(() => {
+                              const rx = parsePrescription(apt.prescription_notes, apt);
+                              if (!rx) return null;
+                              return (
+                                <>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E0F2FE", paddingBottom: "10px", marginBottom: "10px" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                      <span style={{ fontSize: "12px", fontWeight: 900, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px" }}>
+                                        <span>💊</span>
+                                        <span>{t("ePrescriptionLabel", language)}</span>
+                                      </span>
+                                      {rx.doctor_name && (
+                                        <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
+                                          👨‍⚕️ {rx.doctor_name} {rx.doctor_department ? `(${getCategoryLabel(rx.doctor_department, language)})` : ""}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenPrescriptionSlip(apt.prescription_notes, apt)}
+                                      style={{
+                                        padding: "6px 14px",
+                                        borderRadius: "8px",
+                                        border: "1.5px solid #0284C7",
+                                        background: "#FFFFFF",
+                                        color: "#0284C7",
+                                        fontSize: "12px",
+                                        fontWeight: 800,
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        boxShadow: "0 1px 3px rgba(2, 132, 199, 0.12)",
+                                        transition: "all 0.15s ease",
+                                      }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
+                                    >
+                                      <span>📄</span>
+                                      <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View Rx Slip"}</span>
+                                    </button>
+                                  </div>
+
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                                    {rx.diagnosis && (
+                                      <div style={{ fontSize: "13px", color: "#0369A1" }}>
+                                        <strong style={{ color: "#0F172A" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
+                                        <span style={{ fontWeight: 800, color: "#0284C7", background: "#E0F2FE", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
+                                          {rx.diagnosis}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {rx.medicines && rx.medicines.length > 0 && (
+                                      <div style={{ marginTop: "4px" }}>
+                                        <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#0369A1", textTransform: "uppercase" }}>
+                                          {language === "hi" ? "निर्धारित दवाइयाँ" : "Prescribed Medicines"}:
+                                        </span>
+                                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
+                                          {rx.medicines.map((m, mIdx) => (
+                                            <span
+                                              key={mIdx}
+                                              style={{
+                                                fontSize: "12px",
+                                                fontWeight: 700,
+                                                color: "#0369A1",
+                                                background: "#FFFFFF",
+                                                border: "1px solid #BAE6FD",
+                                                padding: "3px 9px",
+                                                borderRadius: "6px",
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                gap: "4px",
+                                                boxShadow: "0 1px 2px rgba(0,0,0,0.03)"
+                                              }}
+                                            >
+                                              <span>💊</span>
+                                              <strong>{m.name}</strong>
+                                              {m.dosage ? ` • ${m.dosage}` : ""}
+                                              {m.frequency ? ` (${m.frequency})` : ""}
+                                              {m.duration ? ` [${m.duration}]` : ""}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {rx.advice && (
+                                      <div style={{ fontSize: "12px", color: "#0369A1", marginTop: "4px", fontStyle: "italic" }}>
+                                        <strong>{language === "hi" ? "सलाह" : "Advice"}:</strong> "{rx.advice}"
+                                      </div>
+                                    )}
+
+                                    {rx.lab_tests && rx.lab_tests !== "no" && (
+                                      <div style={{ fontSize: "12px", color: "#0369A1", marginTop: "2px" }}>
+                                        <strong>🧪 {language === "hi" ? "जाँच" : "Tests"}:</strong> {rx.lab_tests}
+                                      </div>
+                                    )}
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -2047,6 +2604,273 @@ export default function PatientPage({
             </div>
           )}
         </div>
+      ) : activeTab === "family" ? (
+        /* FAMILY PROFILES MANAGEMENT FULL VIEW */
+        <div style={standaloneCardStyle}>
+          {/* Header */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", flexWrap: "wrap", gap: "16px", borderBottom: "1px solid #E2E8F0", paddingBottom: "18px" }}>
+            <div>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "10px" }}>
+                <span>👨‍👩‍👧‍👦</span>
+                <span>{language === "hi" ? "परिवार सदस्य एवं आश्रित प्रोफ़ाइल" : "Family Member & Dependent Profiles"}</span>
+              </h3>
+              <span style={{ fontSize: "13px", color: "#64748B" }}>
+                {language === "hi"
+                  ? "एक-क्लिक टोकन एवं क्लिनिक अपॉइंटमेंट के लिए अपने बच्चों, जीवनसाथी या बुजुर्ग माता-पिता को जोड़ें।"
+                  : "Easily register children, spouse, or elderly parents for one-tap queue tickets and scheduled clinic visits."}
+              </span>
+            </div>
+            <button
+              type="button"
+              id="add-family-member-btn"
+              onClick={() => setShowAddMemberModal(true)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "10px 20px",
+                borderRadius: "10px",
+                border: "none",
+                background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                color: "#FFFFFF",
+                fontWeight: 700,
+                fontSize: "13.5px",
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
+              <span>{language === "hi" ? "नया सदस्य जोड़ें" : "Add Family Member"}</span>
+            </button>
+          </div>
+
+          {/* Member Switcher Quick Selector */}
+          <div style={{ marginBottom: "24px" }}>
+            <FamilyMemberSwitcher
+              members={familyMembers}
+              selectedMemberId={selectedMemberId}
+              onSelectMember={handleSelectMember}
+              onAddMember={handleAddMember}
+              onDeleteMember={handleDeleteMember}
+              language={language}
+            />
+          </div>
+
+          {/* Cards Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: "16px" }}>
+            {familyMembers.map((member) => {
+              const isSelected = selectedMemberId === member.id;
+              const isSelf = member.id === "self";
+              const relationLabel = isSelf
+                ? (language === "hi" ? "प्राथमिक (स्वयं)" : "Primary (Self)")
+                : getRelationLabel(member.relation, language);
+              const memberTicket = familyTickets[member.id];
+
+              return (
+                <div
+                  key={member.id}
+                  style={{
+                    background: isSelected ? "#F0F9FF" : "#FFFFFF",
+                    borderRadius: "16px",
+                    border: isSelected ? "2px solid #0284C7" : "1px solid #E2E8F0",
+                    padding: "20px",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    boxShadow: isSelected ? "0 4px 14px rgba(2, 132, 199, 0.12)" : "0 1px 3px rgba(0,0,0,0.03)",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <div>
+                    {/* Top Row: Icon + Name + Badge */}
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px", marginBottom: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <div
+                          style={{
+                            width: "44px",
+                            height: "44px",
+                            borderRadius: "12px",
+                            background: isSelected ? "#0284C7" : "#F1F5F9",
+                            color: isSelected ? "#FFFFFF" : "#0369A1",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "20px",
+                            fontWeight: 800,
+                          }}
+                        >
+                          {isSelf
+                            ? "👤"
+                            : member.relation === "child"
+                            ? "👶"
+                            : member.relation === "parent"
+                            ? "👵"
+                            : member.relation === "spouse"
+                            ? "💍"
+                            : "🧑"}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: "16px", color: "#0F172A" }}>
+                            {member.name}
+                          </div>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              marginTop: "3px",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              background: isSelf ? "#E0F2FE" : "#F0F9FF",
+                              color: isSelf ? "#0369A1" : "#0284C7",
+                              border: "1px solid #BAE6FD",
+                            }}
+                          >
+                            {relationLabel}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isSelected && (
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            borderRadius: "12px",
+                            background: "#0284C7",
+                            color: "#FFFFFF",
+                            fontSize: "10.5px",
+                            fontWeight: 800,
+                            letterSpacing: "0.3px",
+                          }}
+                        >
+                          ACTIVE
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Member Details */}
+                    <div style={{ fontSize: "12.5px", color: "#64748B", display: "flex", flexDirection: "column", gap: "4px", marginTop: "8px" }}>
+                      <div>
+                        <strong>{language === "hi" ? "उम्र" : "Age"}:</strong> {member.age || "—"} {language === "hi" ? "वर्ष" : "yrs"}
+                        {" • "}
+                        <strong>{language === "hi" ? "लिंग" : "Gender"}:</strong> {member.gender ? member.gender.toUpperCase() : "—"}
+                      </div>
+                      {member.phone && (
+                        <div>
+                          <strong>{language === "hi" ? "फ़ोन" : "Phone"}:</strong> {member.phone}
+                        </div>
+                      )}
+                      {memberTicket && (
+                        <div style={{ marginTop: "6px", padding: "6px 10px", borderRadius: "8px", background: "#FEF3C7", border: "1px solid #FDE68A", color: "#92400E", fontSize: "11.5px", fontWeight: 700 }}>
+                          🎫 Active Token #{memberTicket.ticket_id} (Pos #{memberTicket.position})
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card Actions */}
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", paddingTop: "12px", borderTop: "1px solid #E2E8F0" }}>
+                    {!isSelected ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectMember(member)}
+                        style={{
+                          flex: 1,
+                          padding: "8px 12px",
+                          borderRadius: "8px",
+                          border: "1px solid #BAE6FD",
+                          background: "#E0F2FE",
+                          color: "#0284C7",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {language === "hi" ? "प्रोफ़ाइल चुनें" : "Select Profile"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleTabChange("walkin")}
+                        style={{
+                          flex: 1,
+                          padding: "8px 12px",
+                          borderRadius: "8px",
+                          border: "none",
+                          background: "#0284C7",
+                          color: "#FFFFFF",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {language === "hi" ? "टोकन लें" : "Get Token"}
+                      </button>
+                    )}
+
+                    {!isSelf && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setEditingMember(member)}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            border: "1px solid #CBD5E1",
+                            background: "#FFFFFF",
+                            color: "#475569",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                          title={language === "hi" ? "संपादित करें" : "Edit Profile"}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(t("deleteMemberConfirm", language))) {
+                              handleDeleteMember(member.id);
+                            }
+                          }}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            border: "1px solid #FECACA",
+                            background: "#FEF2F2",
+                            color: "#DC2626",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                          title={language === "hi" ? "हटाएं" : "Delete Profile"}
+                        >
+                          🗑️
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Add Family Member Modal */}
+      {showAddMemberModal && (
+        <AddFamilyMemberModal
+          isOpen={showAddMemberModal}
+          onClose={() => setShowAddMemberModal(false)}
+          onAddMember={(newMem) => {
+            handleAddMember(newMem);
+            setShowAddMemberModal(false);
+          }}
+          language={language}
+        />
       )}
 
 
@@ -2250,10 +3074,472 @@ export default function PatientPage({
         </div>
       )}
 
+      {/* Multi-Hospital Facility Switcher Modal (Patient Portal) */}
+      {showHospitalModal && (
+        <div
+          style={modalBackdropStyle}
+          onClick={() => setShowHospitalModal(false)}
+        >
+          <div
+            style={{
+              ...modalContentStyle,
+              maxWidth: "560px",
+              padding: "26px",
+              maxHeight: "88vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div
+                  style={{
+                    width: "42px",
+                    height: "42px",
+                    borderRadius: "12px",
+                    background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                    color: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "20px",
+                    boxShadow: "0 4px 10px rgba(2, 132, 199, 0.2)",
+                  }}
+                >
+                  🏥
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "#0F172A" }}>
+                    {language === "hi" ? "अस्पताल या स्वास्थ्य केंद्र बदलें" : "Switch Hospital Facility"}
+                  </h3>
+                  <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
+                    {language === "hi"
+                      ? "किसी भी पंजीकृत अस्पताल की लाइव कतार व सेवाओं तक पहुँचें।"
+                      : "Connect to any registered hospital across our unified network."}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHospitalModal(false)}
+                style={{
+                  background: "#F1F5F9",
+                  border: "none",
+                  borderRadius: "8px",
+                  width: "30px",
+                  height: "30px",
+                  cursor: "pointer",
+                  color: "#64748B",
+                  fontSize: "15px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Search Filter Input */}
+            <div style={{ position: "relative", marginBottom: "14px" }}>
+              <input
+                type="text"
+                value={hospitalSearchQuery}
+                onChange={(e) => setHospitalSearchQuery(e.target.value)}
+                placeholder={language === "hi" ? "अस्पताल का नाम, शहर या कोड खोजें..." : "Search by hospital name, address, or code..."}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px 10px 38px",
+                  borderRadius: "12px",
+                  border: "1.5px solid #E2E8F0",
+                  fontSize: "13px",
+                  outline: "none",
+                  background: "#F8FAFC",
+                  boxSizing: "border-box",
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#0284C7";
+                  e.target.style.background = "#FFFFFF";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#E2E8F0";
+                  e.target.style.background = "#F8FAFC";
+                }}
+              />
+              <span
+                style={{
+                  position: "absolute",
+                  left: "12px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "#94A3B8",
+                  fontSize: "15px",
+                  pointerEvents: "none",
+                }}
+              >
+                🔍
+              </span>
+              {hospitalSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setHospitalSearchQuery("")}
+                  style={{
+                    position: "absolute",
+                    right: "10px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "#94A3B8",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Hospitals List */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+                maxHeight: "340px",
+                overflowY: "auto",
+                paddingRight: "4px",
+              }}
+            >
+              {(() => {
+                const currentCode = activeHospitalCode;
+                const filtered = hospitalsList.filter((h) => {
+                  if (!hospitalSearchQuery) return true;
+                  const q = hospitalSearchQuery.toLowerCase();
+                  return (
+                    (h.name && h.name.toLowerCase().includes(q)) ||
+                    (h.hospital_code && h.hospital_code.toLowerCase().includes(q)) ||
+                    (h.address && h.address.toLowerCase().includes(q))
+                  );
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div style={{ textAlign: "center", padding: "30px 12px", color: "#64748B", fontSize: "13px" }}>
+                      <div style={{ fontSize: "32px", marginBottom: "8px" }}>🏥</div>
+                      <div style={{ fontWeight: 600 }}>{language === "hi" ? "कोई अस्पताल नहीं मिला" : "No hospitals matching search"}</div>
+                    </div>
+                  );
+                }
+
+                return filtered.map((hosp) => {
+                  const isCurrent = String(hosp.hospital_code) === String(currentCode);
+                  return (
+                    <div
+                      key={hosp.hospital_code}
+                      onClick={() => handleSelectHospital(hosp.hospital_code, hosp.name)}
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: "12px",
+                        border: isCurrent ? "2px solid #0284C7" : "1.5px solid #E2E8F0",
+                        background: isCurrent ? "#F0F9FF" : "#FFFFFF",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        transition: "all 0.16s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isCurrent) {
+                          e.currentTarget.style.borderColor = "#BAE6FD";
+                          e.currentTarget.style.background = "#F8FAFC";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isCurrent) {
+                          e.currentTarget.style.borderColor = "#E2E8F0";
+                          e.currentTarget.style.background = "#FFFFFF";
+                        }
+                      }}
+                    >
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 800, fontSize: "14px", color: "#0F172A" }}>
+                            {hosp.name}
+                          </span>
+                          {isCurrent && (
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 800,
+                                background: "#0284C7",
+                                color: "#FFFFFF",
+                                padding: "2px 8px",
+                                borderRadius: "9999px",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              ✓ {language === "hi" ? "सक्रिय" : "Active"}
+                            </span>
+                          )}
+                          <span
+                            style={{
+                              fontSize: "10.5px",
+                              fontWeight: 700,
+                              color: "#64748B",
+                              background: "#F1F5F9",
+                              padding: "2px 7px",
+                              borderRadius: "4px",
+                            }}
+                          >
+                            {hosp.hospital_code}
+                          </span>
+                        </div>
+                        {hosp.address && (
+                          <div style={{ fontSize: "11.5px", color: "#475569", marginTop: "3px" }}>
+                            📍 {hosp.address}
+                          </div>
+                        )}
+                        {hosp.phone && (
+                          <div style={{ fontSize: "11px", color: "#64748B", marginTop: "1px" }}>
+                            📞 {hosp.phone}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectHospital(hosp.hospital_code, hosp.name);
+                        }}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: "8px",
+                          border: isCurrent ? "1px solid #0284C7" : "1px solid #CBD5E1",
+                          background: isCurrent ? "#0284C7" : "#F8FAFC",
+                          color: isCurrent ? "#FFFFFF" : "#334155",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isCurrent ? (language === "hi" ? "सक्रिय" : "Active") : (language === "hi" ? "चुनें" : "Select")}
+                      </button>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Official Digital Prescription (Rx) Slip Modal */}
+      {showPrescriptionModal && viewingPrescriptionData && (
+        <div style={modalBackdropStyle} onClick={() => setShowPrescriptionModal(false)}>
+          <div
+            id="printable-rx-slip"
+            style={{
+              ...modalContentStyle,
+              maxWidth: "680px",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              padding: "26px 30px",
+              background: "#FFFFFF",
+              borderRadius: "16px",
+              border: "1.5px solid #CBD5E1",
+              boxShadow: "0 20px 40px rgba(15, 23, 42, 0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 1. Hospital Letterhead */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #0284C7", paddingBottom: "14px", marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "26px", fontWeight: 900 }}>
+                  ℞
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: "20px", color: "#0F172A", fontWeight: 900, letterSpacing: "-0.3px" }}>
+                    {viewingPrescriptionData?.hospital_name || getHospitalNameForRecord(viewingPrescriptionData) || currentHospitalDisplayName || "City General Hospital"}
+                  </h2>
+                  <span style={{ fontSize: "11.5px", color: "#0284C7", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    Outpatient Department (OPD) • Clinical E-Prescription Slip
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "right" }}>
+                <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>Date & Time</span>
+                <strong style={{ fontSize: "12px", color: "#0F172A" }}>
+                  {viewingPrescriptionData.prescribed_at ? new Date(viewingPrescriptionData.prescribed_at).toLocaleDateString() : new Date().toLocaleDateString()}
+                </strong>
+                <span style={{ fontSize: "10px", color: "#64748B", display: "block" }}>
+                  {viewingPrescriptionData.prescribed_at ? new Date(viewingPrescriptionData.prescribed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
+                </span>
+              </div>
+            </div>
+
+            {/* 2. Patient & Doctor Information Bar */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", background: "#F8FAFC", padding: "12px 14px", borderRadius: "10px", border: "1px solid #E2E8F0", marginBottom: "16px" }}>
+              <div>
+                <span style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Patient Details</span>
+                <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#0F172A", marginTop: "2px" }}>
+                  {viewingPrescriptionData.patient_name}
+                </div>
+                <div style={{ fontSize: "11px", color: "#475569" }}>
+                  {viewingPrescriptionData.age} yrs • {viewingPrescriptionData.gender} • Token #{viewingPrescriptionData.ticket_id}
+                </div>
+              </div>
+              <div>
+                <span style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Attending Physician</span>
+                <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#0284C7", marginTop: "2px" }}>
+                  {viewingPrescriptionData.doctor_name}
+                </div>
+                <div style={{ fontSize: "11px", color: "#475569" }}>
+                  Department: {getCategoryLabel(viewingPrescriptionData.doctor_department, language)}
+                  {viewingPrescriptionData.doctor_employee_id && ` (ID: ${viewingPrescriptionData.doctor_employee_id})`}
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Provisional Diagnosis & Tests */}
+            <div style={{ marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6px" }}>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: "#0F172A" }}>
+                  Clinical Diagnosis:
+                </span>
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "#0284C7", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
+                  {viewingPrescriptionData.diagnosis || "General Consultation & Clinical Checkup"}
+                </span>
+              </div>
+              {viewingPrescriptionData.lab_tests && viewingPrescriptionData.lab_tests !== "no" && (
+                <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginTop: "4px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 800, color: "#0F172A" }}>
+                    Tests Ordered:
+                  </span>
+                  <span style={{ fontSize: "12.5px", color: "#475569", fontWeight: 600 }}>
+                    🧪 {viewingPrescriptionData.lab_tests}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Prescribed Medications Table */}
+            <div style={{ marginBottom: "18px" }}>
+              <div style={{ fontSize: "12px", fontWeight: 900, color: "#0F172A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ color: "#0284C7", fontSize: "16px" }}>℞</span> Prescribed Medications
+              </div>
+
+              {viewingPrescriptionData.medicines && viewingPrescriptionData.medicines.length > 0 ? (
+                <div style={{ overflowX: "auto", border: "1px solid #E2E8F0", borderRadius: "8px" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
+                    <thead>
+                      <tr style={{ background: "#F1F5F9", borderBottom: "1.5px solid #CBD5E1", color: "#475569", fontWeight: 800 }}>
+                        <th style={{ padding: "8px 10px" }}>#</th>
+                        <th style={{ padding: "8px 10px" }}>Medicine Name</th>
+                        <th style={{ padding: "8px 10px" }}>Dosage</th>
+                        <th style={{ padding: "8px 10px" }}>Frequency / Timing</th>
+                        <th style={{ padding: "8px 10px" }}>Duration</th>
+                        <th style={{ padding: "8px 10px" }}>Instructions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingPrescriptionData.medicines.map((med, idx) => (
+                        <tr key={idx} style={{ borderBottom: "1px solid #F1F5F9", background: idx % 2 === 0 ? "#FFFFFF" : "#F8FAFC" }}>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: "#64748B" }}>{idx + 1}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 800, color: "#0F172A" }}>{med.name}</td>
+                          <td style={{ padding: "8px 10px", color: "#0284C7", fontWeight: 700 }}>{med.dosage || "-"}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: "#0284C7" }}>{med.frequency || "-"}</td>
+                          <td style={{ padding: "8px 10px", color: "#334155" }}>{med.duration || "-"}</td>
+                          <td style={{ padding: "8px 10px", color: "#64748B", fontStyle: "italic" }}>{med.instructions || "After food"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "8px", border: "1px solid #E2E8F0", fontSize: "13px", color: "#334155", fontStyle: "italic" }}>
+                  "{viewingPrescriptionData.advice || "No specific medications listed. Consultation completed."}"
+                </div>
+              )}
+            </div>
+
+            {/* 5. Doctor's Advice & Lifestyle Instructions */}
+            {viewingPrescriptionData.advice && (
+              <div style={{ marginBottom: "14px", padding: "10px 14px", background: "#F0F9FF", borderRadius: "10px", border: "1px solid #BAE6FD" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", display: "block", marginBottom: "2px", textTransform: "uppercase" }}>
+                  📋 Doctor's Advice & Guidelines:
+                </span>
+                <p style={{ margin: 0, fontSize: "12.5px", color: "#0F172A" }}>
+                  {viewingPrescriptionData.advice}
+                </p>
+              </div>
+            )}
+
+            {/* 6. Follow-up consultation */}
+            {viewingPrescriptionData.follow_up && (
+              <div style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#475569" }}>
+                <span>🗓️</span>
+                <strong>Follow-Up:</strong>
+                <span>{viewingPrescriptionData.follow_up}</span>
+              </div>
+            )}
+
+            {/* 7. Electronic Validation Stamp */}
+            <div style={{ borderTop: "1px dashed #CBD5E1", paddingTop: "12px", marginTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
+                <span>✓</span>
+                <span>Digitally Authenticated & Recorded in Hospital OPD System</span>
+              </div>
+              <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>
+                Valid across hospital pharmacy & lab desks
+              </span>
+            </div>
+
+            {/* 8. Action Buttons (Print & Close) */}
+            <div style={{ display: "flex", gap: "10px", marginTop: "20px", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setShowPrescriptionModal(false)}
+                style={{ padding: "9px 18px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#334155", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => printPrescriptionSlip(viewingPrescriptionData, language, hospitalBranding)}
+                style={{
+                  padding: "9px 20px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                  color: "#FFFFFF",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  boxShadow: "0 2px 10px rgba(2, 132, 199, 0.25)",
+                }}
+              >
+                <span>🖨️</span>
+                <span>{language === "hi" ? "पर्ची प्रिंट करें / PDF सेव करें" : "Print Rx Slip / Save PDF"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 6. Footer (Matching Image 2) */}
       <Footer
         language={language}
-        hospitalName={currentUser?.hospital_name || HOSPITAL_CONFIG.name}
+        hospitalName={hospitalBranding?.hospital_name || hospitalBranding?.name || (currentUser?.hospital_code === tenantId ? currentUser?.hospital_name : null) || HOSPITAL_CONFIG.name}
         currentUser={currentUser}
       />
     </div>

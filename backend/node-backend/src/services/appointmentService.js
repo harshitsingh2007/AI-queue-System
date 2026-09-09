@@ -84,7 +84,13 @@ async function bookAppointment({
  */
 async function checkInAppointment(appointmentId) {
   const cleanAptId = String(appointmentId || "").trim();
-  const apt = await prisma.appointments.findUnique({
+  if (!cleanAptId) {
+    const err = new Error("Appointment ID or code is required for check-in.");
+    err.status = 400;
+    throw err;
+  }
+
+  let apt = await prisma.appointments.findUnique({
     where: { appointment_id: cleanAptId },
     include: {
       hospitals: true,
@@ -95,8 +101,36 @@ async function checkInAppointment(appointmentId) {
     },
   });
 
+  // Support prefix-less codes (e.g. '032562D4' -> 'APT-032562D4')
+  if (!apt && !cleanAptId.toUpperCase().startsWith("APT-")) {
+    apt = await prisma.appointments.findUnique({
+      where: { appointment_id: `APT-${cleanAptId.toUpperCase()}` },
+      include: {
+        hospitals: true,
+        patients: {
+          include: { users: true },
+        },
+        departments: true,
+      },
+    });
+  }
+
+  // Case-insensitive lookup fallback
   if (!apt) {
-    const err = new Error(`Appointment '${cleanAptId}' not found.`);
+    apt = await prisma.appointments.findFirst({
+      where: { appointment_id: { equals: cleanAptId, mode: "insensitive" } },
+      include: {
+        hospitals: true,
+        patients: {
+          include: { users: true },
+        },
+        departments: true,
+      },
+    });
+  }
+
+  if (!apt) {
+    const err = new Error(`Appointment '${cleanAptId}' not found. Please verify your appointment code.`);
     err.status = 404;
     throw err;
   }
@@ -116,18 +150,23 @@ async function checkInAppointment(appointmentId) {
   const aptDate = parseQueueDate(apt.appointment_date);
   const today = getCurrentQueueDate();
 
-  if (aptDate > today) {
-    const err = new Error(
-      `Check-in not available yet: Your appointment is scheduled for ${aptDate} at ${apt.time_slot || ""}.`
-    );
-    err.status = 400;
-    throw err;
-  }
-
-  if (aptDate < today) {
-    const err = new Error(`Cannot check in: Your appointment date (${aptDate}) has expired.`);
-    err.status = 400;
-    throw err;
+  // If already checked in and has an active ticket, return the existing ticket pass directly
+  if (apt.status.toLowerCase() === "checked_in" && apt.ticket_id) {
+    const existingTicket = await prisma.tickets.findUnique({
+      where: { ticket_id: apt.ticket_id },
+    });
+    if (existingTicket && !["cancelled", "expired"].includes(existingTicket.status.toLowerCase())) {
+      return {
+        appointment: {
+          ...apt,
+          appointment_date: today,
+          status: "checked_in",
+          ticket_id: apt.ticket_id,
+          tenant_id: apt.hospitals?.hospital_code || "city-hospital-01",
+        },
+        ticket: existingTicket,
+      };
+    }
   }
 
   // Generate priority queue ticket for today's active queue
@@ -140,32 +179,37 @@ async function checkInAppointment(appointmentId) {
     userEmail: apt.patients?.users?.email || "",
     patientId: apt.patient_id,
     queueDate: today,
-    appointmentId: cleanAptId,
+    appointmentId: apt.appointment_id,
     status: "waiting",
   });
 
   await prisma.appointments.update({
-    where: { appointment_id: cleanAptId },
+    where: { appointment_id: apt.appointment_id },
     data: {
       status: "checked_in",
       ticket_id: ticket.ticket_id,
+      appointment_date: queueDateToPrismaDate(today),
       updated_at: new Date(),
     },
   });
 
+  const checkInNote = aptDate !== today
+    ? `Checked in on ${today} (Original scheduled date: ${aptDate} at ${apt.time_slot || "Slot"}) as Token #${ticket.ticket_id}`
+    : `Checked in as Token #${ticket.ticket_id}`;
+
   await prisma.appointment_status_history.create({
     data: {
-      appointment_id: cleanAptId,
+      appointment_id: apt.appointment_id,
       old_status: apt.status,
       new_status: "checked_in",
-      reason: `Checked in as Token #${ticket.ticket_id}`,
+      reason: checkInNote,
     },
   });
 
   return {
     appointment: {
       ...apt,
-      appointment_date: aptDate,
+      appointment_date: today,
       status: "checked_in",
       ticket_id: ticket.ticket_id,
       tenant_id: apt.hospitals?.hospital_code || "city-hospital-01",
@@ -209,25 +253,56 @@ async function getUserAppointments(identifier) {
         include: { users: true },
       },
       departments: true,
-      tickets: true,
+      tickets: {
+        include: { queue_events: true },
+      },
     },
     orderBy: { created_at: "desc" },
   });
 
-  return appointments.map((a) => ({
-    appointment_id: a.appointment_id,
-    tenant_id: a.hospitals?.hospital_code || "city-hospital-01",
-    consumer_type: a.consumer_type,
-    service_category: a.service_category,
-    patient_name: a.patients?.name || "Patient",
-    user_email: a.patients?.users?.email || "",
-    appointment_date: parseQueueDate(a.appointment_date),
-    time_slot: a.time_slot,
-    status: a.status,
-    ticket_id: a.ticket_id || "",
-    created_at: a.created_at ? a.created_at.toISOString() : null,
-    prescription_notes: a.tickets[0]?.prescription_notes || "",
-  }));
+  return appointments.map((a) => {
+    const linkedTkt = a.tickets[0];
+    const transfers = [];
+    if (linkedTkt) {
+      if (linkedTkt.transferred_from_dept) {
+        transfers.push({
+          from_department: linkedTkt.transferred_from_dept,
+          to_department: a.service_category,
+          ticket_id: linkedTkt.ticket_id,
+        });
+      }
+      if (Array.isArray(linkedTkt.queue_events)) {
+        for (const ev of linkedTkt.queue_events) {
+          if (ev.event_type === "TRANSFERRED" && ev.metadata) {
+            transfers.push({
+              from_department: a.service_category,
+              to_department: ev.metadata.target_dept || "",
+              ticket_id: ev.metadata.transferred_to_ticket || "",
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      appointment_id: a.appointment_id,
+      tenant_id: a.hospitals?.hospital_code || "city-hospital-01",
+      hospital_code: a.hospitals?.hospital_code || "city-hospital-01",
+      hospital_name: a.hospitals?.name || "City General Hospital",
+      consumer_type: a.consumer_type,
+      service_category: a.service_category,
+      patient_name: a.patients?.name || "Patient",
+      user_email: a.patients?.users?.email || "",
+      appointment_date: parseQueueDate(a.appointment_date),
+      time_slot: a.time_slot,
+      status: a.status,
+      ticket_id: a.ticket_id || "",
+      created_at: a.created_at ? a.created_at.toISOString() : null,
+      prescription_notes: linkedTkt?.prescription_notes || "",
+      transfer_count: transfers.length,
+      transfers: transfers,
+    };
+  });
 }
 
 /**

@@ -127,7 +127,7 @@ async function signupAdmin(req, res, next) {
 
 async function signupPatient(req, res, next) {
   try {
-    const { email, username, password, phone = "" } = req.body;
+    const { email, username, password, phone = "", hospital_code } = req.body;
     const cleanEmail = String(email || "").trim().toLowerCase();
 
     if (!cleanEmail || !username || !password) {
@@ -139,6 +139,20 @@ async function signupPatient(req, res, next) {
       return res.status(400).json({ status: "error", message: "An account with this email address already exists." });
     }
 
+    // Resolve hospital from provided code, or fallback to first active or default
+    const targetCode = String(hospital_code || "city-hospital-01").trim();
+    let targetHospital = await prisma.hospitals.findFirst({
+      where: { hospital_code: targetCode },
+    });
+    if (!targetHospital) {
+      targetHospital = await prisma.hospitals.findFirst({
+        where: { status: "active" },
+      });
+    }
+
+    const resolvedHospitalCode = targetHospital?.hospital_code || "city-hospital-01";
+    const resolvedHospitalName = targetHospital?.name || "City General Hospital";
+
     const pwdHash = await hashPassword(password);
     const user = await prisma.users.create({
       data: {
@@ -148,6 +162,7 @@ async function signupPatient(req, res, next) {
         role: "user",
         status: "active",
         phone: phone || "",
+        primary_hospital_code: resolvedHospitalCode,
       },
     });
 
@@ -162,7 +177,13 @@ async function signupPatient(req, res, next) {
       },
     });
 
-    const token = generateToken({ id: user.id, email: user.email, role: user.role });
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      hospital_code: resolvedHospitalCode,
+      hospitalId: targetHospital?.id || null,
+    });
 
     return res.status(200).json({
       status: "success",
@@ -174,6 +195,9 @@ async function signupPatient(req, res, next) {
         role: user.role,
         phone: user.phone || "",
         status: "active",
+        hospital_code: resolvedHospitalCode,
+        hospital_name: resolvedHospitalName,
+        hospital_id: targetHospital?.id || null,
       },
     });
   } catch (error) {
@@ -285,9 +309,14 @@ async function login(req, res, next) {
     } else if (ownedH) {
       responseUser.hospital_code = ownedH.hospital_code;
       responseUser.hospital_name = ownedH.name;
-    } else if (["doctor", "staff", "admin", "receptionist"].includes(user.role)) {
-      responseUser.hospital_code = "city-hospital-01";
-      responseUser.hospital_name = "City General Hospital";
+    } else {
+      const hCode = user.primary_hospital_code || "city-hospital-01";
+      const hosp = await prisma.hospitals.findFirst({
+        where: { hospital_code: hCode },
+      });
+      responseUser.hospital_code = hosp?.hospital_code || hCode;
+      responseUser.hospital_name = hosp?.name || "City General Hospital";
+      responseUser.hospital_id = hosp?.id || null;
     }
 
     return res.status(200).json({
@@ -357,14 +386,50 @@ async function getMe(req, res, next) {
     } else if (ownedH) {
       responseUser.hospital_code = ownedH.hospital_code;
       responseUser.hospital_name = ownedH.name;
-    } else if (["doctor", "staff", "admin", "receptionist"].includes(user.role)) {
-      responseUser.hospital_code = "city-hospital-01";
-      responseUser.hospital_name = "City General Hospital";
+    } else {
+      const hCode = user.primary_hospital_code || "city-hospital-01";
+      const hosp = await prisma.hospitals.findFirst({
+        where: { hospital_code: hCode },
+      });
+      responseUser.hospital_code = hosp?.hospital_code || hCode;
+      responseUser.hospital_name = hosp?.name || "City General Hospital";
+      responseUser.hospital_id = hosp?.id || null;
     }
 
     return res.status(200).json({
       status: "success",
       user: responseUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateUserPrimaryHospital(req, res, next) {
+  try {
+    const { hospital_code, email } = req.body;
+    const userEmail = email || req.user?.email;
+    if (!userEmail || !hospital_code) {
+      return res.status(400).json({ status: "error", message: "User email and hospital_code are required." });
+    }
+    const cleanEmail = String(userEmail).trim().toLowerCase();
+    const hosp = await prisma.hospitals.findFirst({
+      where: { hospital_code: String(hospital_code).trim() },
+    });
+    if (!hosp) {
+      return res.status(404).json({ status: "error", message: "Hospital not found." });
+    }
+
+    await prisma.users.updateMany({
+      where: { email: cleanEmail },
+      data: { primary_hospital_code: hosp.hospital_code },
+    });
+
+    return res.status(200).json({
+      status: "success",
+      hospital_code: hosp.hospital_code,
+      hospital_name: hosp.name,
+      hospital_id: hosp.id,
     });
   } catch (error) {
     next(error);
@@ -478,33 +543,86 @@ async function getUserHistory(req, res, next) {
       include: {
         departments: true,
         hospitals: true,
+        queue_events: {
+          where: {
+            event_type: { in: ["TRANSFERRED", "QUEUE_JOINED"] },
+          },
+          orderBy: { created_at: "asc" },
+        },
       },
       orderBy: { join_timestamp: "desc" },
       take: 100,
     });
 
-    const formatted = tickets.map((t) => ({
-      ticket_id: t.ticket_id,
-      name: t.name,
-      status: t.status,
-      service_category: t.service_category,
-      priority_level: t.priority_level,
-      position: t.position,
-      estimated_wait_minutes: t.estimated_wait_minutes,
-      created_at: t.join_timestamp ? t.join_timestamp.toISOString() : null,
-      serve_start_time: t.serve_start_time ? t.serve_start_time.toISOString() : null,
-      serve_end_time: t.serve_end_time ? t.serve_end_time.toISOString() : null,
-      actual_service_minutes: t.actual_service_minutes,
-      prescription_notes: t.prescription_notes || "",
-      cancellation_reason: t.cancellation_reason || "",
-      cancelled_at: t.cancelled_at ? t.cancelled_at.toISOString() : null,
-      medical_condition: t.medical_condition,
-      pre_existing_condition: t.pre_existing_condition,
-      source: t.source,
-      appointment_id: t.appointment_id || "",
-      hospital_code: t.hospitals?.hospital_code || "city-hospital-01",
-      department_name: t.departments?.name || t.service_category,
-    }));
+    // Build lookup map to connect transfer chains
+    const ticketMap = new Map();
+    for (const t of tickets) {
+      ticketMap.set(t.ticket_id, t);
+    }
+
+    const formatted = tickets.map((t) => {
+      const transfers = [];
+
+      // 1. Outgoing transfer events recorded for this ticket
+      if (Array.isArray(t.queue_events)) {
+        for (const ev of t.queue_events) {
+          if (ev.event_type === "TRANSFERRED" && ev.metadata) {
+            transfers.push({
+              direction: "outgoing",
+              from_department: t.departments?.name || t.service_category,
+              to_department: ev.metadata.target_dept || "",
+              transferred_to_ticket: ev.metadata.transferred_to_ticket || "",
+              timestamp: ev.created_at ? ev.created_at.toISOString() : null,
+              notes: t.prescription_notes || "",
+            });
+          }
+        }
+      }
+
+      // 2. Incoming transfer if this ticket was created via transfer from parent
+      if (t.parent_ticket_id || t.transferred_from_dept) {
+        const parentTkt = ticketMap.get(t.parent_ticket_id);
+        const fromDept = t.transferred_from_dept || (parentTkt?.departments?.name || parentTkt?.service_category) || "Previous Department";
+        transfers.unshift({
+          direction: "incoming",
+          from_department: fromDept,
+          to_department: t.departments?.name || t.service_category,
+          transferred_from_ticket: t.parent_ticket_id || "",
+          timestamp: t.join_timestamp ? t.join_timestamp.toISOString() : null,
+          notes: parentTkt?.prescription_notes || t.prescription_notes || "",
+        });
+      }
+
+      const transferCount = transfers.length;
+
+      return {
+        ticket_id: t.ticket_id,
+        name: t.name,
+        status: t.status,
+        service_category: t.service_category,
+        priority_level: t.priority_level,
+        position: t.position,
+        estimated_wait_minutes: t.estimated_wait_minutes,
+        created_at: t.join_timestamp ? t.join_timestamp.toISOString() : null,
+        serve_start_time: t.serve_start_time ? t.serve_start_time.toISOString() : null,
+        serve_end_time: t.serve_end_time ? t.serve_end_time.toISOString() : null,
+        actual_service_minutes: t.actual_service_minutes,
+        prescription_notes: t.prescription_notes || "",
+        cancellation_reason: t.cancellation_reason || "",
+        cancelled_at: t.cancelled_at ? t.cancelled_at.toISOString() : null,
+        medical_condition: t.medical_condition,
+        pre_existing_condition: t.pre_existing_condition,
+        source: t.source,
+        appointment_id: t.appointment_id || "",
+        hospital_code: t.hospitals?.hospital_code || "city-hospital-01",
+        hospital_name: t.hospitals?.name || "City General Hospital",
+        department_name: t.departments?.name || t.service_category,
+        parent_ticket_id: t.parent_ticket_id || "",
+        transferred_from_dept: t.transferred_from_dept || "",
+        transfer_count: transferCount,
+        transfers: transfers,
+      };
+    });
 
     return res.status(200).json({
       status: "success",
@@ -523,6 +641,7 @@ module.exports = {
   login,
   getMe,
   updateProfile,
+  updateUserPrimaryHospital,
   getAllUsers,
   getUserHistory,
 };

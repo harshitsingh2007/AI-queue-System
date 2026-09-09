@@ -99,17 +99,34 @@ function initSocket(server, corsOrigin = "*") {
       try {
         const tenantId = data.tenant_id || "city-hospital-01";
         const department = data.department || data.service_category || null;
+        const deskId = data.desk_id || null;
+        const doctorInfo = {
+          id: data.doctor_id || socket.user?.id || null,
+          name: data.doctor_name || socket.user?.name || null,
+          email: data.doctor_email || socket.user?.email || null,
+        };
 
-        const ticket = await serveNext(tenantId, department);
+        const ticket = await serveNext(tenantId, department, deskId, doctorInfo);
         if (!ticket) {
-          socket.emit("error", { message: "No waiting tickets in queue for this department." });
+          const msg = "No waiting tickets in queue for this department.";
+          socket.emit("error", { message: msg });
+          socket.emit("serve_error", { message: msg });
           return;
         }
 
         io.to(tenantId).emit("now_serving", { ticket });
         await broadcastQueueUpdate(io, tenantId);
       } catch (err) {
-        socket.emit("error", { message: err.message });
+        socket.emit("error", {
+          code: err.code || "SERVE_ERROR",
+          message: err.message,
+          current_ticket: err.current_ticket || null,
+        });
+        socket.emit("serve_error", {
+          code: err.code || "SERVE_ERROR",
+          message: err.message,
+          current_ticket: err.current_ticket || null,
+        });
       }
     });
 
@@ -119,8 +136,9 @@ function initSocket(server, corsOrigin = "*") {
         const tenantId = data.tenant_id || "city-hospital-01";
         const ticketId = data.ticket_id;
         const department = data.department;
+        const prescriptionNotes = data.prescription_notes || null;
 
-        const completed = await completeTicket(tenantId, ticketId, department);
+        const completed = await completeTicket(tenantId, ticketId, department, prescriptionNotes);
         if (completed) {
           io.to(tenantId).emit("ticket_completed", { ticket: completed });
         }

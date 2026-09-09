@@ -2,7 +2,7 @@
  * KioskPage.jsx
  * -------------
  * Waiting Room Public Kiosk TV Display.
- * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
+ * Theme: Clinical Blue & White (Matching App-wide Palette)
  */
 
 import React, { useState, useEffect } from "react";
@@ -98,11 +98,11 @@ export default function KioskPage({
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-              <h1 style={{ margin: 0, fontSize: "24px", color: "#064E3B", fontWeight: 900 }}>
+              <h1 style={{ margin: 0, fontSize: "24px", color: "#0369A1", fontWeight: 900 }}>
                 {t("hospitalName", language)}
               </h1>
-              <span style={{ padding: "3px 10px", borderRadius: "20px", background: "#ECFDF5", color: "#047857", fontSize: "11px", fontWeight: 800, border: "1px solid #A7F3D0", display: "flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap" }}>
-                <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#10B981", display: "inline-block", boxShadow: "0 0 8px #10B981" }} />
+              <span style={{ padding: "3px 10px", borderRadius: "20px", background: "#F0F9FF", color: "#0284C7", fontSize: "11px", fontWeight: 800, border: "1px solid #BAE6FD", display: "flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap" }}>
+                <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#0EA5E9", display: "inline-block", boxShadow: "0 0 8px #0EA5E9" }} />
                 {t("liveTvDisplay", language)}
               </span>
             </div>
@@ -175,7 +175,7 @@ export default function KioskPage({
 
           <div style={{ textAlign: "right" }}>
             <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("estWait", language)}</span>
-            <span style={{ fontSize: "20px", fontWeight: 800, color: "#047857" }}>
+            <span style={{ fontSize: "20px", fontWeight: 800, color: "#0284C7" }}>
               {analytics ? analytics.avg_wait_minutes : 12} {t("unit_min", language)}
             </span>
           </div>
@@ -207,15 +207,15 @@ export default function KioskPage({
               style={{
                 padding: "7px 14px",
                 borderRadius: "10px",
-                border: isSelected ? "1.5px solid #059669" : "1px solid #CBD5E1",
-                background: isSelected ? "#059669" : "#FFFFFF",
+                border: isSelected ? "1.5px solid #0284C7" : "1px solid #CBD5E1",
+                background: isSelected ? "#0284C7" : "#FFFFFF",
                 color: isSelected ? "#FFFFFF" : "#334155",
                 fontSize: "12px",
                 fontWeight: isSelected ? 800 : 600,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
                 transition: "all 0.15s ease",
-                boxShadow: isSelected ? "0 2px 8px rgba(5, 150, 105, 0.2)" : "none",
+                boxShadow: isSelected ? "0 2px 8px rgba(2, 132, 199, 0.2)" : "none",
               }}
             >
               {language === "hi" ? d.labelHi : d.labelEn}
@@ -228,8 +228,8 @@ export default function KioskPage({
       <div className="kiosk-main-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "24px" }}>
         {/* Now Serving Big Display */}
         <div style={kioskCardStyle}>
-          <div style={{ borderBottom: "2px solid #047857", paddingBottom: "12px", marginBottom: "20px" }}>
-            <h2 style={{ margin: 0, fontSize: "22px", color: "#064E3B", fontWeight: 900 }}>
+          <div style={{ borderBottom: "2px solid #0284C7", paddingBottom: "12px", marginBottom: "20px" }}>
+            <h2 style={{ margin: 0, fontSize: "22px", color: "#0369A1", fontWeight: 900 }}>
               {t("nowServing", language)} {displayServing.length > 0 ? `(${displayServing.length})` : ""}
             </h2>
             <span style={{ fontSize: "12px", color: "#64748B" }}>
@@ -247,10 +247,10 @@ export default function KioskPage({
               {displayServing.map((tItem) => (
                 <div key={tItem.ticket_id} style={kioskServingBigCardStyle}>
                   <div>
-                    <span style={{ fontSize: "12px", color: "#047857", fontWeight: 800, textTransform: "uppercase" }}>
+                    <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 800, textTransform: "uppercase" }}>
                       {t("deskCounterAssigned", language)}
                     </span>
-                    <h2 style={{ margin: "2px 0", fontSize: "42px", fontWeight: 900, color: "#047857" }}>
+                    <h2 style={{ margin: "2px 0", fontSize: "42px", fontWeight: 900, color: "#0284C7" }}>
                       #{tItem.ticket_id}
                     </h2>
                     <span style={{ fontSize: "18px", fontWeight: 700, color: "#0F172A" }}>{tItem.name}</span>
@@ -297,10 +297,10 @@ export default function KioskPage({
                   {displayQueue.slice(0, 12).map((item) => (
                     <tr key={item.ticket_id}>
                       <td style={{ ...kioskTdStyle, fontWeight: 800, color: "#475569" }}>#{item.position}</td>
-                      <td style={{ ...kioskTdStyle, fontWeight: 900, color: "#047857", fontSize: "16px" }}>#{item.ticket_id}</td>
+                      <td style={{ ...kioskTdStyle, fontWeight: 900, color: "#0284C7", fontSize: "16px" }}>#{item.ticket_id}</td>
                       <td style={{ ...kioskTdStyle, fontWeight: 700, fontSize: "14px" }}>{item.name}</td>
                       <td style={{ ...kioskTdStyle, fontWeight: 700, color: "#0284C7" }}>{getCategoryLabel(item.service_category, language)}</td>
-                      <td style={{ ...kioskTdStyle, fontWeight: 900, color: "#059669", fontSize: "16px" }}>
+                      <td style={{ ...kioskTdStyle, fontWeight: 900, color: "#0284C7", fontSize: "16px" }}>
                         {item.estimated_wait_minutes} {t("unit_min", language)}
                       </td>
                     </tr>
@@ -328,7 +328,7 @@ const kioskLangBtnStyle = (active) => ({
   padding: "5px 12px",
   borderRadius: "7px",
   border: "none",
-  background: active ? "#059669" : "transparent",
+  background: active ? "#0284C7" : "transparent",
   color: active ? "#ffffff" : "#475569",
   fontSize: "12px",
   fontWeight: 800,
@@ -343,18 +343,18 @@ const kioskHeaderStyle = {
   gap: "16px",
   background: "#FFFFFF",
   borderRadius: "20px",
-  border: "1px solid #D8E8DD",
+  border: "1px solid #E2E8F0",
   padding: "18px 24px",
   marginBottom: "24px",
-  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+  boxShadow: "0 4px 20px rgba(2, 132, 199, 0.04)",
 };
 
 const kioskFullscreenBtnStyle = {
   padding: "8px 14px",
   borderRadius: "10px",
-  border: "1px solid #10B981",
-  background: "#ECFDF5",
-  color: "#047857",
+  border: "1px solid #BAE6FD",
+  background: "#F0F9FF",
+  color: "#0284C7",
   fontWeight: 800,
   fontSize: "12px",
   cursor: "pointer",
@@ -382,40 +382,40 @@ const kioskLogoBadgeStyle = {
   width: "48px",
   height: "48px",
   borderRadius: "14px",
-  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)",
+  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.25)",
 };
 
 const kioskCardStyle = {
   background: "#FFFFFF",
   borderRadius: "20px",
-  border: "1px solid #D8E8DD",
+  border: "1px solid #E2E8F0",
   padding: "28px",
-  boxShadow: "0 4px 20px rgba(0, 0, 0, 0.03)",
+  boxShadow: "0 4px 20px rgba(2, 132, 199, 0.04)",
 };
 
 const kioskServingBigCardStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  background: "#ECFDF5",
+  background: "#F0F9FF",
   borderRadius: "16px",
-  border: "2px solid #059669",
+  border: "2px solid #0284C7",
   padding: "20px 24px",
 };
 
 const kioskDeptBadgeStyle = {
   padding: "6px 14px",
   borderRadius: "10px",
-  background: "#047857",
+  background: "#0284C7",
   color: "#ffffff",
   fontSize: "12px",
   fontWeight: 800,
 };
 
 const kioskTableStyle = { width: "100%", borderCollapse: "collapse", fontSize: "13px" };
-const kioskThStyle = { padding: "12px", textAlign: "left", color: "#64748B", borderBottom: "2px solid #D8E8DD" };
-const kioskTdStyle = { padding: "14px 12px", borderBottom: "1px solid #F1F5F9" };
+const kioskThStyle = { padding: "12px", textAlign: "left", color: "#64748B", borderBottom: "2px solid #E0F2FE" };
+const kioskTdStyle = { padding: "14px 12px", borderBottom: "1px solid #F0F9FF" };

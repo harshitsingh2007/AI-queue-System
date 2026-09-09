@@ -357,6 +357,7 @@ model users {
   role                       String                       @default("user") @db.VarChar(50)
   status                     String                       @default("active") @db.VarChar(50)
   phone                      String?                      @default("") @db.VarChar(100)
+  primary_hospital_code      String?                      @default("city-hospital-01") @db.VarChar(100)
   created_at                 DateTime                     @default(now()) @db.Timestamptz(6)
   updated_at                 DateTime                     @default(now()) @db.Timestamptz(6)
   last_login_at              DateTime?                    @db.Timestamptz(6)

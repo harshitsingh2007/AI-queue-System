@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { HOSPITAL_CONFIG } from "../config/hospitalConfig";
+import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
 import { t } from "../utils/i18n";
 import { AddFamilyMemberModal, getRelationLabel } from "./FamilyMemberSwitcher";
 
@@ -31,6 +31,8 @@ export default function Header({
   onSwitchProfile,
   onAddFamilyMember,
   onManageFamilyMembers,
+  currentHospitalTenant = "city-hospital-01",
+  onSwitchHospital,
 }) {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
@@ -39,12 +41,61 @@ export default function Header({
   const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
   const [familySwitcherExpanded, setFamilySwitcherExpanded] = useState(false);
 
+  // Multi-Hospital Facility Active Display
+  const [hospitalsList, setHospitalsList] = useState([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/v1/hospitals/public`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status === "success" && Array.isArray(d.hospitals)) {
+          setHospitalsList(d.hospitals);
+        }
+      })
+      .catch((e) => console.log("Header hospitals fetch error:", e));
+  }, []);
+
+  const [activeHospitalCode, setActiveHospitalCode] = useState(
+    currentHospitalTenant || currentUser?.hospital_code || "city-hospital-01"
+  );
+
+  useEffect(() => {
+    if (currentHospitalTenant) {
+      setActiveHospitalCode(currentHospitalTenant);
+    }
+  }, [currentHospitalTenant]);
+
+  useEffect(() => {
+    const handleHospEvent = (e) => {
+      const code = typeof e?.detail === "string" ? e.detail : e?.detail?.hospital_code;
+      if (code) setActiveHospitalCode(code);
+    };
+    window.addEventListener("hospital_changed", handleHospEvent);
+    return () => window.removeEventListener("hospital_changed", handleHospEvent);
+  }, []);
+
+  const currentHospitalObj = hospitalsList.find(
+    (h) => String(h.hospital_code) === String(activeHospitalCode)
+  ) || {
+    name: (String(activeHospitalCode) === String(currentUser?.hospital_code) && currentUser?.hospital_name) || HOSPITAL_CONFIG.name,
+    hospital_code: activeHospitalCode,
+    address: "742 Evergreen Healthcare Ave",
+  };
+
   const profileRef = useRef(null);
   const langRef = useRef(null);
 
   const isPatientUser = currentUser && currentUser.role === "user";
   const isAdmin = currentUser && currentUser.role === "admin";
   const username = currentUser ? currentUser.username : "user";
+
+  const userRole = (currentUser?.role || "").toLowerCase();
+  const isSuperAdmin = userRole === "super_admin" || userRole === "superadmin";
+  const isStaffOrDoctor = ["admin", "doctor", "staff", "receptionist"].includes(userRole);
+  const isPatientOrGuest = !currentUser || userRole === "user" || userRole === "patient";
+
+  // Hospital switcher is enabled on the patient portal for all visitors and patients
+  const canSwitchHospital = activePage === "patient" || isPatientOrGuest;
 
   // Determine active display name (family member or self)
   const activeDisplayName = activeFamilyMember ? activeFamilyMember.name : username;
@@ -58,14 +109,19 @@ export default function Header({
       const params = new URLSearchParams(window.location.search);
       const urlTab = params.get("tab");
       if (urlTab) return urlTab.toLowerCase();
+      const pageParam = (params.get("page") || params.get("view") || "").toLowerCase();
+      if (["history", "appointment_history", "past_appointments"].includes(pageParam)) return "history";
+      if (["my_apts", "appointments", "my_appointments"].includes(pageParam)) return "my_apts";
+      if (["book", "booking", "schedule"].includes(pageParam)) return "book";
+      if (["family", "dependents"].includes(pageParam)) return "family";
+      const path = window.location.pathname.toLowerCase();
+      if (path.includes("history")) return "history";
+      if (path.includes("appointment")) return "my_apts";
     }
     return currentTab || "walkin";
   };
 
-  const effectiveTab = getEffectiveTab();
-  const isHomeActive = activePage === "patient" && (effectiveTab === "walkin" || effectiveTab === "book" || !effectiveTab);
-  const isMyAppointmentsActive = activePage === "patient" && effectiveTab === "my_apts";
-  const isHistoryActive = activePage === "patient" && effectiveTab === "history";
+
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -130,6 +186,13 @@ export default function Header({
             border-color: #BAE6FD;
           }
 
+          .header-nav-btn.active {
+            color: #0284C7;
+            background: #E0F2FE;
+            border-color: #BAE6FD;
+            font-weight: 800;
+          }
+
           .header-emergency-pill {
             display: inline-flex;
             align-items: center;
@@ -151,6 +214,8 @@ export default function Header({
             border-color: #FCA5A5;
             box-shadow: 0 3px 10px rgba(220, 38, 38, 0.15);
           }
+
+
 
           .header-pill-btn {
             display: flex;
@@ -311,7 +376,7 @@ export default function Header({
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
               <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#0F172A", letterSpacing: "-0.4px", lineHeight: "1.2", maxWidth: "340px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {currentUser?.hospital_name || HOSPITAL_CONFIG.name}
+                {currentHospitalObj?.name || HOSPITAL_CONFIG.name}
               </span>
               <span style={{ padding: "2px 7px", borderRadius: "20px", background: "#F0F9FF", color: "#0284C7", fontSize: "10px", fontWeight: 800, border: "1px solid #BAE6FD", whiteSpace: "nowrap" }}>
                 NABH ACCREDITED
@@ -332,6 +397,8 @@ export default function Header({
 
         {/* 2. Center: Quick Hospital Support & Emergency Hotline */}
         <nav style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+
+
           {/* Super Admin Navigation Button */}
           {(currentUser?.role === "super_admin" || currentUser?.role === "superadmin") && (
 
@@ -371,8 +438,8 @@ export default function Header({
             </button>
           )}
 
-          {/* TV Kiosk Waiting Room Display (Hidden for Super Admin) */}
-          {activePage !== "superadmin" && (!currentUser || currentUser.role !== "super_admin") && (
+          {/* TV Kiosk Waiting Room Display (Visible for Staff Desk, Hidden from Patient Portal & Super Admin) */}
+          {activePage === "staff" && (!currentUser || currentUser.role !== "super_admin") && (
             <button
               type="button"
               onClick={() => navigateTo("kiosk")}
@@ -567,7 +634,8 @@ export default function Header({
                         type="button"
                         className={`header-dropdown-item ${!activeFamilyMember ? "active" : ""}`}
                         onClick={() => {
-                          if (onSwitchProfile) onSwitchProfile(null);
+                          const selfObj = { id: "self", name: username, relation: "self" };
+                          if (onSwitchProfile) onSwitchProfile(selfObj);
                           setProfileDropdownOpen(false);
                         }}
                         style={{ justifyContent: "space-between" }}
@@ -887,6 +955,7 @@ export default function Header({
           language={language}
         />
       )}
+
     </>
   );
 }

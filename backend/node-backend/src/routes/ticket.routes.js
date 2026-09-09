@@ -11,6 +11,7 @@ const {
   getTicketDetailsEndpoint,
   transferTicketEndpoint,
   reAnnounceEndpoint,
+  savePrescriptionEndpoint,
 } = require("../controllers/ticket.controller");
 const { optionalAuth } = require("../middleware/auth");
 
@@ -31,5 +32,9 @@ router.post("/plugin/adjust-queue", optionalAuth, adjustQueueEndpoint);
 router.get("/plugin/ticket/:ticket_id", optionalAuth, getTicketDetailsEndpoint);
 router.post("/plugin/transfer-ticket", optionalAuth, transferTicketEndpoint);
 router.post("/plugin/re-announce", optionalAuth, reAnnounceEndpoint);
+
+// Prescription endpoints
+router.post("/plugin/save-prescription", optionalAuth, savePrescriptionEndpoint);
+router.post("/tickets/:ticket_id/prescription", optionalAuth, savePrescriptionEndpoint);
 
 module.exports = router;

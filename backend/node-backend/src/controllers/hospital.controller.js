@@ -4,6 +4,7 @@
  * Hospital & SuperAdmin Operations Controllers.
  */
 
+const prisma = require("../config/prisma");
 const {
   getSuperAdminOverview,
   getAllHospitals,
@@ -60,6 +61,33 @@ async function getSuperadminHospitalsEndpoint(req, res, next) {
     return res.status(200).json({
       status: "success",
       hospitals,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function getPublicHospitalsEndpoint(req, res, next) {
+  try {
+    const list = await prisma.hospitals.findMany({
+      where: { status: "active" },
+      select: {
+        id: true,
+        hospital_code: true,
+        name: true,
+        address: true,
+        phone: true,
+        email: true,
+        description: true,
+        logo_url: true,
+        branding_json: true,
+        status: true,
+      },
+      orderBy: { name: "asc" },
+    });
+    return res.status(200).json({
+      status: "success",
+      hospitals: list,
     });
   } catch (error) {
     next(error);
@@ -517,6 +545,7 @@ async function getDbOverviewEndpoint(req, res, next) {
 
 module.exports = {
   getHospitalInfoEndpoint,
+  getPublicHospitalsEndpoint,
   getSuperadminOverviewEndpoint,
   getSuperadminHospitalsEndpoint,
   createHospitalEndpoint,

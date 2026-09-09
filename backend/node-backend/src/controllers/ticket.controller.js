@@ -9,6 +9,7 @@ const {
   adjustQueuePosition,
   getTicketDetails,
   transferTicket,
+  saveTicketPrescription,
 } = require("../services/ticketService");
 const { getIo, broadcastQueueUpdate } = require("../socket");
 
@@ -150,10 +151,41 @@ async function reAnnounceEndpoint(req, res, next) {
   }
 }
 
+async function savePrescriptionEndpoint(req, res, next) {
+  try {
+    const tid = req.params.ticket_id || req.body?.ticket_id;
+    const tenantId = req.body?.tenant_id || "city-hospital-01";
+    const prescription = req.body?.prescription || req.body?.prescription_notes || req.body?.notes || "";
+
+    if (!tid) {
+      return res.status(400).json({ status: "error", message: "Ticket ID is required." });
+    }
+
+    const updatedTicket = await saveTicketPrescription(tenantId, tid, prescription);
+
+    const io = getIo();
+    if (io) {
+      io.to(tenantId).emit("ticket_updated", { ticket: updatedTicket, ticket_id: tid });
+      io.to(tenantId).emit("prescription_saved", { ticket: updatedTicket, ticket_id: tid });
+      await broadcastQueueUpdate(io, tenantId);
+    }
+
+    return res.status(200).json({
+      status: "success",
+      success: true,
+      ticket: updatedTicket,
+      message: "Prescription saved successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   cancelTicketEndpoint,
   adjustQueueEndpoint,
   getTicketDetailsEndpoint,
   transferTicketEndpoint,
   reAnnounceEndpoint,
+  savePrescriptionEndpoint,
 };

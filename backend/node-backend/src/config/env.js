@@ -22,5 +22,5 @@ module.exports = {
   HOSPITAL_TIMEZONE: process.env.HOSPITAL_TIMEZONE || "Asia/Kolkata",
   FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:5173",
   AI_SERVICE_URL: process.env.AI_SERVICE_URL || "http://localhost:8001",
-  ALLOW_LEGACY_EMAIL_AUTH: process.env.ALLOW_LEGACY_EMAIL_AUTH === "true",
+  ALLOW_LEGACY_EMAIL_AUTH: process.env.ALLOW_LEGACY_EMAIL_AUTH !== "false",
 };

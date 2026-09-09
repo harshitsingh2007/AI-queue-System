@@ -742,6 +742,7 @@ export default function SuperAdminPage({
         setNewDeptForm({ dept_code: "", name: "", description: "" });
         notify(isHi ? `🏢 विभाग '${data.department.name}' जोड़ा गया!` : `🏢 Department '${data.department.name}' added!`);
         fetchHospitalDeepDive(selectedHospital.hospital_code);
+        window.dispatchEvent(new CustomEvent("hospital_departments_updated", { detail: { hospital_code: selectedHospital.hospital_code } }));
       } else {
         alert(data.detail || "Failed to add department.");
       }
@@ -767,6 +768,7 @@ export default function SuperAdminPage({
         notify(isHi ? `🗑️ विभाग '${dept.name}' हटा दिया गया!` : `🗑️ Department '${dept.name}' removed!`);
         fetchHospitalDeepDive(selectedHospital.hospital_code);
         fetchGlobalData();
+        window.dispatchEvent(new CustomEvent("hospital_departments_updated", { detail: { hospital_code: selectedHospital.hospital_code } }));
       } else {
         alert(data.detail || "Failed to delete department.");
       }
@@ -874,6 +876,7 @@ export default function SuperAdminPage({
         setShowEditDeptModal(false);
         notify(isHi ? `✓ विभाग जानकारी अद्यतन की गई!` : `✓ Department '${data.department.name}' updated!`);
         fetchHospitalDeepDive(selectedHospital.hospital_code);
+        window.dispatchEvent(new CustomEvent("hospital_departments_updated", { detail: { hospital_code: selectedHospital.hospital_code } }));
       } else {
         alert(data.detail || "Failed to update department.");
       }

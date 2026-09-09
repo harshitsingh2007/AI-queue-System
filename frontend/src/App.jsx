@@ -14,6 +14,7 @@ import Header from "./components/Header";
 import AuthModal from "./components/AuthModal";
 import AccessDeniedGuard from "./components/AccessDeniedGuard";
 import MandatoryAuthScreen from "./components/MandatoryAuthScreen";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import PatientPage from "./pages/PatientPage";
 import StaffPage from "./pages/StaffPage";
@@ -40,8 +41,12 @@ function getInitialPage(user) {
   const pageParam = params.get("page") || params.get("view");
   if (pageParam && pageParam.toLowerCase() !== "hub") {
     const p = pageParam.toLowerCase();
-    if (p === "patient" && isSuperAdminUser) return "superadmin";
-    if (p === "patient" && isStaffUser) return "staff";
+    // Tab aliases for the patient portal should route to patient page
+    if (["patient", "history", "appointment_history", "past_appointments", "my_apts", "appointments", "my_appointments", "book", "family"].includes(p)) {
+      if (isSuperAdminUser) return "superadmin";
+      if (isStaffUser) return "staff";
+      return "patient";
+    }
     return p;
   }
 
@@ -51,7 +56,7 @@ function getInitialPage(user) {
   if (path.includes("staff") || path.includes("doctor")) return "staff";
   if (path.includes("admin") || path.includes("ml")) return "admin";
   if (path.includes("db") || path.includes("database")) return "db";
-  if (path.includes("patient")) {
+  if (path.includes("patient") || path.includes("history") || path.includes("appointment")) {
     if (isSuperAdminUser) return "superadmin";
     if (isStaffUser) return "staff";
     return "patient";
@@ -80,6 +85,13 @@ export default function App() {
 
   const [currentHospitalTenant, setCurrentHospitalTenant] = useState(() => {
     try {
+      if (typeof window !== "undefined") {
+        const p = new URLSearchParams(window.location.search);
+        const urlHosp = p.get("hospital") || p.get("tenant") || p.get("facility");
+        if (urlHosp) return urlHosp;
+      }
+      const savedHosp = localStorage.getItem("ai_queue_current_hospital");
+      if (savedHosp) return savedHosp;
       const saved = localStorage.getItem("ai_queue_user");
       if (saved) {
         const u = JSON.parse(saved);
@@ -99,27 +111,97 @@ export default function App() {
     }
   });
   const [currentTab, setCurrentTab] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get("tab") || "walkin";
+    try {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get("tab");
+        if (tabParam && ["walkin", "book", "my_apts", "history", "family"].includes(tabParam.toLowerCase())) {
+          return tabParam.toLowerCase();
+        }
+        const pageParam = (params.get("page") || params.get("view") || "").toLowerCase();
+        if (["history", "appointment_history", "past_appointments"].includes(pageParam)) return "history";
+        if (["my_apts", "appointments", "my_appointments"].includes(pageParam)) return "my_apts";
+        if (["book", "booking", "schedule"].includes(pageParam)) return "book";
+        if (["family", "dependents"].includes(pageParam)) return "family";
+        const path = window.location.pathname.toLowerCase();
+        if (path.includes("history")) return "history";
+        if (path.includes("appointment")) return "my_apts";
+      }
+    } catch (e) {}
+    return "walkin";
   });
   const tenantId = currentHospitalTenant || HOSPITAL_CONFIG.tenantId;
 
   const navigateTo = useCallback((page, tab = null) => {
-    setActivePage(page);
-    const effectiveTab = tab || (page === "patient" ? "walkin" : null);
+    let targetPage = page;
+    let targetTab = tab;
+
+    // Gracefully handle alias pages so they resolve directly to patient tab
+    const lower = (page || "").toLowerCase();
+    if (["history", "appointment_history", "past_appointments"].includes(lower)) {
+      targetPage = "patient";
+      targetTab = targetTab || "history";
+    } else if (["my_apts", "appointments", "my_appointments"].includes(lower)) {
+      targetPage = "patient";
+      targetTab = targetTab || "my_apts";
+    } else if (["book", "booking", "schedule"].includes(lower)) {
+      targetPage = "patient";
+      targetTab = targetTab || "book";
+    } else if (["family", "dependents"].includes(lower)) {
+      targetPage = "patient";
+      targetTab = targetTab || "family";
+    }
+
+    setActivePage(targetPage);
+    const effectiveTab = targetTab || (targetPage === "patient" ? (currentTab || "walkin") : null);
     if (effectiveTab) {
       setCurrentTab(effectiveTab);
     }
     const url = new URL(window.location.href);
-    url.searchParams.set("page", page);
-    if (tab) {
-      url.searchParams.set("tab", tab);
-    } else if (page !== "patient") {
+    url.searchParams.set("page", targetPage);
+    if (effectiveTab && targetPage === "patient") {
+      url.searchParams.set("tab", effectiveTab);
+    } else if (targetPage !== "patient") {
       url.searchParams.delete("tab");
     }
     window.history.pushState({}, "", url.toString());
     window.dispatchEvent(new Event("popstate"));
-  }, []);
+  }, [currentTab]);
+
+  // Sync state on browser back/forward (popstate)
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const u = currentUser || (() => {
+          try {
+            const s = localStorage.getItem("ai_queue_user");
+            return s ? JSON.parse(s) : null;
+          } catch (e) { return null; }
+        })();
+        const p = getInitialPage(u);
+        setActivePage(p);
+
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get("tab");
+        const pageParam = (params.get("page") || params.get("view") || "").toLowerCase();
+        if (tabParam && ["walkin", "book", "my_apts", "history", "family"].includes(tabParam.toLowerCase())) {
+          setCurrentTab(tabParam.toLowerCase());
+        } else if (["history", "appointment_history", "past_appointments"].includes(pageParam)) {
+          setCurrentTab("history");
+        } else if (["my_apts", "appointments", "my_appointments"].includes(pageParam)) {
+          setCurrentTab("my_apts");
+        } else if (["book", "booking", "schedule"].includes(pageParam)) {
+          setCurrentTab("book");
+        } else if (["family", "dependents"].includes(pageParam)) {
+          setCurrentTab("family");
+        } else if (p === "patient") {
+          setCurrentTab("walkin");
+        }
+      } catch (e) {}
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [currentUser]);
 
   // Auto-redirect privileged roles away from patient self-service page
   useEffect(() => {
@@ -133,9 +215,9 @@ export default function App() {
     }
   }, [currentUser, activePage, navigateTo]);
 
-  // Sync latest user profile and hospital affiliation on mount
+  // Sync latest user profile on initial mount only if not already initialized
   useEffect(() => {
-    if (currentUser?.email && !currentUser.hospital_name) {
+    if (currentUser?.email && !currentUser.hospital_code) {
       fetch(`${API_BASE}/api/v1/auth/me?email=${encodeURIComponent(currentUser.email)}`)
         .then((res) => res.json())
         .then((data) => {
@@ -147,14 +229,15 @@ export default function App() {
               } catch (e) {}
               return updated;
             });
-            if (data.user.hospital_code && data.user.hospital_code !== "all") {
+            const savedHosp = localStorage.getItem("ai_queue_current_hospital");
+            if (!savedHosp && data.user.hospital_code && data.user.hospital_code !== "all") {
               setCurrentHospitalTenant(data.user.hospital_code);
             }
           }
         })
         .catch(() => {});
     }
-  }, [currentUser?.email, currentUser?.hospital_name]);
+  }, []);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState("login");
@@ -409,6 +492,12 @@ export default function App() {
       }
     });
 
+    socket.on("serve_error", (data) => {
+      if (data && data.message) {
+        window.dispatchEvent(new CustomEvent("queue_serve_error", { detail: data }));
+      }
+    });
+
     return () => socket.disconnect();
   }, [tenantId]);
 
@@ -441,6 +530,75 @@ export default function App() {
     return () => clearInterval(timer);
   }, [refreshData]);
 
+  // Handle hospital facility switch from Header or Patient portal
+  const handleSwitchHospital = useCallback((hospitalCode, hospitalName = null) => {
+    if (!hospitalCode) return;
+    const cleanCode = String(hospitalCode).trim();
+    setCurrentHospitalTenant(cleanCode);
+    try {
+      localStorage.setItem("ai_queue_current_hospital", cleanCode);
+    } catch (e) {}
+
+    // Update URL query parameter
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("hospital", cleanCode);
+      window.history.pushState({}, "", url.toString());
+    } catch (e) {}
+
+    // Reset active ticket / QR pass for prior facility queue
+    setActiveTicket(null);
+    setTicketQrData(null);
+
+    // Update user's facility preference in local state and localStorage
+    setCurrentUser((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        hospital_code: cleanCode,
+        ...(hospitalName ? { hospital_name: hospitalName } : {})
+      };
+      try {
+        localStorage.setItem("ai_queue_user", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    // Also persist primary hospital choice to backend if user is logged in
+    if (currentUser?.email) {
+      fetch(`${API_BASE}/api/v1/auth/primary-hospital`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: currentUser.email, hospital_code: cleanCode }),
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.status === "success") {
+            setCurrentUser((prev) => {
+              if (!prev) return prev;
+              const u = {
+                ...prev,
+                hospital_code: d.hospital_code,
+                hospital_name: d.hospital_name || hospitalName || prev.hospital_name,
+              };
+              try {
+                localStorage.setItem("ai_queue_user", JSON.stringify(u));
+              } catch (e) {}
+              return u;
+            });
+          }
+        })
+        .catch((e) => console.log("Primary hospital update error:", e));
+    }
+
+    // Notify listeners across components
+    window.dispatchEvent(new CustomEvent("hospital_changed", { detail: cleanCode }));
+
+    setTimeout(() => {
+      refreshData();
+    }, 100);
+  }, [currentUser?.email, refreshData]);
+
   // Audio Chime
   const playChimeSound = () => {
     try {
@@ -465,7 +623,14 @@ export default function App() {
   const handleServeNext = async () => {
     if (socketRef.current) {
       const dept = adminDepartment && adminDepartment !== "all" ? adminDepartment : undefined;
-      socketRef.current.emit("serve_next", { tenant_id: tenantId, department: dept, service_category: dept });
+      socketRef.current.emit("serve_next", {
+        tenant_id: tenantId,
+        department: dept,
+        service_category: dept,
+        doctor_id: currentUser?.id,
+        doctor_name: currentUser?.name || currentUser?.username,
+        doctor_email: currentUser?.email,
+      });
     }
   };
 
@@ -525,6 +690,8 @@ export default function App() {
           onSwitchProfile={handleSwitchProfile}
           onAddFamilyMember={handleAddFamilyMemberFromHeader}
           onManageFamilyMembers={handleManageFamilyMembers}
+          currentHospitalTenant={currentHospitalTenant}
+          onSwitchHospital={handleSwitchHospital}
         />
 
         {/* Main Content Router */}
@@ -540,30 +707,34 @@ export default function App() {
                   navigateTo={navigateTo}
                 />
               ) : (
-                <PatientPage
-                  tenantId={tenantId}
-                  currentUser={currentUser}
-                  activeTicket={activeTicket}
-                  setActiveTicket={setActiveTicket}
-                  ticketQrData={ticketQrData}
-                  setTicketQrData={setTicketQrData}
-                  refreshData={refreshData}
-                  language={language}
-                  setLanguage={setLanguage}
-                  navigateTo={navigateTo}
-                  currentTab={currentTab}
-                  analytics={analytics}
-                  queueSnapshot={queueSnapshot}
-                  servingTickets={servingTickets}
-                  kioskQrData={kioskQrData}
-                  socketConnected={socketConnected}
-                  familyMembers={familyMembers}
-                  setFamilyMembers={setFamilyMembers}
-                  activeFamilyMember={activeFamilyMember}
-                  setActiveFamilyMember={setActiveFamilyMember}
-                  onSwitchProfile={handleSwitchProfile}
-                  onFamilyMembersChange={fetchFamilyMembers}
-                />
+                <ErrorBoundary fallbackTitle="Patient Portal Error">
+                  <PatientPage
+                    tenantId={tenantId}
+                    currentUser={currentUser}
+                    activeTicket={activeTicket}
+                    setActiveTicket={setActiveTicket}
+                    ticketQrData={ticketQrData}
+                    setTicketQrData={setTicketQrData}
+                    refreshData={refreshData}
+                    language={language}
+                    setLanguage={setLanguage}
+                    navigateTo={navigateTo}
+                    currentTab={currentTab}
+                    analytics={analytics}
+                    queueSnapshot={queueSnapshot}
+                    servingTickets={servingTickets}
+                    kioskQrData={kioskQrData}
+                    socketConnected={socketConnected}
+                    familyMembers={familyMembers}
+                    setFamilyMembers={setFamilyMembers}
+                    activeFamilyMember={activeFamilyMember}
+                    setActiveFamilyMember={setActiveFamilyMember}
+                    onSwitchProfile={handleSwitchProfile}
+                    onFamilyMembersChange={fetchFamilyMembers}
+                    currentHospitalTenant={currentHospitalTenant}
+                    onSwitchHospital={handleSwitchHospital}
+                  />
+                </ErrorBoundary>
               )
             )}
 

@@ -7,6 +7,7 @@
 const express = require("express");
 const {
   getHospitalInfoEndpoint,
+  getPublicHospitalsEndpoint,
   getSuperadminOverviewEndpoint,
   getSuperadminHospitalsEndpoint,
   createHospitalEndpoint,
@@ -34,8 +35,12 @@ const { optionalAuth, authenticate } = require("../middleware/auth");
 const router = express.Router();
 
 // Public / Hospital info & Branding
+router.get("/hospitals/public", getPublicHospitalsEndpoint);
+router.get("/hospital/list", getPublicHospitalsEndpoint);
 router.get("/hospital/info/:hospital_code", optionalAuth, getHospitalInfoEndpoint);
 router.get("/hospital/branding/:hospital_code", optionalAuth, getHospitalBrandingEndpoint);
+router.get("/hospital/departments/:hospital_code", optionalAuth, getHospitalDepartmentsEndpoint);
+router.get("/hospitals/:hospital_code/departments", optionalAuth, getHospitalDepartmentsEndpoint);
 
 // SuperAdmin operations
 router.get("/superadmin/overview", optionalAuth, getSuperadminOverviewEndpoint);

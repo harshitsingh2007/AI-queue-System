@@ -28,6 +28,7 @@ export const TRANSLATIONS = {
     patientNameLabel: "Patient Full Name",
     patientAgeGenderLabel: "Patient Age & Gender",
     medicalDeptLabel: "Medical Department",
+    serviceDeptLabel: "Service Department",
     primarySymptomLabel: "Primary Symptom / Medical Reason",
     preExistingLabel: "Pre-Existing Chronic Conditions / Risk Factors",
     urgencyLabel: "Urgency / Triage Level",
@@ -256,6 +257,7 @@ export const TRANSLATIONS = {
     patientNameLabel: "मरीज़ का पूरा नाम",
     patientAgeGenderLabel: "मरीज़ की आयु एवं लिंग",
     medicalDeptLabel: "चिकित्सा विभाग",
+    serviceDeptLabel: "सेवा विभाग (डिपार्टमेंट)",
     primarySymptomLabel: "मुख्य लक्षण / बीमारी का कारण",
     preExistingLabel: "पूर्व-विद्यमान पुरानी बीमारियाँ / जोखिम",
     urgencyLabel: "आपातकालीन स्तर (Triage)",
@@ -470,15 +472,21 @@ export const t = (key, lang = "en") => {
 
 export const getCategoryLabel = (cat, lang = "en") => {
   const map = {
-    consultation: lang === "hi" ? "सामान्य परामर्श" : "General Consultation",
+    consultation: lang === "hi" ? "सामान्य परामर्श (OPD)" : "General Consultation (OPD)",
     cardiology: lang === "hi" ? "हृदय रोग विभाग" : "Cardiology OPD",
     emergency: lang === "hi" ? "आपातकालीन ट्राइएज" : "Emergency Triage",
     orthopedics: lang === "hi" ? "हड्डी रोग विभाग" : "Orthopedics",
     pulmonology: lang === "hi" ? "श्वसन रोग विभाग" : "Pulmonology",
     followup: lang === "hi" ? "फॉलो-अप विज़िट" : "Routine Follow-up",
     pathology: lang === "hi" ? "पैथोलॉजी लैब" : "Pathology Lab",
+    pharmacy: lang === "hi" ? "फार्मेसी एवं दवा" : "Pharmacy & Medicine",
+    laboratory: lang === "hi" ? "पैथोलॉजी एवं लैब जांच" : "Pathology & Lab Test",
+    radiology: lang === "hi" ? "रेडियोलॉजी एवं एक्स-रे" : "Radiology & X-Ray",
+    billing: lang === "hi" ? "सेंट्रल बिलिंग काउंटर" : "Central Billing & Cashier",
   };
-  return map[cat] || cat;
+  if (!cat) return "";
+  const key = String(cat).toLowerCase().trim();
+  return map[key] || cat;
 };
 
 export const getStatusLabel = (status, lang = "en") => {

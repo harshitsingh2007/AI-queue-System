@@ -356,10 +356,18 @@ class NodeQueueEngine {
     });
 
     if (ticket) {
+      // 1. Direct patient user_id match
       if (ticket.patients?.user_id === uid) return uid;
+
+      // 2. Direct linked appointment user_id match
       if (ticket.appointments?.patients?.user_id === uid) return uid;
 
-      // Check family members
+      // 3. Match patient account email
+      if (ticket.patients?.users?.email && ticket.patients.users.email.toLowerCase() === cleanEmail) {
+        return uid;
+      }
+
+      // 4. Check family members linked to this account
       const isFamily = await prisma.family_members.findFirst({
         where: {
           user_id: uid,
@@ -368,8 +376,19 @@ class NodeQueueEngine {
       });
       if (isFamily) return uid;
 
-      // Unlinked name match fallback
-      if (!ticket.patients?.user_id && ticket.patients?.name.toLowerCase() === user.username.toLowerCase()) {
+      // 5. Name match with account username or email
+      if (
+        ticket.patients?.name &&
+        (ticket.patients.name.toLowerCase() === (user.username || "").toLowerCase() ||
+          ticket.patients.name.toLowerCase() === cleanEmail)
+      ) {
+        return uid;
+      }
+
+      // 6. Walk-in / unlinked consumer ticket:
+      // If the ticket was issued as a walk-in/guest ticket (no user_id bound),
+      // allow the session holding the ticket to cancel/adjust it.
+      if (!ticket.patients?.user_id) {
         return uid;
       }
     }

@@ -12,7 +12,7 @@
  * - Seamless Support for Unified Login, Patient & Super Admin Signups, Forgot Password, and Demo Quick-Fill
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
 
 export default function MandatoryAuthScreen({
@@ -36,6 +36,47 @@ export default function MandatoryAuthScreen({
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
   const [hospitalName, setHospitalName] = useState("");
+
+  // Multi-Hospital Tenant Selection & URL / QR Pre-selection States
+  const [hospitalsList, setHospitalsList] = useState([]);
+  const [selectedHospitalCode, setSelectedHospitalCode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      const urlHosp = p.get("hospital") || p.get("tenant") || p.get("facility");
+      if (urlHosp) return urlHosp;
+      try {
+        const saved = localStorage.getItem("ai_queue_current_hospital");
+        if (saved) return saved;
+      } catch (e) {}
+    }
+    return "city-hospital-01";
+  });
+  const [isUrlPreselected, setIsUrlPreselected] = useState(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      return Boolean(p.get("hospital") || p.get("tenant") || p.get("facility"));
+    }
+    return false;
+  });
+  const [showCustomHospitalPicker, setShowCustomHospitalPicker] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/v1/hospitals/public`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status === "success" && Array.isArray(d.hospitals)) {
+          setHospitalsList(d.hospitals);
+          if (!selectedHospitalCode && d.hospitals.length > 0) {
+            setSelectedHospitalCode(d.hospitals[0].hospital_code);
+          }
+        }
+      })
+      .catch((e) => console.log("Hospitals fetch error:", e));
+  }, []);
+
+  const selectedHospitalObj = hospitalsList.find(
+    (h) => h.hospital_code === selectedHospitalCode
+  ) || hospitalsList[0] || { name: "City General Hospital", hospital_code: "city-hospital-01" };
 
   // Modal Dialog States
   const [showHelpModal, setShowHelpModal] = useState(false);
@@ -71,6 +112,16 @@ export default function MandatoryAuthScreen({
       setLoading(false);
 
       if (res.ok && data.status === "success") {
+        if (data.token) {
+          try {
+            localStorage.setItem("ai_queue_token", data.token);
+          } catch (e) {}
+        }
+        if (data.user?.hospital_code) {
+          try {
+            localStorage.setItem("ai_queue_current_hospital", data.user.hospital_code);
+          } catch (e) {}
+        }
         if (onLoginSuccess) onLoginSuccess(data.user);
       } else {
         setErrorMsg(
@@ -125,6 +176,8 @@ export default function MandatoryAuthScreen({
       endpoint = "/api/v1/auth/signup/superadmin";
       payload.hospital_name =
         hospitalName.trim() || `${fullName.trim()}'s Medical Center`;
+    } else {
+      payload.hospital_code = selectedHospitalCode || "city-hospital-01";
     }
 
     try {
@@ -138,6 +191,16 @@ export default function MandatoryAuthScreen({
       setLoading(false);
 
       if (res.ok && data.status === "success") {
+        if (data.token) {
+          try {
+            localStorage.setItem("ai_queue_token", data.token);
+          } catch (e) {}
+        }
+        if (payload.hospital_code) {
+          try {
+            localStorage.setItem("ai_queue_current_hospital", payload.hospital_code);
+          } catch (e) {}
+        }
         if (onLoginSuccess) onLoginSuccess(data.user);
       } else {
         setErrorMsg(
@@ -1079,6 +1142,196 @@ export default function MandatoryAuthScreen({
                     </div>
                   </button>
                 </div>
+
+                {/* Patient Primary Hospital Selection & QR/Direct-Link Preselection Banner */}
+                {authMode === "signup-patient" && (
+                  <div style={{ marginBottom: "16px" }}>
+                    {isUrlPreselected && !showCustomHospitalPicker ? (
+                      <div
+                        style={{
+                          background: "linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)",
+                          border: "1.5px solid #93C5FD",
+                          borderRadius: "14px",
+                          padding: "12px 14px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "10px",
+                          boxShadow: "0 2px 6px rgba(59, 130, 246, 0.08)",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                          <div
+                            style={{
+                              width: "36px",
+                              height: "36px",
+                              borderRadius: "10px",
+                              background: "#2563EB",
+                              color: "#fff",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "18px",
+                              flexShrink: 0,
+                            }}
+                          >
+                            🏥
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.5px",
+                                  color: "#1D4ED8",
+                                  background: "#DBEAFE",
+                                  padding: "1px 6px",
+                                  borderRadius: "4px",
+                                }}
+                              >
+                                {isHindi ? "सीधा लिंक / QR द्वारा चयनित" : "Direct Link / QR Verified"}
+                              </span>
+                            </div>
+                            <div
+                              style={{
+                                fontSize: "13.5px",
+                                fontWeight: 700,
+                                color: "#1E3A8A",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {selectedHospitalObj?.name || "Selected Hospital"}
+                            </div>
+                            {selectedHospitalObj?.address && (
+                              <div
+                                style={{
+                                  fontSize: "11px",
+                                  color: "#475569",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                📍 {selectedHospitalObj.address}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomHospitalPicker(true)}
+                          style={{
+                            background: "#FFFFFF",
+                            border: "1px solid #BFDBFE",
+                            borderRadius: "8px",
+                            padding: "6px 10px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            color: "#1D4ED8",
+                            cursor: "pointer",
+                            flexShrink: 0,
+                            transition: "all 0.15s ease",
+                          }}
+                          onMouseOver={(e) => (e.currentTarget.style.background = "#F0F7FF")}
+                          onMouseOut={(e) => (e.currentTarget.style.background = "#FFFFFF")}
+                        >
+                          {isHindi ? "बदलें" : "Change"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="pl-input-group" style={{ marginBottom: "0" }}>
+                        <div className="pl-input-label-row">
+                          <label className="pl-input-label">
+                            {isHindi ? "अस्पताल / क्लिनिक चुनें *" : "SELECT HOSPITAL / CLINIC *"}
+                          </label>
+                          {isUrlPreselected && (
+                            <button
+                              type="button"
+                              onClick={() => setShowCustomHospitalPicker(false)}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#2563EB",
+                                fontSize: "11px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                padding: 0,
+                              }}
+                            >
+                              {isHindi ? "वापस QR अस्पताल" : "Revert to QR Facility"}
+                            </button>
+                          )}
+                        </div>
+                        <div className="pl-input-wrapper" style={{ position: "relative" }}>
+                          <select
+                            className="pl-text-input"
+                            value={selectedHospitalCode}
+                            onChange={(e) => {
+                              setSelectedHospitalCode(e.target.value);
+                              try {
+                                localStorage.setItem("ai_queue_current_hospital", e.target.value);
+                              } catch (err) {}
+                            }}
+                            required
+                            style={{
+                              paddingLeft: "36px",
+                              paddingRight: "28px",
+                              cursor: "pointer",
+                              background: "#FFFFFF",
+                              appearance: "none",
+                              WebkitAppearance: "none",
+                              color: "#0F172A",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {hospitalsList.length === 0 && (
+                              <option value="city-hospital-01">City General Hospital (Default)</option>
+                            )}
+                            {hospitalsList.map((h) => (
+                              <option key={h.hospital_code} value={h.hospital_code}>
+                                {h.name} {h.address ? `• ${h.address}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <span
+                            style={{
+                              position: "absolute",
+                              left: "12px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              fontSize: "15px",
+                              pointerEvents: "none",
+                            }}
+                          >
+                            🏥
+                          </span>
+                          <span
+                            style={{
+                              position: "absolute",
+                              right: "12px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              fontSize: "11px",
+                              color: "#64748B",
+                              pointerEvents: "none",
+                            }}
+                          >
+                            ▼
+                          </span>
+                        </div>
+                        <div style={{ fontSize: "11px", color: "#64748B", marginTop: "4px", paddingLeft: "2px" }}>
+                          {isHindi
+                            ? "आपकी कतार और अपॉइंटमेंट इस अस्पताल के सर्वर पर दर्ज होगी।"
+                            : "Your queue tickets & tokens will sync with this hospital."}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Full Name */}
                 <div className="pl-input-group">

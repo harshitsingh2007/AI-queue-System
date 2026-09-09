@@ -105,8 +105,8 @@ async function saveTicketToDb(ticket) {
     },
   });
 
-  // Sync linked appointments status if any
-  if (["serving", "completed", "transferred", "no_show", "cancelled", "expired"].includes(ticket.status)) {
+  // Sync linked appointments status if any (transferred tickets stay active in target dept)
+  if (["serving", "completed", "no_show", "cancelled", "expired"].includes(ticket.status)) {
     await prisma.appointments.updateMany({
       where: {
         OR: [
@@ -261,12 +261,88 @@ async function joinQueue({
 
 /**
  * Serve Next: Department-scoped priority queue serving.
+ * STRICT CLINICAL RULE: A doctor can ONLY serve one patient at a time.
  */
-async function serveNext(tenantId, department = null, deskId = null) {
+async function serveNext(tenantId, department = null, deskId = null, doctorInfo = null) {
   const tenant = engine._getTenant(tenantId);
   const now = Date.now() / 1000.0;
   const filterDept = String(department || "").trim().toLowerCase();
   const today = getCurrentQueueDate();
+
+  // Normalize doctor info
+  let docId = null;
+  let docName = null;
+  let docEmail = null;
+  if (doctorInfo) {
+    if (typeof doctorInfo === "object") {
+      docId = doctorInfo.id || doctorInfo.doctor_id || null;
+      docName = doctorInfo.name || doctorInfo.doctor_name || null;
+      docEmail = doctorInfo.email || doctorInfo.doctor_email || null;
+    } else {
+      docId = String(doctorInfo);
+    }
+  }
+
+  // 1. STRICT ENFORCEMENT: A doctor can only serve ONE patient at a time!
+  if (docId || docEmail || docName) {
+    const existingDoctorTicket = Array.from(tenant.tickets.values()).find(
+      (t) =>
+        t.status === "serving" &&
+        parseQueueDate(t.queue_date) === today &&
+        ((docId && t.served_by_doctor_id && String(t.served_by_doctor_id) === String(docId)) ||
+         (docEmail && t.served_by_doctor_email && String(t.served_by_doctor_email).toLowerCase() === String(docEmail).toLowerCase()) ||
+         (docName && t.served_by_doctor_name && String(t.served_by_doctor_name).trim().toLowerCase() === String(docName).trim().toLowerCase()))
+    );
+
+    if (existingDoctorTicket) {
+      const err = new Error(
+        `Doctor ${docName || docEmail || "Desk"} is currently serving patient #${existingDoctorTicket.ticket_id} (${existingDoctorTicket.name}). A doctor can only serve one patient at a time. Please complete the current consultation before calling the next patient.`
+      );
+      err.status = 409;
+      err.code = "DOCTOR_ALREADY_SERVING";
+      err.current_ticket = existingDoctorTicket;
+      throw err;
+    }
+  }
+
+  // 2. Desk enforcement: A desk can only serve one patient at a time
+  if (deskId) {
+    const existingDeskTicket = Array.from(tenant.tickets.values()).find(
+      (t) =>
+        t.status === "serving" &&
+        parseQueueDate(t.queue_date) === today &&
+        t.desk_id && String(t.desk_id) === String(deskId)
+    );
+    if (existingDeskTicket) {
+      const err = new Error(
+        `Desk #${deskId} is currently serving patient #${existingDeskTicket.ticket_id}. A desk can only serve one patient at a time. Complete the current consultation first.`
+      );
+      err.status = 409;
+      err.code = "DESK_ALREADY_SERVING";
+      err.current_ticket = existingDeskTicket;
+      throw err;
+    }
+  }
+
+  // 3. Department fallback: If no doctor/desk specified but active_counters reached
+  if (!docId && !docEmail && !docName && !deskId && filterDept && filterDept !== "all") {
+    const activeServing = Array.from(tenant.tickets.values()).filter(
+      (t) =>
+        t.status === "serving" &&
+        parseQueueDate(t.queue_date) === today &&
+        String(t.service_category).trim().toLowerCase() === filterDept
+    );
+    const maxCounters = tenant.active_counters || 2;
+    if (activeServing.length >= maxCounters) {
+      const err = new Error(
+        `All active doctor desks (${maxCounters}) for ${department} are currently serving patients. Please complete an active consultation first.`
+      );
+      err.status = 409;
+      err.code = "MAX_SERVING_REACHED";
+      err.current_ticket = activeServing[0];
+      throw err;
+    }
+  }
 
   const tempPopped = [];
   let foundTicket = null;
@@ -305,6 +381,10 @@ async function serveNext(tenantId, department = null, deskId = null) {
   foundTicket.status = "serving";
   foundTicket.serve_start_time = now;
   foundTicket.position = 0;
+  if (docId) foundTicket.served_by_doctor_id = docId;
+  if (docName) foundTicket.served_by_doctor_name = docName;
+  if (docEmail) foundTicket.served_by_doctor_email = docEmail;
+  if (deskId) foundTicket.desk_id = deskId;
 
   await saveTicketToDb(foundTicket);
 
@@ -317,7 +397,13 @@ async function serveNext(tenantId, department = null, deskId = null) {
     newStatus: "serving",
     oldPosition: 1,
     newPosition: 0,
-    metadata: { desk_id: deskId, queue_date: today },
+    metadata: {
+      desk_id: deskId,
+      doctor_id: docId,
+      doctor_name: docName,
+      doctor_email: docEmail,
+      queue_date: today,
+    },
   });
 
   // If desk assigned, update desk status
@@ -340,7 +426,7 @@ async function serveNext(tenantId, department = null, deskId = null) {
 /**
  * Complete Ticket: Records encounter duration and writes to service_logs.
  */
-async function completeTicket(tenantId, ticketId, department = null) {
+async function completeTicket(tenantId, ticketId, department = null, prescriptionNotes = null) {
   const tenant = engine._getTenant(tenantId);
   let ticket = tenant.tickets.get(ticketId);
 
@@ -363,6 +449,10 @@ async function completeTicket(tenantId, ticketId, department = null) {
     return null;
   }
 
+  if (prescriptionNotes) {
+    ticket.prescription_notes = typeof prescriptionNotes === "object" ? JSON.stringify(prescriptionNotes) : String(prescriptionNotes);
+  }
+
   ticket.status = "completed";
   ticket.serve_end_time = Date.now() / 1000.0;
   const start = ticket.serve_start_time || ticket.join_timestamp;
@@ -383,6 +473,17 @@ async function completeTicket(tenantId, ticketId, department = null) {
       queue_date: ticket.queue_date || getCurrentQueueDate(),
     },
   });
+
+  if (ticket.ticket_id) {
+    await prisma.desks.updateMany({
+      where: { current_ticket_id: ticket.ticket_id },
+      data: {
+        status: "AVAILABLE",
+        current_ticket_id: "",
+        updated_at: new Date(),
+      },
+    }).catch(() => {});
+  }
 
   await engine.recalculateWaitTimes(tenantId);
   return ticket;
@@ -467,6 +568,23 @@ async function transferTicket(tenantId, ticketId, targetDepartment, prescription
   tenant.queue.push([newTicket.priority_level, now, newTid]);
   await saveTicketToDb(newTicket);
 
+  // Update linked appointment to the new target ticket & department so patient's active appointment stays live
+  if (origTicket.appointment_id) {
+    try {
+      await prisma.appointments.updateMany({
+        where: { appointment_id: origTicket.appointment_id },
+        data: {
+          ticket_id: newTid,
+          status: "checked_in",
+          service_category: targetDepartment,
+          updated_at: new Date(),
+        },
+      });
+    } catch (e) {
+      console.warn("Could not sync transferred appointment:", e.message);
+    }
+  }
+
   const hid = await engine.resolveHospitalId(tenantId);
   await engine.logQueueEvent({
     hospitalId: hid,
@@ -486,6 +604,17 @@ async function transferTicket(tenantId, ticketId, targetDepartment, prescription
     metadata: { transferred_from: origTicket.ticket_id, from_dept: origTicket.service_category, queue_date: targetQDate },
   });
 
+  if (origTicket.ticket_id) {
+    await prisma.desks.updateMany({
+      where: { current_ticket_id: origTicket.ticket_id },
+      data: {
+        status: "AVAILABLE",
+        current_ticket_id: "",
+        updated_at: new Date(),
+      },
+    }).catch(() => {});
+  }
+
   engine._rebuildHeap(tenantId);
   await engine.recalculateWaitTimes(tenantId);
 
@@ -497,48 +626,52 @@ async function transferTicket(tenantId, ticketId, targetDepartment, prescription
  */
 async function cancelTicket(tenantId = "city-hospital-01", ticketId, reason = "No longer available", userEmail = null) {
   const cleanTenant = String(tenantId || "city-hospital-01").trim();
-  const tenant = engine._getTenant(cleanTenant);
-  const hid = await engine.resolveHospitalId(cleanTenant);
-
-  // 1. Transactional check & update
   const cancTime = Date.now() / 1000.0;
   const cancDt = new Date(cancTime * 1000);
 
+  // 1. Fetch ticket to determine actual hospital and tenant
+  const ticketRow = await prisma.tickets.findUnique({
+    where: { ticket_id: ticketId },
+    include: { hospitals: true },
+  });
+
+  if (!ticketRow) {
+    const err = new Error(`Ticket #${ticketId} not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const effectiveTenant = ticketRow.hospitals?.hospital_code || cleanTenant;
+  const hid = ticketRow.hospital_id;
+  const tenant = engine._getTenant(effectiveTenant);
+
+  // Ownership check if email supplied
+  let performedByUid = null;
+  if (userEmail) {
+    performedByUid = await engine.verifyTicketOwnership(ticketId, userEmail, hid);
+  }
+
+  // Status validation
+  const currStatus = (ticketRow.status || "").toLowerCase();
+  if (currStatus === "cancelled") {
+    return {
+      ...ticketRow,
+      tenant_id: effectiveTenant,
+      status: "cancelled",
+      join_timestamp: dtToEpoch(ticketRow.join_timestamp),
+      queue_date: parseQueueDate(ticketRow.queue_date),
+    };
+  }
+
+  if (!["waiting", "scheduled"].includes(currStatus)) {
+    const err = new Error(
+      `Cannot cancel ticket: Ticket status is '${currStatus.toUpperCase()}'. Only WAITING or SCHEDULED tickets can be cancelled.`
+    );
+    err.status = 409;
+    throw err;
+  }
+
   const result = await prisma.$transaction(async (tx) => {
-    const ticketRow = await tx.tickets.findUnique({
-      where: { ticket_id: ticketId },
-      include: { hospitals: true },
-    });
-
-    if (!ticketRow) {
-      const err = new Error(`Ticket #${ticketId} not found.`);
-      err.status = 404;
-      throw err;
-    }
-
-    // Hospital tenant isolation
-    if (ticketRow.hospital_id !== hid) {
-      const err = new Error("Forbidden: Ticket does not belong to this hospital.");
-      err.status = 403;
-      throw err;
-    }
-
-    // Ownership check if email supplied
-    let performedByUid = null;
-    if (userEmail) {
-      performedByUid = await engine.verifyTicketOwnership(ticketId, userEmail, hid);
-    }
-
-    // Status validation
-    const currStatus = (ticketRow.status || "").toLowerCase();
-    if (!["waiting", "scheduled"].includes(currStatus)) {
-      const err = new Error(
-        `Cannot cancel ticket: Ticket status is '${currStatus.toUpperCase()}'. Only WAITING or SCHEDULED tickets can be cancelled.`
-      );
-      err.status = 409;
-      throw err;
-    }
-
     const oldPos = ticketRow.position || 0;
     const deptId = ticketRow.department_id;
     const serviceCat = ticketRow.service_category;
@@ -614,13 +747,23 @@ async function cancelTicket(tenantId = "city-hospital-01", ticketId, reason = "N
     memTicket.cancelled_at = cancTime;
     memTicket.cancellation_reason = reason;
     memTicket.position = 0;
-    engine._rebuildHeap(cleanTenant);
-    await engine.recalculateWaitTimes(cleanTenant);
-    return memTicket;
+    engine._rebuildHeap(effectiveTenant);
+    await engine.recalculateWaitTimes(effectiveTenant);
+  }
+
+  // Also clear from cleanTenant if different
+  if (cleanTenant !== effectiveTenant) {
+    const otherTenant = engine._getTenant(cleanTenant);
+    if (otherTenant.tickets.has(ticketId)) {
+      otherTenant.tickets.delete(ticketId);
+      engine._rebuildHeap(cleanTenant);
+      await engine.recalculateWaitTimes(cleanTenant);
+    }
   }
 
   return {
     ...result,
+    tenant_id: effectiveTenant,
     join_timestamp: dtToEpoch(result.join_timestamp),
     queue_date: parseQueueDate(result.queue_date),
   };
@@ -637,7 +780,6 @@ async function adjustQueuePosition(
   reason = "Late arrival"
 ) {
   const cleanTenant = String(tenantId || "city-hospital-01").trim();
-  const tenant = engine._getTenant(cleanTenant);
   const skipPos = parseInt(skipPositions, 10);
 
   if (isNaN(skipPos) || skipPos <= 0) {
@@ -646,18 +788,9 @@ async function adjustQueuePosition(
     throw err;
   }
 
-  const hid = await engine.resolveHospitalId(cleanTenant);
-  const now = Date.now() / 1000.0;
-  const adjDt = new Date(now * 1000);
-  const today = getCurrentQueueDate();
-
-  let performedByUid = null;
-  if (userEmail) {
-    performedByUid = await engine.verifyTicketOwnership(ticketId, userEmail, hid);
-  }
-
   const ticketRow = await prisma.tickets.findUnique({
     where: { ticket_id: ticketId },
+    include: { hospitals: true },
   });
 
   if (!ticketRow) {
@@ -666,10 +799,16 @@ async function adjustQueuePosition(
     throw err;
   }
 
-  if (ticketRow.hospital_id !== hid) {
-    const err = new Error("Forbidden: Ticket does not belong to this hospital.");
-    err.status = 403;
-    throw err;
+  const effectiveTenant = ticketRow.hospitals?.hospital_code || cleanTenant;
+  const hid = ticketRow.hospital_id;
+  const tenant = engine._getTenant(effectiveTenant);
+  const now = Date.now() / 1000.0;
+  const adjDt = new Date(now * 1000);
+  const today = getCurrentQueueDate();
+
+  let performedByUid = null;
+  if (userEmail) {
+    performedByUid = await engine.verifyTicketOwnership(ticketId, userEmail, hid);
   }
 
   if ((ticketRow.status || "").toLowerCase() !== "waiting") {
@@ -852,9 +991,67 @@ async function markNoShow(tenantId, ticketId) {
     });
   }
 
+  if (ticket && ticket.ticket_id) {
+    await prisma.desks.updateMany({
+      where: { current_ticket_id: ticket.ticket_id },
+      data: {
+        status: "AVAILABLE",
+        current_ticket_id: "",
+        updated_at: new Date(),
+      },
+    }).catch(() => {});
+  }
+
   engine._rebuildHeap(tenantId);
   await engine.recalculateWaitTimes(tenantId);
   return { success: true };
+}
+
+/**
+ * Saves or updates prescription notes / structured Rx on a ticket.
+ */
+async function saveTicketPrescription(tenantId, ticketId, prescriptionData) {
+  const tenant = engine._getTenant(tenantId);
+  let ticket = tenant.tickets.get(ticketId);
+
+  if (!ticket) {
+    const row = await prisma.tickets.findUnique({
+      where: { ticket_id: ticketId },
+    });
+    if (row) {
+      ticket = {
+        ...row,
+        join_timestamp: dtToEpoch(row.join_timestamp),
+        effective_timestamp: dtToEpoch(row.effective_timestamp),
+        serve_start_time: row.serve_start_time ? dtToEpoch(row.serve_start_time) : null,
+        queue_date: parseQueueDate(row.queue_date),
+      };
+      tenant.tickets.set(ticketId, ticket);
+    }
+  }
+
+  if (!ticket) {
+    throw new Error(`Ticket #${ticketId} not found.`);
+  }
+
+  const notesStr = typeof prescriptionData === "object" ? JSON.stringify(prescriptionData) : String(prescriptionData);
+  ticket.prescription_notes = notesStr;
+  await saveTicketToDb(ticket);
+
+  const hid = await engine.resolveHospitalId(tenantId);
+  await engine.logQueueEvent({
+    hospitalId: hid,
+    ticketId: ticket.ticket_id,
+    eventType: "PRESCRIPTION_ATTACHED",
+    oldStatus: ticket.status,
+    newStatus: ticket.status,
+    metadata: {
+      has_prescription: true,
+      updated_at: new Date().toISOString(),
+    },
+  });
+
+  return ticket;
 }
 
 module.exports = {
@@ -868,4 +1065,5 @@ module.exports = {
   adjustQueuePosition,
   getTicketDetails,
   markNoShow,
+  saveTicketPrescription,
 };

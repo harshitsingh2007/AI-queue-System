@@ -52,9 +52,11 @@ async function joinQueueEndpoint(req, res, next) {
               (d) => String(d).toLowerCase() === currentDayName.toLowerCase()
             );
             if (!isOperatingDay) {
+              const notice = branding.closed_notice || `Facility OPD is closed on ${currentDayName}s. Emergency triage is open.`;
               return res.status(403).json({
                 status: "error",
-                detail: branding.closed_notice || `Facility OPD is closed on ${currentDayName}s. Emergency triage is open.`,
+                detail: notice,
+                message: notice,
                 is_registration_closed: true,
               });
             }
@@ -73,9 +75,11 @@ async function joinQueueEndpoint(req, res, next) {
             const cutoffMins = parseInt(cutoffParts[0], 10) * 60 + parseInt(cutoffParts[1], 10);
 
             if (currentMins > cutoffMins) {
+              const notice = branding.closed_notice || `Daily registration cutoff was at ${branding.registration_cutoff_time}. Token issuance is closed for today.`;
               return res.status(403).json({
                 status: "error",
-                detail: branding.closed_notice || `Daily registration cutoff was at ${branding.registration_cutoff_time}. Token issuance is closed for today.`,
+                detail: notice,
+                message: notice,
                 is_registration_closed: true,
               });
             }
@@ -123,10 +127,16 @@ async function joinQueueEndpoint(req, res, next) {
 
 async function serveNextEndpoint(req, res, next) {
   try {
-    const { tenant_id = "city-hospital-01", department, service_category } = req.body;
+    const { tenant_id = "city-hospital-01", department, service_category, desk_id } = req.body;
     const effectiveDept = department || service_category || null;
 
-    const ticket = await serveNext(tenant_id, effectiveDept);
+    const doctorInfo = {
+      id: req.body.doctor_id || req.user?.id || null,
+      name: req.body.doctor_name || req.user?.name || null,
+      email: req.body.doctor_email || req.user?.email || null,
+    };
+
+    const ticket = await serveNext(tenant_id, effectiveDept, desk_id, doctorInfo);
     if (!ticket) {
       return res.status(404).json({
         status: "error",
@@ -145,15 +155,23 @@ async function serveNextEndpoint(req, res, next) {
       now_serving: ticket,
     });
   } catch (error) {
+    if (error.code === "DOCTOR_ALREADY_SERVING" || error.code === "DESK_ALREADY_SERVING" || error.code === "MAX_SERVING_REACHED") {
+      return res.status(error.status || 409).json({
+        status: "error",
+        code: error.code,
+        message: error.message,
+        current_ticket: error.current_ticket || null,
+      });
+    }
     next(error);
   }
 }
 
 async function completeEndpoint(req, res, next) {
   try {
-    const { tenant_id = "city-hospital-01", ticket_id, department } = req.body;
+    const { tenant_id = "city-hospital-01", ticket_id, department, prescription_notes } = req.body;
 
-    const ticket = await completeTicket(tenant_id, ticket_id, department);
+    const ticket = await completeTicket(tenant_id, ticket_id, department, prescription_notes);
     const io = getIo();
     if (io) {
       if (ticket) io.to(tenant_id).emit("ticket_completed", { ticket });

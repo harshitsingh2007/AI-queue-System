@@ -2,7 +2,7 @@
  * AuthModal.jsx
  * -------------
  * Modern Healthcare UI/UX Authentication Component.
- * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
+ * Theme: Unified Medical Blue & Clean White (Clinical Healthcare System)
  *
  * Rules:
  * - Admin, Doctor & Staff accounts are created exclusively by Super Admin (they can ONLY sign in with assigned ID & password).
@@ -12,7 +12,7 @@
  * - All input fields start completely empty with zero pre-written text.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { API_BASE } from "../config/hospitalConfig";
 
 export default function AuthModal({ authMode = "login", setAuthMode, onClose, onLoginSuccess, isInline = false }) {
@@ -35,6 +35,47 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
   const [hospitalName, setHospitalName] = useState("");
+
+  // Multi-Hospital Tenant Selection
+  const [hospitalsList, setHospitalsList] = useState([]);
+  const [selectedHospitalCode, setSelectedHospitalCode] = useState(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      const urlHosp = p.get("hospital") || p.get("tenant") || p.get("facility");
+      if (urlHosp) return urlHosp;
+      try {
+        const saved = localStorage.getItem("ai_queue_current_hospital");
+        if (saved) return saved;
+      } catch (e) {}
+    }
+    return "city-hospital-01";
+  });
+  const [isUrlPreselected, setIsUrlPreselected] = useState(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      return Boolean(p.get("hospital") || p.get("tenant") || p.get("facility"));
+    }
+    return false;
+  });
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/v1/hospitals/public`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status === "success" && Array.isArray(d.hospitals)) {
+          setHospitalsList(d.hospitals);
+          if (!selectedHospitalCode && d.hospitals.length > 0) {
+            setSelectedHospitalCode(d.hospitals[0].hospital_code);
+          }
+        }
+      })
+      .catch((e) => console.log("Hospitals fetch error in AuthModal:", e));
+  }, []);
+
+  const selectedHospitalObj = hospitalsList.find(
+    (h) => h.hospital_code === selectedHospitalCode
+  ) || hospitalsList[0] || { name: "City General Hospital", hospital_code: "city-hospital-01" };
 
   const [errorMsg, setErrorMsg] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -62,6 +103,16 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
       setLoading(false);
 
       if (res.ok && data.status === "success") {
+        if (data.token) {
+          try {
+            localStorage.setItem("ai_queue_token", data.token);
+          } catch (e) {}
+        }
+        if (data.user?.hospital_code) {
+          try {
+            localStorage.setItem("ai_queue_current_hospital", data.user.hospital_code);
+          } catch (e) {}
+        }
         onLoginSuccess(data.user);
       } else {
         setErrorMsg(data.detail || "Authentication failed. Please check your credentials.");
@@ -98,6 +149,8 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
     if (currentMode === "signup-superadmin") {
       endpoint = "/api/v1/auth/signup/superadmin";
       payload.hospital_name = hospitalName.trim() || `${fullName.trim()}'s Medical Center`;
+    } else {
+      payload.hospital_code = selectedHospitalCode || "city-hospital-01";
     }
 
     try {
@@ -111,6 +164,16 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
       setLoading(false);
 
       if (res.ok && data.status === "success") {
+        if (data.token) {
+          try {
+            localStorage.setItem("ai_queue_token", data.token);
+          } catch (e) {}
+        }
+        if (payload.hospital_code) {
+          try {
+            localStorage.setItem("ai_queue_current_hospital", payload.hospital_code);
+          } catch (e) {}
+        }
         onLoginSuccess(data.user);
       } else {
         setErrorMsg(data.detail || "Registration failed. Please try again.");
@@ -217,8 +280,8 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
           <div style={noticeBoxStyle}>
             <span style={{ fontSize: "15px", flexShrink: 0, marginTop: "1px" }}>ℹ️</span>
             <div>
-              <strong style={{ color: "#064E3B", fontSize: "12px" }}>Admin, Doctor & Staff accounts are created by a Super Admin.</strong>
-              <div style={{ marginTop: "2px", color: "#15803D", fontSize: "11.5px" }}>
+              <strong style={{ color: "#0369A1", fontSize: "12px" }}>Admin, Doctor & Staff accounts are created by a Super Admin.</strong>
+              <div style={{ marginTop: "2px", color: "#0284C7", fontSize: "11.5px" }}>
                 Sign in with your assigned ID & password.
               </div>
             </div>
@@ -359,6 +422,93 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
       {/* VIEW 3: PATIENT REGISTRATION */}
       {currentMode === "signup-patient" && (
         <form onSubmit={handleRegisterSubmit}>
+          {/* Hospital Selection / Pre-selection */}
+          <div style={{ marginBottom: "14px" }}>
+            {isUrlPreselected && !showCustomPicker ? (
+              <div
+                style={{
+                  background: "#F0F9FF",
+                  border: "1.5px solid #BAE6FD",
+                  borderRadius: "10px",
+                  padding: "10px 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                  <span style={{ fontSize: "18px" }}>🏥</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: "9.5px", fontWeight: 700, textTransform: "uppercase", color: "#0369A1" }}>
+                      Direct Link / QR Facility
+                    </div>
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#0284C7", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {selectedHospitalObj?.name || "Selected Hospital"}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCustomPicker(true)}
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #BAE6FD",
+                    borderRadius: "6px",
+                    padding: "4px 8px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    color: "#0369A1",
+                    cursor: "pointer",
+                  }}
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <label style={fieldLabelStyle}>Select Hospital / Facility *</label>
+                  {isUrlPreselected && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomPicker(false)}
+                      style={{ background: "none", border: "none", color: "#0284C7", fontSize: "11px", fontWeight: 600, cursor: "pointer", padding: 0 }}
+                    >
+                      Revert
+                    </button>
+                  )}
+                </div>
+                <select
+                  value={selectedHospitalCode}
+                  onChange={(e) => {
+                    setSelectedHospitalCode(e.target.value);
+                    try {
+                      localStorage.setItem("ai_queue_current_hospital", e.target.value);
+                    } catch (err) {}
+                  }}
+                  required
+                  style={{
+                    ...fieldInputStyle,
+                    cursor: "pointer",
+                    background: "#FFFFFF",
+                    fontWeight: 600,
+                    color: "#0F172A",
+                  }}
+                >
+                  {hospitalsList.length === 0 && (
+                    <option value="city-hospital-01">City General Hospital (Default)</option>
+                  )}
+                  {hospitalsList.map((h) => (
+                    <option key={h.hospital_code} value={h.hospital_code}>
+                      {h.name} {h.address ? `• ${h.address}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
           <div style={{ marginBottom: "12px" }}>
             <label style={fieldLabelStyle}>Full Name *</label>
             <input
@@ -455,18 +605,18 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
 }
 
 // ─────────────────────────────────────────────────────────────
-// STYLING CONSTANTS — Soft Green Clinical Theme
+// STYLING CONSTANTS — Medical Blue & Pure White Clinical Theme
 // ─────────────────────────────────────────────────────────────
 
 const authIconShieldStyle = {
   width: "38px",
   height: "38px",
   borderRadius: "12px",
-  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  boxShadow: "0 3px 10px rgba(5, 150, 105, 0.3)",
+  boxShadow: "0 3px 10px rgba(2, 132, 199, 0.3)",
   flexShrink: 0,
 };
 
@@ -490,7 +640,7 @@ const modalCardStyle = {
   width: "100%",
   maxWidth: "460px",
   background: "#FFFFFF",
-  border: "1px solid #D8E8DD",
+  border: "1px solid #E2E8F0",
   borderRadius: "20px",
   padding: "26px 28px",
   boxShadow: "0 20px 50px rgba(0,0,0,0.12)",
@@ -551,12 +701,12 @@ const modalSubmitBtnStyle = {
   padding: "12px",
   borderRadius: "10px",
   border: "none",
-  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#ffffff",
   fontWeight: 800,
   fontSize: "14px",
   cursor: "pointer",
-  boxShadow: "0 4px 14px rgba(5, 150, 105, 0.28)",
+  boxShadow: "0 4px 14px rgba(2, 132, 199, 0.28)",
   transition: "all 0.15s ease",
 };
 
@@ -564,8 +714,8 @@ const noticeBoxStyle = {
   marginTop: "16px",
   padding: "11px 14px",
   borderRadius: "10px",
-  background: "#F0FDF4",
-  border: "1px solid #BBF7D0",
+  background: "#F0F9FF",
+  border: "1px solid #BAE6FD",
   display: "flex",
   alignItems: "flex-start",
   gap: "10px",
@@ -590,7 +740,7 @@ const backLinkBtnStyle = {
   padding: "8px",
   background: "transparent",
   border: "none",
-  color: "#047857",
+  color: "#0284C7",
   fontSize: "12.5px",
   fontWeight: 700,
   cursor: "pointer",

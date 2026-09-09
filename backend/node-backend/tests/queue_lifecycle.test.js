@@ -91,6 +91,44 @@ async function runQueueLifecycleTests() {
   assert.strictEqual(newTicket.parent_ticket_id, served2.ticket_id, "Parent ticket ID link mismatch");
   console.log(`[PASS] Test 6: Ticket #${served2.ticket_id} transferred to Pharmacy as #${newTicket.ticket_id}.`);
 
+  // 7. Doctor Concurrency Guard: A doctor can ONLY serve 1 patient at a time
+  const docA = { id: "doc_101", name: "Dr. Sharma", email: "dr.sharma@hospital.org" };
+  const dPatient1 = await joinQueue({
+    tenantId: testTenant,
+    consumerType: "hospital",
+    serviceCategory: "consultation",
+    name: "Doctor Test Patient 1",
+  });
+  const dPatient2 = await joinQueue({
+    tenantId: testTenant,
+    consumerType: "hospital",
+    serviceCategory: "consultation",
+    name: "Doctor Test Patient 2",
+  });
+
+  const docServed1 = await serveNext(testTenant, "consultation", null, docA);
+  assert(docServed1, "First ticket served to Doctor A");
+  assert.strictEqual(docServed1.served_by_doctor_id, "doc_101", "Doctor ID assigned to ticket");
+
+  // Attempting to serve a 2nd patient while docA is already serving must throw DOCTOR_ALREADY_SERVING
+  let docErrorCaught = false;
+  try {
+    await serveNext(testTenant, "consultation", null, docA);
+  } catch (err) {
+    docErrorCaught = true;
+    assert.strictEqual(err.code, "DOCTOR_ALREADY_SERVING", "Error code must be DOCTOR_ALREADY_SERVING");
+  }
+  assert.strictEqual(docErrorCaught, true, "Doctor cannot serve a second patient while already serving one");
+  console.log("[PASS] Test 7a: Doctor cannot serve a second patient while already serving one.");
+
+  // Complete consultation for patient 1 -> Doctor A is now free to serve patient 2
+  await completeTicket(testTenant, docServed1.ticket_id);
+  const docServed2 = await serveNext(testTenant, "consultation", null, docA);
+  assert(docServed2, "Doctor A can serve next patient after completing previous consultation");
+  assert.strictEqual(docServed2.served_by_doctor_id, "doc_101", "Doctor ID assigned to next ticket");
+  await completeTicket(testTenant, docServed2.ticket_id);
+  console.log("[PASS] Test 7b: Doctor can serve next patient after completing previous consultation.");
+
   console.log("✅ ALL QUEUE LIFECYCLE TESTS PASSED!\n");
 }
 
