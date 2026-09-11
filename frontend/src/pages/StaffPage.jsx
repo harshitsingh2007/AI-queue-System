@@ -26,7 +26,17 @@ export default function StaffPage({
   language = "en",
   socketRef,
   navigateTo,
+  hospitalBranding = null,
+  onUpdateHospitalBranding = null,
 }) {
+  const [localBranding, setLocalBranding] = useState(hospitalBranding);
+
+  useEffect(() => {
+    if (hospitalBranding) {
+      setLocalBranding(hospitalBranding);
+    }
+  }, [hospitalBranding]);
+
   const [activeTab, setActiveTab] = useState("ops"); // "ops" | "queue" | "apts" | "ml"
   const [appointments, setAppointments] = useState([]);
   const [showTransferModal, setShowTransferModal] = useState(false);
@@ -52,12 +62,24 @@ export default function StaffPage({
   const [rxStatusMsg, setRxStatusMsg] = useState("");
 
   const effectiveHospitalCode =
-    tenantId ||
     (currentUser && currentUser.hospital_code && currentUser.hospital_code !== "all"
       ? currentUser.hospital_code
-      : null) ||
+      : tenantId) ||
     HOSPITAL_CONFIG.tenantId ||
     "city-hospital-01";
+
+  useEffect(() => {
+    if (!hospitalBranding && effectiveHospitalCode) {
+      fetch(`${API_BASE}/api/v1/hospital/branding/${effectiveHospitalCode}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.status === "success" && d.branding) {
+            setLocalBranding(d.branding);
+          }
+        })
+        .catch((e) => console.log("Staff branding fetch error:", e));
+    }
+  }, [effectiveHospitalCode, hospitalBranding]);
 
   useEffect(() => {
     if (!effectiveHospitalCode) return;
@@ -658,7 +680,8 @@ export default function StaffPage({
       <AdminHeroBanner
         language={language}
         adminDept={adminDept}
-        hospitalName={currentUser?.hospital_name || "City General Hospital"}
+        hospitalName={localBranding?.hospital_name || currentUser?.hospital_name || "City General Hospital"}
+        branding={localBranding}
         currentUser={currentUser}
         analytics={analytics}
         waitingCount={queueSnapshot.length}
@@ -1956,7 +1979,7 @@ export default function StaffPage({
       {/* 5. FOOTER WITH ECG HEARTBEAT */}
       <Footer
         language={language}
-        hospitalName={currentUser?.hospital_name || "City General Hospital"}
+        hospitalName={localBranding?.hospital_name || currentUser?.hospital_name || "City General Hospital"}
         currentUser={currentUser}
       />
     </div>

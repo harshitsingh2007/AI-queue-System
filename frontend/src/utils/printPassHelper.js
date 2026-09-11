@@ -379,14 +379,19 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
 /**
  * Print past appointment receipt / prescription record.
  */
-export function printAppointmentRecord(apt, lang = "en") {
+export function printAppointmentRecord(apt, lang = "en", branding = null) {
   if (!apt) return;
 
-  const hospitalName = t("hospitalName", lang);
+  const hospitalName = (branding && (branding.hospital_name || branding.name)) || t("hospitalName", lang);
+  const brandPrimary = (branding && branding.primary_color) || "#0284c7";
+  const brandSecondary = (branding && branding.secondary_color) || "#0369a1";
+  const brandAccent = (branding && branding.accent_color) || "#f1f5f9";
+  const emergencyHelpline = (branding && branding.emergency_helpline) || "";
+  const logoUrl = (branding && branding.logo_url) || "";
   const deptName = getCategoryLabel(apt.service_category, lang);
   const statusName = getStatusLabel(apt.status, lang);
-  const slipTitle = t("officialRxSlip", lang);
-  const footerStr = `${hospitalName} • ${lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड" : "Non-transferable official patient record"}`;
+  const slipTitle = (branding && branding.tagline) || t("officialRxSlip", lang);
+  const footerStr = `${hospitalName} • ${(branding && branding.slip_footer_text) || (lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड" : "Non-transferable official patient record")}`;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -409,14 +414,14 @@ export function printAppointmentRecord(apt, lang = "en") {
     }
     .header {
       text-align: center;
-      border-bottom: 2px solid #0f172a;
+      border-bottom: 2px solid ${brandPrimary};
       padding-bottom: 10px;
       margin-bottom: 12px;
     }
     .hospital-title {
       font-size: 17px;
       font-weight: 900;
-      color: #064e3b;
+      color: ${brandPrimary};
       letter-spacing: -0.2px;
       margin: 0;
       text-transform: uppercase;
@@ -431,7 +436,7 @@ export function printAppointmentRecord(apt, lang = "en") {
     }
     .banner {
       text-align: center;
-      background: #f1f5f9;
+      background: ${brandAccent};
       border: 1px solid #cbd5e1;
       border-radius: 8px;
       padding: 10px;
@@ -440,7 +445,7 @@ export function printAppointmentRecord(apt, lang = "en") {
     .banner-code {
       font-size: 22px;
       font-weight: 900;
-      color: #047857;
+      color: ${brandSecondary};
       margin: 2px 0;
     }
     .banner-dept {
@@ -505,9 +510,15 @@ export function printAppointmentRecord(apt, lang = "en") {
 </head>
 <body>
   <div class="header">
+    ${logoUrl ? `<div style="margin-bottom: 6px;"><img src="${logoUrl}" alt="Logo" style="max-height: 38px; max-width: 140px; object-fit: contain;" /></div>` : ""}
     <h1 class="hospital-title">${hospitalName}</h1>
     <div class="slip-subtitle">${slipTitle}</div>
   </div>
+
+  ${emergencyHelpline ? `
+  <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 4px 8px; margin-bottom: 10px; color: #dc2626; font-size: 10px; font-weight: 800; text-align: center;">
+    🚨 ${emergencyHelpline}
+  </div>` : ""}
 
   <div class="banner">
     <div style="font-size: 10px; font-weight: 700; color: #64748b;">${t("tokenId", lang)}</div>

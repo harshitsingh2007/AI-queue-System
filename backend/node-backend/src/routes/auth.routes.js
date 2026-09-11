@@ -10,6 +10,7 @@ const {
   signupAdmin,
   signupPatient,
   login,
+  logout,
   getMe,
   updateProfile,
   updateUserPrimaryHospital,
@@ -25,6 +26,7 @@ router.post("/signup/admin", signupAdmin);
 router.post("/signup/patient", signupPatient);
 router.post("/signup", signupPatient);
 router.post("/login", login);
+router.post("/logout", optionalAuth, logout);
 router.get("/me", optionalAuth, getMe);
 router.put("/profile", optionalAuth, updateProfile);
 router.put("/primary-hospital", optionalAuth, updateUserPrimaryHospital);

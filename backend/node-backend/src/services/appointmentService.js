@@ -150,6 +150,20 @@ async function checkInAppointment(appointmentId) {
   const aptDate = parseQueueDate(apt.appointment_date);
   const today = getCurrentQueueDate();
 
+  if (aptDate > today) {
+    const err = new Error(
+      `Check-in not available yet: Your appointment is scheduled for ${aptDate} at ${apt.time_slot || ""}.`
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  if (aptDate < today) {
+    const err = new Error(`Cannot check in: Your appointment date (${aptDate}) has expired.`);
+    err.status = 400;
+    throw err;
+  }
+
   // If already checked in and has an active ticket, return the existing ticket pass directly
   if (apt.status.toLowerCase() === "checked_in" && apt.ticket_id) {
     const existingTicket = await prisma.tickets.findUnique({
@@ -245,6 +259,9 @@ async function getUserAppointments(identifier) {
         { patients: { users: { email: { equals: cleanId, mode: "insensitive" } } } },
         { patients: { users: { username: { equals: cleanId, mode: "insensitive" } } } },
         { patients: { name: { equals: cleanId, mode: "insensitive" } } },
+        { appointment_id: { equals: cleanId, mode: "insensitive" } },
+        { ticket_id: { equals: cleanId, mode: "insensitive" } },
+        { patients: { phone: { equals: cleanId, mode: "insensitive" } } },
       ],
     },
     include: {

@@ -1,16 +1,11 @@
 /**
  * AdminHeroBanner.jsx
  * -------------------
- * Executive Doctor & Clinical Operations Dashboard Command Center.
- * Premium Redesign:
- * - Deep luxury midnight obsidian & clinical sapphire palette
- * - Seamless dual-console layout with soft ambient light highlights
- * - High-impact KPI telemetry tiles with vibrant medical accents
- * - Tactile micro-stepper for active desk management
- * - Dynamic, live-connected AI Clinical Telemetry console (adapts to active serving ticket or queue standby)
- * - Animated ECG cardiac waveform with hospital monitor grid & glowing scanline
- * - 1-Click quick call action integrated into telemetry console
- * - 100% responsive across desktop, tablet, and mobile
+ * Doctor & Staff Desk Dashboard Hero Section.
+ * Aligned to the design, layout, aesthetics, and structure of the Patient Portal (HeroBanner.jsx):
+ * - Desktop: 2-column layout (Left content & stats, Right hospital illustration)
+ * - Tablet: Responsive flex layout
+ * - Mobile: Gracefully stacked layout
  */
 
 import React from "react";
@@ -22,6 +17,7 @@ export default function AdminHeroBanner({
   hospitalName = "City General Hospital",
   currentUser,
   analytics,
+  branding = null,
   waitingCount = 0,
   servingCount = 0,
   servingTicket,
@@ -35,633 +31,175 @@ export default function AdminHeroBanner({
 }) {
   const isHi = language === "hi";
   const deptLabel = getCategoryLabel(adminDept, language);
+  const primaryBrandColor = branding?.primary_color || "#38BDF8";
+  const secondaryBrandColor = branding?.secondary_color || "#0C4A6E";
+  const displayHospName = branding?.hospital_name || branding?.name || hospitalName;
 
-  const displayServing = servingTicket
-    ? `#${servingTicket.ticket_id}`
+  const activeServing = myServingTicket || servingTicket;
+  const displayServing = activeServing
+    ? `#${activeServing.ticket_id}`
     : typeof servingCount === "number" && servingCount > 0
     ? `${servingCount} Active`
     : analytics && typeof analytics.currently_serving === "number" && analytics.currently_serving > 0
     ? `${analytics.currently_serving} Active`
     : isHi
     ? "डेस्क खाली"
-    : "0 Active";
+    : "Desk Ready";
 
   const activeCounters = analytics && typeof analytics.active_counters === "number" 
     ? analytics.active_counters 
     : 2;
 
-  const formatHospitalName = (name) => {
-    if (!name) return "City General Hospital";
-    return name.replace(/\b\w/g, (l) => l.toUpperCase());
-  };
-
-  const doctorName = currentUser?.name || currentUser?.full_name || (isHi ? "डॉ. ऑन ड्यूटी" : "Dr. On Duty");
+  const doctorName = currentUser?.name || currentUser?.full_name || (isHi ? "डॉक्टर" : "Doctor");
+  const patientsServed = analytics 
+    ? `${(analytics.total_completed || 0) + (analytics.currently_serving || 0)}` 
+    : "0";
 
   return (
-    <div className="admin-hero-banner-container">
+    <div style={heroContainerStyle} className="hero-banner-container">
       <style>{`
-        .admin-hero-banner-container {
+        .hero-banner-container {
           display: flex;
           flex-direction: row;
           align-items: stretch;
-          border-radius: 26px;
+          border-radius: 28px;
           overflow: hidden;
-          background: radial-gradient(1100px circle at 85% 15%, rgba(14, 165, 233, 0.16) 0%, transparent 55%),
-                      radial-gradient(900px circle at 15% 85%, rgba(16, 185, 129, 0.1) 0%, transparent 50%),
-                      linear-gradient(135deg, #090E1A 0%, #0F1D36 45%, #0B172E 100%);
-          box-shadow: 0 24px 50px -12px rgba(2, 6, 23, 0.75), 
-                      0 0 35px -5px rgba(14, 165, 233, 0.18),
-                      inset 0 1px 0 rgba(255, 255, 255, 0.12);
-          border: 1px solid rgba(56, 189, 248, 0.28);
-          margin-bottom: 26px;
+          background: #0F172A;
+          box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(2, 132, 199, 0.05);
+          border: 1px solid rgba(2, 132, 199, 0.2);
+          margin-bottom: 24px;
           position: relative;
-          min-height: 290px;
+          min-height: 280px;
           width: 100%;
-          box-sizing: border-box;
         }
 
-        /* Subtle Ambient Glow Orbs */
-        .admin-hero-banner-container::before {
-          content: "";
-          position: absolute;
-          top: -60px;
-          right: 180px;
-          width: 260px;
-          height: 260px;
-          background: radial-gradient(circle, rgba(56, 189, 248, 0.18) 0%, transparent 70%);
-          border-radius: 50%;
-          pointer-events: none;
-          z-index: 1;
-        }
-
-        /* Left Column: Command & Operations */
-        .admin-hero-left-col {
+        .hero-left-col {
           flex: 1.15;
-          padding: 32px 36px;
+          padding: 38px 36px;
           display: flex;
           flex-direction: column;
           justifyContent: space-between;
           z-index: 2;
+          background: linear-gradient(135deg, #0F172A 0%, #1E293B 70%, ${secondaryBrandColor} 100%);
           position: relative;
-          min-width: 0;
         }
 
-        @media (min-width: 960px) {
-          .admin-hero-left-col {
-            padding-right: 38px;
-            border-right: 1px solid rgba(56, 189, 248, 0.18);
-            background: linear-gradient(90deg, transparent 0%, rgba(15, 29, 54, 0.3) 100%);
+        /* Divider on wide screens */
+        @media (min-width: 900px) {
+          .hero-left-col {
+            padding-right: 40px;
+            margin-right: 0;
+            border-right: 1px solid rgba(2, 132, 199, 0.2);
           }
         }
 
-        /* Top Tag Pills */
-        .admin-hero-tags-row {
+        .hero-right-col {
+          flex: 1;
+          background: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
           display: flex;
           align-items: center;
-          gap: 10px;
-          margin-bottom: 16px;
-          flex-wrap: wrap;
+          justifyContent: center;
+          position: relative;
+          overflow: hidden;
+          min-height: 260px;
         }
 
-        .hero-tag-hospital {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 5px 13px;
-          border-radius: 9999px;
-          background: rgba(14, 165, 233, 0.15);
-          border: 1px solid rgba(56, 189, 248, 0.35);
-          color: #E0F2FE;
-          font-size: 11.5px;
-          font-weight: 700;
-          letter-spacing: 0.3px;
-          backdrop-filter: blur(8px);
-        }
-
-        .hero-tag-dept {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 5px 13px;
-          border-radius: 9999px;
-          background: rgba(16, 185, 129, 0.15);
-          border: 1px solid rgba(52, 211, 153, 0.4);
-          color: #A7F3D0;
-          font-size: 11.5px;
-          font-weight: 800;
-          letter-spacing: 0.5px;
-          text-transform: uppercase;
-        }
-
-        .hero-tag-ai-live {
-          display: inline-flex;
+        .hero-pills-row {
+          display: flex;
           align-items: center;
           gap: 8px;
-          padding: 5px 12px;
+          flex-wrap: wrap;
+          margin-bottom: 12px;
+        }
+
+        .hero-pill-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 11px;
           border-radius: 9999px;
-          background: rgba(255, 255, 255, 0.06);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          color: #94A3B8;
-          font-size: 11.5px;
-          font-weight: 600;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.2px;
         }
 
-        .triage-pulse-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #34D399;
-          box-shadow: 0 0 10px #34D399;
-          position: relative;
-        }
-
-        .triage-pulse-dot::after {
-          content: "";
-          position: absolute;
-          inset: -3px;
-          border-radius: 50%;
-          border: 1.5px solid #34D399;
-          animation: pingPulse 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-        }
-
-        @keyframes pingPulse {
-          0% { transform: scale(1); opacity: 0.8; }
-          75%, 100% { transform: scale(2.2); opacity: 0; }
-        }
-
-        /* Hero Typography */
-        .admin-hero-title {
-          font-size: 30px;
+        .hero-title {
+          font-size: 32px;
           font-weight: 800;
           line-height: 1.18;
           letter-spacing: -0.6px;
           color: #FFFFFF;
-          margin: 0 0 8px 0;
+          margin: 0;
         }
 
-        .admin-hero-title-gradient {
-          background: linear-gradient(90deg, #38BDF8 0%, #34D399 50%, #818CF8 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.25));
+        .hero-title-highlight {
+          color: #38BDF8;
         }
 
-        .admin-hero-subtitle {
-          color: #94A3B8;
+        .hero-subtitle {
+          color: rgba(224, 242, 254, 0.88);
           font-size: 13.5px;
-          line-height: 1.55;
-          margin: 0 0 24px 0;
+          line-height: 1.5;
+          margin-top: 12px;
+          margin-bottom: 24px;
           max-width: 480px;
-          font-weight: 450;
+          font-weight: 500;
         }
 
-        /* 4 KPI Stat Tiles */
-        .admin-hero-stats-row {
+        .hero-stats-row {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 12px;
+          gap: 10px;
           width: 100%;
         }
 
-        .admin-hero-stat-card {
-          background: rgba(15, 23, 42, 0.6);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 16px;
-          padding: 12px 14px;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          min-width: 0;
-          box-sizing: border-box;
-          transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
-          position: relative;
-          overflow: hidden;
-        }
-
-        .admin-hero-stat-card::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 1px;
-          background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-        }
-
-        .admin-hero-stat-card:hover {
-          background: rgba(15, 23, 42, 0.85);
-          border-color: rgba(56, 189, 248, 0.45);
-          transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), 0 0 16px rgba(56, 189, 248, 0.12);
-        }
-
-        .admin-hero-stat-icon-wrap {
-          width: 38px;
-          height: 38px;
-          border-radius: 11px;
-          display: flex;
-          align-items: center;
-          justifyContent: center;
-          flex-shrink: 0;
-          transition: transform 0.2s ease;
-        }
-
-        .admin-hero-stat-card:hover .admin-hero-stat-icon-wrap {
-          transform: scale(1.06);
-        }
-
-        .admin-hero-stat-value {
-          font-size: 20px;
-          font-weight: 800;
-          line-height: 1.15;
-          letter-spacing: -0.4px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .admin-hero-stat-label {
-          font-size: 10px;
-          font-weight: 700;
-          color: #94A3B8;
-          line-height: 1.2;
-          margin-top: 3px;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          white-space: nowrap;
-        }
-
-        /* Tactile Stepper Buttons */
-        .stepper-controls-wrapper {
-          display: flex;
-          align-items: center;
-          gap: 5px;
+        .hero-stat-card {
           background: rgba(255, 255, 255, 0.08);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 8px;
-          padding: 2px 3px;
-        }
-
-        .counter-adjust-btn {
-          width: 22px;
-          height: 22px;
-          border-radius: 6px;
-          border: none;
-          background: rgba(255, 255, 255, 0.12);
-          color: #FFFFFF;
-          font-weight: 800;
-          font-size: 13px;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          justifyContent: center;
-          transition: all 0.15s ease;
-          outline: none;
-          flex-shrink: 0;
-        }
-
-        .counter-adjust-btn:hover {
-          background: #0284C7;
-          color: #FFFFFF;
-          box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
-          transform: scale(1.08);
-        }
-
-        .counter-adjust-btn:active {
-          transform: scale(0.92);
-        }
-
-        .counter-adjust-btn:disabled {
-          opacity: 0.35;
-          cursor: not-allowed;
-          background: rgba(255, 255, 255, 0.05);
-        }
-
-        /* RIGHT COLUMN: Executive Clinical Telemetry Hub */
-        .admin-hero-right-col {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justifyContent: center;
-          position: relative;
-          overflow: hidden;
-          min-height: 280px;
-          padding: 24px 28px;
-          box-sizing: border-box;
-          background: radial-gradient(circle at 50% 50%, rgba(15, 29, 54, 0.6) 0%, rgba(8, 15, 30, 0.8) 100%);
-        }
-
-        .telemetry-hub-container {
-          width: 100%;
-          max-width: 440px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          position: relative;
-          z-index: 2;
-        }
-
-        .telemetry-main-console {
-          background: rgba(15, 23, 42, 0.72);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(56, 189, 248, 0.3);
-          border-radius: 20px;
-          padding: 16px 18px;
-          box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4), 
-                      0 0 24px rgba(56, 189, 248, 0.12),
-                      inset 0 1px 0 rgba(255, 255, 255, 0.1);
-          transition: border-color 0.2s ease;
-        }
-
-        .console-header {
-          display: flex;
-          align-items: center;
-          justifyContent: space-between;
-          margin-bottom: 12px;
-          padding-bottom: 9px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        }
-
-        .console-title-group {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .console-title-text {
-          font-size: 11px;
-          font-weight: 800;
-          letter-spacing: 0.8px;
-          color: #F8FAFC;
-          text-transform: uppercase;
-        }
-
-        .console-status-pill {
-          font-size: 9.5px;
-          font-weight: 800;
-          padding: 3px 9px;
-          border-radius: 9999px;
-          letter-spacing: 0.4px;
-        }
-
-        .pill-urgent {
-          background: rgba(239, 68, 68, 0.2);
-          border: 1px solid #EF4444;
-          color: #FCA5A5;
-        }
-
-        .pill-active {
-          background: rgba(56, 189, 248, 0.2);
-          border: 1px solid #38BDF8;
-          color: #BAE6FD;
-        }
-
-        .pill-standby {
-          background: rgba(52, 211, 153, 0.18);
-          border: 1px solid #34D399;
-          color: #A7F3D0;
-        }
-
-        /* Patient Consultation Strip */
-        .console-patient-strip {
-          background: rgba(255, 255, 255, 0.04);
-          border: 1px solid rgba(56, 189, 248, 0.2);
-          border-radius: 12px;
-          padding: 9px 12px;
-          display: flex;
-          align-items: center;
-          justifyContent: space-between;
-          margin-bottom: 11px;
-          transition: background 0.2s ease;
-        }
-
-        .console-patient-strip:hover {
-          background: rgba(255, 255, 255, 0.07);
-        }
-
-        .patient-strip-left {
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 14px;
+          padding: 10px 12px;
           display: flex;
           align-items: center;
           gap: 10px;
           min-width: 0;
+          box-sizing: border-box;
+          transition: background 0.2s ease, border-color 0.2s ease;
         }
 
-        .patient-avatar-circle {
-          width: 32px;
-          height: 32px;
-          border-radius: 9px;
-          background: linear-gradient(135deg, rgba(56, 189, 248, 0.25) 0%, rgba(14, 165, 233, 0.15) 100%);
-          color: #38BDF8;
-          display: flex;
-          align-items: center;
-          justifyContent: center;
-          font-size: 15px;
-          flex-shrink: 0;
-          border: 1px solid rgba(56, 189, 248, 0.3);
-        }
-
-        .patient-strip-name {
-          font-size: 12.5px;
-          font-weight: 800;
-          color: #FFFFFF;
-          line-height: 1.2;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .patient-strip-dept {
-          font-size: 10px;
-          color: #94A3B8;
-          font-weight: 600;
-          margin-top: 2px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .fast-track-pill {
-          background: rgba(56, 189, 248, 0.18);
-          color: #38BDF8;
-          border: 1px solid rgba(56, 189, 248, 0.35);
-          font-size: 9.5px;
-          font-weight: 800;
-          padding: 3px 8px;
-          border-radius: 6px;
-          white-space: nowrap;
-          letter-spacing: 0.3px;
-        }
-
-        .telemetry-call-quick-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 5px 12px;
-          border-radius: 8px;
-          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
-          border: 1px solid #38BDF8;
-          color: #FFFFFF;
-          font-size: 10.5px;
-          font-weight: 800;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          outline: none;
-          box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
-          white-space: nowrap;
-        }
-
-        .telemetry-call-quick-btn:hover {
-          background: #0369A1;
-          transform: translateY(-1px);
-          box-shadow: 0 4px 14px rgba(2, 132, 199, 0.45);
-        }
-
-        /* Hospital Grade ECG Waveform Monitor */
-        .console-ecg-box {
-          background: #030A14;
-          border: 1px solid rgba(56, 189, 248, 0.22);
-          border-radius: 10px;
-          height: 42px;
-          display: flex;
-          align-items: center;
-          justifyContent: center;
-          padding: 0 6px;
-          margin-bottom: 11px;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .ecg-grid-overlay {
-          position: absolute;
-          inset: 0;
-          background-image: linear-gradient(rgba(14, 165, 233, 0.08) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(14, 165, 233, 0.08) 1px, transparent 1px);
-          background-size: 14px 14px;
-        }
-
-        /* Continuous Flowing Sweep Animation */
-        .ecg-scanline {
-          position: absolute;
-          top: 0;
-          bottom: 0;
-          width: 30px;
-          background: linear-gradient(90deg, transparent 0%, rgba(56, 189, 248, 0.25) 80%, rgba(255, 255, 255, 0.6) 100%);
-          animation: ecgSweep 2.4s linear infinite;
-          pointer-events: none;
-        }
-
-        @keyframes ecgSweep {
-          0% { left: -30px; }
-          100% { left: 100%; }
-        }
-
-        /* 3 Vitals Metrics Row */
-        .console-vitals-row {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 8px;
-        }
-
-        .vital-chip {
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 9px;
-          padding: 6px 10px;
-          display: flex;
-          align-items: baseline;
-          justifyContent: space-between;
-          transition: background 0.15s ease;
-        }
-
-        .vital-chip:hover {
-          background: rgba(255, 255, 255, 0.09);
-        }
-
-        .vital-val {
-          font-size: 12.5px;
-          font-weight: 800;
-          letter-spacing: -0.2px;
-        }
-
-        .vital-unit {
-          font-size: 9px;
-          color: #94A3B8;
-          font-weight: 700;
-          text-transform: uppercase;
-        }
-
-        .heart-pulse {
-          display: inline-block;
-          animation: heartBeat 1.2s infinite ease-in-out;
-        }
-
-        @keyframes heartBeat {
-          0%, 100% { transform: scale(1); }
-          15% { transform: scale(1.25); }
-          30% { transform: scale(1); }
-          45% { transform: scale(1.18); }
-        }
-
-        /* Bottom Dual Badges */
-        .telemetry-bottom-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-        }
-
-        .telemetry-sub-badge {
-          background: rgba(15, 23, 42, 0.65);
-          backdrop-filter: blur(14px);
-          border: 1px solid rgba(56, 189, 248, 0.22);
-          border-radius: 13px;
-          padding: 9px 12px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
-          transition: border-color 0.2s ease;
-        }
-
-        .telemetry-sub-badge:hover {
+        .hero-stat-card:hover {
+          background: rgba(255, 255, 255, 0.14);
           border-color: rgba(56, 189, 248, 0.4);
         }
 
-        .sub-badge-icon {
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
+        .hero-stat-icon-wrap {
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          background: rgba(56, 189, 248, 0.18);
           display: flex;
           align-items: center;
-          justifyContent: center;
-          font-size: 13px;
-          font-weight: 800;
+          justify-content: center;
           flex-shrink: 0;
+          color: #38BDF8;
         }
 
-        .sub-badge-info {
-          display: flex;
-          flex-direction: column;
-          min-width: 0;
-        }
-
-        .sub-badge-title {
-          font-size: 10.5px;
+        .hero-stat-value {
+          font-size: 15px;
           font-weight: 800;
           color: #FFFFFF;
-          line-height: 1.2;
+          line-height: 1.15;
+          letter-spacing: -0.3px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
-          letter-spacing: 0.3px;
         }
 
-        .sub-badge-status {
-          font-size: 9px;
-          font-weight: 700;
+        .hero-stat-label {
+          font-size: 10px;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.78);
           line-height: 1.2;
           margin-top: 2px;
           white-space: nowrap;
@@ -669,392 +207,648 @@ export default function AdminHeroBanner({
           text-overflow: ellipsis;
         }
 
-        /* Responsive Breakpoints */
+        .counter-btn-micro {
+          width: 18px;
+          height: 18px;
+          border-radius: 4px;
+          border: 1px solid rgba(255, 255, 255, 0.25);
+          background: rgba(255, 255, 255, 0.12);
+          color: #FFFFFF;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          line-height: 1;
+          padding: 0;
+          transition: all 0.15s ease;
+        }
+
+        .counter-btn-micro:hover:not(:disabled) {
+          background: #0284C7;
+          border-color: #38BDF8;
+        }
+
+        .counter-btn-micro:disabled {
+          opacity: 0.35;
+          cursor: not-allowed;
+        }
+
+        .call-next-badge-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 7px;
+          border-radius: 6px;
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+          border: 1px solid rgba(56, 189, 248, 0.4);
+          color: #FFFFFF;
+          font-size: 10px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .call-next-badge-btn:hover {
+          background: #0369A1;
+          transform: translateY(-1px);
+        }
+
         @media (max-width: 1240px) {
-          .admin-hero-stats-row {
+          .hero-stats-row {
             grid-template-columns: repeat(2, 1fr);
           }
         }
 
-        @media (max-width: 960px) {
-          .admin-hero-banner-container {
+        @media (max-width: 900px) {
+          .hero-banner-container {
             flex-direction: column;
           }
-          .admin-hero-left-col {
-            padding: 28px 24px;
+          .hero-left-col {
+            clip-path: none !important;
+            padding: 30px 24px;
+            margin-right: 0;
             border-right: none !important;
-            border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+            border-bottom: 1px solid rgba(16, 185, 129, 0.25);
           }
-          .admin-hero-right-col {
-            min-height: auto;
-            padding: 24px;
+          .hero-right-col {
+            min-height: 220px;
             width: 100%;
           }
         }
 
-        @media (max-width: 580px) {
-          .admin-hero-title {
-            font-size: 24px;
+        @media (max-width: 540px) {
+          .hero-title {
+            font-size: 26px;
           }
-          .admin-hero-stats-row {
+          .hero-stats-row {
             grid-template-columns: 1fr 1fr;
-            gap: 9px;
+            gap: 8px;
           }
-          .telemetry-bottom-row {
-            grid-template-columns: 1fr;
+          .hero-stat-card {
+            padding: 8px 10px;
           }
         }
       `}</style>
 
-      {/* LEFT COLUMN: Executive Operations Header & 4 KPI Metric Tiles */}
-      <div className="admin-hero-left-col">
+      {/* LEFT COLUMN: Header Pills, Typography & 4 Stats Cards */}
+      <div className="hero-left-col">
         <div>
-          {/* Status Badges Row */}
-          <div className="admin-hero-tags-row">
-            <span className="hero-tag-hospital">
-              🏥 {formatHospitalName(hospitalName)}
-            </span>
-            <span className="hero-tag-dept">
-              🛡️ {adminDept === "all" ? (isHi ? "सुपर एडमिन कंसोल" : "ALL DEPARTMENTS") : `${deptLabel.toUpperCase()}`}
-            </span>
-            <span className="hero-tag-ai-live">
-              <span className="triage-pulse-dot" />
-              {isHi ? "AI ट्राइएज लाइव" : "AI Triage Active"}
-            </span>
-            {currentUser?.name && (
-              <span style={{ padding: "5px 12px", borderRadius: "9999px", background: "rgba(139, 92, 246, 0.15)", border: "1px solid rgba(167, 139, 250, 0.35)", color: "#DDD6FE", fontSize: "11px", fontWeight: 700 }}>
-                👨‍⚕️ Dr. {currentUser.name}
-              </span>
-            )}
+          {/* Top Row Pills: Hospital + Department + Doctor */}
+          <div className="hero-pills-row">
+            <div
+              className="hero-pill-item"
+              style={{
+                background: "rgba(56, 189, 248, 0.15)",
+                border: "1px solid rgba(56, 189, 248, 0.35)",
+                color: "#38BDF8",
+              }}
+            >
+              <span>🏥</span>
+              <span>{displayHospName}</span>
+            </div>
+
+            <div
+              className="hero-pill-item"
+              style={{
+                background: "rgba(52, 211, 153, 0.15)",
+                border: "1px solid rgba(52, 211, 153, 0.35)",
+                color: "#34D399",
+              }}
+            >
+              <span>🏷️</span>
+              <span>{deptLabel} Desk</span>
+            </div>
+
+            <div
+              className="hero-pill-item"
+              style={{
+                background: "rgba(255, 255, 255, 0.08)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                color: "#E2E8F0",
+              }}
+            >
+              <span>👨‍⚕️</span>
+              <span>{doctorName}</span>
+            </div>
           </div>
 
-          {/* Operations Overview Label */}
-          <div style={{ fontSize: "10px", fontWeight: 700, color: "#94A3B8", letterSpacing: "1.5px", textTransform: "uppercase", marginBottom: "8px" }}>
-            {isHi ? "संचालन अवलोकन" : "OPERATIONS OVERVIEW"}
-          </div>
-
-          {/* Dynamic Headline */}
-          <h1 className="admin-hero-title">
+          <h1 className="hero-title">
             {isHi ? (
               <>
-                क्लीनिकल ऑपरेशंस.
+                डॉक्टर एवं स्टाफ कंसोल.
                 <br />
-                <span className="admin-hero-title-gradient">डॉक्टर एवं स्टाफ कंट्रोल</span>
+                <span className="hero-title-highlight" style={{ color: primaryBrandColor }}>हम</span> सदैव सेवा में तत्पर हैं.
               </>
             ) : (
               <>
-                Clinical Operations.
+                Doctor & Staff Desk.
                 <br />
-                <span className="admin-hero-title-gradient">Doctor & Staff Control</span>
+                <span className="hero-title-highlight" style={{ color: primaryBrandColor }}>We’re</span> Here to Serve.
               </>
             )}
           </h1>
-
-          <p className="admin-hero-subtitle">
-            {isHi
-              ? "रीयल-टाइम बहु-विभागीय मरीज़ कॉलिंग, ट्राइएज वर्गीकरण एवं क्लीनिकल रूटिंग।"
-              : "Real-time multi-department patient calling, triage classification & clinical routing."}
+          <p className="hero-subtitle">
+            {branding?.tagline || (isHi
+              ? "रीयल-टाइम मरीज़ कॉलिंग, सक्रिय डेस्क नियंत्रण एवं त्वरित कतार प्रबंधन सुविधा।"
+              : "Real-time patient calling, counter management & smart queue routing.")}
           </p>
         </div>
 
-        {/* 4 Refined KPI Stat Tiles */}
-        <div className="admin-hero-stats-row">
-          {/* 1. Patients Waiting */}
-          <div className="admin-hero-stat-card">
-            <div className="admin-hero-stat-icon-wrap" style={{ color: "#FBBF24", background: "rgba(245, 158, 11, 0.18)", boxShadow: "0 0 12px rgba(245, 158, 11, 0.2)" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+        {/* 4 Stats Badges matching HeroBanner */}
+        <div className="hero-stats-row">
+          {/* 1. Patients Served Today */}
+          <div className="hero-stat-card">
+            <div className="hero-stat-icon-wrap">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </div>
+            <div>
+              <div className="hero-stat-value">{patientsServed}</div>
+              <div className="hero-stat-label">
+                {isHi ? "आज सेवारत मरीज़" : "Patients Today"}
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Active Desks with subtle stepper */}
+          <div className="hero-stat-card">
+            <div className="hero-stat-icon-wrap" style={{ color: "#38BDF8" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span className="hero-stat-value" style={{ color: "#38BDF8" }}>
+                  {activeCounters} {isHi ? "डेस्क" : "Desks"}
+                </span>
+                {handleCounterChange && (
+                  <div style={{ display: "inline-flex", gap: "3px", marginLeft: "2px" }}>
+                    <button
+                      type="button"
+                      className="counter-btn-micro"
+                      onClick={() => handleCounterChange(-1)}
+                      disabled={activeCounters <= 1}
+                      title="Decrease Counter"
+                    >
+                      -
+                    </button>
+                    <button
+                      type="button"
+                      className="counter-btn-micro"
+                      onClick={() => handleCounterChange(1)}
+                      disabled={activeCounters >= 10}
+                      title="Increase Counter"
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="hero-stat-label">
+                {isHi ? "सक्रिय डॉक्टर डेस्क" : "Active Desks"}
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Live Waiting in Queue */}
+          <div className="hero-stat-card">
+            <div className="hero-stat-icon-wrap" style={{ color: "#FDE047" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                 <circle cx="9" cy="7" r="4" />
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div className="admin-hero-stat-value" style={{ color: "#FDE68A" }}>
-                {waitingCount !== undefined ? waitingCount : (analytics?.currently_waiting || 0)}
+            <div>
+              <div className="hero-stat-value" style={{ color: "#FDE047" }}>
+                {waitingCount} {isHi ? "प्रतीक्षारत" : "Waiting"}
               </div>
-              <div className="admin-hero-stat-label">
-                {isHi ? "प्रतीक्षारत मरीज़" : "WAITING PATIENTS"}
-              </div>
-            </div>
-          </div>
-
-          {/* 2. Currently Serving */}
-          <div className="admin-hero-stat-card">
-            <div className="admin-hero-stat-icon-wrap" style={{ color: "#34D399", background: "rgba(16, 185, 129, 0.18)", boxShadow: "0 0 12px rgba(16, 185, 129, 0.2)" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <polyline points="12 6 12 12 16 14" />
-              </svg>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div className="admin-hero-stat-value" style={{ color: "#6EE7B7" }}>
-                {displayServing}
-              </div>
-              <div className="admin-hero-stat-label">
-                {isHi ? "सेवारत" : "NOW SERVING"}
+              <div className="hero-stat-label">
+                {isHi ? "प्रतीक्षारत मरीज़" : "Live in Queue"}
               </div>
             </div>
           </div>
 
-          {/* 3. Today's Booked Appointments */}
-          <div className="admin-hero-stat-card">
-            <div className="admin-hero-stat-icon-wrap" style={{ color: "#38BDF8", background: "rgba(14, 165, 233, 0.18)", boxShadow: "0 0 12px rgba(14, 165, 233, 0.2)" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
+          {/* 4. Now Serving / Next Patient */}
+          <div className="hero-stat-card">
+            <div className="hero-stat-icon-wrap" style={{ color: "#34D399" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
               </svg>
             </div>
-            <div style={{ minWidth: 0 }}>
-              <div className="admin-hero-stat-value" style={{ color: "#BAE6FD" }}>
-                {appointmentsCount}
-              </div>
-              <div className="admin-hero-stat-label">
-                {isHi ? "बुक्ड स्लॉट्स" : "BOOKED SLOTS"}
-              </div>
-            </div>
-          </div>
-
-          {/* 4. Active Doctor Desks & Tactile Stepper */}
-          <div className="admin-hero-stat-card">
-            <div className="admin-hero-stat-icon-wrap" style={{ color: "#A78BFA", background: "rgba(139, 92, 246, 0.18)", boxShadow: "0 0 12px rgba(139, 92, 246, 0.2)" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-              </svg>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
-                <span className="admin-hero-stat-value" style={{ color: "#DDD6FE" }}>
-                  {activeCounters}
+                <span className="hero-stat-value" style={{ color: "#34D399" }}>
+                  {displayServing}
                 </span>
-                <div className="stepper-controls-wrapper">
+                {!activeServing && waitingCount > 0 && handleServeNext && (
                   <button
                     type="button"
-                    onClick={() => handleCounterChange && handleCounterChange(-1)}
-                    disabled={activeCounters <= 1}
-                    className="counter-adjust-btn"
-                    title={isHi ? "सक्रिय काउंटर कम करें" : "Decrease Active Desks"}
+                    onClick={handleServeNext}
+                    className="call-next-badge-btn"
+                    title="Call Next Patient"
                   >
-                    −
+                    <span>{isHi ? "बुलाएं" : "Call"}</span>
+                    <span>→</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCounterChange && handleCounterChange(1)}
-                    className="counter-adjust-btn"
-                    title={isHi ? "सक्रिय काउंटर बढ़ाएं" : "Increase Active Desks"}
-                  >
-                    +
-                  </button>
-                </div>
+                )}
               </div>
-              <div className="admin-hero-stat-label">
-                {isHi ? "सक्रिय डेस्क" : "ACTIVE DESKS"}
+              <div className="hero-stat-label">
+                {isHi ? "वर्तमान सेवारत" : "Now Serving"}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* RIGHT COLUMN: Executive AI Clinical Telemetry Hub */}
-      <div className="admin-hero-right-col">
-        <div className="telemetry-hub-container">
-          {/* Main Glass Console Card */}
-          <div className="telemetry-main-console">
-            {/* Header */}
-            <div className="console-header">
-              <div className="console-title-group">
-                <span className="triage-pulse-dot" />
-                <span className="console-title-text">
-                  {isHi ? "AI क्लीनिकल टेलीमेट्री" : "AI CLINICAL TELEMETRY"}
-                </span>
-                <span style={{ fontSize: "9px", color: "#94A3B8", fontWeight: 500, marginLeft: "4px" }}>
-                  {isHi ? "लाइव केयर समन्वय" : "Live care coordination"}
-                </span>
-              </div>
-              {servingTicket ? (
-                <span className={`console-status-pill ${servingTicket.priority === "emergency" || servingTicket.priority === "urgent" ? "pill-urgent" : "pill-active"}`}>
-                  {servingTicket.priority === "emergency" ? "PRIORITY 1 • CRITICAL" : "PRIORITY 2 • ACTIVE"}
-                </span>
-              ) : waitingCount > 0 ? (
-                <span className="console-status-pill pill-standby">
-                  {waitingCount} {isHi ? "प्रतीक्षारत" : "IN LINE"}
-                </span>
-              ) : (
-                <span className="console-status-pill pill-standby">
-                  {isHi ? "डेस्क स्टैंडबाय" : "DESK READY"}
-                </span>
-              )}
-            </div>
-
-            {/* Dynamic Patient Consultation Strip */}
-            <div className="console-patient-strip">
-              {servingTicket ? (
-                <>
-                  <div className="patient-strip-left">
-                    <div className="patient-avatar-circle">
-                      🩺
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="patient-strip-name">
-                        #{servingTicket.ticket_id} • {servingTicket.name || "Patient"}
-                      </div>
-                      <div className="patient-strip-dept">
-                        {servingTicket.age ? `${servingTicket.age}y • ` : ""}
-                        {getCategoryLabel(servingTicket.category || adminDept, language)} Desk
-                      </div>
-                    </div>
-                  </div>
-                  <div className="fast-track-pill">
-                    {servingTicket.priority === "emergency" ? "🚨 Fast-Track" : "⚡ Active"}
-                  </div>
-                </>
-              ) : waitingCount > 0 ? (
-                <>
-                  <div className="patient-strip-left">
-                    <div className="patient-avatar-circle" style={{ background: "rgba(52, 211, 153, 0.2)", color: "#34D399", borderColor: "rgba(52, 211, 153, 0.35)" }}>
-                      ⏳
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="patient-strip-name">
-                        {nextTicket ? `#${nextTicket.ticket_id} • ${nextTicket.name}` : `${waitingCount} Patients in Queue`}
-                      </div>
-                      <div className="patient-strip-dept">
-                        {nextTicket ? `${getCategoryLabel(nextTicket.category || adminDept, language)} • Next to call` : "AI Priority Order Sorted"}
-                      </div>
-                    </div>
-                  </div>
-                  {handleServeNext && (
-                    <button
-                      type="button"
-                      onClick={handleServeNext}
-                      className={`telemetry-call-quick-btn ${isDoctorBusy ? "telemetry-busy-btn" : ""}`}
-                      style={
-                        isDoctorBusy
-                          ? {
-                              background: "rgba(148, 163, 184, 0.15)",
-                              color: "#94A3B8",
-                              borderColor: "rgba(148, 163, 184, 0.3)",
-                              cursor: "not-allowed",
-                            }
-                          : {}
-                      }
-                      title={
-                        isDoctorBusy
-                          ? (isHi
-                              ? `वर्तमान में #${myServingTicket?.ticket_id} का परामर्श चल रहा है। 1 डॉक्टर = 1 समय में 1 मरीज़।`
-                              : `Currently consulting #${myServingTicket?.ticket_id}. Complete consultation first to call next.`)
-                          : "Call Next Patient"
-                      }
-                    >
-                      {isDoctorBusy ? (
-                        <>
-                          <span style={{ fontSize: "11px" }}>🔒</span>
-                          <span>{isHi ? `#${myServingTicket?.ticket_id}` : `#${myServingTicket?.ticket_id} Busy`}</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <polyline points="9 18 15 12 9 6" />
-                          </svg>
-                          <span>{isHi ? "बुलाएं" : "Call Next"}</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="patient-strip-left">
-                    <div className="patient-avatar-circle" style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38BDF8" }}>
-                      ✨
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="patient-strip-name">
-                        {isHi ? "कतार खाली है" : "All Queues Clear"}
-                      </div>
-                      <div className="patient-strip-dept">
-                        {isHi ? "नए मरीज़ पंजीकरण हेतु तैयार" : "Standby for new walk-ins & appointments"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="fast-track-pill" style={{ background: "rgba(52, 211, 153, 0.15)", color: "#34D399", borderColor: "rgba(52, 211, 153, 0.3)" }}>
-                    ✓ Ready
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Hospital Grade ECG Waveform Monitor with animated scanline */}
-            <div className="console-ecg-box">
-              <div className="ecg-grid-overlay" />
-              <div className="ecg-scanline" />
-              <svg viewBox="0 0 400 42" preserveAspectRatio="none" style={{ width: "100%", height: "100%", position: "relative", zIndex: 1, filter: "drop-shadow(0 0 4px #38BDF8)" }}>
-                <path
-                  d="M0 21 L35 21 L43 11 L51 32 L59 5 L67 36 L75 21 L140 21 L148 12 L156 30 L164 6 L172 35 L180 21 L245 21 L253 11 L261 31 L269 5 L277 36 L285 21 L350 21 L358 13 L366 30 L374 7 L382 34 L390 21 L400 21"
-                  stroke="#38BDF8"
-                  strokeWidth="2.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  fill="none"
-                />
-              </svg>
-            </div>
-
-            {/* 3 Clinical Metrics */}
-            <div className="console-vitals-row">
-              <div className="vital-chip">
-                <span className="vital-val" style={{ color: "#F87171" }}>
-                  <span className="heart-pulse">♥</span> 74
-                </span>
-                <span className="vital-unit">BPM</span>
-              </div>
-              <div className="vital-chip">
-                <span className="vital-val" style={{ color: "#38BDF8" }}>99%</span>
-                <span className="vital-unit">SpO₂</span>
-              </div>
-              <div className="vital-chip">
-                <span className="vital-val" style={{ color: "#34D399" }}>120/80</span>
-                <span className="vital-unit">BP</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Dual Badges: Doctor On Duty & E-Prescription */}
-          <div className="telemetry-bottom-row">
-            {/* Badge 1: Doctor Duty Status */}
-            <div className="telemetry-sub-badge">
-              <div className="sub-badge-icon" style={{ background: "rgba(56, 189, 248, 0.2)", color: "#38BDF8" }}>
-                👨‍⚕️
-              </div>
-              <div className="sub-badge-info">
-                <span className="sub-badge-title">
-                  {currentUser?.name ? `DR. ${currentUser.name.toUpperCase()}` : "DR. ON DUTY"}
-                </span>
-                <span className="sub-badge-status" style={{ color: "#34D399" }}>
-                  ● {isHi ? "सक्रिय कंसोल" : "ACTIVE ON DESK"}
-                </span>
-              </div>
-            </div>
-
-            {/* Badge 2: E-Prescription & AI Engine */}
-            <div className="telemetry-sub-badge">
-              <div className="sub-badge-icon" style={{ background: "rgba(2, 132, 199, 0.25)", color: "#BAE6FD" }}>
-                Rx
-              </div>
-              <div className="sub-badge-info">
-                <span className="sub-badge-title">E-PRESCRIPTION</span>
-                <span className="sub-badge-status" style={{ color: "#38BDF8" }}>
-                  VERIFIED & SYNCED ✓
-                </span>
-              </div>
-            </div>
-          </div>
+      {/* RIGHT COLUMN: Hospital & Ambulance Vector Healthcare Visual matching Patient Portal */}
+      <div className="hero-right-col">
+        {/* Floating Live Desk Badge */}
+        <div
+          style={{
+            position: "absolute",
+            top: "16px",
+            right: "16px",
+            background: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            border: "1px solid rgba(56, 189, 248, 0.3)",
+            borderRadius: "9999px",
+            padding: "4px 12px",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            color: "#38BDF8",
+            fontSize: "11px",
+            fontWeight: 700,
+            zIndex: 3,
+          }}
+        >
+          <span
+            style={{
+              width: "6px",
+              height: "6px",
+              borderRadius: "50%",
+              background: "#34D399",
+              display: "inline-block",
+              boxShadow: "0 0 8px #34D399",
+            }}
+          />
+          <span>{isHi ? "लाइव स्टाफ कंसोल" : "Live Staff Console"}</span>
         </div>
+
+        {/* Active Serving Patient Status Badge (if serving) */}
+        {activeServing && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "16px",
+              left: "16px",
+              background: "rgba(15, 23, 42, 0.8)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              border: "1px solid rgba(52, 211, 153, 0.4)",
+              borderRadius: "12px",
+              padding: "6px 12px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              color: "#FFFFFF",
+              fontSize: "11.5px",
+              fontWeight: 600,
+              zIndex: 3,
+            }}
+          >
+            <span style={{ color: "#34D399" }}>🩺</span>
+            <span>
+              {isHi ? "परामर्श जारी:" : "Serving:"}{" "}
+              <strong style={{ color: "#38BDF8" }}>#{activeServing.ticket_id}</strong>
+              {activeServing.name ? ` • ${activeServing.name}` : ""}
+            </span>
+          </div>
+        )}
+
+        <HospitalAmbulanceIllustration />
+        {branding?.logo_url && (
+          <div style={{
+            position: "absolute",
+            top: "16px",
+            right: "16px",
+            background: "rgba(255, 255, 255, 0.94)",
+            backdropFilter: "blur(10px)",
+            borderRadius: "14px",
+            padding: "8px 14px",
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)",
+            border: `1.5px solid ${branding.primary_color || "#0284C7"}40`,
+            maxWidth: "240px",
+            zIndex: 4,
+          }}>
+            <img
+              src={branding.logo_url}
+              alt="Hospital Logo"
+              style={{ width: "32px", height: "32px", objectFit: "contain", borderRadius: "8px" }}
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "12px", fontWeight: 900, color: "#0F172A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayHospName}
+              </div>
+              <div style={{ fontSize: "9.5px", fontWeight: 800, color: branding.primary_color || "#0284C7", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+                Clinical Desk
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+const heroContainerStyle = {
+  width: "100%",
+};
+
+/**
+ * Detailed SVG Vector Illustration of City General Hospital Building & Ambulance
+ * Modeled precisely to match the Patient Portal Hero Banner.
+ */
+function HospitalAmbulanceIllustration() {
+  return (
+    <svg
+      viewBox="0 0 540 320"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{
+        width: "100%",
+        height: "100%",
+        maxHeight: "320px",
+        display: "block",
+      }}
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <defs>
+        {/* Sky gradient */}
+        <linearGradient id="staffSkyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#E6F2FA" />
+          <stop offset="60%" stopColor="#EFF7FC" />
+          <stop offset="100%" stopColor="#F5FBF7" />
+        </linearGradient>
+
+        {/* Building wall gradient */}
+        <linearGradient id="staffBuildingGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#E2E8F0" />
+          <stop offset="50%" stopColor="#F8FAFC" />
+          <stop offset="100%" stopColor="#CBD5E1" />
+        </linearGradient>
+
+        {/* Window glass gradient */}
+        <linearGradient id="staffWindowGlass" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#BAE6FD" />
+          <stop offset="100%" stopColor="#7DD3FC" />
+        </linearGradient>
+
+        {/* Shadow filter */}
+        <filter id="staffSoftShadow" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#0F172A" floodOpacity="0.08" />
+        </filter>
+      </defs>
+
+      {/* Background Sky */}
+      <rect width="540" height="320" fill="url(#staffSkyGrad)" />
+
+      {/* Background Clouds */}
+      <g opacity="0.9">
+        {/* Left cloud */}
+        <path
+          d="M60 70 C60 55, 80 45, 95 55 C105 40, 130 40, 140 55 C155 50, 170 60, 170 75 C170 85, 155 90, 60 90 Z"
+          fill="#FFFFFF"
+          opacity="0.8"
+        />
+        {/* Right cloud */}
+        <path
+          d="M380 50 C380 38, 395 30, 410 38 C420 25, 440 25, 450 38 C465 32, 475 42, 475 55 C475 65, 460 70, 380 70 Z"
+          fill="#FFFFFF"
+          opacity="0.85"
+        />
+        {/* Center high cloud */}
+        <path
+          d="M210 35 C210 25, 222 20, 235 25 C242 15, 258 15, 265 25 C275 20, 285 28, 285 38 C285 45, 275 48, 210 48 Z"
+          fill="#FFFFFF"
+          opacity="0.6"
+        />
+      </g>
+
+      {/* Background Trees (Left & Right) */}
+      <g>
+        {/* Left Side Tree 1 */}
+        <ellipse cx="65" cy="220" rx="26" ry="40" fill="#059669" />
+        <ellipse cx="50" cy="235" rx="18" ry="28" fill="#10B981" />
+        <ellipse cx="78" cy="235" rx="20" ry="30" fill="#047857" />
+        <rect x="62" y="245" width="6" height="25" rx="2" fill="#78350F" />
+
+        {/* Right Side Tree */}
+        <ellipse cx="475" cy="215" rx="28" ry="42" fill="#059669" />
+        <ellipse cx="455" cy="230" rx="20" ry="30" fill="#10B981" />
+        <ellipse cx="490" cy="230" rx="22" ry="32" fill="#047857" />
+        <rect x="472" y="240" width="6" height="30" rx="2" fill="#78350F" />
+      </g>
+
+      {/* Hospital Building Shadow */}
+      <rect x="110" y="260" width="310" height="12" rx="6" fill="#64748B" opacity="0.18" />
+
+      {/* MAIN HOSPITAL BUILDING */}
+      <g filter="url(#staffSoftShadow)">
+        {/* Building Base / Steps */}
+        <rect x="115" y="252" width="300" height="12" rx="3" fill="#94A3B8" />
+        <rect x="125" y="246" width="280" height="8" rx="2" fill="#CBD5E1" />
+
+        {/* Left Wing */}
+        <rect x="125" y="130" width="75" height="118" fill="#E2E8F0" stroke="#CBD5E1" strokeWidth="1.5" />
+        <rect x="120" y="124" width="85" height="8" rx="2" fill="#94A3B8" />
+
+        {/* Right Wing */}
+        <rect x="330" y="130" width="75" height="118" fill="#E2E8F0" stroke="#CBD5E1" strokeWidth="1.5" />
+        <rect x="325" y="124" width="85" height="8" rx="2" fill="#94A3B8" />
+
+        {/* Center Main Tower */}
+        <rect x="190" y="95" width="150" height="153" fill="#F1F5F9" stroke="#CBD5E1" strokeWidth="1.5" />
+        <rect x="182" y="88" width="166" height="9" rx="2" fill="#0F172A" />
+
+        {/* Top Pediment / Header Tower */}
+        <rect x="225" y="62" width="80" height="28" rx="4" fill="#E2E8F0" stroke="#CBD5E1" strokeWidth="1.5" />
+
+        {/* Hospital Green Cross Badge on Top */}
+        <circle cx="265" cy="76" r="16" fill="#10B981" />
+        {/* Cross Vertical */}
+        <rect x="262.5" y="67" width="5" height="18" rx="1.5" fill="#FFFFFF" />
+        {/* Cross Horizontal */}
+        <rect x="256" y="73.5" width="18" height="5" rx="1.5" fill="#FFFFFF" />
+
+        {/* Center Tower Top Windows */}
+        <g fill="url(#staffWindowGlass)" stroke="#38BDF8" strokeWidth="1">
+          <rect x="205" y="108" width="36" height="26" rx="2" />
+          <line x1="223" y1="108" x2="223" y2="134" stroke="#FFFFFF" strokeWidth="1" />
+          <line x1="205" y1="121" x2="241" y2="121" stroke="#FFFFFF" strokeWidth="1" />
+
+          <rect x="249" y="108" width="36" height="26" rx="2" />
+          <line x1="267" y1="108" x2="267" y2="134" stroke="#FFFFFF" strokeWidth="1" />
+          <line x1="249" y1="121" x2="285" y2="121" stroke="#FFFFFF" strokeWidth="1" />
+
+          <rect x="293" y="108" width="32" height="26" rx="2" />
+          <line x1="309" y1="108" x2="309" y2="134" stroke="#FFFFFF" strokeWidth="1" />
+          <line x1="293" y1="121" x2="325" y2="121" stroke="#FFFFFF" strokeWidth="1" />
+        </g>
+
+        {/* Center Tower 2nd Floor Windows */}
+        <g fill="url(#staffWindowGlass)" stroke="#38BDF8" strokeWidth="1">
+          <rect x="205" y="144" width="36" height="26" rx="2" />
+          <line x1="223" y1="144" x2="223" y2="170" stroke="#FFFFFF" strokeWidth="1" />
+
+          <rect x="249" y="144" width="36" height="26" rx="2" />
+          <line x1="267" y1="144" x2="267" y2="170" stroke="#FFFFFF" strokeWidth="1" />
+
+          <rect x="293" y="144" width="32" height="26" rx="2" />
+          <line x1="309" y1="144" x2="309" y2="170" stroke="#FFFFFF" strokeWidth="1" />
+        </g>
+
+        {/* Left Wing Windows (3 Floors) */}
+        <g fill="url(#staffWindowGlass)" stroke="#38BDF8" strokeWidth="1">
+          <rect x="135" y="140" width="22" height="24" rx="2" />
+          <rect x="165" y="140" width="22" height="24" rx="2" />
+          <rect x="135" y="174" width="22" height="24" rx="2" />
+          <rect x="165" y="174" width="22" height="24" rx="2" />
+          <rect x="135" y="208" width="22" height="24" rx="2" />
+          <rect x="165" y="208" width="22" height="24" rx="2" />
+        </g>
+
+        {/* Right Wing Windows (3 Floors) */}
+        <g fill="url(#staffWindowGlass)" stroke="#38BDF8" strokeWidth="1">
+          <rect x="342" y="140" width="22" height="24" rx="2" />
+          <rect x="372" y="140" width="22" height="24" rx="2" />
+          <rect x="342" y="174" width="22" height="24" rx="2" />
+          <rect x="372" y="174" width="22" height="24" rx="2" />
+          <rect x="342" y="208" width="22" height="24" rx="2" />
+          <rect x="372" y="208" width="22" height="24" rx="2" />
+        </g>
+
+        {/* HOSPITAL Sign Banner over Entrance */}
+        <rect x="210" y="180" width="110" height="22" rx="4" fill="#0F172A" />
+        <text
+          x="265"
+          y="195"
+          fill="#FFFFFF"
+          fontSize="11"
+          fontWeight="900"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          letterSpacing="2.5"
+          textAnchor="middle"
+        >
+          HOSPITAL
+        </text>
+
+        {/* Entrance Double Doors */}
+        <rect x="238" y="206" width="54" height="40" rx="3" fill="#1E293B" />
+        {/* Door 1 */}
+        <rect x="241" y="209" width="23" height="34" rx="2" fill="#334155" />
+        <rect x="244" y="212" width="17" height="15" fill="#64748B" opacity="0.6" />
+        <line x1="260" y1="225" x2="260" y2="231" stroke="#E2E8F0" strokeWidth="1.5" />
+        {/* Door 2 */}
+        <rect x="266" y="209" width="23" height="34" rx="2" fill="#334155" />
+        <rect x="269" y="212" width="17" height="15" fill="#64748B" opacity="0.6" />
+        <line x1="270" y1="225" x2="270" y2="231" stroke="#E2E8F0" strokeWidth="1.5" />
+      </g>
+
+      {/* AMBULANCE VEHICLE (Right Foreground) */}
+      <g filter="url(#staffSoftShadow)" transform="translate(0, 0)">
+        {/* Ambulance Shadow */}
+        <ellipse cx="430" cy="254" rx="72" ry="7" fill="#0F172A" opacity="0.25" />
+
+        {/* Ambulance Main Body */}
+        {/* Back Cabin Box */}
+        <path
+          d="M380 205 L475 205 Q482 205 482 212 L482 244 L380 244 Z"
+          fill="#FFFFFF"
+          stroke="#CBD5E1"
+          strokeWidth="1.2"
+        />
+
+        {/* Front Driver Cabin & Windshield Hood */}
+        <path
+          d="M380 205 L372 208 Q360 216 355 226 L350 236 Q348 244 354 244 L380 244 Z"
+          fill="#FFFFFF"
+          stroke="#CBD5E1"
+          strokeWidth="1.2"
+        />
+
+        {/* Front Windshield Glass */}
+        <path
+          d="M377 210 L368 214 Q361 221 357 228 L375 228 Z"
+          fill="#334155"
+        />
+        {/* Side Driver Window */}
+        <rect x="377" y="210" width="18" height="18" rx="2" fill="#334155" />
+
+        {/* Ambulance Rooftop Light Bar */}
+        <rect x="382" y="200" width="28" height="5" rx="2" fill="#CBD5E1" />
+        <rect x="384" y="198" width="10" height="4" rx="1.5" fill="#EF4444" />
+        <rect x="398" y="198" width="10" height="4" rx="1.5" fill="#3B82F6" />
+
+        {/* Emerald Green Stripe across Ambulance */}
+        <rect x="350" y="231" width="132" height="6" fill="#059669" />
+
+        {/* Ambulance Green Medical Cross Emblem */}
+        <circle cx="440" cy="222" r="11" fill="#FFFFFF" stroke="#059669" strokeWidth="1.5" />
+        {/* Cross Vertical */}
+        <rect x="438.5" y="215" width="3" height="14" rx="1" fill="#059669" />
+        {/* Cross Horizontal */}
+        <rect x="433" y="220.5" width="14" height="3" rx="1" fill="#059669" />
+
+        {/* Rear Door Seam & Window */}
+        <rect x="464" y="211" width="12" height="12" rx="2" fill="#94A3B8" opacity="0.6" />
+        <line x1="479" y1="205" x2="479" y2="244" stroke="#CBD5E1" strokeWidth="1" />
+
+        {/* Headlight */}
+        <path d="M349 237 Q348 241 352 242 L352 236 Z" fill="#FBBF24" />
+
+        {/* Front Bumper */}
+        <rect x="346" y="240" width="8" height="5" rx="2" fill="#475569" />
+
+        {/* Front Wheel */}
+        <g>
+          {/* Wheel Arch Cutout */}
+          <circle cx="370" cy="245" r="14" fill="#E2E8F0" />
+          {/* Tire Outer */}
+          <circle cx="370" cy="246" r="12" fill="#1E293B" />
+          {/* Rim */}
+          <circle cx="370" cy="246" r="7" fill="#CBD5E1" />
+          {/* Hub */}
+          <circle cx="370" cy="246" r="3.5" fill="#475569" />
+        </g>
+
+        {/* Rear Wheel */}
+        <g>
+          {/* Wheel Arch Cutout */}
+          <circle cx="454" cy="245" r="14" fill="#E2E8F0" />
+          {/* Tire Outer */}
+          <circle cx="454" cy="246" r="12" fill="#1E293B" />
+          {/* Rim */}
+          <circle cx="454" cy="246" r="7" fill="#CBD5E1" />
+          {/* Hub */}
+          <circle cx="454" cy="246" r="3.5" fill="#475569" />
+        </g>
+      </g>
+    </svg>
   );
 }

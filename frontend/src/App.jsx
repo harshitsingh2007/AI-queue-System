@@ -132,6 +132,51 @@ export default function App() {
   });
   const tenantId = currentHospitalTenant || HOSPITAL_CONFIG.tenantId;
 
+  // Global White-Label Hospital Branding State
+  const [hospitalBranding, setHospitalBranding] = useState(null);
+
+  const fetchBranding = useCallback((hCode) => {
+    if (!hCode) return;
+    const cleanCode = String(hCode).trim();
+    fetch(`${API_BASE}/api/v1/hospital/branding/${cleanCode}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status === "success" && d.branding) {
+          setHospitalBranding(d.branding);
+        }
+      })
+      .catch((e) => console.log("Branding fetch error in App:", e));
+  }, []);
+
+  useEffect(() => {
+    const activeCode =
+      (currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role) && currentUser.hospital_code && currentUser.hospital_code !== "all")
+        ? currentUser.hospital_code
+        : (currentHospitalTenant || HOSPITAL_CONFIG.tenantId);
+    fetchBranding(activeCode);
+  }, [currentHospitalTenant, currentUser, fetchBranding]);
+
+  useEffect(() => {
+    if (hospitalBranding?.primary_color) {
+      document.documentElement.style.setProperty("--brand-primary", hospitalBranding.primary_color);
+    }
+    if (hospitalBranding?.secondary_color) {
+      document.documentElement.style.setProperty("--brand-secondary", hospitalBranding.secondary_color);
+    }
+    if (hospitalBranding?.accent_color) {
+      document.documentElement.style.setProperty("--brand-accent", hospitalBranding.accent_color);
+    }
+  }, [hospitalBranding]);
+
+  useEffect(() => {
+    const handleBrandingEvent = (e) => {
+      const b = e?.detail?.branding || e?.detail;
+      if (b) setHospitalBranding((prev) => ({ ...prev, ...b }));
+    };
+    window.addEventListener("hospital_branding_updated", handleBrandingEvent);
+    return () => window.removeEventListener("hospital_branding_updated", handleBrandingEvent);
+  }, []);
+
   const navigateTo = useCallback((page, tab = null) => {
     let targetPage = page;
     let targetTab = tab;
@@ -273,6 +318,22 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      try {
+        fetch(`${API_BASE}/api/v1/auth/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(currentUser.token ? { Authorization: `Bearer ${currentUser.token}` } : {}),
+          },
+          body: JSON.stringify({
+            id: currentUser.id,
+            email: currentUser.email,
+          }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch (e) {}
+    }
     setCurrentUser(null);
     setActiveFamilyMember(null);
     setFamilyMembers([]);
@@ -452,7 +513,27 @@ export default function App() {
     socket.on("ticket_updated", (data) => {
       if (data && data.ticket) {
         const cur = activeTicketRef.current;
-        if (cur && cur.ticket_id === data.ticket.ticket_id) {
+        if (cur && (cur.ticket_id === data.ticket.ticket_id || cur.ticket_id === data.ticket_id)) {
+          setActiveTicket(data.ticket);
+        }
+      }
+      refreshData();
+    });
+
+    socket.on("ticket_completed", (data) => {
+      if (data && data.ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && (cur.ticket_id === data.ticket.ticket_id || cur.ticket_id === data.ticket_id)) {
+          setActiveTicket(data.ticket);
+        }
+      }
+      refreshData();
+    });
+
+    socket.on("prescription_saved", (data) => {
+      if (data && data.ticket) {
+        const cur = activeTicketRef.current;
+        if (cur && (cur.ticket_id === data.ticket.ticket_id || cur.ticket_id === data.ticket_id)) {
           setActiveTicket(data.ticket);
         }
       }
@@ -461,6 +542,12 @@ export default function App() {
 
     socket.on("analytics_update", (data) => {
       if (data) setAnalytics(data);
+    });
+
+    socket.on("hospital_branding_updated", (data) => {
+      if (data && data.branding) {
+        setHospitalBranding((prev) => ({ ...prev, ...data.branding }));
+      }
     });
 
     socket.on("ticket_transferred", (data) => {
@@ -634,10 +721,15 @@ export default function App() {
     }
   };
 
-  const handleCompleteTicket = async (ticketId) => {
+  const handleCompleteTicket = async (ticketId, prescriptionNotes = null) => {
     if (socketRef.current) {
       const dept = adminDepartment && adminDepartment !== "all" ? adminDepartment : undefined;
-      socketRef.current.emit("complete_ticket", { tenant_id: tenantId, ticket_id: ticketId, department: dept });
+      socketRef.current.emit("complete_ticket", {
+        tenant_id: tenantId,
+        ticket_id: ticketId,
+        department: dept,
+        prescription_notes: prescriptionNotes,
+      });
     }
   };
 
@@ -692,6 +784,7 @@ export default function App() {
           onManageFamilyMembers={handleManageFamilyMembers}
           currentHospitalTenant={currentHospitalTenant}
           onSwitchHospital={handleSwitchHospital}
+          hospitalBranding={hospitalBranding}
         />
 
         {/* Main Content Router */}
@@ -733,6 +826,8 @@ export default function App() {
                     onFamilyMembersChange={fetchFamilyMembers}
                     currentHospitalTenant={currentHospitalTenant}
                     onSwitchHospital={handleSwitchHospital}
+                    hospitalBranding={hospitalBranding}
+                    onUpdateHospitalBranding={setHospitalBranding}
                   />
                 </ErrorBoundary>
               )
@@ -755,6 +850,8 @@ export default function App() {
                     setCurrentHospitalTenant(hCode);
                   }}
                   navigateTo={navigateTo}
+                  hospitalBranding={hospitalBranding}
+                  onUpdateHospitalBranding={setHospitalBranding}
                 />
               )
             )}
@@ -782,6 +879,8 @@ export default function App() {
                   language={language}
                   socketRef={socketRef}
                   navigateTo={navigateTo}
+                  hospitalBranding={hospitalBranding}
+                  onUpdateHospitalBranding={setHospitalBranding}
                 />
               )
             )}

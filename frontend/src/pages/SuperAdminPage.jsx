@@ -170,11 +170,19 @@ const IconEye = ({ size = 14, color = "currentColor" }) => (
   </svg>
 );
 
+const IconActivity = ({ size = 16, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+  </svg>
+);
+
 export default function SuperAdminPage({
   currentUser,
   language = "en",
   onSelectHospitalTenant,
   navigateTo,
+  hospitalBranding = null,
+  onUpdateHospitalBranding = null,
 }) {
   const isHi = language === "hi";
 
@@ -194,17 +202,23 @@ export default function SuperAdminPage({
   const [searchQuery, setSearchQuery] = useState("");
   const [feedbackMsg, setFeedbackMsg] = useState("");
 
-  // Navigation Tabs: "hospitals" | "employees" | "desks" | "depts"
-  const [activeTab, setActiveTab] = useState("hospitals");
+  // Navigation Tabs: "overview" | "hospitals" | "employees" | "desks" | "depts" | "branding"
+  const [activeTab, setActiveTab] = useState("overview");
 
   // Deep-Dive Selected Hospital Mode
   const [selectedHospital, setSelectedHospital] = useState(null);
   const selectedHospitalRef = useRef(selectedHospital);
 
-  // Selected Hospital Sub-Data
+  // Selected Hospital Sub-Data & Live Operations Telemetry
   const [hospitalEmployees, setHospitalEmployees] = useState([]);
   const [hospitalDesksData, setHospitalDesksData] = useState({ departments: [] });
   const [hospitalDepts, setHospitalDepts] = useState([]);
+  const [hospitalAnalytics, setHospitalAnalytics] = useState(null);
+  const [hospitalQueueSnapshot, setHospitalQueueSnapshot] = useState([]);
+  const [hospitalServingTickets, setHospitalServingTickets] = useState([]);
+  const [hospitalVisitsData, setHospitalVisitsData] = useState({ summary: {}, visits: [] });
+  const [visitHistorySearchQuery, setVisitHistorySearchQuery] = useState("");
+  const [visitHistoryStatusFilter, setVisitHistoryStatusFilter] = useState("all");
 
   // Modals
   const [showAddHospitalModal, setShowAddHospitalModal] = useState(false);
@@ -235,10 +249,19 @@ export default function SuperAdminPage({
   const [isSavingBranding, setIsSavingBranding] = useState(false);
   const [activeBrandingTab, setActiveBrandingTab] = useState("theme"); // "theme" | "slip" | "hours"
 
-  const getAuthHeaders = useCallback(() => ({
-    "Content-Type": "application/json",
-    ...(currentUser?.email ? { "X-User-Email": currentUser.email } : {})
-  }), [currentUser?.email]);
+  const getAuthHeaders = useCallback(() => {
+    const headers = { "Content-Type": "application/json" };
+    if (currentUser?.email) {
+      headers["X-User-Email"] = currentUser.email;
+    }
+    try {
+      const token = localStorage.getItem("ai_queue_token") || localStorage.getItem("token") || currentUser?.token;
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+    } catch (e) {}
+    return headers;
+  }, [currentUser?.email, currentUser?.token]);
 
   // Form States
   const [newHospitalForm, setNewHospitalForm] = useState({
@@ -292,6 +315,7 @@ export default function SuperAdminPage({
     dept_code: "consultation",
     desk_name: "",
     status: "AVAILABLE",
+    assigned_employee_id: "",
   });
 
   // Edit Department & Desk Modal States
@@ -308,7 +332,13 @@ export default function SuperAdminPage({
     desk_name: "",
     dept_code: "",
     status: "AVAILABLE",
+    assigned_employee_id: "",
   });
+
+  // Dedicated Assign Desk Modal States
+  const [showAssignDeskModal, setShowAssignDeskModal] = useState(false);
+  const [assignDeskTarget, setAssignDeskTarget] = useState({ desk: null, employee_id: "" });
+  const [assignSearchQuery, setAssignSearchQuery] = useState("");
 
   // Normalize desks data ensuring department grouping and desk counters are always populated
   const normalizeDesksData = useCallback((rawDesks, deptsList = []) => {
@@ -349,6 +379,13 @@ export default function SuperAdminPage({
       }
       deptMap[dCode].desks.push({
         ...desk,
+        assigned_employee_id: desk.assigned_employee_id || null,
+        assigned_user_id: desk.assigned_user_id || null,
+        assigned_employee_name: desk.assigned_employee_name || desk.staff_name || "",
+        assigned_employee_role: desk.assigned_employee_role || "",
+        assigned_employee_code: desk.assigned_employee_code || "",
+        assigned_employee_status: desk.assigned_employee_status || "inactive",
+        assigned_employee_last_login: desk.assigned_employee_last_login || null,
         staff_name: desk.assigned_employee_name || desk.staff_name || "",
       });
     });
@@ -359,11 +396,112 @@ export default function SuperAdminPage({
     };
   }, []);
 
+  const getEmployeeCurrentDesk = useCallback((empOrId) => {
+    if (!empOrId) return null;
+    let targetIds = [];
+
+    if (typeof empOrId === "object") {
+      targetIds = [empOrId.employee_id_num, empOrId.user_id, empOrId.id].filter(Boolean).map(Number);
+    } else {
+      targetIds = [Number(empOrId)];
+    }
+
+    const allDepts = hospitalDesksData.departments || [];
+    // 1. Precise direct ID match (employees.id or users.id)
+    for (const dept of allDepts) {
+      for (const d of dept.desks || []) {
+        if (d.assigned_employee_id && targetIds.includes(Number(d.assigned_employee_id))) {
+          return d;
+        }
+        if (d.assigned_user_id && targetIds.includes(Number(d.assigned_user_id))) {
+          return d;
+        }
+      }
+    }
+
+    // 2. Name match fallback
+    if (typeof empOrId === "object") {
+      const targetName = (empOrId.name || empOrId.username || "").trim().toLowerCase();
+      if (targetName) {
+        for (const dept of allDepts) {
+          for (const d of dept.desks || []) {
+            if (d.assigned_employee_name && d.assigned_employee_name.trim().toLowerCase() === targetName) {
+              return d;
+            }
+          }
+        }
+      }
+    }
+
+    return null;
+  }, [hospitalDesksData]);
+
   // Search & Pagination inside Drill-In View
   const [employeeSearchQuery, setEmployeeSearchQuery] = useState("");
   const [employeePage, setEmployeePage] = useState(1);
+  const [employeeStatusFilter, setEmployeeStatusFilter] = useState("all"); // "all" | "active" | "inactive"
+  const [isTogglingEmpStatus, setIsTogglingEmpStatus] = useState(null);
   const [deskSearchQuery, setDeskSearchQuery] = useState("");
   const [deskPage, setDeskPage] = useState(1);
+
+  // Helper to format relative login / activity time
+  const formatRelativeLogin = useCallback((isoString) => {
+    if (!isoString) return isHi ? "लॉगिन नहीं किया" : "Not logged in";
+    try {
+      const d = new Date(isoString);
+      const now = new Date();
+      const diffSec = Math.max(0, Math.floor((now - d) / 1000));
+      if (diffSec < 60) return isHi ? "अभी सक्रिय" : "Just now";
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ${isHi ? "पहले" : "ago"}`;
+      const diffHr = Math.floor(diffMin / 60);
+      if (diffHr < 24) return `${diffHr}h ${isHi ? "पहले" : "ago"}`;
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    } catch (e) {
+      return "";
+    }
+  }, [isHi]);
+
+  // Fast toggle active/inactive status for doctors & staff
+  const handleToggleEmployeeStatus = async (emp) => {
+    if (!selectedHospital || !emp) return;
+    const currentIsActive = (emp.status || "").toLowerCase() === "active";
+    const newStatus = currentIsActive ? "inactive" : "active";
+    const empTargetId = emp.user_id || emp.id || emp.employee_id_num;
+    setIsTogglingEmpStatus(empTargetId);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/employees/${empTargetId}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status: newStatus,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        setHospitalEmployees((prev) =>
+          prev.map((e) =>
+            (e.user_id === empTargetId || e.id === empTargetId || e.employee_id_num === empTargetId)
+              ? { ...e, status: newStatus }
+              : e
+          )
+        );
+        notify(
+          isHi
+            ? `'${emp.name || emp.username}' की स्थिति '${newStatus === "active" ? "सक्रिय (ऑनलाइन)" : "निष्क्रिय (ऑफलाइन)"}' में बदली गई!`
+            : `Status for '${emp.name || emp.username}' changed to ${newStatus === "active" ? "Active (Online)" : "Inactive (Offline)"}!`
+        );
+        fetchHospitalDesks(selectedHospital.hospital_code);
+      } else {
+        notify(data.message || (isHi ? "स्थिति बदलने में विफल" : "Failed to toggle status"));
+      }
+    } catch (err) {
+      console.error("Error toggling employee status:", err);
+      notify(isHi ? "सर्वर से कनेक्ट करने में विफल" : "Network error toggling status");
+    } finally {
+      setIsTogglingEmpStatus(null);
+    }
+  };
 
   // Change Password Modal States for Doctors & Staff
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -382,6 +520,7 @@ export default function SuperAdminPage({
   useEffect(() => {
     setEmployeeSearchQuery("");
     setEmployeePage(1);
+    setEmployeeStatusFilter("all");
     setDeskSearchQuery("");
     setDeskPage(1);
   }, [selectedHospital?.hospital_code]);
@@ -404,9 +543,14 @@ export default function SuperAdminPage({
         setOverview(overviewRes.overview);
       }
       if (hospitalsRes.status === "success") {
-        setHospitals(hospitalsRes.hospitals);
-        if (!selectedHospitalRef.current && hospitalsRes.hospitals.length > 0) {
-          setSelectedHospital(hospitalsRes.hospitals[0]);
+        const list = hospitalsRes.hospitals || [];
+        setHospitals(list);
+        if (list.length > 0) {
+          const preferredCode = currentUser?.primary_hospital_code || currentUser?.hospital_code;
+          const match = preferredCode ? list.find((h) => h.hospital_code === preferredCode) : null;
+          if (!selectedHospitalRef.current || !list.some((h) => h.hospital_code === selectedHospitalRef.current.hospital_code)) {
+            setSelectedHospital(match || list[0]);
+          }
         }
       }
       if (!silent) setLoading(false);
@@ -421,14 +565,17 @@ export default function SuperAdminPage({
     if (!hCode) return;
     try {
       const headers = getAuthHeaders();
-      const [detailRes, empRes, desksRes, deptsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}`, { headers }).then((r) => r.json()),
-        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/employees`, { headers }).then((r) => r.json()),
-        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/desks`, { headers }).then((r) => r.json()),
-        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/departments`, { headers }).then((r) => r.json()),
+      const [detailRes, empRes, desksRes, deptsRes, analyticsRes, snapshotRes, visitsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/employees`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/desks`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/departments`, { headers }).then((r) => r.json()).catch(() => null),
+        fetch(`${API_BASE}/api/v1/plugin/analytics/${hCode}`).then((r) => r.json()).catch(() => null),
+        fetch(`${API_BASE}/api/v1/plugin/queue/snapshot/${hCode}`).then((r) => r.json()).catch(() => null),
+        fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/visits`, { headers }).then((r) => r.json()).catch(() => null),
       ]);
 
-      if (detailRes.status === "success") {
+      if (detailRes && detailRes.status === "success") {
         setSelectedHospital(detailRes.hospital);
         setEditHospitalForm({
           hospital_code: detailRes.hospital.hospital_code,
@@ -440,15 +587,28 @@ export default function SuperAdminPage({
           status: detailRes.hospital.status || "active",
         });
       }
-      if (empRes.status === "success") {
+      if (empRes && empRes.status === "success") {
         setHospitalEmployees(empRes.employees);
       }
-      const depts = deptsRes.status === "success" ? deptsRes.departments : [];
-      if (deptsRes.status === "success") {
+      const depts = (deptsRes && deptsRes.status === "success") ? deptsRes.departments : [];
+      if (deptsRes && deptsRes.status === "success") {
         setHospitalDepts(depts);
       }
-      if (desksRes.status === "success") {
+      if (desksRes && desksRes.status === "success") {
         setHospitalDesksData(normalizeDesksData(desksRes.desks, depts));
+      }
+      if (analyticsRes) {
+        setHospitalAnalytics(analyticsRes);
+      }
+      if (snapshotRes) {
+        setHospitalQueueSnapshot(Array.isArray(snapshotRes.snapshot) ? snapshotRes.snapshot : []);
+        setHospitalServingTickets(Array.isArray(snapshotRes.serving) ? snapshotRes.serving : []);
+      }
+      if (visitsRes && visitsRes.status === "success") {
+        setHospitalVisitsData({
+          summary: visitsRes.summary || {},
+          visits: Array.isArray(visitsRes.visits) ? visitsRes.visits : [],
+        });
       }
     } catch (e) {
       console.log("Deep dive fetch error:", e);
@@ -479,7 +639,7 @@ export default function SuperAdminPage({
     try {
       const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(newHospitalForm),
       });
       const data = await res.json();
@@ -498,7 +658,7 @@ export default function SuperAdminPage({
         fetchGlobalData();
         setSelectedHospital(data.hospital);
       } else {
-        alert(data.detail || "Failed to create hospital.");
+        alert(data.message || data.detail || "Failed to create hospital.");
       }
     } catch (err) {
       alert(`Error creating hospital: ${err.message}`);
@@ -614,6 +774,23 @@ export default function SuperAdminPage({
       if (res.ok && data.status === "success") {
         setShowBrandingModal(false);
         notify(isHi ? `🎨 '${brandingTargetHospital.name}' का ब्रांडिंग व समय सेटिंग्स सहेजा गया!` : `🎨 Branding & operating hours updated for '${brandingTargetHospital.name}'!`);
+        
+        // Dispatch local event for other tabs/listeners
+        window.dispatchEvent(new CustomEvent("hospital_branding_updated", {
+          detail: {
+            hospital_code: brandingTargetHospital.hospital_code,
+            branding: data.branding,
+          },
+        }));
+
+        // If current tenant matches or callback is provided, update global state immediately
+        if (typeof onUpdateHospitalBranding === "function") {
+          const activeHospCode = localStorage.getItem("ai_queue_current_hospital") || "city-hospital-01";
+          if (String(activeHospCode).trim() === String(brandingTargetHospital.hospital_code).trim()) {
+            onUpdateHospitalBranding(data.branding);
+          }
+        }
+
         fetchGlobalData();
         if (selectedHospital?.hospital_code === brandingTargetHospital.hospital_code) {
           fetchHospitalDeepDive(selectedHospital.hospital_code);
@@ -786,10 +963,16 @@ export default function SuperAdminPage({
       return;
     }
     try {
+      const payload = {
+        dept_code: newDeskForm.dept_code,
+        desk_name: newDeskForm.desk_name,
+        status: newDeskForm.status || "AVAILABLE",
+        assigned_employee_id: newDeskForm.assigned_employee_id ? Number(newDeskForm.assigned_employee_id) : null,
+      };
       const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/desks`, {
         method: "POST",
         headers: getAuthHeaders(),
-        body: JSON.stringify(newDeskForm),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {
@@ -798,6 +981,7 @@ export default function SuperAdminPage({
           dept_code: hospitalDepts[0]?.dept_code || "consultation",
           desk_name: "",
           status: "AVAILABLE",
+          assigned_employee_id: "",
         });
         notify(isHi ? `🪑 नया डेस्क '${data.desk.desk_name}' जोड़ा गया!` : `🪑 New desk '${data.desk.desk_name}' added!`);
         fetchHospitalDeepDive(selectedHospital.hospital_code);
@@ -890,15 +1074,17 @@ export default function SuperAdminPage({
     e.preventDefault();
     if (!selectedHospital || !editDeskForm.id) return;
     try {
+      const payload = {
+        desk_name: editDeskForm.desk_name,
+        dept_code: editDeskForm.dept_code,
+        assigned_employee_id: editDeskForm.assigned_employee_id ? Number(editDeskForm.assigned_employee_id) : null,
+      };
       const res = await fetch(
         `${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/desks/${editDeskForm.id}`,
         {
           method: "PUT",
           headers: getAuthHeaders(),
-          body: JSON.stringify({
-            desk_name: editDeskForm.desk_name,
-            dept_code: editDeskForm.dept_code,
-          }),
+          body: JSON.stringify(payload),
         }
       );
       const data = await res.json();
@@ -912,6 +1098,38 @@ export default function SuperAdminPage({
       }
     } catch (err) {
       alert(`Error updating desk: ${err.message}`);
+    }
+  };
+
+  // 14b. Assign Desk to Staff / Doctor Handler
+  const handleAssignDesk = async (deskId, employeeId) => {
+    if (!selectedHospital || !deskId) return;
+    try {
+      const empId = employeeId && Number(employeeId) > 0 ? Number(employeeId) : null;
+      const res = await fetch(
+        `${API_BASE}/api/v1/superadmin/hospitals/${selectedHospital.hospital_code}/desks/${deskId}/assign`,
+        {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ assigned_employee_id: empId }),
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.status === "success") {
+        setShowAssignDeskModal(false);
+        setAssignDeskTarget({ desk: null, employee_id: "" });
+        notify(
+          empId
+            ? (isHi ? `✓ डेस्क को '${data.desk?.assigned_employee_name || "कार्मिक"}' को सौंपा गया!` : `✓ Desk assigned to '${data.desk?.assigned_employee_name || "Staff"}'!`)
+            : (isHi ? "✓ डेस्क को अनअसाइन (स्वचालित बे) किया गया!" : "✓ Desk unassigned (set to Auto-Assigned Bay)!")
+        );
+        fetchHospitalDeepDive(selectedHospital.hospital_code);
+        fetchGlobalData();
+      } else {
+        alert(data.detail || "Failed to update desk assignment.");
+      }
+    } catch (err) {
+      alert(`Error assigning desk: ${err.message}`);
     }
   };
 
@@ -1172,16 +1390,28 @@ export default function SuperAdminPage({
 
         .superadmin-tabs-bar {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 12px;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 10px;
+        }
+
+        @media (max-width: 1200px) {
+          .superadmin-tabs-bar {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+
+        @media (max-width: 980px) {
+          .superadmin-tabs-bar {
+            grid-template-columns: repeat(2, 1fr);
+          }
         }
 
         .tab-button-modern {
           display: flex;
           align-items: center;
-          gap: 12px;
-          padding: 14px 18px;
-          border-radius: 16px;
+          gap: 10px;
+          padding: 10px 14px;
+          border-radius: 14px;
           border: 1px solid #E2E8F0;
           background: #FFFFFF;
           cursor: pointer;
@@ -1488,15 +1718,45 @@ export default function SuperAdminPage({
             </svg>
             <span>{isHi ? "सुपर एडमिन नियंत्रण हब" : "Super Admin Network Hub & Operations"}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#0EA5E9", display: "inline-block" }} />
             <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>
-              {isHi ? "लाइव डेटा सिंक सक्रिय" : "Live Telemetry Active (Real-Time)"}
+              {isHi ? "लाइव डेटा सिंक" : "Live Sync"}
             </span>
           </div>
         </div>
 
         <div className="superadmin-tabs-bar">
+          {/* Tab 0: Visual Hospital Operations Dashboard */}
+          <button
+            type="button"
+            onClick={() => setActiveTab("overview")}
+            className={`tab-button-modern ${activeTab === "overview" ? "active" : "inactive"}`}
+          >
+            <div className="tab-icon-wrapper">
+              <IconChart size={20} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span className="tab-title-text">
+                  {isHi ? "📊 अस्पताल 360°" : "📊 Hospital 360°"}
+                </span>
+                <span
+                  className="tab-count-badge"
+                  style={{
+                    background: activeTab === "overview" ? "#FFFFFF" : "#0284C7",
+                    color: activeTab === "overview" ? "#0284C7" : "#FFFFFF",
+                  }}
+                >
+                  LIVE
+                </span>
+              </div>
+              <span className="tab-sub-text" style={{ color: activeTab === "overview" ? "#E0F2FE" : "#64748B" }}>
+                {isHi ? "लाइव संचालन एवं फ्लो" : "Real-time Operations"}
+              </span>
+            </div>
+          </button>
+
           {/* Tab 1: Hospital Facilities */}
           <button
             type="button"
@@ -1617,6 +1877,33 @@ export default function SuperAdminPage({
             </div>
           </button>
 
+          {/* Tab 5: Hospital Branding & White-Labeling */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("branding");
+              const target = selectedHospital || hospitals[0];
+              if (target) {
+                handleOpenBrandingModal(target);
+              }
+            }}
+            className={`tab-button-modern ${activeTab === "branding" ? "active" : "inactive"}`}
+          >
+            <div className="tab-icon-wrapper">
+              <span style={{ fontSize: "18px" }}>🎨</span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span className="tab-title-text">
+                  {isHi ? "ब्रांडिंग सेटिंग्स" : "Branding"}
+                </span>
+              </div>
+              <span className="tab-sub-text" style={{ color: activeTab === "branding" ? "#E0F2FE" : "#64748B" }}>
+                {isHi ? "थीम, लोगो, समय, पर्ची" : "Theme, Logo, Schedule"}
+              </span>
+            </div>
+          </button>
+
         </div>
       </section>
 
@@ -1624,6 +1911,1139 @@ export default function SuperAdminPage({
       <div className="superadmin-portal-dashboard">
         {/* LEFT COLUMN: Main Tab Content */}
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          {/* TAB 0: 360° VISUAL HOSPITAL OPERATIONS DASHBOARD */}
+          {activeTab === "overview" && (() => {
+            const currentHosp = selectedHospital || hospitals[0] || null;
+            if (!currentHosp) {
+              return (
+                <div style={standaloneCardStyle}>
+                  <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                    <IconHospital size={44} color="#94A3B8" />
+                    <h3 style={{ margin: "14px 0 6px", color: "#0F172A", fontSize: "18px", fontWeight: 800 }}>
+                      {isHi ? "कोई अस्पताल उपलब्ध नहीं है" : "No Hospital Data Available"}
+                    </h3>
+                    <p style={{ margin: "0 0 20px", color: "#64748B", fontSize: "13.5px" }}>
+                      {isHi ? "कृपया पहले अस्पताल जोड़ें या नेटवर्क से एक का चयन करें।" : "Please add a hospital first or select one from the directory."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddHospitalModal(true)}
+                      style={{
+                        ...actionBtnStyle,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "8px 16px",
+                      }}
+                    >
+                      <IconPlus size={15} />
+                      <span>{isHi ? "+ नया अस्पताल जोड़ें" : "+ Add Hospital"}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            }
+
+            const activeBranding = currentHosp.branding || hospitalBranding || {};
+            const facilityPrimary = activeBranding.primary_color || "#0284C7";
+            const facilitySecondary = activeBranding.secondary_color || "#0369A1";
+            const facilityAccent = activeBranding.accent_color || "#F0F9FF";
+            const facilityLogo = activeBranding.logo_url || null;
+            const facilityTagline = activeBranding.tagline || (isHi ? "एनएबीएच मान्यता प्राप्त • 24x7 क्लिनिकल सेवा" : "Care you can trust • NABH Accredited Facility");
+            const facilityHours = activeBranding.opd_start_time && activeBranding.opd_end_time
+              ? `${activeBranding.opd_start_time} - ${activeBranding.opd_end_time}`
+              : "08:00 - 20:00";
+            const helpline = activeBranding.emergency_helpline || currentHosp.phone || "108 / Emergency";
+
+            // Aggregate metrics & Footfall history
+            const waitingCount = hospitalAnalytics?.waiting_count ?? hospitalQueueSnapshot.length;
+            const servingCount = hospitalAnalytics?.serving_count ?? hospitalServingTickets.length;
+            const completedToday = hospitalAnalytics?.completed_today ?? 0;
+            const avgWait = hospitalAnalytics?.avg_wait_minutes ?? 12;
+            const activeDesksCount = hospitalDesksData.active_desks || 0;
+            const totalDesksCount = hospitalDesksData.total_desks || 0;
+            const doctorsCount = hospitalEmployees.filter((e) => (e.role || "").toLowerCase() === "doctor").length;
+            const staffCount = hospitalEmployees.filter((e) => (e.role || "").toLowerCase() !== "doctor").length;
+
+            const footfallSummary = hospitalVisitsData?.summary || {};
+            const allTimePatientsVisited = footfallSummary.total_patients_visited_all_time ?? (hospitalAnalytics?.total_patients_visited_all_time || 0);
+            const allTimeCompleted = footfallSummary.all_time_completed ?? 0;
+            const todayFootfall = footfallSummary.today_patients_visited ?? completedToday;
+            const thisWeekFootfall = footfallSummary.this_week_visits ?? 0;
+            const thisMonthFootfall = footfallSummary.this_month_visits ?? 0;
+            const rawVisits = hospitalVisitsData?.visits || [];
+
+            const filteredVisits = rawVisits.filter((v) => {
+              if (visitHistoryStatusFilter !== "all") {
+                const st = (v.status || "").toLowerCase();
+                if (visitHistoryStatusFilter === "completed" && !["completed"].includes(st)) return false;
+                if (visitHistoryStatusFilter === "active" && !["serving", "called", "waiting"].includes(st)) return false;
+                if (visitHistoryStatusFilter === "cancelled" && !["cancelled", "expired", "no_show"].includes(st)) return false;
+              }
+              if (visitHistorySearchQuery.trim()) {
+                const q = visitHistorySearchQuery.toLowerCase();
+                const nameMatch = (v.patient_name || "").toLowerCase().includes(q);
+                const tokenMatch = (v.ticket_id || "").toLowerCase().includes(q);
+                const deptMatch = (v.department || "").toLowerCase().includes(q);
+                const phoneMatch = (v.phone || "").toLowerCase().includes(q);
+                return nameMatch || tokenMatch || deptMatch || phoneMatch;
+              }
+              return true;
+            });
+
+            // Flatten all desks for visual map
+            const allDesks = [];
+            (hospitalDesksData.departments || []).forEach((dept) => {
+              (dept.desks || []).forEach((desk) => {
+                allDesks.push({
+                  ...desk,
+                  dept_name: dept.name || desk.department_name || desk.dept_code,
+                });
+              });
+            });
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
+                {/* 1. FACILITY EXECUTIVE HEADER BANNER */}
+                <div
+                  style={{
+                    background: `linear-gradient(135deg, #FFFFFF 0%, ${facilityAccent} 100%)`,
+                    borderRadius: "24px",
+                    border: "1.5px solid #E2E8F0",
+                    padding: "24px 28px",
+                    boxShadow: "0 4px 20px -2px rgba(2, 132, 199, 0.06)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "18px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "16px", minWidth: "260px" }}>
+                      {/* Logo or Medical Icon */}
+                      <div
+                        style={{
+                          width: "64px",
+                          height: "64px",
+                          borderRadius: "18px",
+                          background: "#FFFFFF",
+                          border: `1.5px solid ${facilityPrimary}30`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                          boxShadow: "0 4px 14px rgba(0,0,0,0.04)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {facilityLogo ? (
+                          <img
+                            src={facilityLogo}
+                            alt={currentHosp.name}
+                            style={{ width: "100%", height: "100%", objectFit: "contain", padding: "4px" }}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              e.target.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              background: `linear-gradient(135deg, ${facilityPrimary} 0%, ${facilitySecondary} 100%)`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#FFFFFF",
+                            }}
+                          >
+                            <IconHospital size={30} />
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                          <h1
+                            style={{
+                              margin: 0,
+                              fontSize: "22px",
+                              color: "#0F172A",
+                              fontWeight: 800,
+                              letterSpacing: "-0.4px",
+                            }}
+                          >
+                            {currentHosp.name}
+                          </h1>
+                          <span
+                            style={{
+                              fontSize: "11.5px",
+                              fontWeight: 700,
+                              padding: "3px 9px",
+                              borderRadius: "20px",
+                              background: currentHosp.status === "active" ? "#DCFCE7" : "#F1F5F9",
+                              color: currentHosp.status === "active" ? "#15803D" : "#64748B",
+                              border: currentHosp.status === "active" ? "1px solid #BBF7D0" : "1px solid #E2E8F0",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: "6px",
+                                height: "6px",
+                                borderRadius: "50%",
+                                background: currentHosp.status === "active" ? "#16A34A" : "#94A3B8",
+                              }}
+                            />
+                            {currentHosp.status === "active" ? (isHi ? "सक्रिय शाखा" : "Active Facility") : (isHi ? "निष्क्रिय" : "Inactive")}
+                          </span>
+                        </div>
+                        <p style={{ margin: "4px 0 0", color: "#475569", fontSize: "13px", fontWeight: 500 }}>
+                          {facilityTagline}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Switch Hospital Dropdown Selector */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          background: "#FFFFFF",
+                          padding: "6px 12px",
+                          borderRadius: "12px",
+                          border: "1px solid #CBD5E1",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
+                        }}
+                      >
+                        <IconHospital size={15} color={facilityPrimary} />
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>
+                          {isHi ? "अस्पताल स्विच करें:" : "Facility:"}
+                        </span>
+                        <select
+                          value={currentHosp.hospital_code}
+                          onChange={(e) => {
+                            const found = hospitals.find((h) => h.hospital_code === e.target.value);
+                            if (found) {
+                              setSelectedHospital(found);
+                              if (onSelectHospitalTenant) onSelectHospitalTenant(found.hospital_code);
+                            }
+                          }}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            fontSize: "13px",
+                            fontWeight: 700,
+                            color: "#0F172A",
+                            cursor: "pointer",
+                            outline: "none",
+                            paddingRight: "6px",
+                          }}
+                        >
+                          {hospitals.map((h) => (
+                            <option key={h.hospital_code} value={h.hospital_code}>
+                              {h.name} ({h.hospital_code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBrandingModal(currentHosp)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "8px 14px",
+                          borderRadius: "12px",
+                          border: `1px solid ${facilityPrimary}40`,
+                          background: "#FFFFFF",
+                          color: facilityPrimary,
+                          fontSize: "12.5px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
+                        }}
+                      >
+                        <span>🎨</span>
+                        <span>{isHi ? "व्हाइट-लेबल ब्रांडिंग" : "Branding Settings"}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Badges / Meta Pills Bar */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "14px",
+                      flexWrap: "wrap",
+                      paddingTop: "14px",
+                      borderTop: "1px solid rgba(226, 232, 240, 0.8)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#475569" }}>
+                      <IconPhone size={14} color={facilityPrimary} />
+                      <span style={{ fontWeight: 600 }}>{helpline}</span>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#475569" }}>
+                      <IconClock size={14} color={facilityPrimary} />
+                      <span style={{ fontWeight: 600 }}>{isHi ? `ओपीडी समय: ${facilityHours}` : `OPD Hours: ${facilityHours}`}</span>
+                    </div>
+
+                    {currentHosp.address && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#475569" }}>
+                        <IconMapPin size={14} color={facilityPrimary} />
+                        <span style={{ fontWeight: 500 }}>{currentHosp.address}</span>
+                      </div>
+                    )}
+
+                    <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>
+                        {isHi ? "कोड:" : "Code:"}
+                      </span>
+                      <code
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          padding: "2px 7px",
+                          background: "#E2E8F0",
+                          borderRadius: "6px",
+                          color: "#334155",
+                        }}
+                      >
+                        {currentHosp.hospital_code}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 1.5. REAL-TIME CLINICAL TRAFFIC & OPERATIONS MONITOR STRIP */}
+                <div
+                  style={{
+                    background: "#0F172A",
+                    borderRadius: "18px",
+                    padding: "14px 22px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: "12px",
+                    boxShadow: "0 8px 24px -4px rgba(15, 23, 42, 0.18)",
+                    border: "1px solid #1E293B",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: "#10B981", boxShadow: "0 0 10px #10B981", display: "inline-block" }} />
+                    <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#F8FAFC", letterSpacing: "0.6px", textTransform: "uppercase" }}>
+                      {isHi ? "लाइव ट्रैफिक मॉनिटर" : "Live Traffic Monitor"}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      flexWrap: "wrap",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: "#CBD5E1",
+                    }}
+                  >
+                    {/* Waiting */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: "#94A3B8" }}>{isHi ? "प्रतीक्षा:" : "Waiting"}</span>
+                      <span style={{ color: "#F59E0B", fontWeight: 800, background: "rgba(245, 158, 11, 0.2)", padding: "2px 8px", borderRadius: "6px" }}>
+                        {waitingCount}
+                      </span>
+                    </div>
+
+                    <span style={{ color: "#475569" }}>│</span>
+
+                    {/* Serving */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: "#94A3B8" }}>{isHi ? "परामर्श:" : "Serving"}</span>
+                      <span style={{ color: "#38BDF8", fontWeight: 800, background: "rgba(56, 189, 248, 0.2)", padding: "2px 8px", borderRadius: "6px" }}>
+                        {servingCount}
+                      </span>
+                    </div>
+
+                    <span style={{ color: "#475569" }}>│</span>
+
+                    {/* Completed */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: "#94A3B8" }}>{isHi ? "पूर्ण:" : "Completed"}</span>
+                      <span style={{ color: "#34D399", fontWeight: 800, background: "rgba(52, 211, 153, 0.2)", padding: "2px 8px", borderRadius: "6px" }}>
+                        {completedToday} today
+                      </span>
+                    </div>
+
+                    <span style={{ color: "#475569" }}>│</span>
+
+                    {/* Avg Wait */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: "#94A3B8" }}>{isHi ? "औसत प्रतीक्षा:" : "Avg Wait"}</span>
+                      <span style={{ color: "#A78BFA", fontWeight: 800, background: "rgba(167, 139, 250, 0.2)", padding: "2px 8px", borderRadius: "6px" }}>
+                        ~{avgWait}m
+                      </span>
+                    </div>
+
+                    <span style={{ color: "#475569" }}>│</span>
+
+                    {/* Desks */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: "#94A3B8" }}>{isHi ? "डेस्क:" : "Desks"}</span>
+                      <span style={{ color: "#F472B6", fontWeight: 800, background: "rgba(244, 114, 182, 0.2)", padding: "2px 8px", borderRadius: "6px" }}>
+                        {activeDesksCount}/{totalDesksCount}
+                      </span>
+                    </div>
+
+                    <span style={{ color: "#475569" }}>│</span>
+
+                    {/* Docs */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: "#94A3B8" }}>{isHi ? "चिकित्सक:" : "Docs"}</span>
+                      <span style={{ color: "#2DD4BF", fontWeight: 800, background: "rgba(45, 212, 191, 0.2)", padding: "2px 8px", borderRadius: "6px" }}>
+                        {doctorsCount}
+                      </span>
+                    </div>
+
+                    <span style={{ color: "#475569" }}>│</span>
+
+                    {/* Visited Till Now */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ color: "#94A3B8" }}>{isHi ? "कुल मरीज अब तक:" : "Visited Till Now"}</span>
+                      <span style={{ color: "#F8FAFC", fontWeight: 900, background: "rgba(248, 250, 252, 0.2)", padding: "2px 9px", borderRadius: "6px" }}>
+                        {allTimePatientsVisited}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. REAL-TIME CLINICAL KPI TELEMETRY METRICS */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: "14px",
+                  }}
+                >
+                  {/* KPI 1: Waiting In Queue */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: "18px",
+                      border: "1.5px solid #FEF3C7",
+                      padding: "18px 20px",
+                      boxShadow: "0 4px 14px rgba(217, 119, 6, 0.05)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#92400E" }}>
+                        {isHi ? "प्रतीक्षारत मरीज" : "Waiting in Queue"}
+                      </span>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", color: "#D97706" }}>
+                        <IconClock size={16} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#B45309", letterSpacing: "-0.5px" }}>
+                      {waitingCount}
+                    </div>
+                    <span style={{ fontSize: "11.5px", color: "#78350F", marginTop: "4px", fontWeight: 600 }}>
+                      {isHi ? "ओपीडी कतार में सक्रिय" : "Live in waiting lounge"}
+                    </span>
+                  </div>
+
+                  {/* KPI 2: Serving Currently */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: "18px",
+                      border: "1.5px solid #D1FAE5",
+                      padding: "18px 20px",
+                      boxShadow: "0 4px 14px rgba(5, 150, 105, 0.05)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#065F46" }}>
+                        {isHi ? "परामर्श जारी" : "In Consultation"}
+                      </span>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#D1FAE5", display: "flex", alignItems: "center", justifyContent: "center", color: "#059669" }}>
+                        <IconStethoscope size={16} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#047857", letterSpacing: "-0.5px" }}>
+                      {servingCount}
+                    </div>
+                    <span style={{ fontSize: "11.5px", color: "#064E3B", marginTop: "4px", fontWeight: 600 }}>
+                      {isHi ? "डॉक्टर के साथ सक्रिय" : "At active counters right now"}
+                    </span>
+                  </div>
+
+                  {/* KPI 3: Completed Today */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: "18px",
+                      border: "1.5px solid #BAE6FD",
+                      padding: "18px 20px",
+                      boxShadow: "0 4px 14px rgba(2, 132, 199, 0.05)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#0369A1" }}>
+                        {isHi ? "आज पूर्ण परामर्श" : "Treated Today"}
+                      </span>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#E0F2FE", display: "flex", alignItems: "center", justifyContent: "center", color: "#0284C7" }}>
+                        <IconCheckCircle size={16} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#0284C7", letterSpacing: "-0.5px" }}>
+                      {completedToday}
+                    </div>
+                    <span style={{ fontSize: "11.5px", color: "#075985", marginTop: "4px", fontWeight: 600 }}>
+                      {isHi ? "आज के सफल डिस्चार्ज" : "Completed patient visits"}
+                    </span>
+                  </div>
+
+                  {/* KPI 4: Total Patients Visited Till Now */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: "18px",
+                      border: "1.5px solid #C7D2FE",
+                      padding: "18px 20px",
+                      boxShadow: "0 4px 14px rgba(99, 102, 241, 0.05)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#3730A3" }}>
+                        {isHi ? "अब तक कुल मरीज" : "Visited Till Now"}
+                      </span>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#EEF2FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#4F46E5" }}>
+                        <IconUsers size={16} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#4338CA", letterSpacing: "-0.5px" }}>
+                      {allTimePatientsVisited}
+                    </div>
+                    <span style={{ fontSize: "11.5px", color: "#3730A3", marginTop: "4px", fontWeight: 600 }}>
+                      {isHi ? `आज: ${todayFootfall} • इस माह: ${thisMonthFootfall}` : `Today: ${todayFootfall} • Month: ${thisMonthFootfall}`}
+                    </span>
+                  </div>
+
+                  {/* KPI 5: Avg Consultation Wait */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: "18px",
+                      border: "1.5px solid #E0E7FF",
+                      padding: "18px 20px",
+                      boxShadow: "0 4px 14px rgba(99, 102, 241, 0.05)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#4338CA" }}>
+                        {isHi ? "औसत प्रतीक्षा समय" : "Avg. Wait Time"}
+                      </span>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#EEF2FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#6366F1" }}>
+                        <IconActivity size={16} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#4F46E5", letterSpacing: "-0.5px" }}>
+                      ~{avgWait} <span style={{ fontSize: "14px", fontWeight: 700 }}>min</span>
+                    </div>
+                    <span style={{ fontSize: "11.5px", color: "#3730A3", marginTop: "4px", fontWeight: 600 }}>
+                      {isHi ? "स्मार्ट एआई थ्रूपुट" : "AI estimated turnaround"}
+                    </span>
+                  </div>
+
+                  {/* KPI 5: Active Counter Desks */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: "18px",
+                      border: "1.5px solid #F3E8FF",
+                      padding: "18px 20px",
+                      boxShadow: "0 4px 14px rgba(139, 92, 246, 0.05)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#6B21A8" }}>
+                        {isHi ? "काउंटर डेस्क स्थिति" : "Active Desks"}
+                      </span>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#F5F3FF", display: "flex", alignItems: "center", justifyContent: "center", color: "#8B5CF6" }}>
+                        <IconDesk size={16} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "28px", fontWeight: 900, color: "#7C3AED", letterSpacing: "-0.5px" }}>
+                      {activeDesksCount} <span style={{ fontSize: "16px", color: "#94A3B8", fontWeight: 600 }}>/ {totalDesksCount}</span>
+                    </div>
+                    <span style={{ fontSize: "11.5px", color: "#581C87", marginTop: "4px", fontWeight: 600 }}>
+                      {totalDesksCount > 0 ? `${Math.round((activeDesksCount / totalDesksCount) * 100)}% ${isHi ? "संचालन में" : "Operational"}` : (isHi ? "कोई डेस्क नहीं" : "No desks setup")}
+                    </span>
+                  </div>
+
+                  {/* KPI 6: Doctors & Staff */}
+                  <div
+                    style={{
+                      background: "#FFFFFF",
+                      borderRadius: "18px",
+                      border: "1.5px solid #CCFBF1",
+                      padding: "18px 20px",
+                      boxShadow: "0 4px 14px rgba(13, 148, 136, 0.05)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#115E59" }}>
+                        {isHi ? "क्लिनिकल स्टाफ" : "Clinical Personnel"}
+                      </span>
+                      <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#F0FDFA", display: "flex", alignItems: "center", justifyContent: "center", color: "#0D9488" }}>
+                        <IconUsers size={16} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: 900, color: "#0F766E", letterSpacing: "-0.5px" }}>
+                      {doctorsCount} <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Docs</span> • {staffCount} <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>Staff</span>
+                    </div>
+                    <span style={{ fontSize: "11.5px", color: "#134E4A", marginTop: "4px", fontWeight: 600 }}>
+                      {hospitalEmployees.length} {isHi ? "कुल पंजीकृत कार्मिक" : "Total registered team"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. LIVE CALLING DESK STATIONS POD MAP */}
+                <div style={standaloneCardStyle}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "10px" }}>
+                    <div>
+                      <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span>🖥️</span>
+                        <span>{isHi ? "लाइव कॉलिंग डेस्क एवं डॉक्टर आवंटन" : "Live Calling Desk Stations & Doctor Allocation"}</span>
+                      </h3>
+                      <p style={{ margin: 0, color: "#64748B", fontSize: "12.5px" }}>
+                        {isHi ? "प्रत्येक काउंटर डेस्क की रीयल-टाइम स्थिति, ड्यूटी पर तैनात डॉक्टर और सेवा स्थिति।" : "Real-time presence, assigned physician, and service status across physical desks."}
+                      </p>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("desks")}
+                        style={{
+                          background: "#F8FAFC",
+                          border: "1px solid #CBD5E1",
+                          borderRadius: "10px",
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          color: "#475569",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {isHi ? "सभी डेस्क प्रबंधित करें →" : "Manage Desks →"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddDeskModal(true)}
+                        style={{
+                          background: facilityPrimary,
+                          border: "none",
+                          borderRadius: "10px",
+                          padding: "6px 12px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          color: "#FFFFFF",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <IconPlus size={13} />
+                        <span>{isHi ? "नया डेस्क" : "Add Desk"}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {allDesks.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "30px 16px", background: "#F8FAFC", borderRadius: "16px", border: "1px dashed #CBD5E1" }}>
+                      <IconDesk size={32} color="#94A3B8" />
+                      <p style={{ margin: "10px 0 14px", color: "#64748B", fontSize: "13px" }}>
+                        {isHi ? "इस अस्पताल के लिए अभी तक कोई डेस्क नहीं जोड़ा गया है।" : "No calling desks configured for this hospital yet."}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddDeskModal(true)}
+                        style={{
+                          ...actionBtnStyle,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "8px 16px",
+                        }}
+                      >
+                        <IconPlus size={14} />
+                        <span>{isHi ? "+ पहला डेस्क जोड़ें" : "+ Add First Calling Desk"}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                        gap: "14px",
+                      }}
+                    >
+                      {allDesks.map((desk, idx) => {
+                        const rawStatus = (desk.status || "").toUpperCase();
+                        const isAvailable = ["AVAILABLE", "ACTIVE"].includes(rawStatus);
+                        const isServing = ["SERVING", "OCCUPIED", "BUSY"].includes(rawStatus);
+
+                        const statusColor = isServing ? "#0284C7" : isAvailable ? "#16A34A" : "#64748B";
+                        const statusBg = isServing ? "#E0F2FE" : isAvailable ? "#DCFCE7" : "#F1F5F9";
+                        const statusBorder = isServing ? "#BAE6FD" : isAvailable ? "#BBF7D0" : "#E2E8F0";
+                        const statusLabel = isServing
+                          ? (isHi ? "परामर्श जारी" : "CONSULTING")
+                          : isAvailable
+                          ? (isHi ? "उपलब्ध / तैयार" : "READY")
+                          : (isHi ? "ऑफ़लाइन" : "OFFLINE");
+
+                        const staffName = desk.staff_name || desk.assigned_employee_name || (isHi ? "अनावंटित डेस्क" : "Unassigned Desk");
+
+                        return (
+                          <div
+                            key={desk.id || desk.desk_name || idx}
+                            style={{
+                              background: isServing ? "#F0F9FF" : isAvailable ? "#F0FDF4" : "#F8FAFC",
+                              borderRadius: "16px",
+                              border: isServing ? "1.5px solid #BAE6FD" : isAvailable ? "1.5px solid #BBF7D0" : "1.5px solid #E2E8F0",
+                              padding: "16px",
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "space-between",
+                              gap: "12px",
+                              transition: "all 0.2s ease",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                              <div>
+                                <h4 style={{ margin: 0, fontSize: "15px", color: "#0F172A", fontWeight: 800 }}>
+                                  {desk.desk_name || `Desk ${idx + 1}`}
+                                </h4>
+                                <span
+                                  style={{
+                                    fontSize: "11px",
+                                    color: "#64748B",
+                                    fontWeight: 600,
+                                    textTransform: "capitalize",
+                                  }}
+                                >
+                                  {getCategoryLabel ? getCategoryLabel(desk.dept_code || desk.dept_name, isHi) : (desk.dept_name || desk.dept_code)}
+                                </span>
+                              </div>
+
+                              <span
+                                style={{
+                                  fontSize: "10.5px",
+                                  fontWeight: 800,
+                                  padding: "3px 8px",
+                                  borderRadius: "12px",
+                                  background: statusBg,
+                                  color: statusColor,
+                                  border: `1px solid ${statusBorder}`,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  letterSpacing: "0.2px",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    background: statusColor,
+                                    display: "inline-block",
+                                  }}
+                                />
+                                {statusLabel}
+                              </span>
+                            </div>
+
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "10px",
+                                background: "#FFFFFF",
+                                padding: "8px 12px",
+                                borderRadius: "10px",
+                                border: "1px solid #E2E8F0",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: "28px",
+                                  height: "28px",
+                                  borderRadius: "50%",
+                                  background: isServing ? "#E0F2FE" : isAvailable ? "#DCFCE7" : "#F1F5F9",
+                                  color: isServing ? "#0284C7" : isAvailable ? "#16A34A" : "#64748B",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                }}
+                              >
+                                <IconStethoscope size={14} />
+                              </div>
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#1E293B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {staffName}
+                                </div>
+                                <div style={{ fontSize: "10.5px", color: "#94A3B8" }}>
+                                  {isHi ? "कर्तव्यस्थ चिकित्सक / स्टाफ" : "Assigned Duty Clinician"}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. DEPARTMENT CAPACITY & LOAD PROGRESS METERS */}
+                <div style={standaloneCardStyle}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+                    <div>
+                      <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span>🏢</span>
+                        <span>{isHi ? "विभागवार मरीज भार एवं क्षमता स्थिति" : "Department Traffic, Capacity & Load Meters"}</span>
+                      </h3>
+                      <p style={{ margin: 0, color: "#64748B", fontSize: "12.5px" }}>
+                        {isHi ? "विभिन्न विभागों (OPD, कार्डियो, आदि) में वेटिंग लोड और आवंटित डेस्क अनुपात।" : "Patient congestion levels and desk capacity distribution across clinical categories."}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("depts")}
+                      style={{
+                        background: "#F8FAFC",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: "10px",
+                        padding: "6px 12px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "#475569",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {isHi ? "विभाग सेटिंग्स →" : "Manage Departments →"}
+                    </button>
+                  </div>
+
+                  {hospitalDepts.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "24px 16px", color: "#94A3B8", fontSize: "13px" }}>
+                      {isHi ? "कोई विभाग पंजीकृत नहीं है।" : "No clinical departments registered."}
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                      {hospitalDepts.map((dept) => {
+                        const dCode = dept.dept_code;
+                        // Count patients waiting for this department
+                        const deptWaiting = hospitalQueueSnapshot.filter(
+                          (t) => (t.dept_code === dCode || t.department === dCode || (t.token_number && t.token_number.startsWith(dCode.substring(0, 1).toUpperCase())))
+                        ).length;
+
+                        // Desks allocated for this department
+                        const deptDesksObj = (hospitalDesksData.departments || []).find((d) => d.dept_code === dCode);
+                        const deptDesksCount = deptDesksObj ? deptDesksObj.total_desks : 0;
+                        const deptActiveDesks = deptDesksObj ? deptDesksObj.active_desks : 0;
+
+                        // Congestion indicator
+                        const loadLevel = deptWaiting > 10 ? "high" : deptWaiting > 3 ? "medium" : "normal";
+                        const barColor = loadLevel === "high" ? "#EF4444" : loadLevel === "medium" ? "#F59E0B" : "#10B981";
+                        const loadPercent = Math.min(100, Math.max(15, deptWaiting * 10));
+
+                        return (
+                          <div
+                            key={dCode}
+                            style={{
+                              background: "#F8FAFC",
+                              borderRadius: "14px",
+                              border: "1px solid #E2E8F0",
+                              padding: "14px 18px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "8px",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                <span style={{ fontWeight: 800, fontSize: "14px", color: "#0F172A" }}>
+                                  {dept.name}
+                                </span>
+                                <code style={{ fontSize: "11px", background: "#E2E8F0", color: "#475569", padding: "2px 6px", borderRadius: "5px", fontWeight: 700 }}>
+                                  {dCode}
+                                </code>
+                              </div>
+
+                              <div style={{ display: "flex", alignItems: "center", gap: "14px", fontSize: "12px" }}>
+                                <span style={{ color: "#64748B", fontWeight: 600 }}>
+                                  {isHi ? "डेस्क:" : "Desks:"} <strong style={{ color: "#0F172A" }}>{deptActiveDesks}/{deptDesksCount} active</strong>
+                                </span>
+                                <span
+                                  style={{
+                                    padding: "2px 8px",
+                                    borderRadius: "10px",
+                                    fontWeight: 700,
+                                    background: loadLevel === "high" ? "#FEE2E2" : loadLevel === "medium" ? "#FEF3C7" : "#DCFCE7",
+                                    color: loadLevel === "high" ? "#B91C1C" : loadLevel === "medium" ? "#B45309" : "#15803D",
+                                  }}
+                                >
+                                  {deptWaiting} {isHi ? "मरीज कतार में" : "waiting in queue"}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Visual Capacity Bar */}
+                            <div style={{ width: "100%", height: "8px", borderRadius: "6px", background: "#E2E8F0", overflow: "hidden" }}>
+                              <div
+                                style={{
+                                  width: `${loadPercent}%`,
+                                  height: "100%",
+                                  background: barColor,
+                                  borderRadius: "6px",
+                                  transition: "width 0.4s ease",
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. PATIENT VISIT HISTORY & TREATMENT RECORDS */}
+                <div style={standaloneCardStyle}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
+                    <div>
+                      <h3 style={{ margin: "0 0 4px 0", fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span>📋</span>
+                        <span>{isHi ? "मरीज विज़िट इतिहास एवं उपचार लॉग" : "Patient Visit History & Treatment Log"}</span>
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            padding: "2px 8px",
+                            borderRadius: "12px",
+                            background: "#E0F2FE",
+                            color: "#0284C7",
+                          }}
+                        >
+                          {allTimePatientsVisited} {isHi ? "कुल मरीज" : "Total Visited Till Now"}
+                        </span>
+                      </h3>
+                      <p style={{ margin: 0, color: "#64748B", fontSize: "12.5px" }}>
+                        {isHi ? "अस्पताल में अब तक आए सभी मरीजों का इतिहास, परामर्श समय और सेवा स्थिति।" : "Chronological log of all patient visits, consultation durations, and service outcomes."}
+                      </p>
+                    </div>
+
+                    {/* Search & Filter Controls */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                      <div style={{ position: "relative", minWidth: "220px" }}>
+                        <input
+                          type="text"
+                          placeholder={isHi ? "मरीज नाम, टोकन खोजें..." : "Search patient, token, dept..."}
+                          value={visitHistorySearchQuery}
+                          onChange={(e) => setVisitHistorySearchQuery(e.target.value)}
+                          style={{
+                            ...searchInputStyle,
+                            padding: "7px 12px",
+                            fontSize: "12.5px",
+                          }}
+                        />
+                      </div>
+
+                      {/* Status Filter Tabs */}
+                      <div style={{ display: "flex", background: "#F1F5F9", padding: "3px", borderRadius: "10px", gap: "3px" }}>
+                        {[
+                          { id: "all", label: isHi ? "सभी" : "All" },
+                          { id: "completed", label: isHi ? "पूर्ण" : "Completed" },
+                          { id: "active", label: isHi ? "सक्रिय" : "Active" },
+                          { id: "cancelled", label: isHi ? "अन्य" : "Other" },
+                        ].map((flt) => (
+                          <button
+                            key={flt.id}
+                            type="button"
+                            onClick={() => setVisitHistoryStatusFilter(flt.id)}
+                            style={{
+                              border: "none",
+                              padding: "5px 10px",
+                              borderRadius: "8px",
+                              fontSize: "11.5px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              background: visitHistoryStatusFilter === flt.id ? "#FFFFFF" : "transparent",
+                              color: visitHistoryStatusFilter === flt.id ? "#0284C7" : "#64748B",
+                              boxShadow: visitHistoryStatusFilter === flt.id ? "0 1px 4px rgba(0,0,0,0.06)" : "none",
+                            }}
+                          >
+                            {flt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Visit Log Table */}
+                  <div style={{ overflowX: "auto", borderRadius: "14px", border: "1px solid #E2E8F0" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
+                      <thead>
+                        <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
+                          <th style={tableThStyle}>{isHi ? "टोकन / आईडी" : "Token / Ticket"}</th>
+                          <th style={tableThStyle}>{isHi ? "मरीज का नाम" : "Patient Name"}</th>
+                          <th style={tableThStyle}>{isHi ? "क्लिनिकल विभाग" : "Department"}</th>
+                          <th style={tableThStyle}>{isHi ? "विज़िट तिथि एवं समय" : "Visit Date & Time"}</th>
+                          <th style={tableThStyle}>{isHi ? "परामर्श अवधि" : "Consult Duration"}</th>
+                          <th style={tableThStyle}>{isHi ? "स्थिति" : "Status"}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredVisits.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" style={{ textAlign: "center", padding: "30px 16px", color: "#64748B" }}>
+                              <IconClock size={28} color="#CBD5E1" />
+                              <div style={{ marginTop: "8px", fontSize: "13px" }}>
+                                {visitHistorySearchQuery
+                                  ? (isHi ? "खोज से मेल खाता कोई विज़िट रिकॉर्ड नहीं मिला।" : "No patient visit records match your search filter.")
+                                  : (isHi ? "इस अस्पताल के लिए अभी तक कोई विज़िट रिकॉर्ड दर्ज नहीं हुआ है।" : "No patient visit history recorded for this facility yet.")}
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredVisits.slice(0, 30).map((visit, idx) => {
+                            const st = (visit.status || "").toLowerCase();
+                            const isDone = st === "completed";
+                            const isCurrent = ["serving", "called", "waiting"].includes(st);
+                            const statusBg = isDone ? "#DCFCE7" : isCurrent ? "#E0F2FE" : "#F1F5F9";
+                            const statusColor = isDone ? "#15803D" : isCurrent ? "#0284C7" : "#64748B";
+                            const statusBorder = isDone ? "#BBF7D0" : isCurrent ? "#BAE6FD" : "#E2E8F0";
+
+                            const dateStr = visit.created_at
+                              ? new Date(visit.created_at).toLocaleString(isHi ? "hi-IN" : "en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : visit.queue_date || "Today";
+
+                            return (
+                              <tr key={visit.id || visit.ticket_id || idx} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                                <td style={tableTdStyle}>
+                                  <span
+                                    style={{
+                                      fontSize: "12.5px",
+                                      fontWeight: 800,
+                                      padding: "3px 8px",
+                                      borderRadius: "6px",
+                                      background: "#F8FAFC",
+                                      border: "1px solid #E2E8F0",
+                                      color: "#0F172A",
+                                    }}
+                                  >
+                                    {visit.ticket_id || `#${visit.id}`}
+                                  </span>
+                                </td>
+                                <td style={tableTdStyle}>
+                                  <div style={{ fontWeight: 700, color: "#0F172A" }}>
+                                    {visit.patient_name || "Patient"}
+                                  </div>
+                                  {(visit.age || visit.gender || visit.phone) && (
+                                    <span style={{ fontSize: "11px", color: "#64748B", display: "block", marginTop: "2px" }}>
+                                      {[visit.gender, visit.age ? `${visit.age}y` : "", visit.phone].filter(Boolean).join(" • ")}
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={tableTdStyle}>
+                                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>
+                                    {visit.department}
+                                  </span>
+                                </td>
+                                <td style={tableTdStyle}>
+                                  <span style={{ fontSize: "12px", color: "#475569" }}>
+                                    {dateStr}
+                                  </span>
+                                </td>
+                                <td style={tableTdStyle}>
+                                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>
+                                    {visit.service_duration_minutes ? `~${visit.service_duration_minutes} min` : "—"}
+                                  </span>
+                                </td>
+                                <td style={tableTdStyle}>
+                                  <span
+                                    style={{
+                                      fontSize: "11px",
+                                      fontWeight: 800,
+                                      padding: "3px 8px",
+                                      borderRadius: "10px",
+                                      background: statusBg,
+                                      color: statusColor,
+                                      border: `1px solid ${statusBorder}`,
+                                      textTransform: "uppercase",
+                                    }}
+                                  >
+                                    {visit.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {filteredVisits.length > 30 && (
+                    <div style={{ textAlign: "center", marginTop: "12px", fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
+                      Showing 30 most recent of {filteredVisits.length} recorded patient visits
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* TAB 1: HOSPITALS DIRECTORY */}
           {activeTab === "hospitals" && (
             <div style={standaloneCardStyle}>
@@ -1637,15 +3057,47 @@ export default function SuperAdminPage({
                   </p>
                 </div>
 
-                {/* Search Input */}
-                <div style={{ position: "relative", minWidth: "220px" }}>
-                  <input
-                    type="text"
-                    placeholder={isHi ? "अस्पताल खोजें..." : "Search hospitals..."}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    style={searchInputStyle}
-                  />
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  {/* Search Input */}
+                  <div style={{ position: "relative", minWidth: "220px" }}>
+                    <input
+                      type="text"
+                      placeholder={isHi ? "अस्पताल खोजें..." : "Search hospitals..."}
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      style={searchInputStyle}
+                    />
+                  </div>
+
+                  {/* Primary Add Hospital Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewHospitalForm({
+                        hospital_code: "",
+                        name: "",
+                        address: "",
+                        phone: "",
+                        email: "",
+                        description: "",
+                        status: "active",
+                      });
+                      setShowAddHospitalModal(true);
+                    }}
+                    style={{
+                      ...actionBtnStyle,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      fontWeight: 800,
+                    }}
+                    title={isHi ? "नया अस्पताल जोड़ें" : "Add New Hospital"}
+                  >
+                    <IconPlus size={14} color="#FFFFFF" />
+                    <span>{isHi ? "नया अस्पताल जोड़ें" : "+ Add Hospital"}</span>
+                  </button>
                 </div>
               </div>
 
@@ -1767,7 +3219,12 @@ export default function SuperAdminPage({
 
           {/* TAB 2: EMPLOYEES & DOCTORS ROSTER (Add & Remove Staff/Doctors) */}
           {activeTab === "employees" && (() => {
+            const onlineCount = hospitalEmployees.filter((e) => (e.status || "").toLowerCase() === "active").length;
+            const offlineCount = hospitalEmployees.length - onlineCount;
+
             const filteredEmployees = hospitalEmployees.filter((emp) => {
+              if (employeeStatusFilter === "active" && (emp.status || "").toLowerCase() !== "active") return false;
+              if (employeeStatusFilter === "inactive" && (emp.status || "").toLowerCase() === "active") return false;
               if (!employeeSearchQuery.trim()) return true;
               const q = employeeSearchQuery.trim().toLowerCase();
               return (
@@ -1830,8 +3287,89 @@ export default function SuperAdminPage({
                   </div>
                 </div>
 
-                {/* Search & Filter Bar */}
+                {/* Staff Presence Overview Cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "16px" }}>
+                  <div style={{ padding: "12px 16px", borderRadius: "10px", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                    <div style={{ fontSize: "11.5px", color: "#64748B", fontWeight: 700 }}>{isHi ? "कुल कार्मिक" : "Total Personnel"}</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#0F172A", marginTop: "4px" }}>{hospitalEmployees.length}</div>
+                  </div>
+                  <div style={{ padding: "12px 16px", borderRadius: "10px", background: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#16A34A" }} />
+                      <span style={{ fontSize: "11.5px", color: "#166534", fontWeight: 700 }}>{isHi ? "सक्रिय / ऑनलाइन" : "Active / Logged In"}</span>
+                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#15803D", marginTop: "4px" }}>{onlineCount}</div>
+                  </div>
+                  <div style={{ padding: "12px 16px", borderRadius: "10px", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#94A3B8" }} />
+                      <span style={{ fontSize: "11.5px", color: "#475569", fontWeight: 700 }}>{isHi ? "निष्क्रिय / ऑफलाइन" : "Inactive / Offline"}</span>
+                    </div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#475569", marginTop: "4px" }}>{offlineCount}</div>
+                  </div>
+                </div>
+
+                {/* Filter Pills & Search Bar */}
                 <div style={{ marginBottom: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => { setEmployeeStatusFilter("all"); setEmployeePage(1); }}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: "20px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        border: employeeStatusFilter === "all" ? "1.5px solid #0284C7" : "1px solid #CBD5E1",
+                        background: employeeStatusFilter === "all" ? "#F0F9FF" : "#FFFFFF",
+                        color: employeeStatusFilter === "all" ? "#0284C7" : "#64748B",
+                      }}
+                    >
+                      {isHi ? "सभी कार्मिक" : "All Staff"} ({hospitalEmployees.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setEmployeeStatusFilter("active"); setEmployeePage(1); }}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: "20px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        border: employeeStatusFilter === "active" ? "1.5px solid #16A34A" : "1px solid #CBD5E1",
+                        background: employeeStatusFilter === "active" ? "#F0FDF4" : "#FFFFFF",
+                        color: employeeStatusFilter === "active" ? "#15803D" : "#64748B",
+                      }}
+                    >
+                      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#16A34A" }} />
+                      <span>{isHi ? "ऑनलाइन" : "Online"} ({onlineCount})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setEmployeeStatusFilter("inactive"); setEmployeePage(1); }}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: "20px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        border: employeeStatusFilter === "inactive" ? "1.5px solid #64748B" : "1px solid #CBD5E1",
+                        background: employeeStatusFilter === "inactive" ? "#F8FAFC" : "#FFFFFF",
+                        color: employeeStatusFilter === "inactive" ? "#334155" : "#64748B",
+                      }}
+                    >
+                      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#94A3B8" }} />
+                      <span>{isHi ? "ऑफलाइन" : "Offline"} ({offlineCount})</span>
+                    </button>
+                  </div>
+
                   <div style={{ position: "relative", minWidth: "260px", flex: "1 1 260px" }}>
                     <input
                       type="text"
@@ -1844,9 +3382,6 @@ export default function SuperAdminPage({
                       🔍
                     </span>
                   </div>
-                  <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
-                    Showing {filteredEmployees.length} of {hospitalEmployees.length} Staff Members
-                  </span>
                 </div>
 
                 {/* Roster Table with Edit and Delete Action */}
@@ -1858,117 +3393,236 @@ export default function SuperAdminPage({
                         <th style={tableThStyle}>{isHi ? "आईडी" : "Emp ID"}</th>
                         <th style={tableThStyle}>{isHi ? "भूमिका" : "Role"}</th>
                         <th style={tableThStyle}>{isHi ? "विभाग" : "Department"}</th>
+                        <th style={tableThStyle}>{isHi ? "संबद्ध डेस्क" : "Assigned Desk"}</th>
                         <th style={tableThStyle}>{isHi ? "ईमेल / फोन" : "Contact"}</th>
-                        <th style={tableThStyle}>{isHi ? "स्थिति" : "Status"}</th>
+                        <th style={tableThStyle}>{isHi ? "स्थिति / उपस्थिति" : "Status & Presence"}</th>
                         <th style={tableThStyle}>{isHi ? "कार्रवाई" : "Actions"}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {paginatedEmployees.length === 0 ? (
                         <tr>
-                          <td colSpan="7" style={{ textAlign: "center", padding: "24px", color: "#64748B" }}>
-                            {employeeSearchQuery ? "No staff members match the search query." : "No staff or doctors found for this hospital. Click '+ Add Doctor / Staff' above."}
+                          <td colSpan="8" style={{ textAlign: "center", padding: "24px", color: "#64748B" }}>
+                            {employeeSearchQuery ? "No staff members match the search query." : "No staff or doctors found for this filter."}
                           </td>
                         </tr>
                       ) : (
-                        paginatedEmployees.map((emp) => (
-                          <tr key={emp.id || emp.employee_id_num} style={{ borderBottom: "1px solid #F1F5F9" }}>
-                            <td style={tableTdStyle}>
-                              <div style={{ fontWeight: 800, color: "#0F172A", fontSize: "13.5px" }}>
-                                {emp.name || emp.username || "Staff Member"}
-                              </div>
-                              <span style={{ fontSize: "11px", color: "#64748B", display: "block", marginTop: "2px" }}>
-                                {emp.email}
-                              </span>
-                            </td>
-                            <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
-                              {emp.employee_id || `EMP-${emp.id || emp.employee_id_num}`}
-                            </td>
-                            <td style={tableTdStyle}>
-                              <span style={roleBadgeStyle(emp.role)}>
-                                {emp.role.toUpperCase()}
-                              </span>
-                            </td>
-                            <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
-                              {getCategoryLabel(emp.department, language)}
-                            </td>
-                            <td style={tableTdStyle}>
-                              {emp.phone || "—"}
-                            </td>
-                            <td style={tableTdStyle}>
-                              <span style={empStatusBadgeStyle(emp.status)}>
-                                ● {(emp.status || "active").toUpperCase()}
-                              </span>
-                            </td>
-                            <td style={tableTdStyle}>
-                              <div style={{ display: "flex", gap: "6px" }}>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(`Name: ${emp.name || emp.username}\nEmail ID: ${emp.email}\nRole: ${emp.role.toUpperCase()}\nDepartment: ${emp.department}`);
-                                    notify(isHi ? `'${emp.name || emp.username}' के लॉगिन क्रेडेंशियल कॉपी किए गए!` : `Login ID for '${emp.name || emp.username}' copied to clipboard!`);
-                                  }}
-                                  style={copySmallBtnStyle}
-                                  title={isHi ? "लॉगिन आईडी कॉपी करें" : "Copy Login ID"}
-                                >
-                                  <IconCopy size={13} color="#0284C7" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditEmployeeForm({
-                                      id: emp.id || emp.employee_id_num,
-                                      name: emp.name || emp.username || "",
-                                      phone: emp.phone || "",
-                                      role: emp.role,
-                                      department: emp.department || "consultation",
-                                      employee_id: emp.employee_id || "",
-                                      status: emp.status || "active",
-                                      password: "",
-                                    });
-                                    setShowEditEmployeeModal(true);
-                                  }}
-                                  style={editSmallBtnStyle}
-                                >
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                    <IconEdit size={11} />
-                                    <span>{isHi ? "संपादित" : "Edit"}</span>
-                                  </span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setPasswordTargetEmployee(emp);
-                                    setNewPasswordValue("pass" + Math.floor(1000 + Math.random() * 9000));
-                                    setShowPasswordText(true);
-                                    setPasswordUpdateSuccess(null);
-                                    setShowChangePasswordModal(true);
-                                  }}
-                                  style={{
-                                    ...editSmallBtnStyle,
-                                    background: "#FEF3C7",
-                                    color: "#B45309",
-                                    border: "1px solid #FDE68A",
-                                  }}
-                                  title={isHi ? "पासवर्ड बदलें" : "Change Password"}
-                                >
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                    <IconKey size={12} color="#B45309" />
-                                    <span>{isHi ? "पासवर्ड" : "Password"}</span>
-                                  </span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteEmployee(emp)}
-                                  style={deleteSmallBtnStyle}
-                                  title={isHi ? "कर्मचारी हटाएं" : "Remove Employee"}
-                                >
-                                  <IconTrash size={14} color="#EF4444" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                        paginatedEmployees.map((emp) => {
+                          const isActive = (emp.status || "").toLowerCase() === "active";
+                          return (
+                            <tr key={emp.id || emp.employee_id_num} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                              <td style={tableTdStyle}>
+                                <div style={{ fontWeight: 800, color: "#0F172A", fontSize: "13.5px" }}>
+                                  {emp.name || emp.username || "Staff Member"}
+                                </div>
+                                <span style={{ fontSize: "11px", color: "#64748B", display: "block", marginTop: "2px" }}>
+                                  {emp.email}
+                                </span>
+                              </td>
+                              <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
+                                {emp.employee_id || `EMP-${emp.id || emp.employee_id_num}`}
+                              </td>
+                              <td style={tableTdStyle}>
+                                <span style={roleBadgeStyle(emp.role)}>
+                                  {emp.role.toUpperCase()}
+                                </span>
+                              </td>
+                              <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0284C7" }}>
+                                {getCategoryLabel(emp.department, language)}
+                              </td>
+                              <td style={tableTdStyle}>
+                                {(() => {
+                                  const currentDesk = getEmployeeCurrentDesk(emp);
+                                  return currentDesk ? (
+                                    <span
+                                      style={{
+                                        fontSize: "11.5px",
+                                        fontWeight: 700,
+                                        color: "#0369A1",
+                                        background: "#F0F9FF",
+                                        border: "1px solid #BAE6FD",
+                                        padding: "3px 8px",
+                                        borderRadius: "6px",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "4px",
+                                      }}
+                                      title={currentDesk.desk_name}
+                                    >
+                                      <span>🪑</span>
+                                      <span>{currentDesk.desk_name}</span>
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: "11px", color: "#94A3B8" }}>
+                                      {isHi ? "अनअसाइंड" : "Unassigned"}
+                                    </span>
+                                  );
+                                })()}
+                              </td>
+                              <td style={tableTdStyle}>
+                                {emp.phone || "—"}
+                              </td>
+                              <td style={tableTdStyle}>
+                                {isActive ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                    <span
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "5px",
+                                        padding: "2px 8px",
+                                        borderRadius: "999px",
+                                        fontSize: "10.5px",
+                                        fontWeight: 800,
+                                        background: "#ECFDF5",
+                                        color: "#047857",
+                                        border: "1px solid #A7F3D0",
+                                        width: "fit-content",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          width: "6px",
+                                          height: "6px",
+                                          borderRadius: "50%",
+                                          background: "#10B981",
+                                          boxShadow: "0 0 0 2px rgba(16, 185, 129, 0.3)",
+                                        }}
+                                      />
+                                      <span>{isHi ? "ऑनलाइन" : "ONLINE"}</span>
+                                    </span>
+                                    {emp.last_login_at ? (
+                                      <span style={{ fontSize: "10px", color: "#64748B" }} title={new Date(emp.last_login_at).toLocaleString()}>
+                                        {formatRelativeLogin(emp.last_login_at)}
+                                      </span>
+                                    ) : (
+                                      <span style={{ fontSize: "10px", color: "#10B981" }}>
+                                        {isHi ? "सक्रिय सत्र" : "Active session"}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                    <span
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "5px",
+                                        padding: "2px 8px",
+                                        borderRadius: "999px",
+                                        fontSize: "10.5px",
+                                        fontWeight: 700,
+                                        background: "#F1F5F9",
+                                        color: "#64748B",
+                                        border: "1px solid #E2E8F0",
+                                        width: "fit-content",
+                                      }}
+                                    >
+                                      <span
+                                        style={{
+                                          width: "6px",
+                                          height: "6px",
+                                          borderRadius: "50%",
+                                          background: "#94A3B8",
+                                        }}
+                                      />
+                                      <span>{isHi ? "ऑफलाइन" : "OFFLINE"}</span>
+                                    </span>
+                                    <span style={{ fontSize: "10px", color: "#94A3B8" }} title={emp.last_login_at ? new Date(emp.last_login_at).toLocaleString() : ""}>
+                                      {emp.last_login_at ? `${isHi ? "अंतिम:" : "Last:"} ${formatRelativeLogin(emp.last_login_at)}` : (isHi ? "लॉगिन नहीं किया" : "Not logged in")}
+                                    </span>
+                                  </div>
+                                )}
+                              </td>
+                              <td style={tableTdStyle}>
+                                <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                  <button
+                                    type="button"
+                                    disabled={isTogglingEmpStatus === (emp.user_id || emp.id || emp.employee_id_num)}
+                                    onClick={() => handleToggleEmployeeStatus(emp)}
+                                    style={{
+                                      ...editSmallBtnStyle,
+                                      background: isActive ? "#FFF1F2" : "#F0FDF4",
+                                      color: isActive ? "#BE123C" : "#15803D",
+                                      border: isActive ? "1px solid #FECDD3" : "1px solid #BBF7D0",
+                                      fontWeight: 700,
+                                      fontSize: "11px",
+                                      opacity: isTogglingEmpStatus === (emp.user_id || emp.id || emp.employee_id_num) ? 0.6 : 1,
+                                    }}
+                                    title={isActive ? (isHi ? "ऑफलाइन सेट करें" : "Set to Offline (Inactive)") : (isHi ? "ऑनलाइन सेट करें" : "Set to Online (Active)")}
+                                  >
+                                    {isActive
+                                      ? (isHi ? "ऑफलाइन करें" : "Set Offline")
+                                      : (isHi ? "सक्रिय करें" : "Set Active")}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(`Name: ${emp.name || emp.username}\nEmail ID: ${emp.email}\nRole: ${emp.role.toUpperCase()}\nDepartment: ${emp.department}`);
+                                      notify(isHi ? `'${emp.name || emp.username}' के लॉगिन क्रेडेंशियल कॉपी किए गए!` : `Login ID for '${emp.name || emp.username}' copied to clipboard!`);
+                                    }}
+                                    style={copySmallBtnStyle}
+                                    title={isHi ? "लॉगिन आईडी कॉपी करें" : "Copy Login ID"}
+                                  >
+                                    <IconCopy size={13} color="#0284C7" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditEmployeeForm({
+                                        id: emp.id || emp.employee_id_num,
+                                        name: emp.name || emp.username || "",
+                                        phone: emp.phone || "",
+                                        role: emp.role,
+                                        department: emp.department || "consultation",
+                                        employee_id: emp.employee_id || "",
+                                        status: emp.status || "active",
+                                        password: "",
+                                      });
+                                      setShowEditEmployeeModal(true);
+                                    }}
+                                    style={editSmallBtnStyle}
+                                  >
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                      <IconEdit size={11} />
+                                      <span>{isHi ? "संपादित" : "Edit"}</span>
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPasswordTargetEmployee(emp);
+                                      setNewPasswordValue("pass" + Math.floor(1000 + Math.random() * 9000));
+                                      setShowPasswordText(true);
+                                      setPasswordUpdateSuccess(null);
+                                      setShowChangePasswordModal(true);
+                                    }}
+                                    style={{
+                                      ...editSmallBtnStyle,
+                                      background: "#FEF3C7",
+                                      color: "#B45309",
+                                      border: "1px solid #FDE68A",
+                                    }}
+                                    title={isHi ? "पासवर्ड बदलें" : "Change Password"}
+                                  >
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                      <IconKey size={12} color="#B45309" />
+                                      <span>{isHi ? "पासवर्ड" : "Password"}</span>
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteEmployee(emp)}
+                                    style={deleteSmallBtnStyle}
+                                    title={isHi ? "कर्मचारी हटाएं" : "Remove Employee"}
+                                  >
+                                    <IconTrash size={14} color="#EF4444" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1976,9 +3630,9 @@ export default function SuperAdminPage({
 
                 {/* Pagination Controls */}
                 {totalEmpPages > 1 && (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px", padding: "4px 2px" }}>
-                    <span style={{ fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
-                      Page {employeePage} of {totalEmpPages}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "14px", flexWrap: "wrap", gap: "8px" }}>
+                    <span style={{ fontSize: "12px", color: "#64748B" }}>
+                      Page {employeePage} of {totalEmpPages} ({filteredEmployees.length} staff members)
                     </span>
                     <div style={{ display: "flex", gap: "6px" }}>
                       <button
@@ -1986,15 +3640,9 @@ export default function SuperAdminPage({
                         disabled={employeePage <= 1}
                         onClick={() => setEmployeePage((p) => Math.max(1, p - 1))}
                         style={{
-                          background: "#F8FAFC",
-                          border: "1px solid #CBD5E1",
-                          borderRadius: "6px",
-                          padding: "5px 12px",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          color: "#334155",
-                          cursor: employeePage <= 1 ? "not-allowed" : "pointer",
+                          ...secondarySmallBtnStyle,
                           opacity: employeePage <= 1 ? 0.5 : 1,
+                          cursor: employeePage <= 1 ? "not-allowed" : "pointer",
                         }}
                       >
                         Previous
@@ -2004,15 +3652,9 @@ export default function SuperAdminPage({
                         disabled={employeePage >= totalEmpPages}
                         onClick={() => setEmployeePage((p) => Math.min(totalEmpPages, p + 1))}
                         style={{
-                          background: "#F8FAFC",
-                          border: "1px solid #CBD5E1",
-                          borderRadius: "6px",
-                          padding: "5px 12px",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          color: "#334155",
-                          cursor: employeePage >= totalEmpPages ? "not-allowed" : "pointer",
+                          ...secondarySmallBtnStyle,
                           opacity: employeePage >= totalEmpPages ? 0.5 : 1,
+                          cursor: employeePage >= totalEmpPages ? "not-allowed" : "pointer",
                         }}
                       >
                         Next
@@ -2198,6 +3840,7 @@ export default function SuperAdminPage({
                                           desk_name: desk.desk_name,
                                           dept_code: deptGroup.dept_code,
                                           status: desk.status || "AVAILABLE",
+                                          assigned_employee_id: desk.assigned_employee_id ? String(desk.assigned_employee_id) : "",
                                         });
                                         setShowEditDeskModal(true);
                                       }}
@@ -2217,16 +3860,206 @@ export default function SuperAdminPage({
                                     </button>
                                   </div>
                                 </div>
-                                <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>
-                                  {desk.staff_name ? `Staff: ${desk.staff_name}` : "Auto-Assigned Bay"}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleToggleDeskStatus(desk)}
-                                  style={toggleDeskBtnStyle}
-                                >
-                                  {isHi ? "स्थिति बदलें" : "Toggle Status"}
-                                </button>
+
+                                {/* Assigned Doctor / Staff Card Section */}
+                                {desk.assigned_employee_id ? (() => {
+                                  const isDoc = (desk.assigned_employee_role || "").toLowerCase() === "doctor";
+                                  const isOnline = (desk.assigned_employee_status || "").toLowerCase() === "active";
+                                  const isDeskOpen = ["AVAILABLE", "ACTIVE", "BUSY", "OCCUPIED"].includes((desk.status || "").toUpperCase());
+
+                                  return (
+                                    <>
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "space-between",
+                                          background: isDoc ? (isOnline ? "#F0FDF4" : "#FEF2F2") : (isOnline ? "#F8FAFC" : "#F1F5F9"),
+                                          border: isDoc ? (isOnline ? "1px solid #BBF7D0" : "1px solid #FECDD3") : (isOnline ? "1px solid #E2E8F0" : "1px solid #CBD5E1"),
+                                          borderRadius: "8px",
+                                          padding: "6px 8px",
+                                          margin: "8px 0 6px 0",
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1 }}>
+                                          <span style={{ fontSize: "14px" }}>
+                                            {isDoc ? "🩺" : "👤"}
+                                          </span>
+                                          <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                              <span style={{ fontSize: "12px", fontWeight: 700, color: "#0F172A", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                {desk.assigned_employee_name || desk.staff_name}
+                                              </span>
+                                              <span
+                                                style={{
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  gap: "3px",
+                                                  padding: "1px 5px",
+                                                  borderRadius: "999px",
+                                                  fontSize: "9px",
+                                                  fontWeight: 800,
+                                                  background: isOnline ? "#DCFCE7" : "#F1F5F9",
+                                                  color: isOnline ? "#15803D" : "#64748B",
+                                                  border: isOnline ? "1px solid #86EFAC" : "1px solid #CBD5E1",
+                                                }}
+                                              >
+                                                <span
+                                                  style={{
+                                                    width: "5px",
+                                                    height: "5px",
+                                                    borderRadius: "50%",
+                                                    background: isOnline ? "#16A34A" : "#94A3B8",
+                                                  }}
+                                                />
+                                                <span>{isOnline ? (isHi ? "ऑनलाइन" : "Online") : (isHi ? "ऑफलाइन" : "Offline")}</span>
+                                              </span>
+                                            </div>
+                                            <div style={{ fontSize: "10px", color: isDoc ? "#16A34A" : "#64748B", textTransform: "capitalize", fontWeight: 600 }}>
+                                              {desk.assigned_employee_role || "Staff"} {desk.assigned_employee_last_login && isOnline ? `• ${formatRelativeLogin(desk.assigned_employee_last_login)}` : ""}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setAssignDeskTarget({ desk, employee_id: String(desk.assigned_employee_id || "") });
+                                              setShowAssignDeskModal(true);
+                                            }}
+                                            style={{
+                                              background: "#FFFFFF",
+                                              border: "1px solid #CBD5E1",
+                                              borderRadius: "5px",
+                                              padding: "3px 6px",
+                                              fontSize: "10px",
+                                              fontWeight: 700,
+                                              color: "#0284C7",
+                                              cursor: "pointer",
+                                            }}
+                                            title={isHi ? "कार्मिक बदलें" : "Reassign Doctor / Staff"}
+                                          >
+                                            {isHi ? "बदलें" : "Change"}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAssignDesk(desk.id, null)}
+                                            style={{
+                                              background: "#FEE2E2",
+                                              border: "1px solid #FCA5A5",
+                                              borderRadius: "5px",
+                                              padding: "3px 6px",
+                                              fontSize: "10px",
+                                              fontWeight: 700,
+                                              color: "#DC2626",
+                                              cursor: "pointer",
+                                            }}
+                                            title={isHi ? "अनअसाइन करें" : "Unassign Desk"}
+                                          >
+                                            ✕
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      {/* Warning banner if open desk has logged-out doctor */}
+                                      {!isOnline && isDeskOpen && (
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "5px",
+                                            padding: "4px 8px",
+                                            background: "#FFFBEB",
+                                            border: "1px solid #FDE68A",
+                                            borderRadius: "6px",
+                                            marginBottom: "6px",
+                                            fontSize: "10.5px",
+                                            color: "#B45309",
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          <span>⚠️</span>
+                                          <span>{isHi ? "सावधानी: नियुक्त कार्मिक वर्तमान में ऑफलाइन हैं" : "Notice: Assigned doctor is currently offline"}</span>
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })() : (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      background: "#F8FAFC",
+                                      border: "1px dashed #CBD5E1",
+                                      borderRadius: "8px",
+                                      padding: "6px 8px",
+                                      margin: "8px 0 6px 0",
+                                    }}
+                                  >
+                                    <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
+                                      <span>⚡</span>
+                                      <span>{isHi ? "स्वचालित बे" : "Auto Bay"}</span>
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAssignDeskTarget({ desk, employee_id: "" });
+                                        setShowAssignDeskModal(true);
+                                      }}
+                                      style={{
+                                        background: "#0284C7",
+                                        border: "none",
+                                        borderRadius: "5px",
+                                        padding: "3px 8px",
+                                        fontSize: "10.5px",
+                                        fontWeight: 700,
+                                        color: "#FFFFFF",
+                                        cursor: "pointer",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "3px",
+                                      }}
+                                    >
+                                      <span>+</span>
+                                      <span>{isHi ? "सौंपें" : "Assign"}</span>
+                                    </button>
+                                  </div>
+                                )}
+
+                                <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleDeskStatus(desk)}
+                                    style={{ ...toggleDeskBtnStyle, flex: 1, margin: 0 }}
+                                  >
+                                    {isHi ? "स्थिति बदलें" : "Toggle Status"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAssignDeskTarget({ desk, employee_id: String(desk.assigned_employee_id || "") });
+                                      setShowAssignDeskModal(true);
+                                    }}
+                                    style={{
+                                      padding: "6px 9px",
+                                      fontSize: "11px",
+                                      fontWeight: 700,
+                                      background: "#F0F9FF",
+                                      border: "1px solid #BAE6FD",
+                                      borderRadius: "6px",
+                                      color: "#0369A1",
+                                      cursor: "pointer",
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                    }}
+                                    title={isHi ? "डॉक्टर या स्टाफ सौंपें" : "Assign Doctor or Staff"}
+                                  >
+                                    <span>👤</span>
+                                    <span>{desk.assigned_employee_id ? (isHi ? "पुनः" : "Reassign") : (isHi ? "सौंपें" : "Assign")}</span>
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -2317,6 +4150,127 @@ export default function SuperAdminPage({
                     </p>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: HOSPITAL BRANDING & WHITE-LABELING */}
+          {activeTab === "branding" && (
+            <div style={standaloneCardStyle}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "10px", borderBottom: "1px solid #E2E8F0", paddingBottom: "14px" }}>
+                <div>
+                  <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>🎨</span>
+                    <span>{isHi ? "अस्पताल ब्रांडिंग एवं संचालन सेटिंग्स (White-Labeling)" : "Hospital Branding & White-Labeling"}</span>
+                  </h2>
+                  <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                    <IconHospital size={14} color="#0284C7" />
+                    <span>{brandingTargetHospital ? brandingTargetHospital.name : (selectedHospital ? selectedHospital.name : "Select a Hospital")}</span>
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 700, color: "#475569" }}>
+                    {isHi ? "अस्पताल चुनें:" : "Select Hospital:"}
+                  </label>
+                  <select
+                    value={brandingTargetHospital?.hospital_code || selectedHospital?.hospital_code || ""}
+                    onChange={(e) => {
+                      const found = hospitals.find((h) => h.hospital_code === e.target.value);
+                      if (found) {
+                        setSelectedHospital(found);
+                        handleOpenBrandingModal(found);
+                      }
+                    }}
+                    style={{ ...fieldInputStyle, width: "auto", minWidth: "180px", padding: "6px 12px", fontSize: "12.5px" }}
+                  >
+                    {hospitals.map((h) => (
+                      <option key={h.hospital_code} value={h.hospital_code}>
+                        {h.name} ({h.hospital_code})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = brandingTargetHospital || selectedHospital || hospitals[0];
+                      if (target) handleOpenBrandingModal(target);
+                    }}
+                    style={{
+                      ...actionBtnStyle,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      padding: "8px 16px",
+                    }}
+                  >
+                    <span>🎨</span>
+                    <span>{isHi ? "ब्रांडिंग कस्टमाइज़ करें" : "Open Customizer"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Summary Cards */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+                <div style={{ padding: "16px", borderRadius: "14px", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>🎨</span>
+                    <span>{isHi ? "थीम रंग" : "Active Brand Theme"}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <div style={{ width: "24px", height: "24px", borderRadius: "6px", background: brandingForm.primary_color || "#0284C7", border: "1px solid #CBD5E1" }} />
+                    <span style={{ fontSize: "12px", fontFamily: "monospace", fontWeight: 700, color: "#0F172A" }}>{brandingForm.primary_color || "#0284C7"}</span>
+                  </div>
+                  <span style={{ fontSize: "11px", color: "#64748B" }}>
+                    {brandingForm.tagline || "Care you can trust"}
+                  </span>
+                </div>
+
+                <div style={{ padding: "16px", borderRadius: "14px", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>⏰</span>
+                    <span>{isHi ? "संचालन समय" : "Operating Hours"}</span>
+                  </div>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A", marginBottom: "4px" }}>
+                    {brandingForm.opd_start_time || "08:00"} - {brandingForm.opd_end_time || "20:00"}
+                  </div>
+                  <span style={{ fontSize: "11px", color: "#64748B" }}>
+                    Daily Cutoff: {brandingForm.registration_cutoff_time || "19:00"}
+                  </span>
+                </div>
+
+                <div style={{ padding: "16px", borderRadius: "14px", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>📞</span>
+                    <span>{isHi ? "आपातकालीन हेल्पलाइन" : "Emergency Helpline"}</span>
+                  </div>
+                  <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#DC2626", marginBottom: "4px" }}>
+                    {brandingForm.emergency_helpline || "Emergency: 108"}
+                  </div>
+                  <span style={{ fontSize: "11px", color: "#64748B" }}>
+                    Printed on tokens & patient receipts
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "center", padding: "16px 0" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = brandingTargetHospital || selectedHospital || hospitals[0];
+                    if (target) handleOpenBrandingModal(target);
+                  }}
+                  style={{
+                    ...actionBtnStyle,
+                    padding: "12px 28px",
+                    fontSize: "14px",
+                    fontWeight: 800,
+                  }}
+                >
+                  <span>🎨</span>
+                  <span>{isHi ? "ब्रांडिंग, रंग एवं समय संपादित करें" : "Edit Branding, Colors & Operating Schedule"}</span>
+                </button>
               </div>
             </div>
           )}
@@ -3177,6 +5131,48 @@ export default function SuperAdminPage({
                 </select>
               </div>
 
+              <div>
+                <label style={fieldLabelStyle}>
+                  {isHi ? "डॉक्टर या स्टाफ सदस्य सौंपें (वैकल्पिक)" : "Assign Doctor or Staff (Optional)"}
+                </label>
+                <select
+                  value={newDeskForm.assigned_employee_id}
+                  onChange={(e) => setNewDeskForm({ ...newDeskForm, assigned_employee_id: e.target.value })}
+                  style={fieldInputStyle}
+                >
+                  <option value="">{isHi ? "कोई नहीं (स्वचालित / ओपन बे)" : "None (Auto-Assigned / Open Bay)"}</option>
+                  {hospitalEmployees.some(e => (e.role || "").toLowerCase() === "doctor") && (
+                    <optgroup label={isHi ? "🩺 डॉक्टर" : "🩺 Doctors"}>
+                      {hospitalEmployees.filter(e => (e.role || "").toLowerCase() === "doctor").map((doc) => {
+                        const isOnline = (doc.status || "").toLowerCase() === "active";
+                        const currentDesk = getEmployeeCurrentDesk(doc);
+                        return (
+                          <option key={doc.id || doc.employee_id_num} value={doc.id || doc.employee_id_num}>
+                            {isOnline ? "🟢 [Online]" : "⚪ [Offline]"} {doc.name || doc.username} ({getCategoryLabel(doc.department, language)}) {currentDesk ? `[At ${currentDesk.desk_name}]` : ""}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+                  {hospitalEmployees.some(e => (e.role || "").toLowerCase() !== "doctor") && (
+                    <optgroup label={isHi ? "👤 अन्य स्टाफ एवं नर्स" : "👤 Staff & Nurses"}>
+                      {hospitalEmployees.filter(e => (e.role || "").toLowerCase() !== "doctor").map((stf) => {
+                        const isOnline = (stf.status || "").toLowerCase() === "active";
+                        const currentDesk = getEmployeeCurrentDesk(stf);
+                        return (
+                          <option key={stf.id || stf.employee_id_num} value={stf.id || stf.employee_id_num}>
+                            {isOnline ? "🟢 [Online]" : "⚪ [Offline]"} {stf.name || stf.username} - {(stf.role || "staff").toUpperCase()} ({getCategoryLabel(stf.department, language)}) {currentDesk ? `[At ${currentDesk.desk_name}]` : ""}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+                </select>
+                <span style={{ fontSize: "11px", color: "#64748B", marginTop: "3px", display: "block" }}>
+                  {isHi ? "आप बाद में कभी भी इस डेस्क का कार्यभार बदल सकते हैं।" : "You can change or unassign the stationed personnel at any time."}
+                </span>
+              </div>
+
               <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
                 <button type="button" onClick={() => setShowAddDeskModal(false)} style={modalCancelBtnStyle}>
                   {isHi ? "रद्द करें" : "Cancel"}
@@ -3304,6 +5300,46 @@ export default function SuperAdminPage({
                 />
               </div>
 
+              <div>
+                <label style={fieldLabelStyle}>{isHi ? "संबद्ध डॉक्टर / स्टाफ" : "Assigned Doctor / Staff"}</label>
+                <select
+                  value={editDeskForm.assigned_employee_id}
+                  onChange={(e) => setEditDeskForm({ ...editDeskForm, assigned_employee_id: e.target.value })}
+                  style={fieldInputStyle}
+                >
+                  <option value="">{isHi ? "कोई नहीं (स्वचालित/ओपन बे)" : "None (Auto-Assigned / Open Bay)"}</option>
+                  {hospitalEmployees.some(e => (e.role || "").toLowerCase() === "doctor") && (
+                    <optgroup label={isHi ? "🩺 डॉक्टर" : "🩺 Doctors"}>
+                      {hospitalEmployees.filter(e => (e.role || "").toLowerCase() === "doctor").map((doc) => {
+                        const currentDesk = getEmployeeCurrentDesk(doc);
+                        const isThisDesk = currentDesk && currentDesk.id === editDeskForm.id;
+                        return (
+                          <option key={doc.id || doc.employee_id_num} value={doc.id || doc.employee_id_num}>
+                            {doc.name || doc.username} ({getCategoryLabel(doc.department, language)}) {currentDesk ? (isThisDesk ? `[Currently Assigned Here]` : `[At ${currentDesk.desk_name}]`) : ""}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+                  {hospitalEmployees.some(e => (e.role || "").toLowerCase() !== "doctor") && (
+                    <optgroup label={isHi ? "👤 अन्य स्टाफ एवं नर्स" : "👤 Staff & Nurses"}>
+                      {hospitalEmployees.filter(e => (e.role || "").toLowerCase() !== "doctor").map((stf) => {
+                        const currentDesk = getEmployeeCurrentDesk(stf);
+                        const isThisDesk = currentDesk && currentDesk.id === editDeskForm.id;
+                        return (
+                          <option key={stf.id || stf.employee_id_num} value={stf.id || stf.employee_id_num}>
+                            {stf.name || stf.username} - {(stf.role || "staff").toUpperCase()} ({getCategoryLabel(stf.department, language)}) {currentDesk ? (isThisDesk ? `[Currently Assigned Here]` : `[At ${currentDesk.desk_name}]`) : ""}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  )}
+                </select>
+                <span style={{ fontSize: "11px", color: "#64748B", marginTop: "3px", display: "block" }}>
+                  {isHi ? "यदि चयनित कर्मचारी किसी अन्य डेस्क पर है, तो वह स्वचालित रूप से इस डेस्क पर स्थानांतरित हो जाएगा।" : "Assigning an employee here will automatically reassign them from any previous desk."}
+                </span>
+              </div>
+
               <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
                 <button type="button" onClick={() => setShowEditDeskModal(false)} style={modalCancelBtnStyle}>
                   {isHi ? "रद्द करें" : "Cancel"}
@@ -3313,6 +5349,138 @@ export default function SuperAdminPage({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 8B: ASSIGN DESK TO DOCTOR / STAFF */}
+      {showAssignDeskModal && selectedHospital && assignDeskTarget.desk && (
+        <div style={modalOverlayStyle} onClick={() => setShowAssignDeskModal(false)}>
+          <div style={{ ...modalContentStyle, maxWidth: "540px" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", borderBottom: "1px solid #E2E8F0", paddingBottom: "12px" }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                  <IconDesk size={18} color="#0284C7" />
+                  <span>{isHi ? "डेस्क पर डॉक्टर / स्टाफ नियुक्त करें" : "Assign Desk to Doctor / Staff"}</span>
+                </h3>
+                <span style={{ fontSize: "12px", color: "#64748B", marginTop: "2px", display: "block" }}>
+                  {assignDeskTarget.desk.desk_name} &bull; {getCategoryLabel(assignDeskTarget.desk.dept_code, language)}
+                </span>
+              </div>
+              <button type="button" onClick={() => setShowAssignDeskModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {/* Current status banner */}
+              <div style={{
+                padding: "10px 14px",
+                background: assignDeskTarget.desk.assigned_employee_id ? "#F0FDF4" : "#F8FAFC",
+                border: assignDeskTarget.desk.assigned_employee_id ? "1px solid #BBF7D0" : "1px solid #E2E8F0",
+                borderRadius: "8px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center"
+              }}>
+                <div>
+                  <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600, display: "block" }}>
+                    {isHi ? "वर्तमान स्टेशन स्थिति:" : "Current Station Status:"}
+                  </span>
+                  <span style={{ fontSize: "13px", fontWeight: 800, color: assignDeskTarget.desk.assigned_employee_id ? "#16A34A" : "#0F172A" }}>
+                    {assignDeskTarget.desk.assigned_employee_id
+                      ? `${assignDeskTarget.desk.assigned_employee_name} (${(assignDeskTarget.desk.assigned_employee_role || "Staff").toUpperCase()})`
+                      : (isHi ? "स्वचालित / खाली बे" : "Auto-Assigned Bay (Unassigned)")}
+                  </span>
+                </div>
+                {assignDeskTarget.desk.assigned_employee_id && (
+                  <button
+                    type="button"
+                    onClick={() => handleAssignDesk(assignDeskTarget.desk.id, null)}
+                    style={{
+                      background: "#FEE2E2",
+                      border: "1px solid #FCA5A5",
+                      borderRadius: "6px",
+                      padding: "4px 10px",
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      color: "#DC2626",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isHi ? "अनअसाइन करें" : "Unassign Desk"}
+                  </button>
+                )}
+              </div>
+
+              {/* Search & Select input */}
+              <div>
+                <label style={fieldLabelStyle}>
+                  {isHi ? "डॉक्टर या स्टाफ सदस्य चुनें" : "Select Doctor or Staff Member"}
+                </label>
+                <input
+                  type="text"
+                  placeholder={isHi ? "नाम, पद या विभाग से खोजें..." : "Quick filter staff by name, role, or department..."}
+                  value={assignSearchQuery}
+                  onChange={(e) => setAssignSearchQuery(e.target.value)}
+                  style={{ ...fieldInputStyle, marginBottom: "8px", fontSize: "12px" }}
+                />
+
+                <select
+                  value={assignDeskTarget.employee_id}
+                  onChange={(e) => setAssignDeskTarget({ ...assignDeskTarget, employee_id: e.target.value })}
+                  style={{ ...fieldInputStyle, height: "42px" }}
+                >
+                  <option value="">{isHi ? "-- कोई नहीं (स्वचालित/ओपन बे रखें) --" : "-- None (Keep as Auto-Assigned Bay) --"}</option>
+                  {hospitalEmployees
+                    .filter(e => {
+                      if (!assignSearchQuery) return true;
+                      const sq = assignSearchQuery.toLowerCase();
+                      return (e.name || "").toLowerCase().includes(sq) ||
+                        (e.role || "").toLowerCase().includes(sq) ||
+                        (e.department || "").toLowerCase().includes(sq) ||
+                        (e.email || "").toLowerCase().includes(sq);
+                    })
+                    .sort((a, b) => {
+                      if (a.role === "doctor" && b.role !== "doctor") return -1;
+                      if (a.role !== "doctor" && b.role === "doctor") return 1;
+                      return (a.name || "").localeCompare(b.name || "");
+                    })
+                    .map((emp) => {
+                      const isDoc = (emp.role || "").toLowerCase() === "doctor";
+                      const isOnline = (emp.status || "").toLowerCase() === "active";
+                      const currentDesk = getEmployeeCurrentDesk(emp);
+                      const isThisDesk = currentDesk && currentDesk.id === assignDeskTarget.desk?.id;
+                      return (
+                        <option key={emp.id || emp.employee_id_num} value={emp.id || emp.employee_id_num}>
+                          {isOnline ? "🟢 [Online]" : "⚪ [Offline]"} {isDoc ? "🩺 [Doctor]" : "👤 [Staff]"} {emp.name || emp.username} &bull; {(emp.role || "staff").toUpperCase()} &bull; {getCategoryLabel(emp.department, language)} {currentDesk ? (isThisDesk ? "★ (Assigned Here)" : `⚠️ (Currently at ${currentDesk.desk_name})`) : "✓ (Available)"}
+                        </option>
+                      );
+                    })}
+                </select>
+              </div>
+
+              <div style={{ padding: "10px 12px", background: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: "8px", fontSize: "11.5px", color: "#0369A1" }}>
+                💡 {isHi
+                  ? "डॉक्टर या स्टाफ को डेस्क सौंपने पर टोकन और कतार प्रबंधन उस डेस्क से उनके नाम से संचालित होगा।"
+                  : "When a doctor or staff member is assigned to a desk, patient queues and active calls will reflect their designated consultation/service station."}
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", marginTop: "6px" }}>
+                <button
+                  type="button"
+                  onClick={() => { setShowAssignDeskModal(false); setAssignSearchQuery(""); }}
+                  style={modalCancelBtnStyle}
+                >
+                  {isHi ? "रद्द करें" : "Cancel"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAssignDesk(assignDeskTarget.desk.id, assignDeskTarget.employee_id)}
+                  style={modalSubmitBtnStyle}
+                >
+                  {isHi ? "नियुक्ति सहेजें" : "Save Assignment"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

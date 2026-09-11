@@ -41,6 +41,8 @@ export default function PatientPage({
   onFamilyMembersChange = null,
   currentHospitalTenant = null,
   onSwitchHospital = null,
+  hospitalBranding: hospitalBrandingProp = null,
+  onUpdateHospitalBranding = null,
 }) {
   // Family Members & Dependents Management
   // Use App-level state when provided, fall back to local state
@@ -330,7 +332,7 @@ export default function PatientPage({
       };
     }
 
-    // Clean fallback for plain text advice
+    // Clean fallback for plain text advice or completed consultation
     let rawStr = typeof prescriptionNotes === "string" ? prescriptionNotes.trim() : "";
     if (rawStr.startsWith("{") || rawStr.startsWith('"{')) {
       rawStr = "Clinical prescription available upon request.";
@@ -342,11 +344,11 @@ export default function PatientPage({
       diagnosis: fallbackTicket?.medical_condition || "Clinical Consultation",
       medicines: [],
       lab_tests: "",
-      advice: rawStr,
+      advice: rawStr || "Clinical consultation completed. Regular medical review as advised.",
       follow_up: "Review as advised",
       prescribed_at: safeISODate(fallbackTicket?.serve_end_time || fallbackTicket?.created_at),
       patient_name: fallbackTicket?.name || fallbackTicket?.patient_name || (currentUser ? (currentUser.username || currentUser.name) : "Patient"),
-      ticket_id: fallbackTicket?.ticket_id || "",
+      ticket_id: fallbackTicket?.ticket_id || fallbackTicket?.appointment_id || "",
       age: fallbackTicket?.age || 30,
       gender: fallbackTicket?.gender || "Patient",
       hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
@@ -417,7 +419,14 @@ export default function PatientPage({
   }, [currentUser, fetchUserAppointments]);
 
   // Tenant Customization & Branding (White-Labeling) State
-  const [hospitalBranding, setHospitalBranding] = useState(null);
+  const [hospitalBranding, setHospitalBranding] = useState(hospitalBrandingProp);
+
+  useEffect(() => {
+    if (hospitalBrandingProp) {
+      setHospitalBranding(hospitalBrandingProp);
+    }
+  }, [hospitalBrandingProp]);
+
   const [activeHospitalCode, setActiveHospitalCode] = useState(
     tenantId || currentHospitalTenant || currentUser?.hospital_code || "city-hospital-01"
   );
@@ -432,14 +441,16 @@ export default function PatientPage({
 
   useEffect(() => {
     const hospCode = activeHospitalCode || tenantId || currentHospitalTenant || "city-hospital-01";
-    fetch(`${API_BASE}/api/v1/hospital/branding/${hospCode}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.status === "success" && d.branding) {
-          setHospitalBranding(d.branding);
-        }
-      })
-      .catch((e) => console.log("Branding fetch error:", e));
+    if (!hospitalBrandingProp) {
+      fetch(`${API_BASE}/api/v1/hospital/branding/${hospCode}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.status === "success" && d.branding) {
+            setHospitalBranding(d.branding);
+          }
+        })
+        .catch((e) => console.log("Branding fetch error:", e));
+    }
 
     const handleHospEvent = (e) => {
       const newCode = (typeof e?.detail === "string" ? e.detail : e?.detail?.hospital_code) || tenantId || "city-hospital-01";
@@ -534,6 +545,20 @@ export default function PatientPage({
       .catch((e) => console.log("Ticket history fetch error:", e));
   }, [currentUser, name]);
 
+  // Auto-sync latest ticket data (including prescription_notes) whenever activeTicket exists
+  useEffect(() => {
+    if (activeTicket && activeTicket.ticket_id && !activeTicket.prescription_notes) {
+      fetch(`${API_BASE}/api/v1/plugin/ticket/${activeTicket.ticket_id}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.status === "success" && d.ticket && d.ticket.prescription_notes) {
+            setActiveTicket((prev) => ({ ...prev, ...d.ticket }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [activeTicket?.ticket_id, activeTicket?.status, setActiveTicket]);
+
   const selectedMember = familyMembers.find((m) => m.id === selectedMemberId) || familyMembers[0];
 
   const activeAppointments = userAppointments.filter((apt) => {
@@ -551,6 +576,12 @@ export default function PatientPage({
     const s = (t.status || "").toLowerCase();
     return s === "completed" || s === "cancelled" || s === "transferred" || s === "no_show" || s === "expired";
   });
+
+  // Initial fetch on mount / user change to populate badge counts and data immediately
+  useEffect(() => {
+    fetchUserAppointments();
+    fetchUserTicketHistory();
+  }, [fetchUserAppointments, fetchUserTicketHistory]);
 
   useEffect(() => {
     if (activeTab === "my_apts") {
@@ -1304,6 +1335,7 @@ export default function PatientPage({
       <HeroBanner
         language={language}
         hospitalName={currentHospitalDisplayName}
+        branding={hospitalBranding}
         onOpenHospitalModal={() => setShowHospitalModal(true)}
         stats={{
           patientsServed: analytics ? `${(analytics.total_completed || 0) + (analytics.currently_serving || 0)}` : "0",
@@ -2034,6 +2066,8 @@ export default function PatientPage({
                 familyTickets={familyTickets}
                 ticketQrData={ticketQrData}
                 language={language}
+                onOpenPrescriptionSlip={handleOpenPrescriptionSlip}
+                parsePrescription={parsePrescription}
                 onPrint={() =>
                   printTokenPass(
                     activeTicket,
@@ -2065,6 +2099,7 @@ export default function PatientPage({
             handleTabChange={handleTabChange}
             activeTicket={activeTicket}
             language={language}
+            branding={hospitalBranding}
           />
         </div>
       ) : activeTab === "my_apts" ? (
@@ -2171,6 +2206,60 @@ export default function PatientPage({
                       <span>•</span>
                       <span>Slot: <strong>{apt.time_slot}</strong></span>
                     </span>
+
+                    {/* Digital Rx Slip preview if notes present or completed */}
+                    {(() => {
+                      const effectiveRxNotes = apt.prescription_notes || (apt.ticket_id && userTicketHistory.find((t) => t.ticket_id === apt.ticket_id)?.prescription_notes) || "";
+                      if (!effectiveRxNotes && (apt.status || "").toLowerCase() !== "completed") return null;
+                      const rx = parsePrescription(effectiveRxNotes, apt);
+                      if (!rx) return null;
+                      return (
+                        <div style={{
+                          marginTop: "10px",
+                          padding: "10px 14px",
+                          borderRadius: "10px",
+                          background: "#F0F9FF",
+                          border: "1.5px solid #BAE6FD",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                        }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span style={{ fontSize: "14px" }}>💊</span>
+                            <span style={{ fontSize: "12px", fontWeight: 800, color: "#0284C7" }}>
+                              {language === "hi" ? "दवा पर्ची संलग्न" : "E-Prescription Available"}
+                            </span>
+                            {rx.doctor_name && (
+                              <span style={{ fontSize: "11px", fontWeight: 600, color: "#0369A1" }}>
+                                • {rx.doctor_name}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPrescriptionSlip(effectiveRxNotes, apt)}
+                            style={{
+                              padding: "5px 12px",
+                              borderRadius: "7px",
+                              border: "1.5px solid #0284C7",
+                              background: "#FFFFFF",
+                              color: "#0284C7",
+                              fontSize: "11.5px",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <span>📄</span>
+                            <span>{language === "hi" ? "दवा पर्ची देखें" : "View Rx Slip"}</span>
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div>
@@ -2304,57 +2393,58 @@ export default function PatientPage({
                             Reason: {tk.cancellation_reason}
                           </p>
                         )}
-                        {tk.prescription_notes && (
-                          <div style={{
-                            marginTop: "12px",
-                            padding: "14px 16px",
-                            borderRadius: "14px",
-                            background: "#F0F9FF",
-                            border: "1.5px solid #BAE6FD",
-                            boxShadow: "0 2px 8px rgba(2, 132, 199, 0.06)",
-                          }}>
-                            {(() => {
-                              const rx = parsePrescription(tk.prescription_notes, tk);
-                              if (!rx) return null;
-                              return (
-                                <>
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E0F2FE", paddingBottom: "10px", marginBottom: "10px" }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                                      <span style={{ fontSize: "12px", fontWeight: 900, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px" }}>
-                                        <span>💊</span>
-                                        <span>{t("ePrescriptionLabel", language)}</span>
-                                      </span>
-                                      {rx.doctor_name && (
-                                        <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
-                                          👨‍⚕️ {rx.doctor_name} {rx.doctor_department ? `(${getCategoryLabel(rx.doctor_department, language)})` : ""}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenPrescriptionSlip(tk.prescription_notes, tk)}
-                                      style={{
-                                        padding: "6px 14px",
-                                        borderRadius: "8px",
-                                        border: "1.5px solid #0284C7",
-                                        background: "#FFFFFF",
-                                        color: "#0284C7",
-                                        fontSize: "12px",
-                                        fontWeight: 800,
-                                        cursor: "pointer",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: "6px",
-                                        boxShadow: "0 1px 3px rgba(2, 132, 199, 0.12)",
-                                        transition: "all 0.15s ease",
-                                      }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
-                                      onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
-                                    >
-                                      <span>📄</span>
-                                      <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View Rx Slip"}</span>
-                                    </button>
-                                  </div>
+                        {/* Digital Rx Slip section if notes present or visit completed */}
+                        {(() => {
+                          const canShowRx = tk.prescription_notes || (tk.status || "").toLowerCase() === "completed";
+                          if (!canShowRx) return null;
+                          const rx = parsePrescription(tk.prescription_notes, tk);
+                          if (!rx) return null;
+                          return (
+                            <div style={{
+                              marginTop: "12px",
+                              padding: "14px 16px",
+                              borderRadius: "14px",
+                              background: "#F0F9FF",
+                              border: "1.5px solid #BAE6FD",
+                              boxShadow: "0 2px 8px rgba(2, 132, 199, 0.06)",
+                            }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E0F2FE", paddingBottom: "10px", marginBottom: "10px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: "12px", fontWeight: 900, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px" }}>
+                                    <span>💊</span>
+                                    <span>{t("ePrescriptionLabel", language)}</span>
+                                  </span>
+                                  {rx.doctor_name && (
+                                    <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
+                                      👨‍⚕️ {rx.doctor_name} {rx.doctor_department ? `(${getCategoryLabel(rx.doctor_department, language)})` : ""}
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPrescriptionSlip(tk.prescription_notes, tk)}
+                                  style={{
+                                    padding: "6px 14px",
+                                    borderRadius: "8px",
+                                    border: "1.5px solid #0284C7",
+                                    background: "#FFFFFF",
+                                    color: "#0284C7",
+                                    fontSize: "12px",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    boxShadow: "0 1px 3px rgba(2, 132, 199, 0.12)",
+                                    transition: "all 0.15s ease",
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
+                                >
+                                  <span>📄</span>
+                                  <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View Rx Slip"}</span>
+                                </button>
+                              </div>
 
                                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                                     {rx.diagnosis && (
@@ -2412,13 +2502,11 @@ export default function PatientPage({
                                       </div>
                                     )}
                                   </div>
-                                </>
+                                </div>
                               );
                             })()}
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ textAlign: "right", marginLeft: "14px" }}>
+                        </div>
+                        <div style={{ textAlign: "right", marginLeft: "14px" }}>
                         <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("finalVisitStatus", language)}</span>
                         <span style={{ fontSize: "12px", fontWeight: 800, color: tk.status === "completed" ? "#0284C7" : "#DC2626" }}>
                           {getStatusLabel(tk.status || "completed", language)}
@@ -2473,57 +2561,59 @@ export default function PatientPage({
                           <span>{t("reservedSlotLabel", language)}: {apt.time_slot}</span>
                         </span>
 
-                        {apt.prescription_notes && (
-                          <div style={{
-                            marginTop: "12px",
-                            padding: "14px 16px",
-                            borderRadius: "14px",
-                            background: "#F0F9FF",
-                            border: "1.5px solid #BAE6FD",
-                            boxShadow: "0 2px 8px rgba(2, 132, 199, 0.06)",
-                          }}>
-                            {(() => {
-                              const rx = parsePrescription(apt.prescription_notes, apt);
-                              if (!rx) return null;
-                              return (
-                                <>
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E0F2FE", paddingBottom: "10px", marginBottom: "10px" }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                                      <span style={{ fontSize: "12px", fontWeight: 900, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px" }}>
-                                        <span>💊</span>
-                                        <span>{t("ePrescriptionLabel", language)}</span>
-                                      </span>
-                                      {rx.doctor_name && (
-                                        <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
-                                          👨‍⚕️ {rx.doctor_name} {rx.doctor_department ? `(${getCategoryLabel(rx.doctor_department, language)})` : ""}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenPrescriptionSlip(apt.prescription_notes, apt)}
-                                      style={{
-                                        padding: "6px 14px",
-                                        borderRadius: "8px",
-                                        border: "1.5px solid #0284C7",
-                                        background: "#FFFFFF",
-                                        color: "#0284C7",
-                                        fontSize: "12px",
-                                        fontWeight: 800,
-                                        cursor: "pointer",
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: "6px",
-                                        boxShadow: "0 1px 3px rgba(2, 132, 199, 0.12)",
-                                        transition: "all 0.15s ease",
-                                      }}
-                                      onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
-                                      onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
-                                    >
-                                      <span>📄</span>
-                                      <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View Rx Slip"}</span>
-                                    </button>
-                                  </div>
+                        {/* Digital Rx Slip section if notes present or appointment completed */}
+                        {(() => {
+                          const effectiveRxNotes = apt.prescription_notes || (apt.ticket_id && userTicketHistory.find((t) => t.ticket_id === apt.ticket_id)?.prescription_notes) || "";
+                          const canShowRx = effectiveRxNotes || (apt.status || "").toLowerCase() === "completed";
+                          if (!canShowRx) return null;
+                          const rx = parsePrescription(effectiveRxNotes, apt);
+                          if (!rx) return null;
+                          return (
+                            <div style={{
+                              marginTop: "12px",
+                              padding: "14px 16px",
+                              borderRadius: "14px",
+                              background: "#F0F9FF",
+                              border: "1.5px solid #BAE6FD",
+                              boxShadow: "0 2px 8px rgba(2, 132, 199, 0.06)",
+                            }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E0F2FE", paddingBottom: "10px", marginBottom: "10px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: "12px", fontWeight: 900, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px" }}>
+                                    <span>💊</span>
+                                    <span>{t("ePrescriptionLabel", language)}</span>
+                                  </span>
+                                  {rx.doctor_name && (
+                                    <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
+                                      👨‍⚕️ {rx.doctor_name} {rx.doctor_department ? `(${getCategoryLabel(rx.doctor_department, language)})` : ""}
+                                    </span>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenPrescriptionSlip(effectiveRxNotes, apt)}
+                                  style={{
+                                    padding: "6px 14px",
+                                    borderRadius: "8px",
+                                    border: "1.5px solid #0284C7",
+                                    background: "#FFFFFF",
+                                    color: "#0284C7",
+                                    fontSize: "12px",
+                                    fontWeight: 800,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    boxShadow: "0 1px 3px rgba(2, 132, 199, 0.12)",
+                                    transition: "all 0.15s ease",
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
+                                >
+                                  <span>📄</span>
+                                  <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View Rx Slip"}</span>
+                                </button>
+                              </div>
 
                                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                                     {rx.diagnosis && (
@@ -2581,12 +2671,10 @@ export default function PatientPage({
                                       </div>
                                     )}
                                   </div>
-                                </>
+                                </div>
                               );
                             })()}
-                          </div>
-                        )}
-                      </div>
+                        </div>
 
                       <div style={{ textAlign: "right", marginLeft: "14px" }}>
                         <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>
@@ -3711,6 +3799,7 @@ function QueueTelemetrySidebar({
   handleTabChange,
   activeTicket,
   language = "en",
+  branding = null,
 }) {
   const primaryServing = servingTickets.length > 0 ? servingTickets[0] : null;
 
@@ -3809,7 +3898,7 @@ function QueueTelemetrySidebar({
               {language === "hi" ? "24/7 आपातकालीन ट्राइएज" : "24/7 Emergency Triage"}
             </div>
             <div style={{ fontSize: "11px", color: "#DC2626" }}>
-              {language === "hi" ? "हेल्पलाइन: 108 / 1800-456-CARE" : "Helpline: 108 / +1 (800) 456-CARE"}
+              {branding?.emergency_helpline || (language === "hi" ? "हेल्पलाइन: 108 / 1800-456-CARE" : "Helpline: 108 / +1 (800) 456-CARE")}
             </div>
           </div>
         </div>
@@ -3832,6 +3921,8 @@ function DigitalTicketPassCard({
   onPrint,
   onOpenAdjustModal,
   onOpenCancelModal,
+  onOpenPrescriptionSlip,
+  parsePrescription,
 }) {
   return (
     <div style={{ ...standaloneCardStyle, border: "2px solid #0284C7" }}>
@@ -3912,6 +4003,139 @@ function DigitalTicketPassCard({
           </p>
         </div>
       </div>
+
+      {/* Digital E-Prescription (Rx Slip) Section if available or completed */}
+      {(activeTicket.prescription_notes || (activeTicket.status || "").toLowerCase() === "completed") && (() => {
+        const rx = parsePrescription ? parsePrescription(activeTicket.prescription_notes, activeTicket) : null;
+        return (
+          <div style={{
+            marginTop: "16px",
+            marginBottom: "16px",
+            padding: "16px 18px",
+            borderRadius: "14px",
+            background: "linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 50%, #E0F2FE 100%)",
+            border: "2px solid #059669",
+            boxShadow: "0 4px 14px rgba(5, 150, 105, 0.12)",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", borderBottom: "1px solid #A7F3D0", paddingBottom: "10px", marginBottom: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "10px",
+                  background: "#059669",
+                  color: "#FFFFFF",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "20px",
+                  fontWeight: 900,
+                }}>
+                  ℞
+                </span>
+                <div>
+                  <div style={{ fontSize: "14.5px", fontWeight: 900, color: "#065F46", letterSpacing: "-0.2px" }}>
+                    {language === "hi" ? "डिजिटल दवा पर्ची (ई-प्रिस्क्रिप्शन)" : "Digital E-Prescription (Rx Slip)"}
+                  </div>
+                  <div style={{ fontSize: "11.5px", color: "#047857", fontWeight: 700 }}>
+                    {rx?.doctor_name ? `👨‍⚕️ ${rx.doctor_name}` : "Consultant Physician"} {rx?.doctor_department ? `• ${rx.doctor_department}` : ""}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                id="view-active-rx-slip-btn"
+                onClick={() => onOpenPrescriptionSlip && onOpenPrescriptionSlip(activeTicket.prescription_notes, activeTicket)}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+                  color: "#FFFFFF",
+                  fontSize: "12.5px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  boxShadow: "0 2px 6px rgba(5, 150, 105, 0.3)",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <span>📄</span>
+                <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View / Print Rx Slip"}</span>
+              </button>
+            </div>
+
+            {rx?.diagnosis && (
+              <div style={{ fontSize: "12.5px", color: "#065F46", marginBottom: "6px" }}>
+                <strong style={{ color: "#0F172A" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
+                <span style={{ fontWeight: 700, color: "#047857", background: "#D1FAE5", padding: "2px 8px", borderRadius: "5px", border: "1px solid #A7F3D0" }}>
+                  {rx.diagnosis}
+                </span>
+              </div>
+            )}
+
+            {rx?.medicines && rx.medicines.length > 0 && (
+              <div style={{ marginTop: "6px" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", textTransform: "uppercase" }}>
+                  {language === "hi" ? "दवाइयाँ" : "Prescribed Medicines"}:
+                </span>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
+                  {rx.medicines.map((m, mIdx) => (
+                    <span
+                      key={mIdx}
+                      style={{
+                        fontSize: "11.5px",
+                        fontWeight: 700,
+                        padding: "3px 8px",
+                        borderRadius: "6px",
+                        background: "#FFFFFF",
+                        border: "1px solid #A7F3D0",
+                        color: "#065F46",
+                      }}
+                    >
+                      💊 {m.name} {m.dosage ? `(${m.dosage})` : ""}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {rx?.advice && (
+              <div style={{ marginTop: "8px", fontSize: "12px", color: "#334155", background: "#FFFFFF", padding: "8px 12px", borderRadius: "8px", border: "1px solid #A7F3D0" }}>
+                <strong>{language === "hi" ? "सलाह" : "Advice"}:</strong> {rx.advice}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Completed Consultation Notice if prescription notes are not yet attached */}
+      {activeTicket.status === "completed" && !activeTicket.prescription_notes && (
+        <div style={{
+          marginTop: "14px",
+          marginBottom: "14px",
+          padding: "12px 16px",
+          borderRadius: "10px",
+          background: "#F0FDF4",
+          border: "1px solid #A7F3D0",
+          color: "#065F46",
+          fontSize: "12.5px",
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+        }}>
+          <span>✓</span>
+          <span>
+            {language === "hi"
+              ? "परामर्श पूर्ण हो चुका है। यदि डॉक्टर ने पर्ची दी है तो कृपया फ़ार्मेसी डेस्क पर दिखाएं।"
+              : "Consultation completed. If your doctor issued a paper prescription, please show this token at the pharmacy desk."}
+          </span>
+        </div>
+      )}
 
       {/* Active Ticket Actions (WAITING status only) */}
       {activeTicket && (activeTicket.status || "").toLowerCase() === "waiting" && (

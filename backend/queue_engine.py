@@ -1989,11 +1989,12 @@ class PluginQueueEngine:
             if u["password_hash"] != pwd_hash:
                 raise ValueError("Invalid email or password.")
 
-            if u.get("status") == "inactive":
-                raise ValueError("Account is deactivated. Please contact your hospital administrator.")
+            if u.get("status") in ["deactivated", "suspended", "blocked"]:
+                raise ValueError("Account is deactivated or suspended. Please contact your hospital administrator.")
 
-            # Update last login timestamp
-            conn.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", (u["id"],))
+            # Mark user and employee as active (online) and update login timestamp
+            conn.execute("UPDATE users SET status = 'active', last_login_at = NOW() WHERE id = %s", (u["id"],))
+            conn.execute("UPDATE employees SET status = 'active' WHERE user_id = %s", (u["id"],))
 
             # Fetch patient/employee context if available
             pat = conn.execute("SELECT * FROM patients WHERE user_id = %s", (u["id"],)).fetchone()
@@ -2073,6 +2074,21 @@ class PluginQueueEngine:
                     u["hospital_code"] = "city-hospital-01"
                     u["hospital_name"] = "City General Hospital"
             return u
+
+    def logout_user(self, user_id: Optional[int] = None, email: Optional[str] = None) -> dict:
+        with self._get_db() as conn:
+            uid = None
+            if user_id:
+                uid = int(user_id)
+            elif email:
+                u_row = conn.execute("SELECT id FROM users WHERE LOWER(email) = %s", (email.strip().lower(),)).fetchone()
+                if u_row:
+                    uid = u_row[0]
+
+            if uid:
+                conn.execute("UPDATE users SET status = 'inactive', updated_at = NOW() WHERE id = %s", (uid,))
+                conn.execute("UPDATE employees SET status = 'inactive', updated_at = NOW() WHERE user_id = %s", (uid,))
+        return {"status": "success", "message": "Successfully logged out. Doctor/staff status set to inactive."}
 
     def update_user_profile(
         self,
@@ -2433,7 +2449,12 @@ class PluginQueueEngine:
             hid = self._resolve_hospital_id(conn, hospital_code)
             rows = conn.execute("""
                 SELECT e.id, e.id as employee_id_num, e.employee_code as employee_id, e.name, e.name as username, u.email,
-                       e.phone, u.role, d.dept_code as department, d.name as department_name, e.status, e.user_id
+                       e.phone, u.role, d.dept_code as department, d.name as department_name,
+                       CASE
+                           WHEN e.status = 'active' AND u.status = 'active' AND u.last_login_at IS NOT NULL AND u.last_login_at >= NOW() - INTERVAL '12 HOURS' THEN 'active'
+                           ELSE 'inactive'
+                       END as status,
+                       u.last_login_at, e.user_id
                 FROM employees e
                 JOIN users u ON u.id = e.user_id
                 LEFT JOIN departments d ON d.id = e.department_id
@@ -2468,32 +2489,29 @@ class PluginQueueEngine:
                 conn.execute("UPDATE users SET role = %s, phone = %s, updated_at = NOW() WHERE id = %s", (role, phone, uid))
             else:
                 new_u = conn.execute("""
-                    INSERT INTO users (email, username, password_hash, role, status, phone, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    INSERT INTO users (email, username, password_hash, role, status, phone)
+                    VALUES (%s, %s, %s, %s, 'inactive', %s)
                     RETURNING id;
-                """, (email, name, pwd_hash, role, "active", phone)).fetchone()
+                """, (email, name, pwd_hash, role, phone)).fetchone()
                 uid = new_u[0]
 
-            # 2. Provision Employee Record
-            emp_res = conn.execute("""
-                INSERT INTO employees (user_id, hospital_id, department_id, employee_code, name, phone, status, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            emp_code = employee_id or f"EMP-{uid}"
+
+            # 2. Upsert employee
+            conn.execute("""
+                INSERT INTO employees (user_id, hospital_id, department_id, employee_code, name, email, phone, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'inactive')
                 ON CONFLICT (hospital_id, user_id) DO UPDATE SET
                     department_id = EXCLUDED.department_id,
                     name = EXCLUDED.name,
+                    email = EXCLUDED.email,
                     phone = EXCLUDED.phone,
                     employee_code = EXCLUDED.employee_code,
-                    status = EXCLUDED.status,
-                    updated_at = NOW()
-                RETURNING id;
-            """, (uid, hid, dept_id, employee_id or f"EMP-{uid}", name, phone, "active")).fetchone()
+                    updated_at = NOW();
+            """, (uid, hid, dept_id, emp_code, name, email, phone))
 
             actor_uid = self._resolve_user_id(conn, requester_email)
-            self._log_audit(
-                conn, hid, actor_uid, "PROVISION_EMPLOYEE", "employee", str(emp_res[0]),
-                old_values=None,
-                new_values={"email": email, "role": role, "name": name, "department": department}
-            )
+            self._log_audit(conn, hid, actor_uid, "ADD_EMPLOYEE", "employee", str(uid), old_values=None, new_values={"name": name, "role": role})
 
             return {
                 "user_id": uid,
@@ -2726,16 +2744,34 @@ class PluginQueueEngine:
             hid = self._resolve_hospital_id(conn, hospital_code)
             rows = conn.execute("""
                 SELECT d.id, d.desk_number, d.desk_name, d.status, d.current_ticket_id, d.last_active_at,
-                       dept.dept_code, dept.name as department_name, emp.name as assigned_employee_name
+                       dept.dept_code, dept.name as department_name,
+                       d.assigned_employee_id,
+                       emp.name as assigned_employee_name,
+                       emp.employee_code as assigned_employee_code,
+                       u.role as assigned_employee_role,
+                       CASE
+                           WHEN emp.status = 'active' AND u.status = 'active' AND u.last_login_at IS NOT NULL AND u.last_login_at >= NOW() - INTERVAL '12 HOURS' THEN 'active'
+                           ELSE 'inactive'
+                       END as assigned_employee_status,
+                       u.last_login_at as assigned_employee_last_login
                 FROM desks d
                 JOIN departments dept ON dept.id = d.department_id
                 LEFT JOIN employees emp ON emp.id = d.assigned_employee_id
+                LEFT JOIN users u ON u.id = emp.user_id
                 WHERE d.hospital_id = %s
                 ORDER BY d.desk_number ASC;
             """, (hid,)).fetchall()
             return [dict(r) for r in rows]
 
-    def add_hospital_desk(self, hospital_code: str, dept_code: str, desk_name: str, status: str = "AVAILABLE", requester_email: str = "") -> dict:
+    def add_hospital_desk(
+        self,
+        hospital_code: str,
+        dept_code: str,
+        desk_name: str,
+        status: str = "AVAILABLE",
+        assigned_employee_id: Optional[int] = None,
+        requester_email: str = ""
+    ) -> dict:
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, hospital_code)
             dept_id = self._resolve_department_id(conn, hid, dept_code)
@@ -2746,14 +2782,32 @@ class PluginQueueEngine:
             max_num = conn.execute("SELECT COALESCE(MAX(desk_number), 0) FROM desks WHERE hospital_id = %s AND department_id = %s", (hid, dept_id)).fetchone()[0]
             desk_num = max_num + 1
 
+            emp_id = None
+            if assigned_employee_id is not None and int(assigned_employee_id) > 0:
+                emp_id = int(assigned_employee_id)
+                emp_check = conn.execute("SELECT id FROM employees WHERE id = %s AND hospital_id = %s", (emp_id, hid)).fetchone()
+                if not emp_check:
+                    raise ValueError(f"Employee #{emp_id} not found in hospital '{hospital_code}'.")
+                # Clear any other desk assignment for this employee in this hospital
+                conn.execute("UPDATE desks SET assigned_employee_id = NULL WHERE hospital_id = %s AND assigned_employee_id = %s", (hid, emp_id))
+
             res = conn.execute("""
-                INSERT INTO desks (hospital_id, department_id, desk_number, desk_name, status, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
-                RETURNING id, desk_number, desk_name, status;
-            """, (hid, dept_id, desk_num, desk_name, status)).fetchone()
+                INSERT INTO desks (hospital_id, department_id, desk_number, desk_name, assigned_employee_id, status, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+                RETURNING id, desk_number, desk_name, assigned_employee_id, status;
+            """, (hid, dept_id, desk_num, desk_name, emp_id, status)).fetchone()
 
             desk_dict = dict(res)
             desk_dict["dept_code"] = dept_code
+            if emp_id:
+                emp_info = conn.execute("SELECT e.name, u.role FROM employees e JOIN users u ON u.id = e.user_id WHERE e.id = %s", (emp_id,)).fetchone()
+                if emp_info:
+                    desk_dict["assigned_employee_name"] = emp_info["name"]
+                    desk_dict["assigned_employee_role"] = emp_info["role"]
+            else:
+                desk_dict["assigned_employee_name"] = None
+                desk_dict["assigned_employee_role"] = None
+
             actor_uid = self._resolve_user_id(conn, requester_email)
             self._log_audit(conn, hid, actor_uid, "ADD_DESK", "desk", str(desk_dict["id"]), old_values=None, new_values=desk_dict)
             return desk_dict
@@ -2764,13 +2818,14 @@ class PluginQueueEngine:
         desk_id: int,
         desk_name: Optional[str] = None,
         dept_code: Optional[str] = None,
+        assigned_employee_id: Optional[int] = -1,
         requester_email: str = ""
     ) -> dict:
-        """Updates desk name and allows moving desk to a different department within the hospital."""
+        """Updates desk name, department, and assigned staff/doctor within the hospital."""
         with self._get_db() as conn:
             hid = self._resolve_hospital_id(conn, hospital_code)
             old_desk = conn.execute("""
-                SELECT d.id, d.hospital_id, d.department_id, d.desk_number, d.desk_name, d.status, dept.dept_code
+                SELECT d.id, d.hospital_id, d.department_id, d.desk_number, d.desk_name, d.assigned_employee_id, d.status, dept.dept_code
                 FROM desks d
                 JOIN departments dept ON dept.id = d.department_id
                 WHERE d.id = %s AND d.hospital_id = %s
@@ -2788,19 +2843,96 @@ class PluginQueueEngine:
 
             target_name = desk_name.strip() if desk_name is not None and desk_name.strip() != "" else old_vals["desk_name"]
 
+            # Handle assigned_employee_id: -1 means unchanged
+            target_emp_id = old_vals["assigned_employee_id"]
+            if assigned_employee_id != -1:
+                if assigned_employee_id is not None and int(assigned_employee_id) > 0:
+                    target_emp_id = int(assigned_employee_id)
+                    emp_check = conn.execute("SELECT id FROM employees WHERE id = %s AND hospital_id = %s", (target_emp_id, hid)).fetchone()
+                    if not emp_check:
+                        raise ValueError(f"Employee #{target_emp_id} not found in hospital '{hospital_code}'.")
+                    # Clear other desks for this employee
+                    conn.execute("UPDATE desks SET assigned_employee_id = NULL WHERE hospital_id = %s AND assigned_employee_id = %s AND id != %s", (hid, target_emp_id, desk_id))
+                else:
+                    target_emp_id = None
+
             res = conn.execute("""
                 UPDATE desks
-                SET desk_name = %s, department_id = %s, updated_at = NOW()
+                SET desk_name = %s, department_id = %s, assigned_employee_id = %s, updated_at = NOW()
                 WHERE id = %s AND hospital_id = %s
-                RETURNING id, desk_number, desk_name, department_id, status;
-            """, (target_name, target_dept_id, desk_id, hid)).fetchone()
+                RETURNING id, desk_number, desk_name, department_id, assigned_employee_id, status;
+            """, (target_name, target_dept_id, target_emp_id, desk_id, hid)).fetchone()
 
             new_vals = dict(res)
             target_dept_code = dept_code or old_vals.get("dept_code")
             new_vals["dept_code"] = target_dept_code
 
+            if target_emp_id:
+                emp_info = conn.execute("SELECT e.name, u.role FROM employees e JOIN users u ON u.id = e.user_id WHERE e.id = %s", (target_emp_id,)).fetchone()
+                if emp_info:
+                    new_vals["assigned_employee_name"] = emp_info["name"]
+                    new_vals["assigned_employee_role"] = emp_info["role"]
+            else:
+                new_vals["assigned_employee_name"] = None
+                new_vals["assigned_employee_role"] = None
+
             actor_uid = self._resolve_user_id(conn, requester_email)
             self._log_audit(conn, hid, actor_uid, "UPDATE_DESK", "desk", str(desk_id), old_values=old_vals, new_values=new_vals)
+            return new_vals
+
+    def assign_hospital_desk(
+        self,
+        hospital_code: str,
+        desk_id: int,
+        employee_id: Optional[int] = None,
+        requester_email: str = ""
+    ) -> dict:
+        """Assigns or unassigns a doctor or staff member to a desk."""
+        with self._get_db() as conn:
+            hid = self._resolve_hospital_id(conn, hospital_code)
+            old_desk = conn.execute("""
+                SELECT d.id, d.hospital_id, d.desk_number, d.desk_name, d.status, d.assigned_employee_id, dept.dept_code
+                FROM desks d
+                JOIN departments dept ON dept.id = d.department_id
+                WHERE d.id = %s AND d.hospital_id = %s
+            """, (desk_id, hid)).fetchone()
+            if not old_desk:
+                raise ValueError(f"Desk #{desk_id} not found in hospital '{hospital_code}'.")
+
+            old_vals = dict(old_desk)
+            target_emp_id = None
+
+            if employee_id is not None and int(employee_id) > 0:
+                target_emp_id = int(employee_id)
+                emp = conn.execute("SELECT id, name FROM employees WHERE id = %s AND hospital_id = %s", (target_emp_id, hid)).fetchone()
+                if not emp:
+                    raise ValueError(f"Employee #{target_emp_id} not found in hospital '{hospital_code}'.")
+                # Clear previous desk assignment for this employee to prevent duplicates
+                conn.execute("UPDATE desks SET assigned_employee_id = NULL WHERE hospital_id = %s AND assigned_employee_id = %s AND id != %s", (hid, target_emp_id, desk_id))
+
+            conn.execute("""
+                UPDATE desks
+                SET assigned_employee_id = %s, updated_at = NOW()
+                WHERE id = %s AND hospital_id = %s
+            """, (target_emp_id, desk_id, hid))
+
+            updated_row = conn.execute("""
+                SELECT d.id, d.desk_number, d.desk_name, d.status, d.current_ticket_id, d.last_active_at,
+                       dept.dept_code, dept.name as department_name,
+                       d.assigned_employee_id,
+                       emp.name as assigned_employee_name,
+                       emp.employee_code as assigned_employee_code,
+                       u.role as assigned_employee_role
+                FROM desks d
+                JOIN departments dept ON dept.id = d.department_id
+                LEFT JOIN employees emp ON emp.id = d.assigned_employee_id
+                LEFT JOIN users u ON u.id = emp.user_id
+                WHERE d.id = %s AND d.hospital_id = %s
+            """, (desk_id, hid)).fetchone()
+
+            new_vals = dict(updated_row)
+            actor_uid = self._resolve_user_id(conn, requester_email)
+            self._log_audit(conn, hid, actor_uid, "ASSIGN_DESK", "desk", str(desk_id), old_values=old_vals, new_values=new_vals)
             return new_vals
 
     def delete_hospital_desk(self, desk_id: int, requester_email: str = "") -> dict:

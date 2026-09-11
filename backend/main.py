@@ -238,10 +238,15 @@ class DeskCreateRequest(BaseModel):
     dept_code: str
     desk_name: str
     status: Optional[str] = "AVAILABLE"
+    assigned_employee_id: Optional[int] = None
 
 class DeskUpdateRequest(BaseModel):
     desk_name: Optional[str] = None
     dept_code: Optional[str] = None
+    assigned_employee_id: Optional[int] = None
+
+class DeskAssignRequest(BaseModel):
+    assigned_employee_id: Optional[int] = None
 
 class BulkDeskStatusRequest(BaseModel):
     dept_code: str
@@ -832,6 +837,16 @@ async def login(payload: LoginRequest):
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
+
+@app.post("/api/v1/auth/logout")
+async def logout(payload: dict = {}):
+    try:
+        user_id = payload.get("id") or payload.get("user_id")
+        email = payload.get("email")
+        engine.logout_user(user_id=user_id, email=email)
+        return {"status": "success", "message": "Successfully logged out. Status set to inactive."}
+    except Exception as e:
+        return {"status": "success", "message": "Logged out."}
 
 @app.get("/api/v1/auth/me")
 async def get_current_user(email: Optional[str] = None):
@@ -1458,6 +1473,7 @@ async def add_hospital_desk_endpoint(hospital_code: str, payload: DeskCreateRequ
             dept_code=payload.dept_code,
             desk_name=payload.desk_name,
             status=payload.status or "AVAILABLE",
+            assigned_employee_id=payload.assigned_employee_id,
             requester_email=requester
         )
         return {"status": "success", "desk": desk}
@@ -1477,6 +1493,25 @@ async def update_hospital_desk_endpoint(hospital_code: str, desk_id: int, payloa
             desk_id=desk_id,
             desk_name=payload.desk_name,
             dept_code=payload.dept_code,
+            assigned_employee_id=payload.assigned_employee_id if payload.assigned_employee_id is not None else -1,
+            requester_email=requester
+        )
+        return {"status": "success", "desk": desk}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/v1/superadmin/hospitals/{hospital_code}/desks/{desk_id}/assign")
+async def assign_hospital_desk_endpoint(hospital_code: str, desk_id: int, payload: DeskAssignRequest, request: Request):
+    requester = get_requester_email(request)
+    if requester and not engine.verify_hospital_access(hospital_code, requester):
+        raise HTTPException(status_code=403, detail="Forbidden: You do not have access to assign this hospital's desks.")
+    try:
+        desk = engine.assign_hospital_desk(
+            hospital_code=hospital_code,
+            desk_id=desk_id,
+            employee_id=payload.assigned_employee_id,
             requester_email=requester
         )
         return {"status": "success", "desk": desk}

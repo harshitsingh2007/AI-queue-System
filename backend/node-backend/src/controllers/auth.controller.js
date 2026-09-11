@@ -101,6 +101,7 @@ async function signupAdmin(req, res, next) {
         hospital_id: hid,
         employee_code: `EMP-${user.id}`,
         name: username,
+        email: cleanEmail,
         phone: phone || "",
         status: "active",
       },
@@ -262,17 +263,30 @@ async function login(req, res, next) {
       return res.status(401).json({ status: "error", message: "Invalid email or password." });
     }
 
-    if (user.status === "inactive") {
+    if (user.status === "deactivated" || user.status === "suspended" || user.status === "blocked") {
       return res.status(401).json({
         status: "error",
-        message: "Account is deactivated. Please contact your hospital administrator.",
+        message: "Account is deactivated or suspended. Please contact your hospital administrator.",
       });
     }
 
-    // Update last login timestamp
+    // Mark user as active (online) and record login timestamp
     await prisma.users.update({
       where: { id: user.id },
-      data: { last_login_at: new Date() },
+      data: {
+        status: "active",
+        last_login_at: new Date(),
+        updated_at: new Date(),
+      },
+    });
+
+    // Also activate employee records so doctor/staff shows online/active
+    await prisma.employees.updateMany({
+      where: { user_id: user.id },
+      data: {
+        status: "active",
+        updated_at: new Date(),
+      },
     });
 
     const token = generateToken({
@@ -291,7 +305,7 @@ async function login(req, res, next) {
       email: user.email,
       username: user.username,
       role: user.role,
-      status: user.status || "active",
+      status: "active",
       phone: user.phone || "",
     };
 
@@ -535,6 +549,9 @@ async function getUserHistory(req, res, next) {
             : []),
           { patients: { users: { email: { equals: cleanId, mode: "insensitive" } } } },
           { patients: { users: { username: { equals: cleanId, mode: "insensitive" } } } },
+          { ticket_id: { equals: cleanId, mode: "insensitive" } },
+          { patients: { phone: { equals: cleanId, mode: "insensitive" } } },
+          { patients: { users: { phone: { equals: cleanId, mode: "insensitive" } } } },
           { name: { equals: cleanId, mode: "insensitive" } },
           { patients: { name: { equals: cleanId, mode: "insensitive" } } },
           ...(nameQuery ? [{ name: { equals: String(nameQuery).trim(), mode: "insensitive" } }] : []),
@@ -634,11 +651,51 @@ async function getUserHistory(req, res, next) {
   }
 }
 
+async function logout(req, res, next) {
+  try {
+    const userId = req.user?.id || req.body?.user_id || req.body?.id;
+    const email = req.user?.email || req.body?.email;
+
+    if (userId || email) {
+      const where = userId
+        ? { id: Number(userId) }
+        : { email: { equals: String(email).trim(), mode: "insensitive" } };
+
+      const targetUser = await prisma.users.findFirst({ where });
+      if (targetUser) {
+        await prisma.users.update({
+          where: { id: targetUser.id },
+          data: {
+            status: "inactive",
+            updated_at: new Date(),
+          },
+        });
+
+        await prisma.employees.updateMany({
+          where: { user_id: targetUser.id },
+          data: {
+            status: "inactive",
+            updated_at: new Date(),
+          },
+        });
+      }
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Successfully logged out. Doctor/staff status set to inactive.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   signupSuperAdmin,
   signupAdmin,
   signupPatient,
   login,
+  logout,
   getMe,
   updateProfile,
   updateUserPrimaryHospital,

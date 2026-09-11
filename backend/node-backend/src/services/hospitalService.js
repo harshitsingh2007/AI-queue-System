@@ -38,8 +38,12 @@ const DEFAULT_BRANDING = {
  */
 async function getSuperAdminOverview(requesterUser = null) {
   let ownerUid = null;
-  if (requesterUser && ["superadmin", "super_admin", "hospital_owner"].includes((requesterUser.role || "").toLowerCase())) {
-    ownerUid = requesterUser.id;
+  const primaryCode = requesterUser?.primary_hospital_code || null;
+  const role = requesterUser ? (requesterUser.role || "").toLowerCase() : "";
+  if (role === "hospital_owner" || role === "superadmin" || role === "super_admin") {
+    if (requesterUser.email !== "superadmin@hospital.com" && !requesterUser.is_superadmin) {
+      ownerUid = requesterUser.id;
+    }
   }
 
   const todayStr = getCurrentQueueDate();
@@ -47,24 +51,36 @@ async function getSuperAdminOverview(requesterUser = null) {
 
   if (ownerUid) {
     const hospitals = await prisma.hospitals.findMany({
-      where: { owner_user_id: ownerUid },
+      where: {
+        OR: [
+          { owner_user_id: ownerUid },
+          ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
+          { employees: { some: { user_id: ownerUid } } },
+        ],
+      },
       select: { id: true, hospital_code: true, status: true },
     });
 
     const totalH = hospitals.length;
     const activeH = hospitals.filter((h) => h.status === "active").length;
     const hIds = hospitals.map((h) => h.id);
-
     if (hIds.length > 0) {
+      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
       const totalEmp = await prisma.employees.count({
-        where: { hospital_id: { in: hIds }, status: "active" },
+        where: {
+          hospital_id: { in: hIds },
+          status: { notIn: ["deactivated", "suspended", "blocked"] },
+        },
       });
 
       const activeDocs = await prisma.employees.count({
         where: {
           hospital_id: { in: hIds },
           status: "active",
-          users: { role: { in: ["doctor", "admin"] } },
+          users: {
+            role: { in: ["doctor", "admin"] },
+            last_login_at: { gte: twelveHoursAgo },
+          },
         },
       });
 
@@ -134,11 +150,17 @@ async function getSuperAdminOverview(requesterUser = null) {
   // Global aggregate
   const totalH = await prisma.hospitals.count();
   const activeH = await prisma.hospitals.count({ where: { status: "active" } });
-  const totalEmp = await prisma.employees.count({ where: { status: "active" } });
+  const twelveHoursAgoGlobal = new Date(Date.now() - 12 * 60 * 60 * 1000);
+  const totalEmp = await prisma.employees.count({
+    where: { status: { notIn: ["deactivated", "suspended", "blocked"] } },
+  });
   const activeDocs = await prisma.employees.count({
     where: {
       status: "active",
-      users: { role: { in: ["doctor", "admin"] } },
+      users: {
+        role: { in: ["doctor", "admin"] },
+        last_login_at: { gte: twelveHoursAgoGlobal },
+      },
     },
   });
   const totalDesks = await prisma.desks.count();
@@ -174,14 +196,36 @@ async function getSuperAdminOverview(requesterUser = null) {
 async function getAllHospitals(requesterUser = null) {
   if (requesterUser) {
     const role = (requesterUser.role || "").toLowerCase();
-    if (role === "superadmin" || role === "super_admin" || role === "hospital_owner") {
+    if (requesterUser.email === "superadmin@hospital.com" || requesterUser.is_superadmin) {
       return prisma.hospitals.findMany({
-        where: { owner_user_id: requesterUser.id },
         orderBy: { id: "asc" },
       });
+    }
+
+    const primaryCode = requesterUser.primary_hospital_code || null;
+
+    if (role === "hospital_owner" || role === "superadmin" || role === "super_admin") {
+      const owned = await prisma.hospitals.findMany({
+        where: {
+          OR: [
+            { owner_user_id: requesterUser.id },
+            ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
+            { employees: { some: { user_id: requesterUser.id } } },
+          ],
+        },
+        orderBy: { id: "asc" },
+      });
+      if (owned.length > 0) {
+        return owned;
+      }
     } else if (["admin", "doctor", "staff"].includes(role)) {
       return prisma.hospitals.findMany({
-        where: { employees: { some: { user_id: requesterUser.id } } },
+        where: {
+          OR: [
+            { employees: { some: { user_id: requesterUser.id } } },
+            ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
+          ],
+        },
         orderBy: { id: "asc" },
       });
     }
@@ -365,6 +409,16 @@ async function updateHospitalBranding(hospitalCode, brandingData) {
   if (brandingData.logo_url !== undefined) {
     updatePayload.logo_url = brandingData.logo_url;
   }
+  if (brandingData.hospital_name && brandingData.hospital_name.trim()) {
+    updatePayload.name = brandingData.hospital_name.trim();
+  } else if (brandingData.name && brandingData.name.trim()) {
+    updatePayload.name = brandingData.name.trim();
+  }
+  if (brandingData.emergency_helpline && brandingData.emergency_helpline.trim()) {
+    updatePayload.phone = brandingData.emergency_helpline.trim();
+  } else if (brandingData.phone && brandingData.phone.trim()) {
+    updatePayload.phone = brandingData.phone.trim();
+  }
 
   const updatedHosp = await prisma.hospitals.update({
     where: { hospital_code: hCode },
@@ -378,6 +432,7 @@ async function updateHospitalBranding(hospitalCode, brandingData) {
       ...merged,
       hospital_name: updatedHosp.name,
       logo_url: updatedHosp.logo_url || merged.logo_url,
+      phone: updatedHosp.phone || merged.emergency_helpline,
     },
   };
 }
@@ -432,20 +487,30 @@ async function getHospitalEmployees(hospitalCode) {
     orderBy: { id: "asc" },
   });
 
-  return employees.map((e) => ({
-    id: e.id,
-    employee_id_num: e.id,
-    employee_id: e.employee_code || `EMP-${e.id}`,
-    name: e.name,
-    username: e.name || e.users?.username || "",
-    email: e.users?.email || "",
-    phone: e.phone || "",
-    role: e.users?.role || "staff",
-    department: e.departments?.dept_code || "all",
-    department_name: e.departments?.name || "All Departments",
-    status: e.status,
-    user_id: e.user_id,
-  }));
+  const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12 hours max session window
+  const now = Date.now();
+
+  return employees.map((e) => {
+    const lastLoginTime = e.users?.last_login_at ? new Date(e.users.last_login_at).getTime() : null;
+    const isStale = !lastLoginTime || (now - lastLoginTime > SESSION_MAX_AGE_MS);
+    const effectiveStatus = (e.status === "active" && e.users?.status === "active" && !isStale) ? "active" : "inactive";
+
+    return {
+      id: e.user_id,
+      employee_id_num: e.id,
+      employee_id: e.employee_code || `EMP-${e.id}`,
+      name: e.name,
+      username: e.name || e.users?.username || "",
+      email: e.email || e.users?.email || "",
+      phone: e.phone || "",
+      role: e.users?.role || "staff",
+      department: e.departments?.dept_code || "all",
+      department_name: e.departments?.name || "All Departments",
+      status: effectiveStatus,
+      last_login_at: e.users?.last_login_at ? e.users.last_login_at.toISOString() : null,
+      user_id: e.user_id,
+    };
+  });
 }
 
 /**
@@ -495,7 +560,7 @@ async function addHospitalEmployee({
         username: name,
         password_hash: pwdHash,
         role,
-        status: "active",
+        status: "inactive",
         phone,
       },
     });
@@ -517,15 +582,16 @@ async function addHospitalEmployee({
       department_id: dept?.id || null,
       employee_code: empCode,
       name,
+      email: cleanEmail,
       phone,
-      status: "active",
+      status: "inactive",
     },
     update: {
       department_id: dept?.id || null,
       name,
+      email: cleanEmail,
       phone,
       employee_code: empCode,
-      status: "active",
       updated_at: new Date(),
     },
   });
@@ -537,25 +603,58 @@ async function addHospitalEmployee({
     role,
     department: department || "consultation",
     employee_id: empCode,
-    status: "active",
+    status: employee.status || "inactive",
   };
 }
 
 /**
  * Updates an employee's details, including optional password.
  */
-async function updateHospitalEmployee(userId, { name, phone = "", role = "staff", department = "consultation", employeeId = "", status = "active", password = null }) {
+async function updateHospitalEmployee(userId, updateData = {}) {
   let uid = parseInt(userId, 10);
-  let user = await prisma.users.findUnique({ where: { id: uid } });
-  if (!user) {
-    const empLookup = await prisma.employees.findUnique({ where: { id: uid } });
-    if (empLookup && empLookup.user_id) {
-      uid = empLookup.user_id;
-      user = await prisma.users.findUnique({ where: { id: uid } });
+  let emp = await prisma.employees.findUnique({ where: { id: uid } });
+  let user = null;
+
+  if (emp) {
+    uid = emp.user_id;
+    user = await prisma.users.findUnique({ where: { id: uid } });
+  } else {
+    user = await prisma.users.findUnique({ where: { id: uid } });
+    if (user) {
+      emp = await prisma.employees.findFirst({ where: { user_id: uid } });
     }
   }
 
-  const userData = { username: name, role, phone, status, updated_at: new Date() };
+  const {
+    name,
+    email,
+    phone,
+    role,
+    department,
+    employeeId,
+    status,
+    password,
+  } = updateData;
+
+  const cleanEmail = email !== undefined && email !== null ? String(email).trim().toLowerCase() : undefined;
+  const targetName = name !== undefined ? name : (emp?.name || user?.username || "");
+  const targetRole = role !== undefined ? role : (user?.role || "staff");
+  const targetStatus = status !== undefined ? status : (emp?.status || user?.status || "active");
+  const targetPhone = phone !== undefined ? phone : (emp?.phone || user?.phone || "");
+
+  const userData = {
+    username: targetName,
+    role: targetRole,
+    phone: targetPhone,
+    status: targetStatus,
+    updated_at: new Date(),
+  };
+  if (targetStatus === "active") {
+    userData.last_login_at = new Date();
+  }
+  if (cleanEmail) {
+    userData.email = cleanEmail;
+  }
   if (password && String(password).trim().length > 0) {
     userData.password_hash = await hashPassword(String(password).trim());
   }
@@ -567,32 +666,37 @@ async function updateHospitalEmployee(userId, { name, phone = "", role = "staff"
     });
   }
 
-  const emp = await prisma.employees.findFirst({
-    where: { user_id: uid },
-  });
-
   if (emp) {
-    const dept = await prisma.departments.findFirst({
-      where: {
-        hospital_id: emp.hospital_id,
-        dept_code: String(department).trim().toLowerCase(),
-      },
-    });
+    let deptId = emp.department_id;
+    if (department !== undefined) {
+      const dept = await prisma.departments.findFirst({
+        where: {
+          hospital_id: emp.hospital_id,
+          dept_code: String(department).trim().toLowerCase(),
+        },
+      });
+      deptId = dept?.id || null;
+    }
+
+    const empData = {
+      name: targetName,
+      phone: targetPhone,
+      department_id: deptId,
+      employee_code: employeeId !== undefined ? employeeId : emp.employee_code,
+      status: targetStatus,
+      updated_at: new Date(),
+    };
+    if (cleanEmail) {
+      empData.email = cleanEmail;
+    }
 
     await prisma.employees.update({
       where: { id: emp.id },
-      data: {
-        name,
-        phone,
-        department_id: dept?.id || null,
-        employee_code: employeeId || emp.employee_code,
-        status,
-        updated_at: new Date(),
-      },
+      data: empData,
     });
   }
 
-  return { user_id: uid, name, role, status };
+  return { user_id: uid, name: targetName, email: cleanEmail || user?.email || "", role: targetRole, status: targetStatus };
 }
 
 /**
@@ -600,13 +704,13 @@ async function updateHospitalEmployee(userId, { name, phone = "", role = "staff"
  */
 async function updateEmployeePassword(userId, newPassword) {
   let uid = parseInt(userId, 10);
-  let user = await prisma.users.findUnique({ where: { id: uid } });
-  if (!user) {
-    const empLookup = await prisma.employees.findUnique({ where: { id: uid } });
-    if (empLookup && empLookup.user_id) {
-      uid = empLookup.user_id;
-      user = await prisma.users.findUnique({ where: { id: uid } });
-    }
+  const empLookup = await prisma.employees.findUnique({ where: { id: uid } });
+  let user = null;
+  if (empLookup && empLookup.user_id) {
+    uid = empLookup.user_id;
+    user = await prisma.users.findUnique({ where: { id: uid } });
+  } else {
+    user = await prisma.users.findUnique({ where: { id: uid } });
   }
 
   if (!user) {
@@ -634,11 +738,15 @@ async function updateEmployeePassword(userId, newPassword) {
  * Deactivates an employee account.
  */
 async function deleteHospitalEmployee(userId) {
-  const uid = parseInt(userId, 10);
+  let uid = parseInt(userId, 10);
+  const emp = await prisma.employees.findUnique({ where: { id: uid } });
+  if (emp && emp.user_id) {
+    uid = emp.user_id;
+  }
   await prisma.employees.deleteMany({ where: { user_id: uid } });
   await prisma.users.update({
     where: { id: uid },
-    data: { status: "inactive", updated_at: new Date() },
+    data: { status: "deactivated", updated_at: new Date() },
   });
   return { success: true, deleted_user_id: uid };
 }
@@ -691,6 +799,37 @@ async function addHospitalDepartment(hospitalCode, deptCode, name, description =
   });
 }
 
+async function updateHospitalDepartment(hospitalCode, deptCode, name, description) {
+  const hosp = await prisma.hospitals.findUnique({
+    where: { hospital_code: String(hospitalCode).trim() },
+  });
+  if (!hosp) {
+    const err = new Error(`Hospital '${hospitalCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const dept = await prisma.departments.findFirst({
+    where: { hospital_id: hosp.id, dept_code: String(deptCode).trim().toLowerCase() },
+  });
+  if (!dept) {
+    const err = new Error(`Department '${deptCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const updated = await prisma.departments.update({
+    where: { id: dept.id },
+    data: {
+      name: name || dept.name,
+      description: description !== undefined ? description : dept.description,
+      updated_at: new Date(),
+    },
+  });
+
+  return updated;
+}
+
 async function deleteHospitalDepartment(hospitalCode, deptCode) {
   const hosp = await prisma.hospitals.findUnique({
     where: { hospital_code: String(hospitalCode).trim() },
@@ -720,25 +859,44 @@ async function getHospitalDesks(hospitalCode) {
     where: { hospital_id: hosp.id },
     include: {
       departments: true,
-      employees: true,
+      employees: {
+        include: {
+          users: true,
+        },
+      },
     },
     orderBy: { desk_number: "asc" },
   });
 
-  return rows.map((d) => ({
-    id: d.id,
-    desk_number: d.desk_number,
-    desk_name: d.desk_name,
-    status: d.status,
-    current_ticket_id: d.current_ticket_id,
-    last_active_at: d.last_active_at ? d.last_active_at.toISOString() : null,
-    dept_code: d.departments?.dept_code || "",
-    department_name: d.departments?.name || "",
-    assigned_employee_name: d.employees?.name || null,
-  }));
+  const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  return rows.map((d) => {
+    const lastLoginTime = d.employees?.users?.last_login_at ? new Date(d.employees.users.last_login_at).getTime() : null;
+    const isStale = !lastLoginTime || (now - lastLoginTime > SESSION_MAX_AGE_MS);
+    const empStatus = (d.employees?.status === "active" && d.employees?.users?.status === "active" && !isStale) ? "active" : "inactive";
+
+    return {
+      id: d.id,
+      desk_number: d.desk_number,
+      desk_name: d.desk_name,
+      status: d.status,
+      current_ticket_id: d.current_ticket_id,
+      last_active_at: d.last_active_at ? d.last_active_at.toISOString() : null,
+      dept_code: d.departments?.dept_code || "",
+      department_name: d.departments?.name || "",
+      assigned_employee_id: d.assigned_employee_id,
+      assigned_user_id: d.employees?.user_id || null,
+      assigned_employee_name: d.employees?.name || null,
+      assigned_employee_code: d.employees?.employee_code || null,
+      assigned_employee_role: d.employees?.users?.role || null,
+      assigned_employee_status: empStatus,
+      assigned_employee_last_login: d.employees?.users?.last_login_at ? d.employees.users.last_login_at.toISOString() : null,
+    };
+  });
 }
 
-async function addHospitalDesk(hospitalCode, deptCode, deskName, status = "AVAILABLE") {
+async function addHospitalDesk(hospitalCode, deptCode, deskName, status = "AVAILABLE", assignedEmployeeId = null) {
   const hosp = await prisma.hospitals.findUnique({
     where: { hospital_code: String(hospitalCode).trim() },
   });
@@ -755,6 +913,19 @@ async function addHospitalDesk(hospitalCode, deptCode, deskName, status = "AVAIL
     },
   });
 
+  let empId = assignedEmployeeId ? parseInt(assignedEmployeeId, 10) : null;
+  if (empId) {
+    const empRec = await prisma.employees.findFirst({
+      where: { hospital_id: hosp.id, OR: [{ id: empId }, { user_id: empId }] },
+    });
+    if (empRec) empId = empRec.id;
+
+    await prisma.desks.updateMany({
+      where: { hospital_id: hosp.id, assigned_employee_id: empId },
+      data: { assigned_employee_id: null },
+    });
+  }
+
   const maxDesk = await prisma.desks.aggregate({
     where: { hospital_id: hosp.id, department_id: dept?.id },
     _max: { desk_number: true },
@@ -767,9 +938,172 @@ async function addHospitalDesk(hospitalCode, deptCode, deskName, status = "AVAIL
       department_id: dept?.id || 1,
       desk_number: deskNum,
       desk_name: deskName,
+      assigned_employee_id: empId,
       status: status || "AVAILABLE",
     },
   });
+}
+
+async function assignHospitalDesk(hospitalCode, deskId, employeeId) {
+  const hosp = await prisma.hospitals.findUnique({
+    where: { hospital_code: String(hospitalCode).trim() },
+  });
+  if (!hosp) {
+    const err = new Error(`Hospital '${hospitalCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const dId = parseInt(deskId, 10);
+  let empId = employeeId ? parseInt(employeeId, 10) : null;
+
+  if (empId) {
+    const empRec = await prisma.employees.findFirst({
+      where: { hospital_id: hosp.id, OR: [{ id: empId }, { user_id: empId }] },
+    });
+    if (empRec) empId = empRec.id;
+
+    // Clear any previous desk assigned to this employee
+    await prisma.desks.updateMany({
+      where: { hospital_id: hosp.id, assigned_employee_id: empId, NOT: { id: dId } },
+      data: { assigned_employee_id: null },
+    });
+  }
+
+  const updated = await prisma.desks.update({
+    where: { id: dId },
+    data: {
+      assigned_employee_id: empId,
+      updated_at: new Date(),
+    },
+    include: {
+      departments: true,
+      employees: {
+        include: { users: true },
+      },
+    },
+  });
+
+  return {
+    id: updated.id,
+    desk_number: updated.desk_number,
+    desk_name: updated.desk_name,
+    status: updated.status,
+    dept_code: updated.departments?.dept_code || "",
+    department_name: updated.departments?.name || "",
+    assigned_employee_id: updated.assigned_employee_id,
+    assigned_employee_name: updated.employees?.name || null,
+    assigned_employee_role: updated.employees?.users?.role || null,
+  };
+}
+
+async function updateHospitalDesk(hospitalCode, deskId, deskName, deptCode, assignedEmployeeId = -1) {
+  const hosp = await prisma.hospitals.findUnique({
+    where: { hospital_code: String(hospitalCode).trim() },
+  });
+  if (!hosp) {
+    const err = new Error(`Hospital '${hospitalCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const dId = parseInt(deskId, 10);
+  const oldDesk = await prisma.desks.findUnique({
+    where: { id: dId },
+    include: { departments: true },
+  });
+  if (!oldDesk || oldDesk.hospital_id !== hosp.id) {
+    const err = new Error(`Desk #${deskId} not found in hospital '${hospitalCode}'.`);
+    err.status = 404;
+    throw err;
+  }
+
+  let targetDeptId = oldDesk.department_id;
+  if (deptCode) {
+    const dept = await prisma.departments.findFirst({
+      where: { hospital_id: hosp.id, dept_code: String(deptCode).trim().toLowerCase() },
+    });
+    if (dept) {
+      targetDeptId = dept.id;
+    }
+  }
+
+  const targetName = deskName && deskName.trim() !== "" ? deskName.trim() : oldDesk.desk_name;
+
+  let targetEmpId = oldDesk.assigned_employee_id;
+  if (assignedEmployeeId !== -1) {
+    if (assignedEmployeeId && parseInt(assignedEmployeeId, 10) > 0) {
+      const parsedId = parseInt(assignedEmployeeId, 10);
+      const empRec = await prisma.employees.findFirst({
+        where: { hospital_id: hosp.id, OR: [{ id: parsedId }, { user_id: parsedId }] },
+      });
+      targetEmpId = empRec ? empRec.id : parsedId;
+
+      // Clear previous desk assignment for this employee
+      await prisma.desks.updateMany({
+        where: { hospital_id: hosp.id, assigned_employee_id: targetEmpId, NOT: { id: dId } },
+        data: { assigned_employee_id: null },
+      });
+    } else {
+      targetEmpId = null;
+    }
+  }
+
+  const updated = await prisma.desks.update({
+    where: { id: dId },
+    data: {
+      desk_name: targetName,
+      department_id: targetDeptId,
+      assigned_employee_id: targetEmpId,
+      updated_at: new Date(),
+    },
+    include: {
+      departments: true,
+      employees: {
+        include: { users: true },
+      },
+    },
+  });
+
+  return {
+    id: updated.id,
+    desk_number: updated.desk_number,
+    desk_name: updated.desk_name,
+    department_id: updated.department_id,
+    status: updated.status,
+    dept_code: updated.departments?.dept_code || "",
+    department_name: updated.departments?.name || "",
+    assigned_employee_id: updated.assigned_employee_id,
+    assigned_employee_name: updated.employees?.name || null,
+    assigned_employee_role: updated.employees?.users?.role || null,
+  };
+}
+
+async function bulkUpdateDeskStatus(hospitalCode, deptCode, status) {
+  const hosp = await prisma.hospitals.findUnique({
+    where: { hospital_code: String(hospitalCode).trim() },
+  });
+  if (!hosp) {
+    const err = new Error(`Hospital '${hospitalCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const dept = await prisma.departments.findFirst({
+    where: { hospital_id: hosp.id, dept_code: String(deptCode).trim().toLowerCase() },
+  });
+  if (!dept) {
+    const err = new Error(`Department '${deptCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const result = await prisma.desks.updateMany({
+    where: { hospital_id: hosp.id, department_id: dept.id },
+    data: { status, updated_at: new Date(), last_active_at: new Date() },
+  });
+
+  return { success: true, updated_count: result.count, status };
 }
 
 async function deleteHospitalDesk(deskId) {
@@ -845,6 +1179,90 @@ async function getDatabaseOverview() {
   return result;
 }
 
+/**
+ * Retrieves historical patient visit logs and footfall statistics for a specific hospital.
+ */
+async function getHospitalVisitHistory(hospitalCode, limit = 60) {
+  const hCode = String(hospitalCode).trim();
+  const hospital = await prisma.hospitals.findUnique({
+    where: { hospital_code: hCode },
+    select: { id: true, name: true, hospital_code: true },
+  });
+  if (!hospital) return null;
+
+  const todayStr = getCurrentQueueDate();
+  const todayDateObj = queueDateToPrismaDate(todayStr);
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const [
+    totalAllTime,
+    allTimeCompleted,
+    todayTickets,
+    todayCompleted,
+    thisWeekVisits,
+    thisMonthVisits,
+    recentTickets,
+  ] = await Promise.all([
+    prisma.tickets.count({ where: { hospital_id: hospital.id } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, status: { in: ["completed", "COMPLETED"] } } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, queue_date: todayDateObj } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, queue_date: todayDateObj, status: { in: ["completed", "COMPLETED"] } } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, created_at: { gte: sevenDaysAgo } } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, created_at: { gte: startOfMonth } } }).catch(() => 0),
+    prisma.tickets.findMany({
+      where: { hospital_id: hospital.id },
+      include: {
+        departments: true,
+        patients: true,
+      },
+      orderBy: [{ created_at: "desc" }, { id: "desc" }],
+      take: limit,
+    }).catch(() => []),
+  ]);
+
+  const visits = recentTickets.map((t) => ({
+    id: t.id,
+    ticket_id: t.ticket_id,
+    token_number: t.ticket_id,
+    patient_name: t.name || t.patients?.name || "Patient",
+    phone: t.patients?.phone || "",
+    gender: t.patients?.gender || "",
+    age: t.patients?.age || null,
+    department: t.departments?.name || t.service_category || "General OPD",
+    dept_code: t.departments?.dept_code || t.service_category || "consultation",
+    status: (t.status || "").toLowerCase(),
+    priority_level: t.priority_level,
+    medical_condition: t.medical_condition,
+    join_time: t.join_timestamp ? t.join_timestamp.toISOString() : null,
+    serve_start_time: t.serve_start_time ? t.serve_start_time.toISOString() : null,
+    serve_end_time: t.serve_end_time ? t.serve_end_time.toISOString() : null,
+    service_duration_minutes: Math.round((t.actual_service_minutes || t.predicted_service_minutes || 10) * 10) / 10,
+    created_at: t.created_at ? t.created_at.toISOString() : null,
+    queue_date: t.queue_date ? t.queue_date.toISOString().split("T")[0] : todayStr,
+  }));
+
+  return {
+    hospital_id: hospital.id,
+    hospital_code: hospital.hospital_code,
+    hospital_name: hospital.name,
+    summary: {
+      total_patients_visited_all_time: Math.max(totalAllTime, allTimeCompleted),
+      all_time_completed: allTimeCompleted,
+      today_patients_visited: todayTickets,
+      today_completed: todayCompleted,
+      this_week_visits: thisWeekVisits,
+      this_month_visits: thisMonthVisits,
+    },
+    visits,
+  };
+}
+
 module.exports = {
   getSuperAdminOverview,
   getAllHospitals,
@@ -861,10 +1279,15 @@ module.exports = {
   deleteHospitalEmployee,
   getHospitalDepartments,
   addHospitalDepartment,
+  updateHospitalDepartment,
   deleteHospitalDepartment,
   getHospitalDesks,
   addHospitalDesk,
+  updateHospitalDesk,
+  assignHospitalDesk,
   deleteHospitalDesk,
   updateDeskStatus,
+  bulkUpdateDeskStatus,
   getDatabaseOverview,
+  getHospitalVisitHistory,
 };

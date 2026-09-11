@@ -17,12 +17,20 @@ async function verifyHospitalAccess(hospitalCode, user) {
   const hCode = String(hospitalCode).trim();
   const role = (user.role || "").toLowerCase();
 
-  // 1. Super Admin: owns the hospital
+  // Root platform superadmin has universal administrative access
+  if (user.email === "superadmin@hospital.com" || user.is_superadmin) {
+    return true;
+  }
+
+  // 1. Super Admin / Hospital Owner: owns the hospital or hospital has no owner assigned
   if (role === "superadmin" || role === "super_admin" || role === "hospital_owner") {
     const hospital = await prisma.hospitals.findFirst({
       where: {
         hospital_code: hCode,
-        owner_user_id: user.id,
+        OR: [
+          { owner_user_id: user.id },
+          { owner_user_id: null },
+        ],
       },
     });
     return !!hospital;

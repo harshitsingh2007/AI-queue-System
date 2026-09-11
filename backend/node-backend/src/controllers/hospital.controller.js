@@ -21,12 +21,17 @@ const {
   deleteHospitalEmployee,
   getHospitalDepartments,
   addHospitalDepartment,
+  updateHospitalDepartment,
   deleteHospitalDepartment,
   getHospitalDesks,
   addHospitalDesk,
+  updateHospitalDesk,
+  assignHospitalDesk,
   deleteHospitalDesk,
   updateDeskStatus,
+  bulkUpdateDeskStatus,
   getDatabaseOverview,
+  getHospitalVisitHistory,
 } = require("../services/hospitalService");
 const { verifyHospitalAccess } = require("../middleware/hospitalIsolation");
 
@@ -210,6 +215,19 @@ async function updateHospitalBrandingEndpoint(req, res, next) {
     }
 
     const result = await updateHospitalBranding(hospitalCode, req.body);
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(hospitalCode).emit("hospital_branding_updated", {
+        hospital_code: hospitalCode,
+        branding: result.branding,
+      });
+      io.emit("hospital_branding_updated", {
+        hospital_code: hospitalCode,
+        branding: result.branding,
+      });
+    }
+
     return res.status(200).json(result);
   } catch (error) {
     next(error);
@@ -486,12 +504,81 @@ async function getHospitalDesksEndpoint(req, res, next) {
 async function addHospitalDeskEndpoint(req, res, next) {
   try {
     const hospitalCode = req.params.hospital_code;
-    const { dept_code, desk_name, status = "AVAILABLE" } = req.body;
+    const { dept_code, desk_name, status = "AVAILABLE", assigned_employee_id } = req.body;
 
-    const desk = await addHospitalDesk(hospitalCode, dept_code, desk_name, status);
+    const desk = await addHospitalDesk(hospitalCode, dept_code, desk_name, status, assigned_employee_id);
     return res.status(200).json({
       status: "success",
       desk,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function assignHospitalDeskEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const deskId = req.params.desk_id;
+    const { assigned_employee_id } = req.body;
+
+    const desk = await assignHospitalDesk(hospitalCode, deskId, assigned_employee_id);
+    return res.status(200).json({
+      status: "success",
+      desk,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateHospitalDeskEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const deskId = req.params.desk_id;
+    const { desk_name, dept_code, assigned_employee_id } = req.body;
+
+    const desk = await updateHospitalDesk(
+      hospitalCode,
+      deskId,
+      desk_name,
+      dept_code,
+      assigned_employee_id !== undefined ? assigned_employee_id : -1
+    );
+    return res.status(200).json({
+      status: "success",
+      desk,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function updateHospitalDepartmentEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const deptCode = req.params.dept_code;
+    const { name, description } = req.body;
+
+    const department = await updateHospitalDepartment(hospitalCode, deptCode, name, description);
+    return res.status(200).json({
+      status: "success",
+      department,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function bulkUpdateDeskStatusEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const { dept_code, status } = req.body;
+
+    const result = await bulkUpdateDeskStatus(hospitalCode, dept_code, status);
+    return res.status(200).json({
+      status: "success",
+      result,
     });
   } catch (error) {
     next(error);
@@ -543,6 +630,26 @@ async function getDbOverviewEndpoint(req, res, next) {
   }
 }
 
+async function getHospitalVisitsEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const limit = parseInt(req.query.limit, 10) || 60;
+    const history = await getHospitalVisitHistory(hospitalCode, limit);
+    if (!history) {
+      return res.status(404).json({
+        status: "error",
+        message: "Hospital not found",
+      });
+    }
+    return res.status(200).json({
+      status: "success",
+      ...history,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getHospitalInfoEndpoint,
   getPublicHospitalsEndpoint,
@@ -561,10 +668,15 @@ module.exports = {
   deleteHospitalEmployeeEndpoint,
   getHospitalDepartmentsEndpoint,
   addHospitalDepartmentEndpoint,
+  updateHospitalDepartmentEndpoint,
   deleteHospitalDepartmentEndpoint,
   getHospitalDesksEndpoint,
   addHospitalDeskEndpoint,
+  updateHospitalDeskEndpoint,
+  assignHospitalDeskEndpoint,
   deleteHospitalDeskEndpoint,
   updateDeskStatusEndpoint,
+  bulkUpdateDeskStatusEndpoint,
   getDbOverviewEndpoint,
+  getHospitalVisitsEndpoint,
 };

@@ -23,12 +23,17 @@ const {
   deleteHospitalEmployeeEndpoint,
   getHospitalDepartmentsEndpoint,
   addHospitalDepartmentEndpoint,
+  updateHospitalDepartmentEndpoint,
   deleteHospitalDepartmentEndpoint,
   getHospitalDesksEndpoint,
   addHospitalDeskEndpoint,
+  updateHospitalDeskEndpoint,
+  assignHospitalDeskEndpoint,
   deleteHospitalDeskEndpoint,
   updateDeskStatusEndpoint,
+  bulkUpdateDeskStatusEndpoint,
   getDbOverviewEndpoint,
+  getHospitalVisitsEndpoint,
 } = require("../controllers/hospital.controller");
 const { optionalAuth, authenticate } = require("../middleware/auth");
 
@@ -47,6 +52,7 @@ router.get("/superadmin/overview", optionalAuth, getSuperadminOverviewEndpoint);
 router.get("/superadmin/hospitals", optionalAuth, getSuperadminHospitalsEndpoint);
 router.post("/superadmin/hospitals", optionalAuth, createHospitalEndpoint);
 router.get("/superadmin/hospitals/:hospital_code", optionalAuth, getHospitalDetailEndpoint);
+router.get("/superadmin/hospitals/:hospital_code/visits", optionalAuth, getHospitalVisitsEndpoint);
 router.put("/superadmin/hospitals/:hospital_code", optionalAuth, updateHospitalEndpoint);
 router.get("/superadmin/hospitals/:hospital_code/branding", optionalAuth, getHospitalBrandingEndpoint);
 router.put("/superadmin/hospitals/:hospital_code/branding", optionalAuth, updateHospitalBrandingEndpoint);
@@ -63,13 +69,17 @@ router.delete("/superadmin/hospitals/:hospital_code/employees/:user_id", optiona
 // Departments
 router.get("/superadmin/hospitals/:hospital_code/departments", optionalAuth, getHospitalDepartmentsEndpoint);
 router.post("/superadmin/hospitals/:hospital_code/departments", optionalAuth, addHospitalDepartmentEndpoint);
+router.put("/superadmin/hospitals/:hospital_code/departments/:dept_code", optionalAuth, updateHospitalDepartmentEndpoint);
 router.delete("/superadmin/hospitals/:hospital_code/departments/:dept_code", optionalAuth, deleteHospitalDepartmentEndpoint);
 
 // Desks
 router.get("/superadmin/hospitals/:hospital_code/desks", optionalAuth, getHospitalDesksEndpoint);
 router.post("/superadmin/hospitals/:hospital_code/desks", optionalAuth, addHospitalDeskEndpoint);
+router.put("/superadmin/hospitals/:hospital_code/desks/:desk_id", optionalAuth, updateHospitalDeskEndpoint);
 router.delete("/superadmin/hospitals/:hospital_code/desks/:desk_id", optionalAuth, deleteHospitalDeskEndpoint);
 router.put("/superadmin/hospitals/:hospital_code/desks/:desk_id/status", optionalAuth, updateDeskStatusEndpoint);
+router.put("/superadmin/hospitals/:hospital_code/desks/:desk_id/assign", optionalAuth, assignHospitalDeskEndpoint);
+router.post("/superadmin/hospitals/:hospital_code/desks/bulk-status", optionalAuth, bulkUpdateDeskStatusEndpoint);
 
 // Database Overview
 router.get("/admin/db-overview", optionalAuth, getDbOverviewEndpoint);

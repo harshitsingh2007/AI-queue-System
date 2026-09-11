@@ -42,7 +42,8 @@ async function authenticate(req, res, next) {
         },
       });
 
-      if (!user || user.status === "inactive") {
+      const DEACTIVATED_STATUSES = ["deactivated", "suspended", "blocked"];
+      if (!user || DEACTIVATED_STATUSES.includes(user.status)) {
         return res.status(401).json({
           status: "error",
           success: false,
@@ -90,7 +91,8 @@ async function authenticate(req, res, next) {
         },
       });
 
-      if (user && user.status !== "inactive") {
+      const DEACTIVATED_STATUSES = ["deactivated", "suspended", "blocked"];
+      if (user && !DEACTIVATED_STATUSES.includes(user.status)) {
         req.user = {
           id: user.id,
           email: user.email,
@@ -135,6 +137,8 @@ async function optionalAuth(req, res, next) {
       token = authHeader.split(" ")[1].trim();
     }
 
+    const DEACTIVATED_STATUSES = ["deactivated", "suspended", "blocked"];
+
     if (token) {
       const decoded = verifyToken(token);
       if (decoded) {
@@ -151,7 +155,7 @@ async function optionalAuth(req, res, next) {
             hospitals: true,
           },
         });
-        if (user && user.status !== "inactive") {
+        if (user && !DEACTIVATED_STATUSES.includes(user.status)) {
           req.user = {
             id: user.id,
             email: user.email,
@@ -187,7 +191,7 @@ async function optionalAuth(req, res, next) {
           hospitals: true,
         },
       });
-      if (user && user.status !== "inactive") {
+      if (user && !DEACTIVATED_STATUSES.includes(user.status)) {
         req.user = {
           id: user.id,
           email: user.email,

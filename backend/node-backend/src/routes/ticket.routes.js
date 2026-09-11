@@ -29,6 +29,7 @@ router.post("/plugin/tickets/:ticket_id/adjust-queue", optionalAuth, adjustQueue
 router.post("/plugin/adjust-queue", optionalAuth, adjustQueueEndpoint);
 
 // Ticket details, transfer, re-announce
+router.get("/tickets/:ticket_id", optionalAuth, getTicketDetailsEndpoint);
 router.get("/plugin/ticket/:ticket_id", optionalAuth, getTicketDetailsEndpoint);
 router.post("/plugin/transfer-ticket", optionalAuth, transferTicketEndpoint);
 router.post("/plugin/re-announce", optionalAuth, reAnnounceEndpoint);

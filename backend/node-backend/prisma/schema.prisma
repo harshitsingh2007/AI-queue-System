@@ -109,6 +109,7 @@ model employees {
   department_id Int?
   employee_code String?      @default("") @db.VarChar(100)
   name          String       @db.VarChar(255)
+  email         String?      @default("") @db.VarChar(255)
   phone         String?      @default("") @db.VarChar(100)
   status        String       @default("active") @db.VarChar(50)
   created_at    DateTime     @default(now()) @db.Timestamptz(6)
@@ -122,6 +123,7 @@ model employees {
   @@index([department_id], map: "idx_employees_department")
   @@index([hospital_id], map: "idx_employees_hospital")
   @@index([user_id], map: "idx_employees_user")
+  @@index([email], map: "idx_employees_email")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

@@ -57,6 +57,14 @@ if (env.NODE_ENV !== "test") {
 // API Routes
 app.use("/", routes);
 
+// 404 Fallback - Always return JSON for API requests
+app.use((req, res) => {
+  res.status(404).json({
+    status: "error",
+    detail: `Route ${req.method} ${req.originalUrl} not found`,
+  });
+});
+
 // Centralized Error Handler
 app.use(errorHandler);
 

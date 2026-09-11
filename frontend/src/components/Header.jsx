@@ -33,6 +33,7 @@ export default function Header({
   onManageFamilyMembers,
   currentHospitalTenant = "city-hospital-01",
   onSwitchHospital,
+  hospitalBranding = null,
 }) {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
@@ -81,6 +82,25 @@ export default function Header({
     hospital_code: activeHospitalCode,
     address: "742 Evergreen Healthcare Ave",
   };
+
+  // Derived white-label branding variables
+  const displayHospitalName =
+    hospitalBranding?.hospital_name ||
+    hospitalBranding?.name ||
+    currentHospitalObj?.name ||
+    HOSPITAL_CONFIG.name;
+
+  const displayTagline =
+    hospitalBranding?.tagline ||
+    (language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा • एनएबीएच मान्यता प्राप्त" : "Care you can trust • NABH Accredited");
+
+  const displayLogoUrl = hospitalBranding?.logo_url || "";
+
+  const displayEmergencyText =
+    hospitalBranding?.emergency_helpline ||
+    (language === "hi" ? "24/7 हेल्पलाइन: 108" : "24/7 Helpline: 108");
+
+  const brandPrimary = hospitalBranding?.primary_color || "#0284C7";
 
   const profileRef = useRef(null);
   const langRef = useRef(null);
@@ -146,38 +166,40 @@ export default function Header({
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 24px;
-            margin-bottom: 24px;
-            background: rgba(255, 255, 255, 0.94);
+            padding: 8px 18px;
+            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.96);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(226, 232, 240, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 4px 24px -2px rgba(2, 132, 199, 0.06), 0 1px 3px rgba(0, 0, 0, 0.02);
+            border-radius: 18px;
+            box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.06), 0 1px 3px rgba(0, 0, 0, 0.02);
             position: relative;
             z-index: 100;
-            flex-wrap: wrap;
-            gap: 16px;
+            flex-wrap: nowrap;
+            gap: 10px;
             transition: all 0.2s ease;
+            white-space: nowrap;
           }
 
           .header-nav-btn {
-            padding: 8px 16px;
-            border-radius: 12px;
+            padding: 6px 12px;
+            border-radius: 10px;
             color: #334155;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 700;
             cursor: pointer;
             border: 1px solid transparent;
             background: transparent;
             transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-
             text-decoration: none;
             outline: none;
             display: inline-flex;
             align-items: center;
-            gap: 7px;
+            gap: 5px;
             user-select: none;
+            white-space: nowrap;
+            flex-shrink: 0;
           }
 
           .header-nav-btn:hover {
@@ -196,17 +218,20 @@ export default function Header({
           .header-emergency-pill {
             display: inline-flex;
             align-items: center;
-            gap: 7px;
-            padding: 6px 14px;
+            gap: 6px;
+            padding: 5px 12px;
             border-radius: 9999px;
             background: #FEF2F2;
             border: 1px solid #FECACA;
             color: #DC2626;
-            font-size: 12px;
+            font-size: 11.5px;
             font-weight: 800;
             cursor: pointer;
             transition: all 0.2s ease;
             outline: none;
+            white-space: nowrap;
+            flex-shrink: 0;
+            max-width: 240px;
           }
 
           .header-emergency-pill:hover {
@@ -215,24 +240,24 @@ export default function Header({
             box-shadow: 0 3px 10px rgba(220, 38, 38, 0.15);
           }
 
-
-
           .header-pill-btn {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 7px 14px;
-            border-radius: 12px;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 10px;
             background: #FFFFFF;
             border: 1px solid #CBD5E1;
             color: #0F172A;
-            font-size: 12.5px;
+            font-size: 12px;
             font-weight: 700;
             cursor: pointer;
             transition: all 0.18s ease;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
             outline: none;
             user-select: none;
+            white-space: nowrap;
+            flex-shrink: 0;
           }
 
           .header-pill-btn:hover {
@@ -346,7 +371,7 @@ export default function Header({
         `}</style>
 
         <div
-          style={{ display: "flex", alignItems: "center", gap: "14px", cursor: "pointer", flexShrink: 0 }}
+          style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", flexShrink: 0 }}
           onClick={() => {
             if (currentUser?.role === "super_admin" || currentUser?.role === "superadmin") {
               navigateTo("superadmin");
@@ -358,50 +383,59 @@ export default function Header({
           }}
           title="Hospital System HQ"
         >
-          <div style={shieldLogoContainerStyle}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z"
-                fill="#FFFFFF"
+          <div style={{ ...shieldLogoContainerStyle, width: "36px", height: "36px", background: displayLogoUrl ? "#FFFFFF" : brandPrimary, border: displayLogoUrl ? `1.5px solid ${brandPrimary}` : "none", flexShrink: 0 }}>
+            {displayLogoUrl ? (
+              <img
+                src={displayLogoUrl}
+                alt="Hospital Logo"
+                style={{ width: "24px", height: "24px", objectFit: "contain", borderRadius: "5px" }}
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
               />
-              <path
-                d="M12 7.5v9M7.5 12h9"
-                stroke="#0284C7"
-                strokeWidth="2.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z"
+                  fill="#FFFFFF"
+                />
+                <path
+                  d="M12 7.5v9M7.5 12h9"
+                  stroke={brandPrimary}
+                  strokeWidth="2.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
           </div>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={{ fontWeight: 900, fontSize: "17.5px", color: "#0F172A", letterSpacing: "-0.4px", lineHeight: "1.2", maxWidth: "340px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {currentHospitalObj?.name || HOSPITAL_CONFIG.name}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "nowrap" }}>
+              <span style={{ fontWeight: 900, fontSize: "15.5px", color: "#0F172A", letterSpacing: "-0.3px", lineHeight: "1.2", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayHospitalName}
               </span>
-              <span style={{ padding: "2px 7px", borderRadius: "20px", background: "#F0F9FF", color: "#0284C7", fontSize: "10px", fontWeight: 800, border: "1px solid #BAE6FD", whiteSpace: "nowrap" }}>
+              <span style={{ padding: "1.5px 6px", borderRadius: "12px", background: "#F0F9FF", color: brandPrimary, fontSize: "9px", fontWeight: 800, border: `1px solid ${brandPrimary}40`, whiteSpace: "nowrap" }}>
                 NABH ACCREDITED
               </span>
             </div>
-            <div style={{ fontSize: "11.5px", color: "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-              <span>{language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा" : "Care you can trust"}</span>
+            <div style={{ fontSize: "11px", color: "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "5px", flexWrap: "nowrap" }}>
+              <span style={{ maxWidth: "130px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayTagline}
+              </span>
               <span>•</span>
-              <span style={{ color: socketConnected ? "#0284C7" : "#D97706", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700 }}>
+              <span style={{ color: socketConnected ? brandPrimary : "#D97706", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700, whiteSpace: "nowrap" }}>
                 <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: socketConnected ? "#0EA5E9" : "#F59E0B", display: "inline-block" }} />
                 {socketConnected
-                  ? (language === "hi" ? "AI ट्राइएज सक्रिय" : "AI Triage Active")
-                  : (language === "hi" ? "कनेक्ट हो रहा है..." : "Connecting...")}
+                  ? (language === "hi" ? "AI सक्रिय" : "AI Active")
+                  : (language === "hi" ? "कनेक्ट..." : "Connecting...")}
               </span>
             </div>
           </div>
         </div>
 
         {/* 2. Center: Quick Hospital Support & Emergency Hotline */}
-        <nav style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-
+        <nav style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "nowrap", flexShrink: 1, minWidth: 0 }}>
 
           {/* Super Admin Navigation Button */}
           {(currentUser?.role === "super_admin" || currentUser?.role === "superadmin") && (
-
             <button
               type="button"
               onClick={() => navigateTo("superadmin")}
@@ -420,7 +454,7 @@ export default function Header({
           )}
 
           {/* Doctor / Staff Desk Navigation Button (Only for Staff / Doctors, NOT for Super Admin) */}
-          {currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role) && (
+          {currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role) && activePage !== "superadmin" && (
             <button
               type="button"
               onClick={() => navigateTo("staff")}
@@ -459,38 +493,43 @@ export default function Header({
             title="Emergency Care & Helpline"
           >
             <span>🚨</span>
-            <span>{language === "hi" ? "24/7 हेल्पलाइन: 108" : "24/7 Helpline: 108"}</span>
+            <span style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {displayEmergencyText}
+            </span>
           </button>
 
-          {/* About Us */}
-          <button
-            type="button"
-            onClick={() => setShowAboutModal(true)}
-            className="header-nav-btn"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
-            </svg>
-            <span>{language === "hi" ? "हमारे बारे में" : "About Us"}</span>
-          </button>
+          {/* About Us & Contact - displayed on patient portal to avoid crowding admin/staff header */}
+          {activePage === "patient" && (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowAboutModal(true)}
+                className="header-nav-btn"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <span>{language === "hi" ? "हमारे बारे में" : "About Us"}</span>
+              </button>
 
-          {/* Contact */}
-          <button
-            type="button"
-            onClick={() => setShowContactModal(true)}
-            className="header-nav-btn"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-            </svg>
-            <span>{language === "hi" ? "संपर्क एवं सहायता" : "Support & Desk"}</span>
-          </button>
+              <button
+                type="button"
+                onClick={() => setShowContactModal(true)}
+                className="header-nav-btn"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                </svg>
+                <span>{language === "hi" ? "संपर्क" : "Support"}</span>
+              </button>
+            </>
+          )}
         </nav>
 
         {/* 3. Right: Language Selector & Patient Profile Dropdown */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", position: "relative", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative", flexShrink: 0 }}>
           {/* Language Selector Pill Button */}
           <div ref={langRef} style={{ position: "relative" }}>
             <button
@@ -684,52 +723,13 @@ export default function Header({
                         );
                       })}
 
-                      <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
-
-                      {/* Add Family Member */}
-                      <button
-                        type="button"
-                        className="header-dropdown-item"
-                        onClick={() => {
-                          setShowAddFamilyModal(true);
-                          setProfileDropdownOpen(false);
-                        }}
-                        style={{ color: "#0284C7" }}
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                          <circle cx="9" cy="7" r="4"/>
-                          <line x1="19" y1="8" x2="19" y2="14"/>
-                          <line x1="22" y1="11" x2="16" y2="11"/>
-                        </svg>
-                        <span>{language === "hi" ? "+ परिवार जोड़ें" : "+ Add Family Member"}</span>
-                      </button>
-
-                      {/* Manage Family Members */}
-                      <button
-                        type="button"
-                        className="header-dropdown-item"
-                        onClick={() => {
-                          if (onManageFamilyMembers) onManageFamilyMembers();
-                          setProfileDropdownOpen(false);
-                        }}
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                          <circle cx="9" cy="7" r="4"/>
-                          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                        </svg>
-                        <span>{language === "hi" ? "परिवार प्रबंधित करें" : "Manage Family Members"}</span>
-                      </button>
-
-                      <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
                     </>
                   )}
 
                   {/* Super Admin Switch Shortcut (Strictly for Super Admin Only) */}
                   {(currentUser?.role === "super_admin" || currentUser?.role === "superadmin") && (
                     <>
+                      <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
                       <button
                         type="button"
                         className="header-dropdown-item"
@@ -744,9 +744,10 @@ export default function Header({
                         </svg>
                         <span>{language === "hi" ? "सुपर एडमिन पोर्टल" : "Super Admin Portal"}</span>
                       </button>
-                      <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
                     </>
                   )}
+
+                  <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
 
                   {/* Sign Out Button */}
                   <button
@@ -870,27 +871,35 @@ export default function Header({
         <div className="header-modal-overlay" onClick={() => setShowContactModal(false)}>
           <div className="header-modal-content" onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-              <div style={modalLogoShieldStyle}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z"
-                    fill="#0284C7"
+              <div style={{ ...modalLogoShieldStyle, background: displayLogoUrl ? "#FFFFFF" : brandPrimary, border: displayLogoUrl ? `1.5px solid ${brandPrimary}` : "none" }}>
+                {displayLogoUrl ? (
+                  <img
+                    src={displayLogoUrl}
+                    alt="Logo"
+                    style={{ width: "28px", height: "28px", objectFit: "contain", borderRadius: "6px" }}
                   />
-                  <path
-                    d="M12 7.5v9M7.5 12h9"
-                    stroke="#FFFFFF"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                ) : (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z"
+                      fill={brandPrimary}
+                    />
+                    <path
+                      d="M12 7.5v9M7.5 12h9"
+                      stroke="#FFFFFF"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
               </div>
               <div>
                 <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
                   {language === "hi" ? "संपर्क एवं सहायता डेस्क" : "Contact & Support"}
                 </h3>
                 <span style={{ fontSize: "12px", color: "#64748B" }}>
-                  {language === "hi" ? "सिटी जनरल अस्पताल हेल्प डेस्क" : "City General Hospital Support Desk"}
+                  {displayHospitalName} • {displayTagline}
                 </span>
               </div>
             </div>
@@ -901,7 +910,7 @@ export default function Header({
                   <span>🚨</span> {language === "hi" ? "24/7 आपातकालीन एम्बुलेंस हेल्पलाइन" : "24/7 Emergency Ambulance Helpline"}
                 </div>
                 <div style={{ fontSize: "15px", fontWeight: 800, color: "#0F172A", marginTop: "3px" }}>
-                  108 / +1 (800) 456-CARE
+                  {displayEmergencyText}
                 </div>
               </div>
 

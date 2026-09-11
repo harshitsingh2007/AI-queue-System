@@ -47,10 +47,10 @@ async function runAppointmentTests() {
     () => {}
   );
 
-  // 1. Book a Future Appointment
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split("T")[0];
+  // 1. Book a Future Appointment (safe offset regardless of UTC midnight boundary)
+  const futureDate = new Date();
+  futureDate.setDate(futureDate.getDate() + 2);
+  const tomorrowStr = futureDate.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
 
   const futureApt = await bookAppointment({
     tenantId: testTenant,
