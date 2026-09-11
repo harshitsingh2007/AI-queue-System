@@ -34,6 +34,19 @@ const {
   getHospitalVisitHistory,
 } = require("../services/hospitalService");
 const { verifyHospitalAccess } = require("../middleware/hospitalIsolation");
+const { getIo } = require("../socket");
+
+function notifyHospitalChange(req, hospitalCode, eventType = "hospital_data_changed") {
+  try {
+    const io = req?.app?.get("io") || getIo();
+    if (io && hospitalCode) {
+      io.to(hospitalCode).emit(eventType, { hospital_code: hospitalCode, timestamp: new Date().toISOString() });
+      io.emit(eventType, { hospital_code: hospitalCode, timestamp: new Date().toISOString() });
+    }
+  } catch (e) {
+    // Ignore socket error
+  }
+}
 
 async function getHospitalInfoEndpoint(req, res, next) {
   try {
@@ -311,6 +324,8 @@ async function addHospitalEmployeeEndpoint(req, res, next) {
       password,
     });
 
+    notifyHospitalChange(req, hospitalCode);
+
     return res.status(200).json({
       status: "success",
       employee,
@@ -336,6 +351,7 @@ async function updateHospitalEmployeeEndpoint(req, res, next) {
     }
 
     const updated = await updateHospitalEmployee(userId, req.body);
+    notifyHospitalChange(req, hospitalCode);
     return res.status(200).json({
       status: "success",
       employee: updated,
@@ -507,6 +523,7 @@ async function addHospitalDeskEndpoint(req, res, next) {
     const { dept_code, desk_name, status = "AVAILABLE", assigned_employee_id } = req.body;
 
     const desk = await addHospitalDesk(hospitalCode, dept_code, desk_name, status, assigned_employee_id);
+    notifyHospitalChange(req, hospitalCode);
     return res.status(200).json({
       status: "success",
       desk,
@@ -523,6 +540,7 @@ async function assignHospitalDeskEndpoint(req, res, next) {
     const { assigned_employee_id } = req.body;
 
     const desk = await assignHospitalDesk(hospitalCode, deskId, assigned_employee_id);
+    notifyHospitalChange(req, hospitalCode);
     return res.status(200).json({
       status: "success",
       desk,
@@ -545,6 +563,7 @@ async function updateHospitalDeskEndpoint(req, res, next) {
       dept_code,
       assigned_employee_id !== undefined ? assigned_employee_id : -1
     );
+    notifyHospitalChange(req, hospitalCode);
     return res.status(200).json({
       status: "success",
       desk,
@@ -561,6 +580,7 @@ async function updateHospitalDepartmentEndpoint(req, res, next) {
     const { name, description } = req.body;
 
     const department = await updateHospitalDepartment(hospitalCode, deptCode, name, description);
+    notifyHospitalChange(req, hospitalCode);
     return res.status(200).json({
       status: "success",
       department,
@@ -576,6 +596,7 @@ async function bulkUpdateDeskStatusEndpoint(req, res, next) {
     const { dept_code, status } = req.body;
 
     const result = await bulkUpdateDeskStatus(hospitalCode, dept_code, status);
+    notifyHospitalChange(req, hospitalCode);
     return res.status(200).json({
       status: "success",
       result,
@@ -588,7 +609,9 @@ async function bulkUpdateDeskStatusEndpoint(req, res, next) {
 async function deleteHospitalDeskEndpoint(req, res, next) {
   try {
     const deskId = req.params.desk_id;
+    const hospitalCode = req.params.hospital_code;
     const result = await deleteHospitalDesk(deskId);
+    notifyHospitalChange(req, hospitalCode);
     return res.status(200).json({
       status: "success",
       result,

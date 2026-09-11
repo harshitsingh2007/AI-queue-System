@@ -27,6 +27,8 @@ router.post("/complete", optionalAuth, completeEndpoint);
 router.post("/no-show", optionalAuth, noShowEndpoint);
 router.post("/counters", optionalAuth, countersEndpoint);
 router.get("/queue/:tenant_id", optionalAuth, getQueueEndpoint);
+router.get("/queue/snapshot/:tenant_id", optionalAuth, getQueueEndpoint);
+router.get("/snapshot/:tenant_id", optionalAuth, getQueueEndpoint);
 router.get("/queue/:tenant_id/history", optionalAuth, getQueueHistoryEndpoint);
 router.get("/analytics/:tenant_id", optionalAuth, getAnalyticsEndpoint);
 router.post("/daily-closure", optionalAuth, triggerDailyClosureEndpoint);

@@ -14,6 +14,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { io } from "socket.io-client";
 import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel } from "../utils/i18n";
 import Footer from "../components/Footer";
@@ -205,6 +206,10 @@ export default function SuperAdminPage({
   // Navigation Tabs: "overview" | "hospitals" | "employees" | "desks" | "depts" | "branding"
   const [activeTab, setActiveTab] = useState("overview");
 
+  // Hospital 360 Command Console Configuration
+  const [overviewDisplayMode, setOverviewDisplayMode] = useState("360"); // "360" | "classic"
+  const [hosp360Theme, setHosp360Theme] = useState("dark"); // "dark" | "light"
+
   // Deep-Dive Selected Hospital Mode
   const [selectedHospital, setSelectedHospital] = useState(null);
   const selectedHospitalRef = useRef(selectedHospital);
@@ -219,6 +224,12 @@ export default function SuperAdminPage({
   const [hospitalVisitsData, setHospitalVisitsData] = useState({ summary: {}, visits: [] });
   const [visitHistorySearchQuery, setVisitHistorySearchQuery] = useState("");
   const [visitHistoryStatusFilter, setVisitHistoryStatusFilter] = useState("all");
+
+  // Real-time Live Operations Telemetry States
+  const [lastSyncedAt, setLastSyncedAt] = useState(new Date());
+  const [isLiveSyncing, setIsLiveSyncing] = useState(false);
+  const [socketLiveConnected, setSocketLiveConnected] = useState(false);
+  const [liveTick, setLiveTick] = useState(0);
 
   // Modals
   const [showAddHospitalModal, setShowAddHospitalModal] = useState(false);
@@ -610,21 +621,105 @@ export default function SuperAdminPage({
           visits: Array.isArray(visitsRes.visits) ? visitsRes.visits : [],
         });
       }
+      setLastSyncedAt(new Date());
     } catch (e) {
       console.log("Deep dive fetch error:", e);
     }
   }, [getAuthHeaders, normalizeDesksData]);
 
-  // Initial Fetch & Live Data Polling (Banner reflects live real data every 4 seconds)
+  // Manual Live Force Refresh Action
+  const manualLiveRefresh = useCallback(async () => {
+    const hCode = selectedHospitalRef.current?.hospital_code || selectedHospital?.hospital_code;
+    if (!hCode) return;
+    setIsLiveSyncing(true);
+    await Promise.all([
+      fetchHospitalDeepDive(hCode),
+      fetchGlobalData(true),
+    ]);
+    setTimeout(() => setIsLiveSyncing(false), 450);
+  }, [selectedHospital?.hospital_code, fetchHospitalDeepDive, fetchGlobalData]);
+
+  // Real-Time Socket.IO Live Telemetry Integration
+  useEffect(() => {
+    const hCode = selectedHospital?.hospital_code;
+    if (!hCode) return;
+
+    let socket;
+    try {
+      socket = io(API_BASE, {
+        transports: ["websocket", "polling"],
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+      });
+
+      socket.on("connect", () => {
+        setSocketLiveConnected(true);
+        socket.emit("join_room", { tenant_id: hCode });
+      });
+
+      socket.on("disconnect", () => {
+        setSocketLiveConnected(false);
+      });
+
+      const handleLiveStreamData = (data) => {
+        if (!data) return;
+        setLastSyncedAt(new Date());
+        if (data.snapshot && Array.isArray(data.snapshot)) {
+          setHospitalQueueSnapshot(data.snapshot);
+        }
+        if (data.serving && Array.isArray(data.serving)) {
+          setHospitalServingTickets(data.serving);
+        }
+        if (data.analytics) {
+          setHospitalAnalytics(data.analytics);
+        }
+      };
+
+      socket.on("queue_update", handleLiveStreamData);
+      socket.on("queue_updated", handleLiveStreamData);
+      socket.on("analytics_update", (analytics) => {
+        if (analytics) {
+          setLastSyncedAt(new Date());
+          setHospitalAnalytics(analytics);
+        }
+      });
+      socket.on("hospital_data_changed", () => {
+        setLastSyncedAt(new Date());
+        fetchHospitalDeepDive(hCode);
+      });
+      socket.on("ticket_served", () => fetchHospitalDeepDive(hCode));
+      socket.on("ticket_completed", () => fetchHospitalDeepDive(hCode));
+      socket.on("ticket_cancelled", () => fetchHospitalDeepDive(hCode));
+      socket.on("desk_update", () => fetchHospitalDeepDive(hCode));
+    } catch (err) {
+      console.log("SuperAdmin Socket live stream error:", err);
+    }
+
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    };
+  }, [selectedHospital?.hospital_code, fetchHospitalDeepDive]);
+
+  // Live Auto-Polling (Fast 2.5s telemetry heartbeat) + 1s UI ticker
   useEffect(() => {
     fetchGlobalData();
-    const interval = setInterval(() => {
+    const pollInterval = setInterval(() => {
       fetchGlobalData(true);
-      if (selectedHospitalRef.current) {
+      if (selectedHospitalRef.current?.hospital_code) {
         fetchHospitalDeepDive(selectedHospitalRef.current.hospital_code);
       }
-    }, 4000);
-    return () => clearInterval(interval);
+    }, 2500);
+
+    const tickerInterval = setInterval(() => {
+      setLiveTick((prev) => prev + 1);
+    }, 1000);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearInterval(tickerInterval);
+    };
   }, [fetchGlobalData, fetchHospitalDeepDive]);
 
   useEffect(() => {
@@ -1094,7 +1189,7 @@ export default function SuperAdminPage({
         fetchHospitalDeepDive(selectedHospital.hospital_code);
         fetchGlobalData();
       } else {
-        alert(data.detail || "Failed to update desk.");
+        alert(data.message || data.detail || "Failed to update desk.");
       }
     } catch (err) {
       alert(`Error updating desk: ${err.message}`);
@@ -1126,7 +1221,7 @@ export default function SuperAdminPage({
         fetchHospitalDeepDive(selectedHospital.hospital_code);
         fetchGlobalData();
       } else {
-        alert(data.detail || "Failed to update desk assignment.");
+        alert(data.message || data.detail || "Failed to update desk assignment.");
       }
     } catch (err) {
       alert(`Error assigning desk: ${err.message}`);
@@ -1555,6 +1650,171 @@ export default function SuperAdminPage({
           background: #0369A1;
           transform: translateY(-1px);
           box-shadow: 0 6px 18px rgba(2, 132, 199, 0.35);
+        }
+
+        /* Hospital 360 Cyber Command Center Dashboard Styles */
+        @keyframes pulse360Green {
+          0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); transform: scale(1); }
+          50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); transform: scale(1.08); }
+          100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); transform: scale(1); }
+        }
+        .hosp360-live-pulse {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: #10B981;
+          display: inline-block;
+          animation: pulse360Green 2s infinite ease-in-out;
+        }
+        @keyframes hosp360Spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .hosp360-spin {
+          display: inline-block;
+          animation: hosp360Spin 0.75s linear infinite;
+        }
+        .hosp360-container-dark {
+          background: #090D14;
+          color: #F1F5F9;
+          border-radius: 24px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 26px;
+          box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5), 0 0 40px rgba(2, 132, 199, 0.05);
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          position: relative;
+        }
+        .hosp360-container-light {
+          background: #FFFFFF;
+          color: #0F172A;
+          border-radius: 24px;
+          border: 1.5px solid #E2E8F0;
+          padding: 26px;
+          box-shadow: 0 10px 30px -4px rgba(2, 132, 199, 0.06);
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          position: relative;
+        }
+        .hosp360-kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+        }
+        @media (max-width: 860px) {
+          .hosp360-kpi-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+        @media (max-width: 480px) {
+          .hosp360-kpi-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .hosp360-kpi-card-dark {
+          background: #0F1622;
+          border-radius: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          position: relative;
+          overflow: hidden;
+          transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+        .hosp360-kpi-card-dark:hover {
+          transform: translateY(-2px);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        .hosp360-kpi-card-light {
+          background: #F8FAFC;
+          border-radius: 14px;
+          border: 1px solid #E2E8F0;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          position: relative;
+          overflow: hidden;
+          transition: transform 0.15s ease;
+        }
+        .hosp360-kpi-card-light:hover {
+          transform: translateY(-2px);
+        }
+        .hosp360-two-col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 18px;
+        }
+        @media (max-width: 900px) {
+          .hosp360-two-col {
+            grid-template-columns: 1fr;
+          }
+        }
+        .hosp360-panel-dark {
+          background: #0F1622;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 16px;
+          padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .hosp360-panel-light {
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 16px;
+          padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .hosp360-table-scroll {
+          max-height: 250px;
+          overflow-y: auto;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        .hosp360-table-scroll::-webkit-scrollbar {
+          width: 5px;
+        }
+        .hosp360-table-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+        }
+        .hosp360-desk-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 12px;
+          border-radius: 8px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+          transition: background 0.15s ease;
+        }
+        .hosp360-desk-row:hover {
+          background: rgba(255, 255, 255, 0.04);
+        }
+        .hosp360-mono-tag {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          font-weight: 700;
+          letter-spacing: 0.3px;
+        }
+        .hosp360-nav-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 9px 16px;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .hosp360-nav-btn:hover {
+          transform: translateY(-1px);
         }
       `}</style>
 
@@ -2002,9 +2262,1109 @@ export default function SuperAdminPage({
               });
             });
 
+            // --- HOSPITAL 360 COMMAND CENTER DATA PREPARATION ---
+            const isDark360 = hosp360Theme === "dark";
+            const themeBg = isDark360 ? "#090D14" : "#FFFFFF";
+            const panelBg = isDark360 ? "#0F1622" : "#F8FAFC";
+            const borderCol = isDark360 ? "rgba(255, 255, 255, 0.08)" : "#E2E8F0";
+            const textMain = isDark360 ? "#F8FAFC" : "#0F172A";
+            const textMuted = isDark360 ? "#94A3B8" : "#64748B";
+
+            // Check OPD Open status:
+            const nowTime = new Date();
+            const currH = nowTime.getHours();
+            const currM = nowTime.getMinutes();
+            const [opdStartH = 8, opdStartM = 0] = (activeBranding.opd_start_time || "08:00").split(":").map(Number);
+            const [opdEndH = 20, opdEndM = 0] = (activeBranding.opd_end_time || "20:00").split(":").map(Number);
+            const isOpdOpen = (currH > opdStartH || (currH === opdStartH && currM >= opdStartM)) &&
+                              (currH < opdEndH || (currH === opdEndH && currM <= opdEndM));
+
+            // 1. REAL LIVE KPI STATS
+            const kpiWaitCount = (hospitalQueueSnapshot || []).filter((t) => (t.status || "").toLowerCase() === "waiting").length;
+            const kpiServCount = (hospitalServingTickets || []).length;
+            const kpiDoneCount = footfallSummary.today_completed ?? (hospitalAnalytics?.completed_today ?? 0);
+            const kpiAvgWaitStr = kpiWaitCount === 0 
+              ? "0m" 
+              : (hospitalAnalytics?.avg_wait_minutes && hospitalAnalytics.avg_wait_minutes > 0 
+                  ? `${Math.round(hospitalAnalytics.avg_wait_minutes)}m` 
+                  : `${Math.round(kpiWaitCount * 8)}m`);
+
+            // 2. REAL LIVE DESKS
+            let liveDesksList = [];
+            if (allDesks && allDesks.length > 0) {
+              liveDesksList = allDesks.map((d, idx) => {
+                const code = d.desk_name || (d.counter_number ? `D${String(d.counter_number).padStart(2, '0')}` : `D${String(idx + 1).padStart(2, '0')}`);
+                const st = (d.status || "").toUpperCase();
+                const isActive = st === "ACTIVE" || st === "AVAILABLE" || st === "BUSY" || st === "OCCUPIED";
+                
+                // Find if a real patient ticket is currently being served at this desk
+                const servTicket = (hospitalServingTickets || []).find(t => 
+                  (t.desk_id && String(t.desk_id) === String(d.id || d.desk_id)) ||
+                  (t.counter && (t.counter === d.desk_name || String(t.counter) === String(d.desk_number) || String(t.counter) === String(d.counter_number))) ||
+                  (t.served_by_doctor_id && (String(t.served_by_doctor_id) === String(d.assigned_employee_id) || String(t.served_by_doctor_id) === String(d.assigned_user_id))) ||
+                  (t.served_by_doctor_email && d.assigned_employee_email && t.served_by_doctor_email.toLowerCase() === d.assigned_employee_email.toLowerCase())
+                );
+
+                const isDocOnline = (d.assigned_employee_status || "").toLowerCase() === "active";
+                const docName = d.assigned_employee_name || d.staff_name || (hospitalEmployees.find(e => e.id === d.assigned_employee_id || e.user_id === d.assigned_user_id)?.name) || "Unassigned";
+
+                return {
+                  id: d.id || d.desk_id || idx,
+                  code,
+                  name: d.desk_name || `Counter ${idx + 1}`,
+                  dept: d.dept_name || d.department_name || d.department || "General OPD",
+                  isActive,
+                  isDocOnline,
+                  doctor: docName,
+                  ticket: servTicket?.ticket_id || d.current_ticket_id || null,
+                  statusText: servTicket ? "SERVING" : (isActive ? (isDocOnline ? "READY" : "STANDBY") : "OFFLINE"),
+                };
+              });
+            }
+
+            // 3. REAL LIVE DEPARTMENT LOAD
+            const dCountMap = {};
+            (hospitalDepts || []).forEach(d => {
+              const dName = d.name || d.dept_name || d.dept_code;
+              if (dName) dCountMap[dName] = 0;
+            });
+            (hospitalQueueSnapshot || []).forEach(t => {
+              const dName = t.department || t.dept_name || t.service_category || "General OPD";
+              dCountMap[dName] = (dCountMap[dName] || 0) + 1;
+            });
+            (hospitalServingTickets || []).forEach(t => {
+              const dName = t.department || t.dept_name || t.service_category || "General OPD";
+              dCountMap[dName] = (dCountMap[dName] || 0) + 1;
+            });
+
+            let deptLoadArr = Object.entries(dCountMap).map(([name, count]) => ({ name, count }));
+            deptLoadArr.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+            const peakDeptLoad = Math.max(...deptLoadArr.map(d => d.count), 1);
+
+            // 4. REAL LIVE CURRENTLY SERVING STREAM
+            let servingStreamItems = [];
+            if (hospitalServingTickets && hospitalServingTickets.length > 0) {
+              servingStreamItems = hospitalServingTickets.map((t, idx) => {
+                const deskMatch = allDesks.find(d => 
+                  d.id === t.desk_id || 
+                  d.desk_id === t.desk_id || 
+                  d.desk_name === t.counter || 
+                  d.counter_number === t.counter
+                );
+                const docMatch = hospitalEmployees.find(e => 
+                  e.id === t.served_by_doctor_id || 
+                  e.user_id === t.served_by_doctor_id || 
+                  e.id === t.doctor_id ||
+                  (t.served_by_doctor_email && e.email && e.email.toLowerCase() === t.served_by_doctor_email.toLowerCase())
+                );
+                return {
+                  ticket: t.ticket_id || `T${100 + idx}`,
+                  doctor: t.served_by_doctor_name || t.doctor_name || docMatch?.name || deskMatch?.assigned_employee_name || "Doctor On Duty",
+                  desk: deskMatch?.desk_name || t.counter || (t.desk_id ? `Desk ${t.desk_id}` : `Counter ${idx + 1}`),
+                  dept: t.service_category || t.department || deskMatch?.dept_name || "OPD",
+                };
+              });
+            }
+
+            // 5. REAL LIVE DOCTOR AVAILABILITY
+            const allPersonnel = hospitalEmployees || [];
+            const docsList = allPersonnel.filter(e => {
+              const role = (e.role || "").toLowerCase();
+              return role === "doctor" || role === "physician" || (e.name || "").toLowerCase().startsWith("dr.");
+            });
+            const effectiveDocs = docsList.length > 0 ? docsList : allPersonnel;
+
+            let docsAvailable = 0;
+            let docsBusy = 0;
+            let docsUnavailable = 0;
+
+            effectiveDocs.forEach(d => {
+              const isOnline = (d.status || "").toLowerCase() === "active";
+              const isServingNow = (hospitalServingTickets || []).some(t => 
+                t.served_by_doctor_id === d.id || 
+                t.served_by_doctor_id === d.user_id || 
+                t.doctor_id === d.id ||
+                (t.served_by_doctor_email && d.email && t.served_by_doctor_email.toLowerCase() === d.email.toLowerCase()) ||
+                (t.served_by_doctor_name && d.name && t.served_by_doctor_name.trim().toLowerCase() === d.name.trim().toLowerCase())
+              );
+
+              if (!isOnline) {
+                docsUnavailable += 1;
+              } else if (isServingNow) {
+                docsBusy += 1;
+              } else {
+                docsAvailable += 1;
+              }
+            });
+            const totalDocsCount = docsAvailable + docsBusy + docsUnavailable;
+
+            // 6. REAL LIVE QUEUE PRESSURE
+            const countEmergency = (hospitalQueueSnapshot || []).filter(t => t.priority_level === 1 || (t.priority || "").toLowerCase() === "emergency").length;
+            const countHigh = (hospitalQueueSnapshot || []).filter(t => t.priority_level === 2 || (t.priority || "").toLowerCase() === "high").length;
+            const countNormal = (hospitalQueueSnapshot || []).filter(t => t.priority_level === 3 || (t.priority || "").toLowerCase() === "normal" || (!t.priority_level && (t.priority || "").toLowerCase() !== "emergency" && (t.priority || "").toLowerCase() !== "high")).length;
+
+            // Block Bar Render Helper
+            const renderTelemetryBlocks = (count, max, color, totalChars = 14) => {
+              if (count <= 0) {
+                return (
+                  <span style={{ color: textMuted, fontSize: "12px", fontFamily: "ui-monospace, monospace" }}>
+                    —
+                  </span>
+                );
+              }
+              const filled = max > 0 ? Math.max(1, Math.min(totalChars, Math.round((count / max) * totalChars))) : 1;
+              return (
+                <span style={{
+                  color,
+                  letterSpacing: "1.5px",
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                }}>
+                  {"█".repeat(filled)}
+                </span>
+              );
+            };
+
+            const secondsSinceSync = Math.max(0, Math.floor((Date.now() - (lastSyncedAt ? new Date(lastSyncedAt).getTime() : Date.now())) / 1000));
+            const syncLabel = secondsSinceSync <= 2 ? "just now" : `${secondsSinceSync}s ago`;
+
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
-                {/* 1. FACILITY EXECUTIVE HEADER BANNER */}
+                {overviewDisplayMode === "360" ? (
+                  /* HOSPITAL 360 CYBER COMMAND CENTER DASHBOARD */
+                  <div className={isDark360 ? "hosp360-container-dark" : "hosp360-container-light"} style={{ background: themeBg }}>
+                    {/* 1. TOP COMMAND HEADER */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px", paddingBottom: "18px", borderBottom: `1px solid ${borderCol}` }}>
+                      {/* Hospital Identity */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: "260px" }}>
+                        <div
+                          style={{
+                            width: "52px",
+                            height: "52px",
+                            borderRadius: "14px",
+                            background: isDark360 ? "rgba(16, 185, 129, 0.12)" : "#ECFDF5",
+                            border: "1.5px solid rgba(16, 185, 129, 0.3)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "24px",
+                            flexShrink: 0,
+                            boxShadow: isDark360 ? "0 0 20px rgba(16, 185, 129, 0.15)" : "none",
+                          }}
+                        >
+                          🏥
+                        </div>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                            <h1
+                              style={{
+                                margin: 0,
+                                fontSize: "22px",
+                                fontWeight: 800,
+                                color: textMain,
+                                letterSpacing: "-0.4px",
+                              }}
+                            >
+                              {currentHosp.name}
+                            </h1>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                padding: "2px 8px",
+                                borderRadius: "12px",
+                                background: currentHosp.status === "active" ? (isDark360 ? "rgba(16, 185, 129, 0.2)" : "#DCFCE7") : (isDark360 ? "rgba(148, 163, 184, 0.2)" : "#F1F5F9"),
+                                color: currentHosp.status === "active" ? "#10B981" : textMuted,
+                                border: currentHosp.status === "active" ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(148, 163, 184, 0.3)",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                              }}
+                            >
+                              <span className="hosp360-live-pulse" style={{ width: 6, height: 6 }} />
+                              <span>{currentHosp.status === "active" ? "ACTIVE BRANCH" : "INACTIVE"}</span>
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", fontSize: "12.5px", color: textMuted, flexWrap: "wrap" }}>
+                            <span>{currentHosp.address || "Main Medical Campus, Sector 14"}</span>
+                            <span>•</span>
+                            <span style={{ fontWeight: 600, color: isOpdOpen ? "#10B981" : "#F59E0B" }}>
+                              {isOpdOpen ? `OPD Open (${activeBranding.opd_start_time || "08:00"} - ${activeBranding.opd_end_time || "20:00"})` : `OPD Closed (${activeBranding.opd_start_time || "08:00"} - ${activeBranding.opd_end_time || "20:00"})`}
+                            </span>
+                            {currentHosp.phone && (
+                              <>
+                                <span>•</span>
+                                <span>{currentHosp.phone}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Controls: Facility Dropdown, Status Pill, Theme Toggle, Manage Hospital */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        {/* Hospital Dropdown */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            background: isDark360 ? "#131C2C" : "#F1F5F9",
+                            padding: "6px 12px",
+                            borderRadius: "10px",
+                            border: `1px solid ${borderCol}`,
+                          }}
+                        >
+                          <IconHospital size={14} color="#38BDF8" />
+                          <select
+                            value={currentHosp.hospital_code}
+                            onChange={(e) => {
+                              const found = hospitals.find((h) => h.hospital_code === e.target.value);
+                              if (found) {
+                                setSelectedHospital(found);
+                                if (onSelectHospitalTenant) onSelectHospitalTenant(found.hospital_code);
+                              }
+                            }}
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              fontSize: "12.5px",
+                              fontWeight: 700,
+                              color: textMain,
+                              cursor: "pointer",
+                              outline: "none",
+                              maxWidth: "180px",
+                            }}
+                          >
+                            {hospitals.map((h) => (
+                              <option key={h.hospital_code} value={h.hospital_code} style={{ background: isDark360 ? "#131C2C" : "#FFFFFF", color: textMain }}>
+                                {h.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Interactive LIVE Telemetry & Force Sync Button */}
+                        <button
+                          type="button"
+                          onClick={manualLiveRefresh}
+                          disabled={isLiveSyncing}
+                          title="Real-time live telemetry from hospital database. Click to force instant sync."
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "7px",
+                            padding: "6px 13px",
+                            borderRadius: "10px",
+                            background: isLiveSyncing
+                              ? (isDark360 ? "rgba(56, 189, 248, 0.2)" : "#E0F2FE")
+                              : (isDark360 ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5"),
+                            border: isLiveSyncing
+                              ? "1px solid rgba(56, 189, 248, 0.45)"
+                              : "1px solid rgba(16, 185, 129, 0.35)",
+                            color: isLiveSyncing ? "#38BDF8" : "#10B981",
+                            fontSize: "12px",
+                            fontWeight: 800,
+                            letterSpacing: "0.4px",
+                            cursor: "pointer",
+                            transition: "all 0.2s ease",
+                          }}
+                        >
+                          <span
+                            className={isLiveSyncing ? "hosp360-spin" : "hosp360-live-pulse"}
+                            style={{
+                              width: 7,
+                              height: 7,
+                              borderRadius: "50%",
+                              background: isLiveSyncing ? "#38BDF8" : (socketLiveConnected ? "#10B981" : "#10B981"),
+                              display: "inline-block",
+                            }}
+                          />
+                          <span>{isLiveSyncing ? "SYNCING..." : "LIVE"}</span>
+                          <span style={{ color: textMuted, fontWeight: 500, fontSize: "11px", marginLeft: "1px" }}>
+                            • {syncLabel}
+                          </span>
+                          <span style={{ fontSize: "13px", opacity: 0.8, marginLeft: "3px" }}>↻</span>
+                        </button>
+
+                        {/* Theme Toggle Button */}
+                        <button
+                          type="button"
+                          onClick={() => setHosp360Theme(isDark360 ? "light" : "dark")}
+                          title={isDark360 ? "Switch to Light Clinical Theme" : "Switch to Cyber Dark Console"}
+                          style={{
+                            background: isDark360 ? "#131C2C" : "#F1F5F9",
+                            border: `1px solid ${borderCol}`,
+                            color: textMain,
+                            borderRadius: "10px",
+                            padding: "7px 11px",
+                            fontSize: "13px",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>{isDark360 ? "☀️" : "🌙"}</span>
+                        </button>
+
+                        {/* Mode Toggle: 360 vs Classic */}
+                        <button
+                          type="button"
+                          onClick={() => setOverviewDisplayMode("classic")}
+                          title="Switch to detailed patient visits & historical analytics"
+                          style={{
+                            background: isDark360 ? "#131C2C" : "#F1F5F9",
+                            border: `1px solid ${borderCol}`,
+                            color: "#38BDF8",
+                            borderRadius: "10px",
+                            padding: "7px 12px",
+                            fontSize: "12.5px",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>📋</span>
+                          <span>Classic View</span>
+                        </button>
+
+                        {/* Manage Hospital Button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditHospitalForm({
+                              hospital_code: currentHosp.hospital_code,
+                              name: currentHosp.name,
+                              address: currentHosp.address || "",
+                              phone: currentHosp.phone || "",
+                              email: currentHosp.email || "",
+                              description: currentHosp.description || "",
+                              status: currentHosp.status || "active",
+                            });
+                            setShowEditHospitalModal(true);
+                          }}
+                          className="hosp360-nav-btn"
+                          style={{
+                            background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                            color: "#FFFFFF",
+                            border: "none",
+                            boxShadow: "0 2px 10px rgba(2, 132, 199, 0.3)",
+                          }}
+                        >
+                          <IconEdit size={14} color="#FFFFFF" />
+                          <span>Manage Hospital</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. TOP KPI STRIP (4 STAT CARDS WITH GLOWING COLORED BOTTOM UNDERLINE) */}
+                    <div className="hosp360-kpi-grid">
+                      {/* WAITING */}
+                      <div className={isDark360 ? "hosp360-kpi-card-dark" : "hosp360-kpi-card-light"}>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: textMuted, letterSpacing: "1px", textTransform: "uppercase" }}>
+                          WAITING
+                        </span>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+                          <span className="hosp360-mono-tag" style={{ fontSize: "32px", fontWeight: 900, color: textMain, lineHeight: 1 }}>
+                            {String(kpiWaitCount).padStart(2, "0")}
+                          </span>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: textMuted }}>patients in queue</span>
+                        </div>
+                        <div className="hosp360-kpi-underline" style={{ background: "#F59E0B", boxShadow: "0 0 10px rgba(245, 158, 11, 0.7)" }} />
+                      </div>
+
+                      {/* SERVING */}
+                      <div className={isDark360 ? "hosp360-kpi-card-dark" : "hosp360-kpi-card-light"}>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: textMuted, letterSpacing: "1px", textTransform: "uppercase" }}>
+                          SERVING
+                        </span>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+                          <span className="hosp360-mono-tag" style={{ fontSize: "32px", fontWeight: 900, color: "#38BDF8", lineHeight: 1 }}>
+                            {String(kpiServCount).padStart(2, "0")}
+                          </span>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: textMuted }}>at counters</span>
+                        </div>
+                        <div className="hosp360-kpi-underline" style={{ background: "#06B6D4", boxShadow: "0 0 10px rgba(6, 182, 212, 0.7)" }} />
+                      </div>
+
+                      {/* COMPLETED */}
+                      <div className={isDark360 ? "hosp360-kpi-card-dark" : "hosp360-kpi-card-light"}>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: textMuted, letterSpacing: "1px", textTransform: "uppercase" }}>
+                          COMPLETED
+                        </span>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+                          <span className="hosp360-mono-tag" style={{ fontSize: "32px", fontWeight: 900, color: "#10B981", lineHeight: 1 }}>
+                            {String(kpiDoneCount).padStart(2, "0")}
+                          </span>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: textMuted }}>consulted today</span>
+                        </div>
+                        <div className="hosp360-kpi-underline" style={{ background: "#10B981", boxShadow: "0 0 10px rgba(16, 185, 129, 0.7)" }} />
+                      </div>
+
+                      {/* AVG WAIT */}
+                      <div className={isDark360 ? "hosp360-kpi-card-dark" : "hosp360-kpi-card-light"}>
+                        <span style={{ fontSize: "11px", fontWeight: 800, color: textMuted, letterSpacing: "1px", textTransform: "uppercase" }}>
+                          AVG WAIT
+                        </span>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+                          <span className="hosp360-mono-tag" style={{ fontSize: "32px", fontWeight: 900, color: "#A78BFA", lineHeight: 1 }}>
+                            {kpiAvgWaitStr}
+                          </span>
+                          <span style={{ fontSize: "11px", fontWeight: 600, color: textMuted }}>estimated turnaround</span>
+                        </div>
+                        <div className="hosp360-kpi-underline" style={{ background: "#8B5CF6", boxShadow: "0 0 10px rgba(139, 92, 246, 0.7)" }} />
+                      </div>
+                    </div>
+
+                    {/* 3. OPERATIONAL GRID ROW 1: LIVE DESKS & DEPARTMENT LOAD */}
+                    <div className="hosp360-two-col">
+                      {/* Left: LIVE DESKS */}
+                      <div className={isDark360 ? "hosp360-panel-dark" : "hosp360-panel-light"}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "14px", fontWeight: 800, color: textMain, letterSpacing: "0.5px" }}>
+                              LIVE DESKS
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                color: "#10B981",
+                                background: isDark360 ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5",
+                                padding: "2px 7px",
+                                borderRadius: "6px",
+                              }}
+                            >
+                              {liveDesksList.filter((d) => d.isActive).length}/{liveDesksList.length} Active
+                            </span>
+                          </div>
+                          <span style={{ fontSize: "11px", color: textMuted }}>Desk / Counter Telemetry</span>
+                        </div>
+
+                        {/* Desks Table List */}
+                        <div className="hosp360-table-scroll">
+                          {liveDesksList.length === 0 ? (
+                            <div
+                              style={{
+                                padding: "24px 16px",
+                                textAlign: "center",
+                                borderRadius: "8px",
+                                background: isDark360 ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.01)",
+                                border: `1px dashed ${borderCol}`,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              <span style={{ fontSize: "18px" }}>🪑</span>
+                              <span style={{ fontSize: "13px", fontWeight: 700, color: textMain }}>No Desks Registered Yet</span>
+                              <span style={{ fontSize: "11.5px", color: textMuted }}>Go to the "Staff & Desks" tab to configure operational counters.</span>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                              {liveDesksList.map((desk) => (
+                                <div key={desk.id} className="hosp360-desk-row">
+                                  <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flex: 1 }}>
+                                    {/* Status Bullet */}
+                                    <span
+                                      style={{
+                                        width: "8px",
+                                        height: "8px",
+                                        borderRadius: "50%",
+                                        background: desk.ticket ? "#22D3EE" : (desk.isActive ? "#10B981" : "#64748B"),
+                                        boxShadow: desk.ticket ? "0 0 8px #22D3EE" : (desk.isActive ? "0 0 8px #10B981" : "none"),
+                                        display: "inline-block",
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                    {/* Counter Code */}
+                                    <span
+                                      className="hosp360-mono-tag"
+                                      style={{
+                                        fontSize: "13px",
+                                        color: textMain,
+                                        minWidth: "42px",
+                                      }}
+                                    >
+                                      {desk.code}
+                                    </span>
+                                    {/* Department & Doctor */}
+                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
+                                      <span
+                                        style={{
+                                          fontSize: "12.5px",
+                                          color: textMuted,
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                        }}
+                                      >
+                                        {desk.dept}
+                                      </span>
+                                      <span style={{ fontSize: "11px", color: textMuted }}>•</span>
+                                      <span
+                                        style={{
+                                          fontSize: "12px",
+                                          fontWeight: 600,
+                                          color: desk.doctor !== "Unassigned" ? (desk.isDocOnline ? (isDark360 ? "#93C5FD" : "#1D4ED8") : textMuted) : textMuted,
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                        }}
+                                      >
+                                        <span>{desk.doctor !== "Unassigned" ? (desk.isDocOnline ? "🩺" : "⚪") : "—"}</span>
+                                        <span>{desk.doctor}</span>
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Serving Ticket Badge or Idle */}
+                                  <div style={{ flexShrink: 0 }}>
+                                    {desk.ticket ? (
+                                      <span
+                                        className="hosp360-mono-tag"
+                                        style={{
+                                          background: "rgba(6, 182, 212, 0.15)",
+                                          color: "#22D3EE",
+                                          border: "1px solid rgba(6, 182, 212, 0.35)",
+                                          padding: "2px 8px",
+                                          borderRadius: "6px",
+                                          fontSize: "12px",
+                                        }}
+                                      >
+                                        {desk.ticket}
+                                      </span>
+                                    ) : (
+                                      <span
+                                        style={{
+                                          fontSize: "11px",
+                                          fontWeight: 700,
+                                          color: desk.isActive ? "#10B981" : "#64748B",
+                                          background: desk.isActive ? (isDark360 ? "rgba(16, 185, 129, 0.12)" : "#ECFDF5") : "transparent",
+                                          padding: "2px 7px",
+                                          borderRadius: "4px",
+                                        }}
+                                      >
+                                        {desk.isActive ? "READY" : "OFFLINE"}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: DEPARTMENT LOAD */}
+                      <div className={isDark360 ? "hosp360-panel-dark" : "hosp360-panel-light"}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "14px", fontWeight: 800, color: textMain, letterSpacing: "0.5px" }}>
+                            DEPARTMENT LOAD
+                          </span>
+                          <span style={{ fontSize: "11px", color: textMuted }}>Active Load Density</span>
+                        </div>
+
+                        <div className="hosp360-table-scroll">
+                          {deptLoadArr.length === 0 ? (
+                            <div
+                              style={{
+                                padding: "24px 16px",
+                                textAlign: "center",
+                                borderRadius: "8px",
+                                background: isDark360 ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.01)",
+                                border: `1px dashed ${borderCol}`,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                gap: "6px",
+                              }}
+                            >
+                              <span style={{ fontSize: "18px" }}>📊</span>
+                              <span style={{ fontSize: "13px", fontWeight: 700, color: textMain }}>No Department Load</span>
+                              <span style={{ fontSize: "11.5px", color: textMuted }}>Telemetry will render load density bars as patients queue.</span>
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                              {deptLoadArr.map((item) => (
+                                <div
+                                  key={item.name}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    padding: "8px 12px",
+                                    borderRadius: "8px",
+                                    borderBottom: `1px solid ${borderCol}`,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: "13px",
+                                      fontWeight: 600,
+                                      color: textMain,
+                                      minWidth: "110px",
+                                    }}
+                                  >
+                                    {item.name}
+                                  </span>
+
+                                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, justifyContent: "flex-end" }}>
+                                    {renderTelemetryBlocks(item.count, peakDeptLoad, "#38BDF8", 13)}
+                                    <span
+                                      className="hosp360-mono-tag"
+                                      style={{
+                                        fontSize: "13px",
+                                        color: textMain,
+                                        minWidth: "22px",
+                                        textAlign: "right",
+                                      }}
+                                    >
+                                      {item.count}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4. OPERATIONAL GRID ROW 2: CURRENTLY SERVING & DOCTOR AVAILABILITY */}
+                    <div className="hosp360-two-col">
+                      {/* Left: CURRENTLY SERVING */}
+                      <div className={isDark360 ? "hosp360-panel-dark" : "hosp360-panel-light"}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{ fontSize: "14px", fontWeight: 800, color: textMain, letterSpacing: "0.5px" }}>
+                              CURRENTLY SERVING
+                            </span>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                fontWeight: 700,
+                                color: "#38BDF8",
+                                background: isDark360 ? "rgba(56, 189, 248, 0.15)" : "#E0F2FE",
+                                padding: "2px 7px",
+                                borderRadius: "6px",
+                              }}
+                            >
+                              Live Telemetry Stream
+                            </span>
+                          </div>
+                          <span style={{ fontSize: "11px", color: textMuted }}>Token → Provider → Counter</span>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          {servingStreamItems.length === 0 ? (
+                            <div
+                              style={{
+                                padding: "26px 16px",
+                                textAlign: "center",
+                                borderRadius: "8px",
+                                background: isDark360 ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.01)",
+                                border: `1px dashed ${borderCol}`,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                gap: "8px",
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                                <span className="hosp360-live-pulse" style={{ width: 8, height: 8, background: "#10B981" }} />
+                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#10B981", letterSpacing: "0.3px" }}>
+                                  All Desks Currently Idle & Ready
+                                </span>
+                              </div>
+                              <span style={{ fontSize: "11.5px", color: textMuted, maxWidth: "340px" }}>
+                                No patients actively in consultation right now. When a doctor calls the next token, real-time live telemetry will stream here immediately.
+                              </span>
+                            </div>
+                          ) : (
+                            servingStreamItems.map((item, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  padding: "9px 12px",
+                                  borderRadius: "8px",
+                                  background: isDark360 ? "rgba(255, 255, 255, 0.02)" : "rgba(0, 0, 0, 0.01)",
+                                  border: `1px solid ${borderCol}`,
+                                }}
+                              >
+                                {/* Ticket */}
+                                <span
+                                  className="hosp360-mono-tag"
+                                  style={{
+                                    background: "rgba(6, 182, 212, 0.15)",
+                                    color: "#22D3EE",
+                                    border: "1px solid rgba(6, 182, 212, 0.35)",
+                                    padding: "3px 9px",
+                                    borderRadius: "6px",
+                                    fontSize: "12.5px",
+                                  }}
+                                >
+                                  {item.ticket}
+                                </span>
+
+                                {/* Arrow */}
+                                <span style={{ color: textMuted, fontSize: "14px" }}>→</span>
+
+                                {/* Doctor */}
+                                <span style={{ fontSize: "13px", fontWeight: 700, color: textMain }}>
+                                  {item.doctor}
+                                </span>
+
+                                {/* Arrow */}
+                                <span style={{ color: textMuted, fontSize: "14px" }}>→</span>
+
+                                {/* Desk */}
+                                <span
+                                  className="hosp360-mono-tag"
+                                  style={{
+                                    background: isDark360 ? "rgba(139, 92, 246, 0.15)" : "#F3E8FF",
+                                    color: "#A78BFA",
+                                    border: "1px solid rgba(139, 92, 246, 0.35)",
+                                    padding: "3px 9px",
+                                    borderRadius: "6px",
+                                    fontSize: "12.5px",
+                                  }}
+                                >
+                                  {item.desk}
+                                </span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: DOCTOR AVAILABILITY */}
+                      <div className={isDark360 ? "hosp360-panel-dark" : "hosp360-panel-light"}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "14px", fontWeight: 800, color: textMain, letterSpacing: "0.5px" }}>
+                            DOCTOR AVAILABILITY
+                          </span>
+                          <span style={{ fontSize: "11px", color: textMuted }}>Duty Status</span>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                          {/* Available */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              padding: "10px 14px",
+                              borderRadius: "8px",
+                              background: isDark360 ? "rgba(16, 185, 129, 0.08)" : "#F0FDF4",
+                              border: "1px solid rgba(16, 185, 129, 0.2)",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10B981" }} />
+                              <span style={{ fontSize: "13.5px", fontWeight: 700, color: isDark360 ? "#86EFAC" : "#15803D" }}>
+                                Available
+                              </span>
+                            </div>
+                            <span className="hosp360-mono-tag" style={{ fontSize: "18px", fontWeight: 900, color: "#10B981" }}>
+                              {docsAvailable}
+                            </span>
+                          </div>
+
+                          {/* Busy */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              padding: "10px 14px",
+                              borderRadius: "8px",
+                              background: isDark360 ? "rgba(245, 158, 11, 0.08)" : "#FFFBEB",
+                              border: "1px solid rgba(245, 158, 11, 0.2)",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#F59E0B" }} />
+                              <span style={{ fontSize: "13.5px", fontWeight: 700, color: isDark360 ? "#FCD34D" : "#B45309" }}>
+                                Busy
+                              </span>
+                            </div>
+                            <span className="hosp360-mono-tag" style={{ fontSize: "18px", fontWeight: 900, color: "#F59E0B" }}>
+                              {docsBusy}
+                            </span>
+                          </div>
+
+                          {/* Unavailable */}
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              padding: "10px 14px",
+                              borderRadius: "8px",
+                              background: isDark360 ? "rgba(239, 68, 68, 0.08)" : "#FEF2F2",
+                              border: "1px solid rgba(239, 68, 68, 0.2)",
+                            }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#EF4444" }} />
+                              <span style={{ fontSize: "13.5px", fontWeight: 700, color: isDark360 ? "#FCA5A5" : "#B91C1C" }}>
+                                Unavailable
+                              </span>
+                            </div>
+                            <span className="hosp360-mono-tag" style={{ fontSize: "18px", fontWeight: 900, color: "#EF4444" }}>
+                              {docsUnavailable}
+                            </span>
+                          </div>
+
+                          {/* Visual Ratio Progress Bar */}
+                          <div style={{ height: "6px", borderRadius: "999px", background: borderCol, display: "flex", overflow: "hidden", marginTop: "2px" }}>
+                            <div style={{ width: `${(docsAvailable / (totalDocsCount || 1)) * 100}%`, background: "#10B981" }} />
+                            <div style={{ width: `${(docsBusy / (totalDocsCount || 1)) * 100}%`, background: "#F59E0B" }} />
+                            <div style={{ width: `${(docsUnavailable / (totalDocsCount || 1)) * 100}%`, background: "#EF4444" }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 5. QUEUE PRESSURE SECTION */}
+                    <div className={isDark360 ? "hosp360-panel-dark" : "hosp360-panel-light"}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                          <span style={{ fontSize: "14px", fontWeight: 800, color: textMain, letterSpacing: "0.5px" }}>
+                            QUEUE PRESSURE
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              background: countEmergency > 0 ? "rgba(239, 68, 68, 0.15)" : "rgba(16, 185, 129, 0.15)",
+                              color: countEmergency > 0 ? "#EF4444" : "#10B981",
+                              border: countEmergency > 0 ? "1px solid rgba(239, 68, 68, 0.3)" : "1px solid rgba(16, 185, 129, 0.3)",
+                            }}
+                          >
+                            {countEmergency > 0 ? "PRIORITY SURGE" : "NOMINAL PRESSURE"}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "11px", color: textMuted }}>Triage Urgency Breakdown</span>
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {/* Emergency */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            background: isDark360 ? "rgba(239, 68, 68, 0.05)" : "#FEF2F2",
+                            border: "1px solid rgba(239, 68, 68, 0.15)",
+                          }}
+                        >
+                          <span style={{ fontSize: "13px", fontWeight: 700, color: "#EF4444", minWidth: "120px" }}>
+                            Emergency: {countEmergency}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            {renderTelemetryBlocks(countEmergency, 15, "#EF4444", 16)}
+                          </div>
+                        </div>
+
+                        {/* High */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            background: isDark360 ? "rgba(245, 158, 11, 0.05)" : "#FFFBEB",
+                            border: "1px solid rgba(245, 158, 11, 0.15)",
+                          }}
+                        >
+                          <span style={{ fontSize: "13px", fontWeight: 700, color: "#F59E0B", minWidth: "120px" }}>
+                            High: {countHigh}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            {renderTelemetryBlocks(countHigh, 15, "#F59E0B", 16)}
+                          </div>
+                        </div>
+
+                        {/* Normal */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            background: isDark360 ? "rgba(16, 185, 129, 0.05)" : "#F0FDF4",
+                            border: "1px solid rgba(16, 185, 129, 0.15)",
+                          }}
+                        >
+                          <span style={{ fontSize: "13px", fontWeight: 700, color: "#10B981", minWidth: "120px" }}>
+                            Normal: {countNormal}
+                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            {renderTelemetryBlocks(countNormal, 15, "#10B981", 16)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 6. QUICK ACTIONS BAR */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: "12px",
+                        padding: "16px 20px",
+                        borderRadius: "16px",
+                        background: isDark360 ? "#0F1622" : "#F8FAFC",
+                        border: `1px solid ${borderCol}`,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "13px", fontWeight: 800, color: textMain, letterSpacing: "0.5px" }}>
+                          QUICK ACTIONS
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("employees")}
+                          className="hosp360-nav-btn"
+                          style={{
+                            background: isDark360 ? "#141D2C" : "#FFFFFF",
+                            color: textMain,
+                            border: `1px solid ${borderCol}`,
+                          }}
+                        >
+                          <span>👥</span>
+                          <span>Staff</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("depts")}
+                          className="hosp360-nav-btn"
+                          style={{
+                            background: isDark360 ? "#141D2C" : "#FFFFFF",
+                            color: textMain,
+                            border: `1px solid ${borderCol}`,
+                          }}
+                        >
+                          <span>🏢</span>
+                          <span>Departments</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab("desks")}
+                          className="hosp360-nav-btn"
+                          style={{
+                            background: isDark360 ? "#141D2C" : "#FFFFFF",
+                            color: textMain,
+                            border: `1px solid ${borderCol}`,
+                          }}
+                        >
+                          <span>🖥️</span>
+                          <span>Desks</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenBrandingModal(currentHosp)}
+                          className="hosp360-nav-btn"
+                          style={{
+                            background: isDark360 ? "#141D2C" : "#FFFFFF",
+                            color: textMain,
+                            border: `1px solid ${borderCol}`,
+                          }}
+                        >
+                          <span>🎨</span>
+                          <span>Branding</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setOverviewDisplayMode("classic")}
+                          className="hosp360-nav-btn"
+                          style={{
+                            background: isDark360 ? "rgba(56, 189, 248, 0.15)" : "#E0F2FE",
+                            color: "#0284C7",
+                            border: "1px solid rgba(2, 132, 199, 0.3)",
+                          }}
+                        >
+                          <span>🤖</span>
+                          <span>AI / Analytics</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* CLASSIC VIEW (Rendered when overviewDisplayMode === 'classic') */
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        background: "#090D14",
+                        color: "#FFFFFF",
+                        padding: "12px 20px",
+                        borderRadius: "16px",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+                        flexWrap: "wrap",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <span className="hosp360-live-pulse" />
+                        <div>
+                          <div style={{ fontSize: "13.5px", fontWeight: 700, color: "#F8FAFC" }}>
+                            Viewing Classic Detailed Visits & Operational Logs
+                          </div>
+                          <div style={{ fontSize: "11.5px", color: "#94A3B8" }}>
+                            Hospital: {currentHosp.name} ({currentHosp.hospital_code})
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setOverviewDisplayMode("360")}
+                        className="hosp360-nav-btn"
+                        style={{
+                          background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                          color: "#FFFFFF",
+                          border: "none",
+                          boxShadow: "0 2px 10px rgba(2, 132, 199, 0.3)",
+                        }}
+                      >
+                        <span>🧭</span>
+                        <span>Open Hospital 360 Command Console</span>
+                      </button>
+                    </div>
+
+                    {/* 1. FACILITY EXECUTIVE HEADER BANNER */}
                 <div
                   style={{
                     background: `linear-gradient(135deg, #FFFFFF 0%, ${facilityAccent} 100%)`,
@@ -3040,9 +4400,11 @@ export default function SuperAdminPage({
                     </div>
                   )}
                 </div>
-              </div>
-            );
-          })()}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
           {/* TAB 1: HOSPITALS DIRECTORY */}
           {activeTab === "hospitals" && (
@@ -5451,17 +6813,39 @@ export default function SuperAdminPage({
                       const isThisDesk = currentDesk && currentDesk.id === assignDeskTarget.desk?.id;
                       return (
                         <option key={emp.id || emp.employee_id_num} value={emp.id || emp.employee_id_num}>
-                          {isOnline ? "🟢 [Online]" : "⚪ [Offline]"} {isDoc ? "🩺 [Doctor]" : "👤 [Staff]"} {emp.name || emp.username} &bull; {(emp.role || "staff").toUpperCase()} &bull; {getCategoryLabel(emp.department, language)} {currentDesk ? (isThisDesk ? "★ (Assigned Here)" : `⚠️ (Currently at ${currentDesk.desk_name})`) : "✓ (Available)"}
+                          {isOnline ? "🟢 [Online - Active]" : "⚪ [Offline - Inactive]"} {isDoc ? "🩺 [Doctor]" : "👤 [Staff]"} {emp.name || emp.username} &bull; {(emp.role || "staff").toUpperCase()} &bull; {getCategoryLabel(emp.department, language)} {currentDesk ? (isThisDesk ? "★ (Assigned Here)" : `⚠️ (Currently at ${currentDesk.desk_name})`) : "✓ (Available)"}
                         </option>
                       );
                     })}
                 </select>
+
+                {(() => {
+                  const chosenEmp = hospitalEmployees.find(e => String(e.id || e.employee_id_num) === String(assignDeskTarget.employee_id));
+                  if (chosenEmp && (chosenEmp.status || "").toLowerCase() !== "active") {
+                    return (
+                      <div style={{ marginTop: "8px", padding: "10px 14px", background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: "10px", fontSize: "12px", color: "#B91C1C", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "16px" }}>⚠️</span>
+                        <div>
+                          <strong style={{ display: "block", marginBottom: "2px" }}>
+                            {isHi ? "चिकित्सक ऑफ़लाइन / निष्क्रिय हैं" : "Doctor / Staff Member is Offline (Inactive)"}
+                          </strong>
+                          <span>
+                            {isHi
+                              ? "सिस्टम डॉक्टर उपलब्धता अनिवार्य करता है। ऑफ़लाइन कार्मिक को सक्रिय डेस्क पर नियुक्त नहीं किया जा सकता। बैकएंड इस अनुरोध को अस्वीकार करेगा।"
+                              : "Backend policy strictly enforces active doctor presence. Assignment of inactive personnel to operational desks will be rejected."}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               <div style={{ padding: "10px 12px", background: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: "8px", fontSize: "11.5px", color: "#0369A1" }}>
                 💡 {isHi
-                  ? "डॉक्टर या स्टाफ को डेस्क सौंपने पर टोकन और कतार प्रबंधन उस डेस्क से उनके नाम से संचालित होगा।"
-                  : "When a doctor or staff member is assigned to a desk, patient queues and active calls will reflect their designated consultation/service station."}
+                  ? "डॉक्टर या स्टाफ को डेस्क सौंपने पर टोकन और कतार प्रबंधन उस डेस्क से उनके नाम से संचालित होगा। केवल सक्रिय (लॉगिन) कार्मिक को ही असाइन किया जा सकता है।"
+                  : "When a doctor or staff member is assigned to a desk, patient queues and active calls will reflect their designated station. Only active, logged-in personnel can be assigned."}
               </div>
 
               <div style={{ display: "flex", gap: "10px", marginTop: "6px" }}>

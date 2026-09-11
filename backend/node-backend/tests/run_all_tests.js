@@ -11,6 +11,7 @@ const { runCancellationAdjustmentTests } = require("./cancellation_adjustment.te
 const { runDailyClosureTests } = require("./daily_closure.test");
 const { runAppointmentTests } = require("./appointments.test");
 const { runSocketTests } = require("./socket.test");
+const { runDoctorAvailabilityTests } = require("./doctor_availability.test");
 const prisma = require("../src/config/prisma");
 const engine = require("../src/services/queueEngine");
 
@@ -31,12 +32,13 @@ async function runMasterTestSuite() {
     await runCancellationAdjustmentTests();
     await runDailyClosureTests();
     await runAppointmentTests();
+    await runDoctorAvailabilityTests();
     await runSocketTests();
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
 
     console.log("================================================================================");
-    console.log(` 🎉 ALL 7 TEST SUITES COMPLETED SUCCESSFULLY IN ${elapsed}s!`);
+    console.log(` 🎉 ALL 8 TEST SUITES COMPLETED SUCCESSFULLY IN ${elapsed}s!`);
     console.log(" 💯 100% OF MIGRATION CONTRACTS & BUSINESS LOGIC VERIFIED AGAINST POSTGRESQL.");
     console.log("================================================================================");
   } catch (err) {

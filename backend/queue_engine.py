@@ -1074,6 +1074,38 @@ class PluginQueueEngine:
         filter_dept = (department or service_category or "").strip().lower()
         today = get_current_queue_date()
 
+        # Enforce desk active status, assigned doctor presence & hospital isolation
+        if desk_id:
+            with self._get_db() as conn:
+                hid = self._resolve_hospital_id(conn, tenant_id)
+                desk_row = conn.execute("""
+                    SELECT d.id, d.hospital_id, d.desk_name, d.status, d.assigned_employee_id,
+                           e.name as emp_name, e.status as emp_status, u.status as user_status, u.last_login_at
+                    FROM desks d
+                    LEFT JOIN employees e ON e.id = d.assigned_employee_id
+                    LEFT JOIN users u ON u.id = e.user_id
+                    WHERE d.id = %s
+                """, (desk_id,)).fetchone()
+                if not desk_row:
+                    raise ValueError(f"Desk #{desk_id} not found.")
+                d = dict(desk_row)
+                if d["hospital_id"] != hid:
+                    raise PermissionError(f"Hospital Isolation Violation: Desk #{desk_id} does not belong to hospital '{tenant_id}'.")
+                if (d.get("status") or "").upper() in ("INACTIVE", "CLOSED"):
+                    raise ValueError(f"Cannot assign patient: Desk #{desk_id} ('{d['desk_name']}') is INACTIVE / CLOSED.")
+                if not d.get("assigned_employee_id"):
+                    raise ValueError(f"Cannot assign patient to Desk #{desk_id} ('{d['desk_name']}'): No doctor is currently assigned to this desk.")
+
+                last_login = d.get("last_login_at")
+                now_ts = time.time()
+                is_stale = True
+                if last_login:
+                    login_ts = dt_to_epoch(last_login)
+                    if (now_ts - login_ts) <= 12 * 3600:
+                        is_stale = False
+                if not (d.get("emp_status") == "active" and d.get("user_status") == "active" and not is_stale):
+                    raise ValueError(f"Cannot assign patient: Doctor '{d.get('emp_name')}' assigned to Desk #{desk_id} is currently INACTIVE / OFFLINE. Doctor must be logged in and active before receiving new patient assignments.")
+
         # Department-scoped queue serving strictly for today's date
         temp_popped = []
         found_ticket = None
@@ -2785,9 +2817,30 @@ class PluginQueueEngine:
             emp_id = None
             if assigned_employee_id is not None and int(assigned_employee_id) > 0:
                 emp_id = int(assigned_employee_id)
-                emp_check = conn.execute("SELECT id FROM employees WHERE id = %s AND hospital_id = %s", (emp_id, hid)).fetchone()
-                if not emp_check:
-                    raise ValueError(f"Employee #{emp_id} not found in hospital '{hospital_code}'.")
+                emp_row = conn.execute("""
+                    SELECT e.id, e.hospital_id, e.name, e.status as emp_status, u.status as user_status, u.last_login_at
+                    FROM employees e
+                    JOIN users u ON u.id = e.user_id
+                    WHERE e.id = %s OR e.user_id = %s
+                """, (emp_id, emp_id)).fetchone()
+                if not emp_row:
+                    raise ValueError(f"Employee #{emp_id} not found.")
+                er = dict(emp_row)
+                if er["hospital_id"] != hid:
+                    raise PermissionError(f"Hospital Isolation Violation: Employee '{er['name']}' does not belong to hospital '{hospital_code}'.")
+                
+                # Active presence enforcement
+                last_login = er.get("last_login_at")
+                now_ts = time.time()
+                is_stale = True
+                if last_login:
+                    login_ts = dt_to_epoch(last_login)
+                    if (now_ts - login_ts) <= 12 * 3600:
+                        is_stale = False
+                if not (er.get("emp_status") == "active" and er.get("user_status") == "active" and not is_stale):
+                    raise ValueError(f"Cannot assign desk: Doctor/Staff '{er['name']}' is currently INACTIVE / OFFLINE. Only active, logged-in personnel can be assigned to active operational desks.")
+                emp_id = er["id"]
+
                 # Clear any other desk assignment for this employee in this hospital
                 conn.execute("UPDATE desks SET assigned_employee_id = NULL WHERE hospital_id = %s AND assigned_employee_id = %s", (hid, emp_id))
 
@@ -2847,10 +2900,31 @@ class PluginQueueEngine:
             target_emp_id = old_vals["assigned_employee_id"]
             if assigned_employee_id != -1:
                 if assigned_employee_id is not None and int(assigned_employee_id) > 0:
-                    target_emp_id = int(assigned_employee_id)
-                    emp_check = conn.execute("SELECT id FROM employees WHERE id = %s AND hospital_id = %s", (target_emp_id, hid)).fetchone()
-                    if not emp_check:
-                        raise ValueError(f"Employee #{target_emp_id} not found in hospital '{hospital_code}'.")
+                    parsed_emp_id = int(assigned_employee_id)
+                    emp_row = conn.execute("""
+                        SELECT e.id, e.hospital_id, e.name, e.status as emp_status, u.status as user_status, u.last_login_at
+                        FROM employees e
+                        JOIN users u ON u.id = e.user_id
+                        WHERE e.id = %s OR e.user_id = %s
+                    """, (parsed_emp_id, parsed_emp_id)).fetchone()
+                    if not emp_row:
+                        raise ValueError(f"Employee #{parsed_emp_id} not found.")
+                    er = dict(emp_row)
+                    if er["hospital_id"] != hid:
+                        raise PermissionError(f"Hospital Isolation Violation: Employee '{er['name']}' does not belong to hospital '{hospital_code}'.")
+                    
+                    # Active presence enforcement
+                    last_login = er.get("last_login_at")
+                    now_ts = time.time()
+                    is_stale = True
+                    if last_login:
+                        login_ts = dt_to_epoch(last_login)
+                        if (now_ts - login_ts) <= 12 * 3600:
+                            is_stale = False
+                    if not (er.get("emp_status") == "active" and er.get("user_status") == "active" and not is_stale):
+                        raise ValueError(f"Cannot assign desk: Doctor/Staff '{er['name']}' is currently INACTIVE / OFFLINE. Only active, logged-in personnel can be assigned to active operational desks.")
+                    target_emp_id = er["id"]
+
                     # Clear other desks for this employee
                     conn.execute("UPDATE desks SET assigned_employee_id = NULL WHERE hospital_id = %s AND assigned_employee_id = %s AND id != %s", (hid, target_emp_id, desk_id))
                 else:
@@ -2903,10 +2977,31 @@ class PluginQueueEngine:
             target_emp_id = None
 
             if employee_id is not None and int(employee_id) > 0:
-                target_emp_id = int(employee_id)
-                emp = conn.execute("SELECT id, name FROM employees WHERE id = %s AND hospital_id = %s", (target_emp_id, hid)).fetchone()
+                parsed_emp_id = int(employee_id)
+                emp = conn.execute("""
+                    SELECT e.id, e.hospital_id, e.name, e.status as emp_status, u.status as user_status, u.last_login_at
+                    FROM employees e
+                    JOIN users u ON u.id = e.user_id
+                    WHERE e.id = %s OR e.user_id = %s
+                """, (parsed_emp_id, parsed_emp_id)).fetchone()
                 if not emp:
-                    raise ValueError(f"Employee #{target_emp_id} not found in hospital '{hospital_code}'.")
+                    raise ValueError(f"Employee #{parsed_emp_id} not found.")
+                er = dict(emp)
+                if er["hospital_id"] != hid:
+                    raise PermissionError(f"Hospital Isolation Violation: Employee '{er['name']}' does not belong to hospital '{hospital_code}'.")
+                
+                # Active presence enforcement
+                last_login = er.get("last_login_at")
+                now_ts = time.time()
+                is_stale = True
+                if last_login:
+                    login_ts = dt_to_epoch(last_login)
+                    if (now_ts - login_ts) <= 12 * 3600:
+                        is_stale = False
+                if not (er.get("emp_status") == "active" and er.get("user_status") == "active" and not is_stale):
+                    raise ValueError(f"Cannot assign desk: Doctor/Staff '{er['name']}' is currently INACTIVE / OFFLINE. Only active, logged-in personnel can be assigned to active operational desks.")
+                target_emp_id = er["id"]
+
                 # Clear previous desk assignment for this employee to prevent duplicates
                 conn.execute("UPDATE desks SET assigned_employee_id = NULL WHERE hospital_id = %s AND assigned_employee_id = %s AND id != %s", (hid, target_emp_id, desk_id))
 

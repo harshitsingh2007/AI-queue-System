@@ -917,8 +917,43 @@ async function addHospitalDesk(hospitalCode, deptCode, deskName, status = "AVAIL
   if (empId) {
     const empRec = await prisma.employees.findFirst({
       where: { hospital_id: hosp.id, OR: [{ id: empId }, { user_id: empId }] },
+      include: { users: true },
     });
-    if (empRec) empId = empRec.id;
+    if (!empRec) {
+      const crossEmp = await prisma.employees.findFirst({
+        where: { OR: [{ id: empId }, { user_id: empId }] },
+        include: { hospitals: true },
+      });
+      if (crossEmp) {
+        const err = new Error(
+          `Hospital Isolation Violation: Employee '${crossEmp.name}' belongs to hospital '${crossEmp.hospitals?.name || crossEmp.hospital_id}', not '${hospitalCode}'. Cross-hospital desk assignment is strictly prohibited.`
+        );
+        err.status = 403;
+        err.code = "HOSPITAL_ISOLATION_VIOLATION";
+        throw err;
+      }
+      const err = new Error(`Employee #${empId} not found in hospital '${hospitalCode}'.`);
+      err.status = 404;
+      err.code = "EMPLOYEE_NOT_FOUND";
+      throw err;
+    }
+
+    // Availability enforcement
+    const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+    const lastLogin = empRec.users?.last_login_at ? new Date(empRec.users.last_login_at).getTime() : null;
+    const isStale = !lastLogin || (Date.now() - lastLogin > SESSION_MAX_AGE_MS);
+    const isOnline = empRec.status === "active" && empRec.users?.status === "active" && !isStale;
+
+    if (!isOnline) {
+      const err = new Error(
+        `Cannot assign desk: Doctor/Staff '${empRec.name}' is currently INACTIVE / OFFLINE. An employee must be actively logged in before being assigned to an active desk.`
+      );
+      err.status = 409;
+      err.code = "EMPLOYEE_INACTIVE";
+      throw err;
+    }
+
+    empId = empRec.id;
 
     await prisma.desks.updateMany({
       where: { hospital_id: hosp.id, assigned_employee_id: empId },
@@ -960,8 +995,43 @@ async function assignHospitalDesk(hospitalCode, deskId, employeeId) {
   if (empId) {
     const empRec = await prisma.employees.findFirst({
       where: { hospital_id: hosp.id, OR: [{ id: empId }, { user_id: empId }] },
+      include: { users: true },
     });
-    if (empRec) empId = empRec.id;
+    if (!empRec) {
+      const crossEmp = await prisma.employees.findFirst({
+        where: { OR: [{ id: empId }, { user_id: empId }] },
+        include: { hospitals: true },
+      });
+      if (crossEmp) {
+        const err = new Error(
+          `Hospital Isolation Violation: Employee '${crossEmp.name}' belongs to hospital '${crossEmp.hospitals?.name || crossEmp.hospital_id}', not '${hospitalCode}'. Cross-hospital desk assignment is strictly prohibited.`
+        );
+        err.status = 403;
+        err.code = "HOSPITAL_ISOLATION_VIOLATION";
+        throw err;
+      }
+      const err = new Error(`Employee #${employeeId} not found in hospital '${hospitalCode}'.`);
+      err.status = 404;
+      err.code = "EMPLOYEE_NOT_FOUND";
+      throw err;
+    }
+
+    // Availability enforcement
+    const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+    const lastLogin = empRec.users?.last_login_at ? new Date(empRec.users.last_login_at).getTime() : null;
+    const isStale = !lastLogin || (Date.now() - lastLogin > SESSION_MAX_AGE_MS);
+    const isOnline = empRec.status === "active" && empRec.users?.status === "active" && !isStale;
+
+    if (!isOnline) {
+      const err = new Error(
+        `Cannot assign desk: Doctor/Staff '${empRec.name}' is currently INACTIVE / OFFLINE. An employee must be actively logged in before being assigned to an active desk.`
+      );
+      err.status = 409;
+      err.code = "EMPLOYEE_INACTIVE";
+      throw err;
+    }
+
+    empId = empRec.id;
 
     // Clear any previous desk assigned to this employee
     await prisma.desks.updateMany({
@@ -1036,8 +1106,43 @@ async function updateHospitalDesk(hospitalCode, deskId, deskName, deptCode, assi
       const parsedId = parseInt(assignedEmployeeId, 10);
       const empRec = await prisma.employees.findFirst({
         where: { hospital_id: hosp.id, OR: [{ id: parsedId }, { user_id: parsedId }] },
+        include: { users: true },
       });
-      targetEmpId = empRec ? empRec.id : parsedId;
+      if (!empRec) {
+        const crossEmp = await prisma.employees.findFirst({
+          where: { OR: [{ id: parsedId }, { user_id: parsedId }] },
+          include: { hospitals: true },
+        });
+        if (crossEmp) {
+          const err = new Error(
+            `Hospital Isolation Violation: Employee '${crossEmp.name}' belongs to hospital '${crossEmp.hospitals?.name || crossEmp.hospital_id}', not '${hospitalCode}'. Cross-hospital desk assignment is strictly prohibited.`
+          );
+          err.status = 403;
+          err.code = "HOSPITAL_ISOLATION_VIOLATION";
+          throw err;
+        }
+        const err = new Error(`Employee #${parsedId} not found in hospital '${hospitalCode}'.`);
+        err.status = 404;
+        err.code = "EMPLOYEE_NOT_FOUND";
+        throw err;
+      }
+
+      // Availability enforcement
+      const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+      const lastLogin = empRec.users?.last_login_at ? new Date(empRec.users.last_login_at).getTime() : null;
+      const isStale = !lastLogin || (Date.now() - lastLogin > SESSION_MAX_AGE_MS);
+      const isOnline = empRec.status === "active" && empRec.users?.status === "active" && !isStale;
+
+      if (!isOnline) {
+        const err = new Error(
+          `Cannot assign desk: Doctor/Staff '${empRec.name}' is currently INACTIVE / OFFLINE. An employee must be actively logged in before being assigned to an active desk.`
+        );
+        err.status = 409;
+        err.code = "EMPLOYEE_INACTIVE";
+        throw err;
+      }
+
+      targetEmpId = empRec.id;
 
       // Clear previous desk assignment for this employee
       await prisma.desks.updateMany({

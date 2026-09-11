@@ -264,26 +264,169 @@ async function joinQueue({
  * STRICT CLINICAL RULE: A doctor can ONLY serve one patient at a time.
  */
 async function serveNext(tenantId, department = null, deskId = null, doctorInfo = null) {
+  let actualDept = department;
+  let actualDeskId = deskId;
+  let actualDocInfo = doctorInfo;
+
+  // Support both (tenantId, dept, deskId, doctorInfo) and (tenantId, { dept, deskId, docId, ... })
+  if (department && typeof department === "object") {
+    actualDept = department.department || department.service_category || department.filterDept || null;
+    actualDeskId = department.deskId !== undefined ? department.deskId : (department.desk_id !== undefined ? department.desk_id : deskId);
+    actualDocInfo = department.doctorInfo || department.doctor || {
+      id: department.docId || department.doctor_id || department.id || null,
+      name: department.docName || department.doctor_name || department.name || null,
+      email: department.docEmail || department.doctor_email || department.email || null,
+    };
+  }
+
   const tenant = engine._getTenant(tenantId);
   const now = Date.now() / 1000.0;
-  const filterDept = String(department || "").trim().toLowerCase();
+  const filterDept = String(actualDept || "").trim().toLowerCase();
   const today = getCurrentQueueDate();
 
   // Normalize doctor info
   let docId = null;
   let docName = null;
   let docEmail = null;
-  if (doctorInfo) {
-    if (typeof doctorInfo === "object") {
-      docId = doctorInfo.id || doctorInfo.doctor_id || null;
-      docName = doctorInfo.name || doctorInfo.doctor_name || null;
-      docEmail = doctorInfo.email || doctorInfo.doctor_email || null;
+  if (actualDocInfo) {
+    if (typeof actualDocInfo === "object") {
+      docId = actualDocInfo.id || actualDocInfo.doctor_id || null;
+      docName = actualDocInfo.name || actualDocInfo.doctor_name || null;
+      docEmail = actualDocInfo.email || actualDocInfo.doctor_email || null;
     } else {
-      docId = String(doctorInfo);
+      docId = String(actualDocInfo);
+    }
+  }
+  deskId = actualDeskId;
+
+  // 1. HOSPITAL ISOLATION & DOCTOR/DESK AVAILABILITY ENFORCEMENT
+  const hid = await engine.resolveHospitalId(tenantId);
+  const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12-hour session window
+
+  // 1a. If Desk is specified, enforce desk active status, assigned doctor active presence & hospital isolation
+  if (deskId) {
+    const dId = parseInt(deskId, 10);
+    const deskRec = await prisma.desks.findUnique({
+      where: { id: dId },
+      include: {
+        employees: { include: { users: true } },
+        departments: true,
+      },
+    });
+
+    if (!deskRec) {
+      const err = new Error(`Desk #${deskId} not found.`);
+      err.status = 404;
+      err.code = "DESK_NOT_FOUND";
+      throw err;
+    }
+
+    // Hospital Isolation Check:
+    if (deskRec.hospital_id !== hid) {
+      const err = new Error(
+        `Hospital Isolation Violation: Desk #${deskId} does not belong to hospital '${tenantId}'. Cross-hospital patient assignment is strictly prohibited.`
+      );
+      err.status = 403;
+      err.code = "HOSPITAL_ISOLATION_VIOLATION";
+      throw err;
+    }
+
+    // Desk Active Status Check:
+    const deskSt = (deskRec.status || "").toUpperCase();
+    if (deskSt === "INACTIVE" || deskRec.status === "inactive" || deskRec.is_active === false) {
+      const err = new Error(
+        `Cannot assign patient: Desk #${deskId} ('${deskRec.desk_name}') is currently INACTIVE / CLOSED.`
+      );
+      err.status = 409;
+      err.code = "DESK_INACTIVE";
+      throw err;
+    }
+
+    // Assigned Doctor Check:
+    if (!deskRec.assigned_employee_id || !deskRec.employees) {
+      const err = new Error(
+        `Cannot call patient to Desk #${deskId} ('${deskRec.desk_name}'): No doctor is currently assigned to this desk. Please assign an active doctor in the portal first.`
+      );
+      err.status = 409;
+      err.code = "DESK_UNASSIGNED";
+      throw err;
+    }
+
+    // Doctor Availability Enforcement:
+    const assignedEmp = deskRec.employees;
+    const assignedUsr = assignedEmp.users;
+    const lastLogin = assignedUsr?.last_login_at ? new Date(assignedUsr.last_login_at).getTime() : null;
+    const isStale = !lastLogin || (Date.now() - lastLogin > SESSION_MAX_AGE_MS);
+    const isDocActive = (assignedEmp.status === "active" && assignedUsr?.status === "active" && !isStale);
+
+    if (!isDocActive) {
+      const err = new Error(
+        `Cannot assign patient: Doctor '${assignedEmp.name}' assigned to Desk #${deskId} ('${deskRec.desk_name}') is currently INACTIVE / OFFLINE. Doctor must be actively logged in before receiving new patient assignments.`
+      );
+      err.status = 409;
+      err.code = "DOCTOR_INACTIVE";
+      throw err;
+    }
+
+    // Auto-propagate doctor details from verified active desk
+    if (!docId) docId = assignedEmp.user_id || assignedEmp.id;
+    if (!docName) docName = assignedEmp.name;
+    if (!docEmail) docEmail = assignedEmp.email || assignedUsr?.email;
+  }
+
+  // 1b. If Doctor is directly specified, enforce doctor active status & hospital isolation
+  if (docId || docEmail) {
+    const empRec = await prisma.employees.findFirst({
+      where: {
+        hospital_id: hid,
+        OR: [
+          ...(docId ? [{ id: parseInt(docId, 10) || -1 }, { user_id: parseInt(docId, 10) || -1 }] : []),
+          ...(docEmail ? [{ email: String(docEmail).trim().toLowerCase() }] : []),
+        ],
+      },
+      include: { users: true },
+    });
+
+    if (!empRec) {
+      // Check cross-hospital breach
+      const crossEmp = await prisma.employees.findFirst({
+        where: {
+          OR: [
+            ...(docId ? [{ id: parseInt(docId, 10) || -1 }, { user_id: parseInt(docId, 10) || -1 }] : []),
+            ...(docEmail ? [{ email: String(docEmail).trim().toLowerCase() }] : []),
+          ],
+        },
+        include: { hospitals: true },
+      });
+      if (crossEmp) {
+        const err = new Error(
+          `Hospital Isolation Violation: Doctor '${crossEmp.name}' belongs to hospital '${crossEmp.hospitals?.name || crossEmp.hospital_id}', not '${tenantId}'. Cross-hospital patient assignment is strictly prohibited.`
+        );
+        err.status = 403;
+        err.code = "HOSPITAL_ISOLATION_VIOLATION";
+        throw err;
+      }
+    } else {
+      const usr = empRec.users;
+      const lastLogin = usr?.last_login_at ? new Date(usr.last_login_at).getTime() : null;
+      const isStale = !lastLogin || (Date.now() - lastLogin > SESSION_MAX_AGE_MS);
+      const isOnline = empRec.status === "active" && usr?.status === "active" && !isStale;
+
+      if (!isOnline) {
+        const err = new Error(
+          `Cannot assign patient: Doctor '${empRec.name}' is currently INACTIVE / OFFLINE. Doctor must be actively logged in before receiving new patient assignments.`
+        );
+        err.status = 409;
+        err.code = "DOCTOR_INACTIVE";
+        throw err;
+      }
+
+      if (!docName) docName = empRec.name;
+      if (!docEmail) docEmail = empRec.email || usr?.email;
     }
   }
 
-  // 1. STRICT ENFORCEMENT: A doctor can only serve ONE patient at a time!
+  // 2. STRICT ENFORCEMENT: A doctor can only serve ONE patient at a time!
   if (docId || docEmail || docName) {
     const existingDoctorTicket = Array.from(tenant.tickets.values()).find(
       (t) =>
@@ -305,7 +448,7 @@ async function serveNext(tenantId, department = null, deskId = null, doctorInfo 
     }
   }
 
-  // 2. Desk enforcement: A desk can only serve one patient at a time
+  // 3. Desk enforcement: A desk can only serve one patient at a time
   if (deskId) {
     const existingDeskTicket = Array.from(tenant.tickets.values()).find(
       (t) =>
@@ -324,7 +467,7 @@ async function serveNext(tenantId, department = null, deskId = null, doctorInfo 
     }
   }
 
-  // 3. Department fallback: If no doctor/desk specified but active_counters reached
+  // 4. Department fallback: If no doctor/desk specified but active_counters reached
   if (!docId && !docEmail && !docName && !deskId && filterDept && filterDept !== "all") {
     const activeServing = Array.from(tenant.tickets.values()).filter(
       (t) =>
@@ -388,7 +531,6 @@ async function serveNext(tenantId, department = null, deskId = null, doctorInfo 
 
   await saveTicketToDb(foundTicket);
 
-  const hid = await engine.resolveHospitalId(tenantId);
   await engine.logQueueEvent({
     hospitalId: hid,
     ticketId: foundTicket.ticket_id,
