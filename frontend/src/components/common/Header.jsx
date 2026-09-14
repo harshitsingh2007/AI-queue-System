@@ -12,9 +12,9 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
-import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
-import { t } from "../utils/i18n";
-import { AddFamilyMemberModal, getRelationLabel } from "./FamilyMemberSwitcher";
+import { API_BASE, HOSPITAL_CONFIG } from "../../config/hospitalConfig";
+import { t } from "../../utils/i18n";
+import { AddFamilyMemberModal, getRelationLabel } from "../patient/FamilyMemberSwitcher";
 
 export default function Header({
   currentUser,

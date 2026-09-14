@@ -11,7 +11,7 @@
  */
 
 import React from "react";
-import { HOSPITAL_CONFIG } from "../config/hospitalConfig";
+import { HOSPITAL_CONFIG } from "../../config/hospitalConfig";
 
 export default function Footer({ language = "en", hospitalName, currentUser }) {
   // Derive the active hospital name from props, currentUser, localStorage, or fallback

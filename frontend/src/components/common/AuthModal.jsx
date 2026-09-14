@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { API_BASE } from "../config/hospitalConfig";
+import { API_BASE } from "../../config/hospitalConfig";
 
 export default function AuthModal({ authMode = "login", setAuthMode, onClose, onLoginSuccess, isInline = false }) {
   // Views: "login" | "signup-superadmin" | "signup-patient"

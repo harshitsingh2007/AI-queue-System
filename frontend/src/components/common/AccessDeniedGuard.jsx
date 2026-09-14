@@ -6,8 +6,8 @@
  */
 
 import React, { useState } from "react";
-import { API_BASE } from "../config/hospitalConfig";
-import { t } from "../utils/i18n";
+import { API_BASE } from "../../config/hospitalConfig";
+import { t } from "../../utils/i18n";
 
 export default function AccessDeniedGuard({ requiredRole, pageName, currentUser, onLoginSuccess, navigateTo, language = "en" }) {
   const isSuperAdminTarget = requiredRole === "super_admin" || requiredRole === "superadmin";

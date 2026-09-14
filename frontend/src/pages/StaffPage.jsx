@@ -10,8 +10,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel, getStatusLabel } from "../utils/i18n";
-import AdminHeroBanner from "../components/AdminHeroBanner";
-import Footer from "../components/Footer";
+import AdminHeroBanner from "../components/staff/AdminHeroBanner";
+import Footer from "../components/common/Footer";
 
 export default function StaffPage({
   tenantId,

@@ -7,7 +7,7 @@
  */
 
 import React, { useState } from "react";
-import { t } from "../utils/i18n";
+import { t } from "../../utils/i18n";
 
 export const getRelationLabel = (relation, language = "en") => {
   if (!relation) return t("relation_other", language);

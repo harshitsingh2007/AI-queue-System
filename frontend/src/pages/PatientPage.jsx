@@ -10,10 +10,10 @@ import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
 import { t, getCategoryLabel, getStatusLabel } from "../utils/i18n";
 import { printTokenPass, printAppointmentRecord, printPrescriptionSlip } from "../utils/printPassHelper";
-import QueueStepper from "../components/QueueStepper";
-import HeroBanner from "../components/HeroBanner";
-import Footer from "../components/Footer";
-import FamilyMemberSwitcher, { AddFamilyMemberModal, EditFamilyMemberModal, getRelationLabel } from "../components/FamilyMemberSwitcher";
+import QueueStepper from "../components/patient/QueueStepper";
+import HeroBanner from "../components/patient/HeroBanner";
+import Footer from "../components/common/Footer";
+import FamilyMemberSwitcher, { AddFamilyMemberModal, EditFamilyMemberModal, getRelationLabel } from "../components/patient/FamilyMemberSwitcher";
 
 export default function PatientPage({
   tenantId,

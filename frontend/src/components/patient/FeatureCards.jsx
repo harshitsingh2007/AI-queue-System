@@ -1,6 +1,6 @@
 import React from "react";
 import { Activity, BellRing, Scale, ShieldCheck } from "lucide-react";
-import { t } from "../utils/i18n";
+import { t } from "../../utils/i18n";
 
 export default function FeatureCards({ language = "en" }) {
   const cards = [

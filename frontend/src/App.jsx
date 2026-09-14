@@ -10,11 +10,11 @@ import { io } from "socket.io-client";
 import { API_BASE, WS_URL, HOSPITAL_CONFIG } from "./config/hospitalConfig";
 
 // Modular Components & Pages
-import Header from "./components/Header";
-import AuthModal from "./components/AuthModal";
-import AccessDeniedGuard from "./components/AccessDeniedGuard";
-import MandatoryAuthScreen from "./components/MandatoryAuthScreen";
-import ErrorBoundary from "./components/ErrorBoundary";
+import Header from "./components/common/Header";
+import AuthModal from "./components/common/AuthModal";
+import AccessDeniedGuard from "./components/common/AccessDeniedGuard";
+import MandatoryAuthScreen from "./components/common/MandatoryAuthScreen";
+import ErrorBoundary from "./components/common/ErrorBoundary";
 
 import PatientPage from "./pages/PatientPage";
 import StaffPage from "./pages/StaffPage";

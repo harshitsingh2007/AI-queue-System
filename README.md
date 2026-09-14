@@ -106,17 +106,18 @@ AI-queue-System/
         ├── App.jsx                    # Root router, portal switcher & auth management
         ├── config/                    # API endpoints & hospital branding defaults
         ├── components/
-        │   ├── Header.jsx             # Clinical navigation header bar
-        │   ├── AdminHeroBanner.jsx    # Doctor / Staff operational metrics & counters
-        │   ├── AccessDeniedGuard.jsx  # Role-based access control boundary
-        │   └── kiosk/                 # KioskHeader, NowServing, NextQueue components
+        │   ├── common/                # Header, Footer, AuthModal, AccessDeniedGuard, ErrorBoundary
+        │   ├── patient/               # HeroBanner, QueueStepper, FamilyMemberSwitcher, FeatureCards
+        │   ├── staff/                 # AdminHeroBanner operational desk widgets
+        │   ├── kiosk/                 # KioskHeader, NowServing, NextQueue, QueueSummary
+        │   └── index.js               # Centralized domain barrel exports & backward compatibility
         ├── pages/
         │   ├── PatientPage.jsx        # Patient self-service & digital boarding pass
         │   ├── StaffPage.jsx          # Doctor & Staff consultation dashboard
         │   ├── SuperAdminPage.jsx     # Network hospital management
         │   ├── KioskPage.jsx          # Standalone public queue monitor display
         │   └── DatabaseInspectorPage.jsx # Hospital-scoped PostgreSQL schema explorer
-        └── utils/                     # i18n (English & Hindi translations)
+        └── utils/                     # i18n (English & Hindi translations), voice & print helpers
 ```
 
 ---

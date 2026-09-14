@@ -13,7 +13,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
+import { API_BASE, HOSPITAL_CONFIG } from "../../config/hospitalConfig";
 
 export default function MandatoryAuthScreen({
   onLoginSuccess,

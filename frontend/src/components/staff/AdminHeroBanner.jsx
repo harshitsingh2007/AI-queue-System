@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { getCategoryLabel } from "../utils/i18n";
+import { getCategoryLabel } from "../../utils/i18n";
 
 export default function AdminHeroBanner({
   language = "en",

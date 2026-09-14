@@ -17,7 +17,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel } from "../utils/i18n";
-import Footer from "../components/Footer";
+import Footer from "../components/common/Footer";
 
 // Clean Professional Enterprise SVG Icon Components
 const IconShield = ({ size = 14, color = "currentColor" }) => (

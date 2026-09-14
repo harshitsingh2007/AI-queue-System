@@ -8,7 +8,7 @@
  */
 
 import React from "react";
-import { t } from "../utils/i18n";
+import { t } from "../../utils/i18n";
 
 export default function QueueStepper({ ticket, language = "en" }) {
   if (!ticket) return null;
