@@ -16,6 +16,7 @@ const prisma = require("./config/prisma");
 const { initSocket } = require("./socket");
 const engine = require("./services/queueEngine");
 const { startDailyClosureJob, stopDailyClosureJob } = require("./jobs/dailyClosureJob");
+const { seedDefaultKiosks } = require("./utils/seedKiosks");
 
 const server = http.createServer(app);
 
@@ -31,7 +32,10 @@ async function startServer() {
     // 2. Hydrate today's active queues into in-memory heaps
     await engine.hydrateFromDb();
 
-    // 3. Start background distributed daily closure worker
+    // 3. Seed default kiosks if not already present
+    await seedDefaultKiosks();
+
+    // 4. Start background distributed daily closure worker
     startDailyClosureJob(60000);
 
     // 4. Start HTTP & WebSocket server

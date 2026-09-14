@@ -1,0 +1,91 @@
+/**
+ * doctor.routes.js
+ * ----------------
+ * Doctor duty status endpoints: Active, On Break, Emergency Round, Off Duty.
+ */
+
+const express = require("express");
+const { optionalAuth } = require("../middleware/auth");
+const { getDoctorDutyStatus, setDoctorDutyStatus } = require("../services/ticketService");
+
+const router = express.Router();
+
+/**
+ * GET /api/v1/doctor/duty-status/:identifier
+ * identifier can be doctor user_id or email
+ */
+router.get("/doctor/duty-status/:identifier", optionalAuth, async (req, res) => {
+  try {
+    const { identifier } = req.params;
+    const dutyInfo = getDoctorDutyStatus(identifier, identifier);
+    return res.json({
+      status: "success",
+      duty: dutyInfo,
+    });
+  } catch (err) {
+    return res.status(500).json({ status: "error", message: err.message });
+  }
+});
+
+/**
+ * PUT /api/v1/doctor/duty-status
+ * POST /api/v1/doctor/duty-status
+ * Body: { doctor_id, doctor_email, status, break_type, note, tenant_id }
+ */
+const updateDutyStatusHandler = async (req, res) => {
+  try {
+    const {
+      doctor_id,
+      doctor_email,
+      status,
+      break_type,
+      note,
+      doctor_name,
+      tenant_id,
+    } = req.body;
+
+    const identifier = doctor_id || doctor_email || req.user?.id || req.user?.email;
+    if (!identifier) {
+      return res.status(400).json({ status: "error", message: "Doctor identifier (id or email) is required." });
+    }
+
+    const updated = await setDoctorDutyStatus(identifier, {
+      status,
+      break_type,
+      note,
+      doctor_name,
+      userId: doctor_id || req.user?.id,
+      email: doctor_email || req.user?.email,
+    });
+
+    // Broadcast update via Socket.IO if available
+    const io = req.app.get("io");
+    if (io) {
+      const payload = {
+        doctor_id: doctor_id || req.user?.id,
+        doctor_email: doctor_email || req.user?.email,
+        doctor_name: doctor_name || updated.doctor_name,
+        duty: updated,
+        tenant_id: tenant_id || "city-hospital-01",
+      };
+      if (tenant_id) {
+        io.to(tenant_id).emit("doctor_duty_status_changed", payload);
+      } else {
+        io.emit("doctor_duty_status_changed", payload);
+      }
+    }
+
+    return res.json({
+      status: "success",
+      message: `Doctor duty status updated to ${updated.status}`,
+      duty: updated,
+    });
+  } catch (err) {
+    return res.status(500).json({ status: "error", message: err.message });
+  }
+};
+
+router.put("/doctor/duty-status", optionalAuth, updateDutyStatusHandler);
+router.post("/doctor/duty-status", optionalAuth, updateDutyStatusHandler);
+
+module.exports = router;

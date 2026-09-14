@@ -206,6 +206,13 @@ async function noShowEndpoint(req, res, next) {
 
 async function countersEndpoint(req, res, next) {
   try {
+    const userRole = (req.user?.role || req.body?.role || "").toLowerCase();
+    if (["doctor", "staff", "nurse", "receptionist"].includes(userRole)) {
+      return res.status(403).json({
+        success: false,
+        error: "Forbidden: Doctors and staff cannot modify active desks.",
+      });
+    }
     const { tenant_id = "city-hospital-01", active_counters } = req.body;
 
     const newCount = await engine.setActiveCounters(tenant_id, active_counters);

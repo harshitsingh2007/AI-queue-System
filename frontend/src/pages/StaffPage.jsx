@@ -115,6 +115,12 @@ export default function StaffPage({
   const [loadingTrain, setLoadingTrain] = useState(false);
 
   const adminDept = currentUser && currentUser.department ? currentUser.department.toLowerCase() : "all";
+  const userRole = (currentUser?.role || "").toLowerCase();
+  const isStaffOrDoctor = ["doctor", "staff", "nurse", "receptionist"].includes(userRole);
+  const canModifyDesks = !isStaffOrDoctor && (userRole === "super_admin" || userRole === "superadmin");
+  const canViewDbInspector =
+    userRole !== "doctor" &&
+    ["receptionist", "staff", "super_admin", "superadmin", "admin"].includes(userRole);
   const primaryServing = servingTickets.length > 0 ? servingTickets[0] : null;
 
   // STRICT CLINICAL RULE: A doctor can only serve one patient at a time
@@ -132,6 +138,139 @@ export default function StaffPage({
   const isDoctorBusy = Boolean(myServingTicket);
   const [serveFeedbackMsg, setServeFeedbackMsg] = useState("");
 
+  // Doctor Duty Status & Break Timer State
+  const userStorageKey = currentUser?.id || currentUser?.email || "default_doc";
+  const [doctorDutyStatus, setDoctorDutyStatus] = useState(() => {
+    try {
+      return localStorage.getItem(`doctor_duty_status_${userStorageKey}`) || "ACTIVE";
+    } catch (e) {
+      return "ACTIVE";
+    }
+  });
+
+  const [dutyStatusChangedAt, setDutyStatusChangedAt] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`doctor_duty_timer_${userStorageKey}`);
+      return saved ? parseInt(saved, 10) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [dutyTimerText, setDutyTimerText] = useState("");
+
+  // Live timer interval for break or emergency round
+  useEffect(() => {
+    const isTimerActive = doctorDutyStatus === "ON_BREAK" || doctorDutyStatus === "EMERGENCY_ROUND";
+    if (!isTimerActive || !dutyStatusChangedAt) {
+      setDutyTimerText("");
+      return;
+    }
+
+    const updateTimer = () => {
+      const elapsedSecs = Math.max(0, Math.floor((Date.now() - dutyStatusChangedAt) / 1000));
+      const mins = Math.floor(elapsedSecs / 60);
+      const secs = elapsedSecs % 60;
+      setDutyTimerText(`${mins.toString().padStart(2, "0")}m ${secs.toString().padStart(2, "0")}s`);
+    };
+
+    updateTimer();
+    const timerInterval = setInterval(updateTimer, 1000);
+    return () => clearInterval(timerInterval);
+  }, [doctorDutyStatus, dutyStatusChangedAt]);
+
+  // Handle duty status change
+  const handleUpdateDutyStatus = useCallback(
+    async (newStatus) => {
+      const finalStatus = (newStatus || "ACTIVE").toUpperCase();
+      setDoctorDutyStatus(finalStatus);
+
+      let timestamp = dutyStatusChangedAt;
+      if (finalStatus === "ON_BREAK" || finalStatus === "EMERGENCY_ROUND") {
+        if (!dutyStatusChangedAt || doctorDutyStatus === "ACTIVE" || doctorDutyStatus === "OFF_DUTY") {
+          timestamp = Date.now();
+          setDutyStatusChangedAt(timestamp);
+        }
+      } else {
+        timestamp = null;
+        setDutyStatusChangedAt(null);
+      }
+
+      try {
+        localStorage.setItem(`doctor_duty_status_${userStorageKey}`, finalStatus);
+        if (timestamp) {
+          localStorage.setItem(`doctor_duty_timer_${userStorageKey}`, String(timestamp));
+        } else {
+          localStorage.removeItem(`doctor_duty_timer_${userStorageKey}`);
+        }
+      } catch (e) {}
+
+      // Emit over socket or fallback to HTTP
+      const payload = {
+        tenant_id: effectiveHospitalCode || tenantId,
+        doctor_id: currentUser?.id,
+        doctor_email: currentUser?.email,
+        doctor_name: currentUser?.name || currentUser?.username,
+        status: finalStatus,
+        break_type: finalStatus === "ON_BREAK" ? "tea" : finalStatus === "EMERGENCY_ROUND" ? "emergency" : null,
+      };
+
+      if (socketRef && socketRef.current) {
+        socketRef.current.emit("update_doctor_duty_status", payload);
+      }
+
+      fetch(`${API_BASE}/api/v1/doctor/duty-status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    },
+    [currentUser, tenantId, effectiveHospitalCode, socketRef, userStorageKey, dutyStatusChangedAt, doctorDutyStatus]
+  );
+
+  // Sync initial status from server on mount
+  useEffect(() => {
+    const docId = currentUser?.id || currentUser?.email;
+    if (!docId) return;
+
+    fetch(`${API_BASE}/api/v1/doctor/duty-status/${encodeURIComponent(docId)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.status === "success" && d.duty && d.duty.status) {
+          setDoctorDutyStatus(d.duty.status);
+          if (d.duty.status === "ON_BREAK" || d.duty.status === "EMERGENCY_ROUND") {
+            setDutyStatusChangedAt(d.duty.status_changed_at || Date.now());
+          }
+        }
+      })
+      .catch(() => {});
+  }, [currentUser]);
+
+  // Socket listener for remote duty status updates
+  useEffect(() => {
+    if (!socketRef || !socketRef.current) return;
+    const s = socketRef.current;
+    const handleDutyChange = (data) => {
+      if (!data) return;
+      const matchesDoc =
+        (data.doctor_id && currentUser?.id && String(data.doctor_id) === String(currentUser.id)) ||
+        (data.doctor_email && currentUser?.email && String(data.doctor_email).toLowerCase() === String(currentUser.email).toLowerCase());
+
+      if (matchesDoc && data.duty) {
+        setDoctorDutyStatus(data.duty.status);
+        if (data.duty.status === "ON_BREAK" || data.duty.status === "EMERGENCY_ROUND") {
+          setDutyStatusChangedAt(data.duty.status_changed_at || Date.now());
+        } else {
+          setDutyStatusChangedAt(null);
+        }
+      }
+    };
+    s.on("doctor_duty_status_changed", handleDutyChange);
+    return () => {
+      s.off("doctor_duty_status_changed", handleDutyChange);
+    };
+  }, [socketRef, currentUser]);
+
   useEffect(() => {
     const handleServeErr = (e) => {
       if (e.detail?.message) {
@@ -144,6 +283,23 @@ export default function StaffPage({
   }, []);
 
   const onCallNextPatient = () => {
+    // 1. Guard against calling while on Break / Emergency / Off Duty
+    if (doctorDutyStatus !== "ACTIVE") {
+      const statusNames = {
+        ON_BREAK: language === "hi" ? "चाय / अल्पाहार अवकाश" : "Tea / Lunch Break",
+        EMERGENCY_ROUND: language === "hi" ? "आपातकालीन राउंड" : "Emergency / ICU Round",
+        OFF_DUTY: language === "hi" ? "ड्यूटी समाप्त" : "Off Duty (Shift Ended)",
+      };
+      setServeFeedbackMsg(
+        language === "hi"
+          ? `☕ आप वर्तमान में '${statusNames[doctorDutyStatus] || doctorDutyStatus}' पर हैं। कतार से मरीज़ों को बुलाने हेतु कृपया अपनी स्थिति 'सक्रिय (Active)' करें।`
+          : `☕ You are currently on ${statusNames[doctorDutyStatus] || doctorDutyStatus}. Automatic patient routing is paused. Switch your status to 'Active' to call the next patient.`
+      );
+      setTimeout(() => setServeFeedbackMsg(""), 7000);
+      return;
+    }
+
+    // 2. Strict clinical rule: 1 patient per doctor
     if (isDoctorBusy && myServingTicket) {
       setServeFeedbackMsg(
         language === "hi"
@@ -689,11 +845,15 @@ export default function StaffPage({
         servingTicket={primaryServing}
         nextTicket={queueSnapshot.length > 0 ? queueSnapshot[0] : null}
         appointmentsCount={appointments.length}
-        handleCounterChange={handleCounterChange}
+        handleCounterChange={canModifyDesks ? handleCounterChange : null}
         handleServeNext={onCallNextPatient}
         isDoctorBusy={isDoctorBusy}
         myServingTicket={myServingTicket}
         navigateTo={navigateTo}
+        doctorDutyStatus={doctorDutyStatus}
+        onUpdateDutyStatus={handleUpdateDutyStatus}
+        dutyTimerText={dutyTimerText}
+        onEndBreak={() => handleUpdateDutyStatus("ACTIVE")}
       />
 
       {/* 2. UNIFIED ADMIN NAVIGATION HUB (4 TABS) */}
@@ -857,9 +1017,9 @@ export default function StaffPage({
                 <button
                   type="button"
                   onClick={onCallNextPatient}
-                  className={`admin-action-btn-primary ${isDoctorBusy ? "busy-disabled" : ""}`}
+                  className={`admin-action-btn-primary ${isDoctorBusy || doctorDutyStatus !== "ACTIVE" ? "busy-disabled" : ""}`}
                   style={
-                    isDoctorBusy
+                    isDoctorBusy || doctorDutyStatus !== "ACTIVE"
                       ? {
                           background: "#F1F5F9",
                           color: "#64748B",
@@ -875,6 +1035,12 @@ export default function StaffPage({
                       ? (language === "hi"
                           ? `वर्तमान में टोकन #${myServingTicket.ticket_id} का परामर्श चल रहा है। 1 डॉक्टर = 1 मरीज़।`
                           : `Currently consulting #${myServingTicket.ticket_id}. Finish first to call next patient.`)
+                      : doctorDutyStatus === "ON_BREAK"
+                      ? (language === "hi" ? "अवकाश पर हैं (कतार कॉलिंग रुकी है)" : "On Break: Patient routing paused")
+                      : doctorDutyStatus === "EMERGENCY_ROUND"
+                      ? (language === "hi" ? "इमरजेंसी राउंड पर हैं" : "Emergency Round: Patient routing paused")
+                      : doctorDutyStatus === "OFF_DUTY"
+                      ? (language === "hi" ? "ड्यूटी समाप्त" : "Shift Ended: Desk Closed")
                       : "Call Next Patient in AI Priority Order"
                   }
                 >
@@ -887,6 +1053,31 @@ export default function StaffPage({
                           : `In Consultation (#${myServingTicket.ticket_id})`}
                       </span>
                     </>
+                  ) : doctorDutyStatus === "ON_BREAK" ? (
+                    <>
+                      <span style={{ fontSize: "14px" }}>☕</span>
+                      <span>
+                        {language === "hi"
+                          ? `अवकाश पर (${dutyTimerText || "रुकी है"})`
+                          : `On Break (${dutyTimerText || "Paused"})`}
+                      </span>
+                    </>
+                  ) : doctorDutyStatus === "EMERGENCY_ROUND" ? (
+                    <>
+                      <span style={{ fontSize: "14px" }}>🚨</span>
+                      <span>
+                        {language === "hi"
+                          ? `इमरजेंसी राउंड (${dutyTimerText || "रुकी है"})`
+                          : `ICU Round (${dutyTimerText || "Paused"})`}
+                      </span>
+                    </>
+                  ) : doctorDutyStatus === "OFF_DUTY" ? (
+                    <>
+                      <span style={{ fontSize: "14px" }}>🛑</span>
+                      <span>
+                        {language === "hi" ? "ड्यूटी समाप्त" : "Off Duty (Closed)"}
+                      </span>
+                    </>
                   ) : (
                     <>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -897,6 +1088,89 @@ export default function StaffPage({
                   )}
                 </button>
               </div>
+
+              {/* Duty Paused Alert Banner (When on Break / Emergency / Off Duty) */}
+              {doctorDutyStatus !== "ACTIVE" && (
+                <div
+                  style={{
+                    marginBottom: "18px",
+                    padding: "14px 18px",
+                    borderRadius: "14px",
+                    background:
+                      doctorDutyStatus === "ON_BREAK"
+                        ? "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)"
+                        : doctorDutyStatus === "EMERGENCY_ROUND"
+                        ? "linear-gradient(135deg, #FFF1F2 0%, #FFE4E6 100%)"
+                        : "linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)",
+                    border:
+                      doctorDutyStatus === "ON_BREAK"
+                        ? "1.5px solid #FCD34D"
+                        : doctorDutyStatus === "EMERGENCY_ROUND"
+                        ? "1.5px solid #FECDD3"
+                        : "1.5px solid #CBD5E1",
+                    color:
+                      doctorDutyStatus === "ON_BREAK"
+                        ? "#92400E"
+                        : doctorDutyStatus === "EMERGENCY_ROUND"
+                        ? "#9F1239"
+                        : "#334155",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "14px",
+                    flexWrap: "wrap",
+                    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.04)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: "260px" }}>
+                    <span style={{ fontSize: "24px" }}>
+                      {doctorDutyStatus === "ON_BREAK" ? "☕" : doctorDutyStatus === "EMERGENCY_ROUND" ? "🚨" : "🛑"}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: "13.5px", fontWeight: 800 }}>
+                        {doctorDutyStatus === "ON_BREAK"
+                          ? (language === "hi" ? "चाय / अल्पाहार अवकाश सक्रिय" : "Duty Paused: Doctor on Break")
+                          : doctorDutyStatus === "EMERGENCY_ROUND"
+                          ? (language === "hi" ? "आपातकालीन / वार्ड राउंड सक्रिय" : "Duty Paused: Emergency / ICU Round")
+                          : (language === "hi" ? "ड्यूटी समाप्त (ऑफ ड्यूटी)" : "Shift Ended: Desk Consultation Closed")}
+                        {dutyTimerText && (
+                          <span style={{ marginLeft: "8px", fontWeight: 900, background: "rgba(0,0,0,0.06)", padding: "2px 8px", borderRadius: "6px" }}>
+                            ⏱️ {dutyTimerText}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: "12px", opacity: 0.9, marginTop: "2px" }}>
+                        {language === "hi"
+                          ? "मरीज़ों को खाली डेस्क के बाहर प्रतीक्षा से बचाने हेतु स्वचालित कतार आवंटन रोक दिया गया है।"
+                          : "Automatic queue routing is paused to prevent patients from waiting outside an unattended room."}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateDutyStatus("ACTIVE")}
+                    style={{
+                      padding: "8px 16px",
+                      borderRadius: "10px",
+                      border: "none",
+                      background: "#10B981",
+                      color: "#FFFFFF",
+                      fontSize: "12.5px",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <span>✓</span>
+                    <span>{language === "hi" ? "ड्यूटी पुनः प्रारंभ करें" : "Resume Active Duty"}</span>
+                  </button>
+                </div>
+              )}
 
               {serveFeedbackMsg && (
                 <div
@@ -1519,13 +1793,13 @@ export default function StaffPage({
             </div>
           )}
 
-          {/* 3. Quick Operations Launcher */}
-          <div className="telemetry-sidebar-card">
-            <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A" }}>
-              ⚡ {language === "hi" ? "त्वरित संचालन शॉर्टकट" : "Operations Shortcuts"}
-            </span>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {navigateTo && (
+          {/* 3. Quick Operations Launcher - Staff/Receptionist and Super Admin only (Doctors excluded) */}
+          {canViewDbInspector && navigateTo && (
+            <div className="telemetry-sidebar-card">
+              <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A" }}>
+                ⚡ {language === "hi" ? "त्वरित संचालन शॉर्टकट" : "Operations Shortcuts"}
+              </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 <button
                   type="button"
                   onClick={() => navigateTo("db")}
@@ -1549,9 +1823,9 @@ export default function StaffPage({
                   <span>🗄️</span>
                   <span>{language === "hi" ? "डेटाबेस निरीक्षक खोलें" : "Open Database Inspector"}</span>
                 </button>
-              )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* 4. Emergency & Security Triage Pill */}
           <div className="telemetry-sidebar-card" style={{ background: "#FEF2F2", borderColor: "#FECACA" }}>

@@ -14,6 +14,8 @@ const hospitalRoutes = require("./hospital.routes");
 const historicalRoutes = require("./historical.routes");
 const qrRoutes = require("./qr.routes");
 const healthRoutes = require("./health.routes");
+const doctorRoutes = require("./doctor.routes");
+const kioskRoutes = require("./kiosk.routes");
 const { getUserHistory } = require("../controllers/auth.controller");
 const { optionalAuth } = require("../middleware/auth");
 
@@ -48,5 +50,11 @@ router.use("/api/v1", historicalRoutes);
 
 // QR generator routes (/api/v1/plugin/qr/*, /api/v1/plugin/ticket-qr/*)
 router.use("/api/v1", qrRoutes);
+
+// Doctor duty status & availability (/api/v1/doctor/*)
+router.use("/api/v1", doctorRoutes);
+
+// Kiosk & Terminal endpoints (/api/v1/kiosk/*, /api/v1/hospitals/:code/kiosks)
+router.use("/api/v1", kioskRoutes);
 
 module.exports = router;

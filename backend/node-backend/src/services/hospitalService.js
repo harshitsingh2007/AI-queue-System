@@ -1229,8 +1229,26 @@ async function updateDeskStatus(deskId, status) {
 
 /**
  * Dynamic Database Inspector for Admin Portal.
+ * Strictly scopes table counts, schemas, and preview records to the active hospital.
  */
-async function getDatabaseOverview() {
+async function getDatabaseOverview(hospitalCode = null) {
+  let hospital = null;
+  if (hospitalCode && hospitalCode !== "all") {
+    hospital = await prisma.hospitals.findUnique({
+      where: { hospital_code: String(hospitalCode).trim() },
+    });
+  }
+
+  // If not found or not specified, fall back to default or first hospital to guarantee isolation
+  if (!hospital) {
+    hospital = await prisma.hospitals.findUnique({
+      where: { hospital_code: "city-hospital-01" },
+    }) || await prisma.hospitals.findFirst();
+  }
+
+  const hid = hospital ? hospital.id : null;
+  const hcode = hospital ? hospital.hospital_code : "";
+
   const tables = [
     "users", "hospitals", "departments", "patients", "family_members",
     "employees", "desks", "kiosks", "appointments", "appointment_status_history",
@@ -1242,9 +1260,6 @@ async function getDatabaseOverview() {
 
   for (const tbl of tables) {
     try {
-      const countRes = await prisma.$queryRawUnsafe(`SELECT count(*)::int as cnt FROM ${tbl};`);
-      const cnt = countRes[0]?.cnt || 0;
-
       const schemaRows = await prisma.$queryRawUnsafe(`
         SELECT column_name, data_type, is_nullable
         FROM information_schema.columns
@@ -1252,12 +1267,93 @@ async function getDatabaseOverview() {
         ORDER BY ordinal_position ASC;
       `);
 
-      const previewQuery =
-        tbl !== "tenant_config" && tbl !== "tenant_mapping" && tbl !== "family_members"
-          ? `SELECT * FROM ${tbl} ORDER BY id DESC LIMIT 5;`
-          : `SELECT * FROM ${tbl} LIMIT 5;`;
+      let countSql = "";
+      let previewSql = "";
 
-      const rows = await prisma.$queryRawUnsafe(previewQuery);
+      if (!hid) {
+        countSql = `SELECT count(*)::int as cnt FROM ${tbl};`;
+        previewSql = tbl !== "tenant_config" && tbl !== "tenant_mapping" && tbl !== "family_members"
+          ? `SELECT * FROM ${tbl} ORDER BY id DESC LIMIT 10;`
+          : `SELECT * FROM ${tbl} LIMIT 10;`;
+      } else {
+        switch (tbl) {
+          case "hospitals":
+            countSql = `SELECT count(*)::int as cnt FROM hospitals WHERE id = ${hid};`;
+            previewSql = `SELECT * FROM hospitals WHERE id = ${hid} LIMIT 10;`;
+            break;
+          case "departments":
+            countSql = `SELECT count(*)::int as cnt FROM departments WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM departments WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "desks":
+            countSql = `SELECT count(*)::int as cnt FROM desks WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM desks WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "kiosks":
+            countSql = `SELECT count(*)::int as cnt FROM kiosks WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM kiosks WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "employees":
+            countSql = `SELECT count(*)::int as cnt FROM employees WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM employees WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "appointments":
+            countSql = `SELECT count(*)::int as cnt FROM appointments WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM appointments WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "appointment_status_history":
+            countSql = `SELECT count(*)::int as cnt FROM appointment_status_history ash JOIN appointments a ON ash.appointment_id = a.appointment_id WHERE a.hospital_id = ${hid};`;
+            previewSql = `SELECT ash.* FROM appointment_status_history ash JOIN appointments a ON ash.appointment_id = a.appointment_id WHERE a.hospital_id = ${hid} ORDER BY ash.id DESC LIMIT 10;`;
+            break;
+          case "tickets":
+            countSql = `SELECT count(*)::int as cnt FROM tickets WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM tickets WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "queue_events":
+            countSql = `SELECT count(*)::int as cnt FROM queue_events WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM queue_events WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "service_logs":
+            countSql = `SELECT count(*)::int as cnt FROM service_logs WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM service_logs WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "tenant_historical_data":
+            countSql = `SELECT count(*)::int as cnt FROM tenant_historical_data WHERE hospital_id = ${hid} OR legacy_tenant_id = '${hcode}';`;
+            previewSql = `SELECT * FROM tenant_historical_data WHERE hospital_id = ${hid} OR legacy_tenant_id = '${hcode}' ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "tenant_config":
+            countSql = `SELECT count(*)::int as cnt FROM tenant_config WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM tenant_config WHERE hospital_id = ${hid} LIMIT 10;`;
+            break;
+          case "tenant_mapping":
+            countSql = `SELECT count(*)::int as cnt FROM tenant_mapping WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM tenant_mapping WHERE hospital_id = ${hid} LIMIT 10;`;
+            break;
+          case "audit_logs":
+            countSql = `SELECT count(*)::int as cnt FROM audit_logs WHERE hospital_id = ${hid};`;
+            previewSql = `SELECT * FROM audit_logs WHERE hospital_id = ${hid} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "users":
+            countSql = `SELECT count(*)::int as cnt FROM users WHERE primary_hospital_code = '${hcode}' OR id IN (SELECT user_id FROM employees WHERE hospital_id = ${hid}) OR id = ${hospital.owner_user_id || -1};`;
+            previewSql = `SELECT * FROM users WHERE primary_hospital_code = '${hcode}' OR id IN (SELECT user_id FROM employees WHERE hospital_id = ${hid}) OR id = ${hospital.owner_user_id || -1} ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "patients":
+            countSql = `SELECT count(*)::int as cnt FROM patients WHERE id IN (SELECT patient_id FROM tickets WHERE hospital_id = ${hid} AND patient_id IS NOT NULL) OR id IN (SELECT patient_id FROM appointments WHERE hospital_id = ${hid} AND patient_id IS NOT NULL) OR user_id IN (SELECT id FROM users WHERE primary_hospital_code = '${hcode}');`;
+            previewSql = `SELECT * FROM patients WHERE id IN (SELECT patient_id FROM tickets WHERE hospital_id = ${hid} AND patient_id IS NOT NULL) OR id IN (SELECT patient_id FROM appointments WHERE hospital_id = ${hid} AND patient_id IS NOT NULL) OR user_id IN (SELECT id FROM users WHERE primary_hospital_code = '${hcode}') ORDER BY id DESC LIMIT 10;`;
+            break;
+          case "family_members":
+            countSql = `SELECT count(*)::int as cnt FROM family_members WHERE patient_id IN (SELECT id FROM patients WHERE id IN (SELECT patient_id FROM tickets WHERE hospital_id = ${hid} AND patient_id IS NOT NULL) OR id IN (SELECT patient_id FROM appointments WHERE hospital_id = ${hid} AND patient_id IS NOT NULL) OR user_id IN (SELECT id FROM users WHERE primary_hospital_code = '${hcode}')) OR user_id IN (SELECT id FROM users WHERE primary_hospital_code = '${hcode}' OR id IN (SELECT user_id FROM employees WHERE hospital_id = ${hid}));`;
+            previewSql = `SELECT * FROM family_members WHERE patient_id IN (SELECT id FROM patients WHERE id IN (SELECT patient_id FROM tickets WHERE hospital_id = ${hid} AND patient_id IS NOT NULL) OR id IN (SELECT patient_id FROM appointments WHERE hospital_id = ${hid} AND patient_id IS NOT NULL) OR user_id IN (SELECT id FROM users WHERE primary_hospital_code = '${hcode}')) OR user_id IN (SELECT id FROM users WHERE primary_hospital_code = '${hcode}' OR id IN (SELECT user_id FROM employees WHERE hospital_id = ${hid})) ORDER BY created_at DESC LIMIT 10;`;
+            break;
+          default:
+            countSql = `SELECT count(*)::int as cnt FROM ${tbl};`;
+            previewSql = `SELECT * FROM ${tbl} LIMIT 10;`;
+        }
+      }
+
+      const countRes = await prisma.$queryRawUnsafe(countSql);
+      const cnt = countRes[0]?.cnt || 0;
+      const rows = await prisma.$queryRawUnsafe(previewSql);
 
       const sanitizedRows = rows.map((r) => {
         const copy = { ...r };
@@ -1281,7 +1377,22 @@ async function getDatabaseOverview() {
     }
   }
 
-  return result;
+  const allHospitals = await prisma.hospitals.findMany({
+    select: { id: true, hospital_code: true, name: true },
+    orderBy: { name: "asc" },
+  }).catch(() => []);
+
+  return {
+    tables: result,
+    hospital: hospital ? {
+      id: hospital.id,
+      hospital_code: hospital.hospital_code,
+      name: hospital.name,
+      address: hospital.address,
+      status: hospital.status,
+    } : null,
+    all_hospitals: allHospitals,
+  };
 }
 
 /**

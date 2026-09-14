@@ -44,7 +44,7 @@ async function runAppointmentTests() {
       },
     },
     mockRes,
-    () => {}
+    () => { }
   );
 
   // 1. Book a Future Appointment (safe offset regardless of UTC midnight boundary)

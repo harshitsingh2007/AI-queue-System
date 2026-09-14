@@ -35,12 +35,14 @@ function getInitialPage(user) {
   }
   const userRole = effectiveUser ? (effectiveUser.role || "").toLowerCase() : "";
   const isSuperAdminUser = userRole === "super_admin" || userRole === "superadmin";
-  const isStaffUser = ["admin", "doctor", "staff", "receptionist"].includes(userRole);
+  const path = window.location.pathname.toLowerCase();
+  if (path.startsWith("/kiosk") || path.includes("kiosk") || path.includes("tv")) return "kiosk";
 
   const params = new URLSearchParams(window.location.search);
   const pageParam = params.get("page") || params.get("view");
   if (pageParam && pageParam.toLowerCase() !== "hub") {
     const p = pageParam.toLowerCase();
+    if (p === "kiosk" || p === "tv") return "kiosk";
     // Tab aliases for the patient portal should route to patient page
     if (["patient", "history", "appointment_history", "past_appointments", "my_apts", "appointments", "my_appointments", "book", "family"].includes(p)) {
       if (isSuperAdminUser) return "superadmin";
@@ -50,9 +52,7 @@ function getInitialPage(user) {
     return p;
   }
 
-  const path = window.location.pathname.toLowerCase();
   if (path.includes("superadmin") || path.includes("super_admin")) return "superadmin";
-  if (path.includes("kiosk") || path.includes("tv")) return "kiosk";
   if (path.includes("staff") || path.includes("doctor")) return "staff";
   if (path.includes("admin") || path.includes("ml")) return "admin";
   if (path.includes("db") || path.includes("database")) return "db";
@@ -86,6 +86,13 @@ export default function App() {
   const [currentHospitalTenant, setCurrentHospitalTenant] = useState(() => {
     try {
       if (typeof window !== "undefined") {
+        const path = window.location.pathname;
+        const parts = path.split("/").filter(Boolean);
+        const kioskIdx = parts.findIndex((p) => p.toLowerCase() === "kiosk");
+        if (kioskIdx !== -1 && parts[kioskIdx + 1]) {
+          return parts[kioskIdx + 1];
+        }
+
         const p = new URLSearchParams(window.location.search);
         const urlHosp = p.get("hospital") || p.get("tenant") || p.get("facility");
         if (urlHosp) return urlHosp;
@@ -439,6 +446,11 @@ export default function App() {
   const isSuperAdmin = currentUser && (currentUser.role === "super_admin" || currentUser.role === "superadmin");
   const isStaffOrAdmin = currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role);
   const isAdmin = isStaffOrAdmin;
+  const userRole = (currentUser?.role || "").toLowerCase();
+  const canAccessDbInspector =
+    Boolean(currentUser) &&
+    userRole !== "doctor" &&
+    ["receptionist", "staff", "super_admin", "superadmin", "admin"].includes(userRole);
   const adminDepartment = currentUser && currentUser.department ? currentUser.department.toLowerCase() : "all";
   const adminDeptRef = useRef(adminDepartment);
   const activePageRef = useRef(activePage);
@@ -734,13 +746,35 @@ export default function App() {
   };
 
   const handleCounterChange = async (delta) => {
+    const userRole = (currentUser?.role || "").toLowerCase();
+    if (["doctor", "staff", "nurse", "receptionist"].includes(userRole)) {
+      return;
+    }
     const current = analytics ? analytics.active_counters : 2;
     const next = Math.max(1, current + delta);
-    if (socketRef.current) socketRef.current.emit("set_counters", { tenant_id: tenantId, active_counters: next });
+    if (socketRef.current) socketRef.current.emit("set_counters", { tenant_id: tenantId, active_counters: next, role: userRole });
   };
 
+  // Dedicated Independent Kiosk Portal (Full-Viewport, Zero Patient/Doctor Navbar, No Auth Required)
+  if (activePage === "kiosk") {
+    return (
+      <ErrorBoundary fallbackTitle="Hospital Kiosk Display Error">
+        <KioskPage
+          tenantId={tenantId}
+          analytics={analytics}
+          servingTickets={servingTickets}
+          queueSnapshot={queueSnapshot}
+          kioskQrData={kioskQrData}
+          language={language}
+          setLanguage={setLanguage}
+          navigateTo={navigateTo}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   // Dedicated full-viewport view for unauthenticated login screen (no outer wrapper padding / scrolling)
-  if (!currentUser && activePage !== "kiosk") {
+  if (!currentUser) {
     return (
       <div style={{ minHeight: "100vh", width: "100vw", overflowX: "hidden", margin: 0, padding: 0 }}>
         <MandatoryAuthScreen
@@ -900,31 +934,21 @@ export default function App() {
             )}
 
             {activePage === "db" && (
-              !isAdmin ? (
+              !canAccessDbInspector ? (
                 <AccessDeniedGuard
-                  requiredRole="admin"
+                  requiredRole="staff"
                   pageName="Database Inspector"
                   currentUser={currentUser}
                   onLoginSuccess={handleLoginSuccess}
                   navigateTo={navigateTo}
                 />
               ) : (
-                <DatabaseInspectorPage />
+                <DatabaseInspectorPage
+                  currentUser={currentUser}
+                  currentHospitalTenant={currentHospitalTenant}
+                  tenantId={tenantId}
+                />
               )
-            )}
-
-            {activePage === "kiosk" && (
-              <KioskPage
-                tenantId={tenantId}
-                analytics={analytics}
-                servingTickets={servingTickets}
-                queueSnapshot={queueSnapshot}
-                kioskQrData={kioskQrData}
-                language={language}
-                setLanguage={setLanguage}
-                currentUser={currentUser}
-                navigateTo={navigateTo}
-              />
             )}
           </>
         </main>

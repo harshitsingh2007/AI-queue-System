@@ -8,7 +8,7 @@
  * - Mobile: Gracefully stacked layout
  */
 
-import React from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { getCategoryLabel } from "../utils/i18n";
 
 export default function AdminHeroBanner({
@@ -28,6 +28,10 @@ export default function AdminHeroBanner({
   isDoctorBusy = false,
   myServingTicket = null,
   navigateTo,
+  doctorDutyStatus = "ACTIVE",
+  onUpdateDutyStatus = null,
+  dutyTimerText = "",
+  onEndBreak = null,
 }) {
   const isHi = language === "hi";
   const deptLabel = getCategoryLabel(adminDept, language);
@@ -54,6 +58,73 @@ export default function AdminHeroBanner({
   const patientsServed = analytics 
     ? `${(analytics.total_completed || 0) + (analytics.currently_serving || 0)}` 
     : "0";
+
+  const userRole = (currentUser?.role || "").toLowerCase();
+  const isStaffOrDoctor = ["doctor", "staff", "nurse", "receptionist"].includes(userRole);
+  const canModifyDesks = !isStaffOrDoctor && (userRole === "super_admin" || userRole === "superadmin");
+
+  const [showDutyMenu, setShowDutyMenu] = useState(false);
+  const dutyMenuRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dutyMenuRef.current && !dutyMenuRef.current.contains(event.target)) {
+        setShowDutyMenu(false);
+      }
+    }
+    if (showDutyMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showDutyMenu]);
+
+  const dutyOptions = [
+    {
+      id: "ACTIVE",
+      label: isHi ? "सक्रिय (ड्यूटी पर)" : "Active (Ready to Call)",
+      badgeLabel: isHi ? "सक्रिय" : "Active",
+      icon: "🟢",
+      color: "#10B981",
+      bg: "rgba(16, 185, 129, 0.18)",
+      border: "rgba(16, 185, 129, 0.4)",
+      desc: isHi ? "मरीज़ों को बुलाने एवं परामर्श हेतु तैयार" : "Available to receive & call patients",
+    },
+    {
+      id: "ON_BREAK",
+      label: isHi ? "चाय / अल्पाहार अवकाश" : "On Tea / Lunch Break",
+      badgeLabel: isHi ? "अवकाश पर" : "On Break",
+      icon: "☕",
+      color: "#F59E0B",
+      bg: "rgba(245, 158, 11, 0.2)",
+      border: "rgba(245, 158, 11, 0.5)",
+      desc: isHi ? "कतार कॉलिंग रुकी है, टाइमर सक्रिय" : "Pauses patient routing & starts timer",
+    },
+    {
+      id: "EMERGENCY_ROUND",
+      label: isHi ? "आपातकालीन / वार्ड राउंड" : "Emergency / ICU Round",
+      badgeLabel: isHi ? "इमरजेंसी राउंड" : "ICU Round",
+      icon: "🚨",
+      color: "#F43F5E",
+      bg: "rgba(244, 63, 94, 0.2)",
+      border: "rgba(244, 63, 94, 0.5)",
+      desc: isHi ? "आपातकालीन वार्ड या आईसीयू में उपस्थित" : "Doctor attending emergency patients",
+    },
+    {
+      id: "OFF_DUTY",
+      label: isHi ? "ड्यूटी समाप्त (ऑफ ड्यूटी)" : "Shift Ended (Off Duty)",
+      badgeLabel: isHi ? "ड्यूटी समाप्त" : "Off Duty",
+      icon: "🛑",
+      color: "#94A3B8",
+      bg: "rgba(148, 163, 184, 0.18)",
+      border: "rgba(148, 163, 184, 0.4)",
+      desc: isHi ? "आज का परामर्श समाप्त, डेस्क बंद" : "Desk consultation closed for today",
+    },
+  ];
+
+  const currentDuty = dutyOptions.find((d) => d.id === doctorDutyStatus) || dutyOptions[0];
+  const isOnBreakOrEmergency = doctorDutyStatus === "ON_BREAK" || doctorDutyStatus === "EMERGENCY_ROUND";
 
   return (
     <div style={heroContainerStyle} className="hero-banner-container">
@@ -254,6 +325,81 @@ export default function AdminHeroBanner({
           transform: translateY(-1px);
         }
 
+        @keyframes pulseTimerGlow {
+          0% {
+            box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+          }
+          70% {
+            box-shadow: 0 0 0 7px rgba(245, 158, 11, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+          }
+        }
+
+        @keyframes pulseEmergencyGlow {
+          0% {
+            box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.8);
+          }
+          70% {
+            box-shadow: 0 0 0 7px rgba(244, 63, 94, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
+          }
+        }
+
+        .duty-status-badge-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 3px 10px;
+          border-radius: 9999px;
+          font-size: 11.5px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          outline: none;
+          user-select: none;
+        }
+
+        .duty-status-badge-btn:hover {
+          transform: translateY(-1px);
+          filter: brightness(1.2);
+        }
+
+        .duty-timer-live-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 3px 10px;
+          border-radius: 9999px;
+          font-size: 11.5px;
+          font-weight: 800;
+          letter-spacing: 0.2px;
+          user-select: none;
+        }
+
+        .duty-resume-action-btn {
+          background: #10B981;
+          color: #FFFFFF;
+          border: none;
+          border-radius: 6px;
+          padding: 2px 7px;
+          font-size: 10px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+        }
+
+        .duty-resume-action-btn:hover {
+          background: #059669;
+          transform: scale(1.06);
+        }
+
         @media (max-width: 1240px) {
           .hero-stats-row {
             grid-template-columns: repeat(2, 1fr);
@@ -331,6 +477,123 @@ export default function AdminHeroBanner({
               <span>👨‍⚕️</span>
               <span>{doctorName}</span>
             </div>
+
+            {/* DOCTOR DUTY STATUS INTERACTIVE SELECTOR */}
+            <div style={{ position: "relative" }} ref={dutyMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowDutyMenu(!showDutyMenu)}
+                className="duty-status-badge-btn"
+                style={{
+                  background: currentDuty.bg,
+                  border: `1px solid ${currentDuty.border}`,
+                  color: currentDuty.color,
+                }}
+                title={isHi ? "ड्यूटी स्थिति बदलें (सक्रिय, ब्रेक, इमरजेंसी, ऑफ ड्यूटी)" : "Toggle Doctor Duty Status (Active, Break, Emergency, Off Duty)"}
+              >
+                <span>{currentDuty.icon}</span>
+                <span>{currentDuty.badgeLabel}</span>
+                <span style={{ fontSize: "9px", opacity: 0.8, marginLeft: "2px" }}>▼</span>
+              </button>
+
+              {/* Duty Status Options Dropdown Menu */}
+              {showDutyMenu && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    marginTop: "8px",
+                    background: "#0F172A",
+                    border: "1px solid rgba(255, 255, 255, 0.18)",
+                    borderRadius: "14px",
+                    padding: "6px",
+                    boxShadow: "0 16px 36px -4px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(2, 132, 199, 0.15)",
+                    zIndex: 60,
+                    minWidth: "260px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                    backdropFilter: "blur(12px)",
+                  }}
+                >
+                  <div style={{ padding: "6px 10px 4px 10px", fontSize: "10.5px", fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    {isHi ? "डॉक्टर ड्यूटी स्थिति चुनें" : "Select Doctor Duty Status"}
+                  </div>
+
+                  {dutyOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        if (onUpdateDutyStatus) onUpdateDutyStatus(opt.id);
+                        setShowDutyMenu(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "8px 12px",
+                        borderRadius: "10px",
+                        border: doctorDutyStatus === opt.id ? `1px solid ${opt.border}` : "1px solid transparent",
+                        background: doctorDutyStatus === opt.id ? opt.bg : "transparent",
+                        color: "#FFFFFF",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        transition: "all 0.15s ease",
+                        width: "100%",
+                      }}
+                    >
+                      <span style={{ fontSize: "14px" }}>{opt.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "12px", fontWeight: 800, color: opt.color }}>
+                          {opt.label}
+                        </div>
+                        <div style={{ fontSize: "10px", color: "#94A3B8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {opt.desc}
+                        </div>
+                      </div>
+                      {doctorDutyStatus === opt.id && (
+                        <span style={{ color: "#38BDF8", fontSize: "12px", fontWeight: 900 }}>✓</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* LIVE BREAK / EMERGENCY ROUND TIMER BADGE */}
+            {isOnBreakOrEmergency && (
+              <div
+                className="duty-timer-live-badge"
+                style={{
+                  background: doctorDutyStatus === "ON_BREAK" ? "rgba(245, 158, 11, 0.22)" : "rgba(244, 63, 94, 0.22)",
+                  border: doctorDutyStatus === "ON_BREAK" ? "1px solid rgba(245, 158, 11, 0.55)" : "1px solid rgba(244, 63, 94, 0.55)",
+                  color: doctorDutyStatus === "ON_BREAK" ? "#FDE68A" : "#FECDD3",
+                  animation: doctorDutyStatus === "ON_BREAK" ? "pulseTimerGlow 2s infinite" : "pulseEmergencyGlow 1.5s infinite",
+                }}
+              >
+                <span>{doctorDutyStatus === "ON_BREAK" ? "☕" : "🚨"}</span>
+                <span>
+                  {doctorDutyStatus === "ON_BREAK"
+                    ? (isHi ? "अवकाश:" : "On Break:")
+                    : (isHi ? "आईसीयू राउंड:" : "Round:")}{" "}
+                  {dutyTimerText || "00m 01s"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onEndBreak) onEndBreak();
+                    else if (onUpdateDutyStatus) onUpdateDutyStatus("ACTIVE");
+                  }}
+                  className="duty-resume-action-btn"
+                  title={isHi ? "ड्यूटी पुनः प्रारंभ करें" : "Resume Active Duty"}
+                >
+                  <span>✓</span>
+                  <span>{isHi ? "प्रारंभ" : "Resume"}</span>
+                </button>
+              </div>
+            )}
           </div>
 
           <h1 className="hero-title">
@@ -389,7 +652,7 @@ export default function AdminHeroBanner({
                 <span className="hero-stat-value" style={{ color: "#38BDF8" }}>
                   {activeCounters} {isHi ? "डेस्क" : "Desks"}
                 </span>
-                {handleCounterChange && (
+                {canModifyDesks && handleCounterChange && (
                   <div style={{ display: "inline-flex", gap: "3px", marginLeft: "2px" }}>
                     <button
                       type="button"

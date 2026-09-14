@@ -638,15 +638,36 @@ async function updateDeskStatusEndpoint(req, res, next) {
 
 async function getDbOverviewEndpoint(req, res, next) {
   try {
-    const data = await getDatabaseOverview();
+    let hospitalCode = req.query.hospital_code || req.query.tenant_id || null;
+
+    // Enforce role authorization: Only Receptionist, Staff, and Super Admin can access Database Inspector
+    const userRole = (req.user?.role || req.query?.role || "").toLowerCase();
+    if (userRole === "doctor" || userRole === "user" || userRole === "patient") {
+      return res.status(403).json({
+        status: "error",
+        message: "Forbidden: Database Inspector is restricted to Receptionists, Staff, and Super Admins only.",
+      });
+    }
+
+    if (userRole !== "super_admin" && userRole !== "superadmin") {
+      if (req.user?.hospital_code && req.user.hospital_code !== "all") {
+        hospitalCode = req.user.hospital_code;
+      }
+    }
+
+    const { tables, hospital, all_hospitals } = await getDatabaseOverview(hospitalCode);
     return res.status(200).json({
       status: "success",
       db_info: {
         engine: "PostgreSQL",
         database: "ai_queue",
         status: "Connected",
+        hospital_code: hospital?.hospital_code || "",
+        hospital_name: hospital?.name || "",
       },
-      database: data,
+      hospital_info: hospital,
+      all_hospitals: all_hospitals,
+      database: tables,
     });
   } catch (error) {
     next(error);

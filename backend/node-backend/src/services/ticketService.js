@@ -17,6 +17,53 @@ const {
 const { predictServiceDuration } = require("./aiService");
 
 /**
+ * Doctor Duty Status Store (In-Memory & Sync Cache).
+ * Statuses: "ACTIVE" | "ON_BREAK" | "EMERGENCY_ROUND" | "OFF_DUTY"
+ */
+const doctorDutyStatusStore = new Map();
+
+function getDoctorDutyStatus(docId, docEmail) {
+  if (docId && doctorDutyStatusStore.has(String(docId))) {
+    return doctorDutyStatusStore.get(String(docId));
+  }
+  if (docEmail && doctorDutyStatusStore.has(String(docEmail).trim().toLowerCase())) {
+    return doctorDutyStatusStore.get(String(docEmail).trim().toLowerCase());
+  }
+  return {
+    status: "ACTIVE",
+    status_changed_at: Date.now(),
+    break_type: null,
+    note: "",
+    updated_at: Date.now(),
+  };
+}
+
+async function setDoctorDutyStatus(docIdentifier, statusData = {}) {
+  const status = String(statusData.status || "ACTIVE").toUpperCase();
+  const validStatuses = ["ACTIVE", "ON_BREAK", "EMERGENCY_ROUND", "OFF_DUTY"];
+  const finalStatus = validStatuses.includes(status) ? status : "ACTIVE";
+
+  const existing = getDoctorDutyStatus(docIdentifier, docIdentifier);
+  const isStatusChanging = existing.status !== finalStatus;
+
+  const record = {
+    status: finalStatus,
+    status_changed_at: isStatusChanging ? Date.now() : (existing.status_changed_at || Date.now()),
+    break_type: statusData.break_type || null,
+    note: statusData.note || "",
+    doctor_name: statusData.doctor_name || existing.doctor_name || "",
+    updated_at: Date.now(),
+  };
+
+  const key = String(docIdentifier).trim().toLowerCase();
+  doctorDutyStatusStore.set(key, record);
+  if (statusData.userId) doctorDutyStatusStore.set(String(statusData.userId), record);
+  if (statusData.email) doctorDutyStatusStore.set(String(statusData.email).trim().toLowerCase(), record);
+
+  return record;
+}
+
+/**
  * Persists ticket state to PostgreSQL and synchronizes linked appointments.
  */
 async function saveTicketToDb(ticket) {
@@ -302,6 +349,8 @@ async function serveNext(tenantId, department = null, deskId = null, doctorInfo 
   // 1. HOSPITAL ISOLATION & DOCTOR/DESK AVAILABILITY ENFORCEMENT
   const hid = await engine.resolveHospitalId(tenantId);
   const SESSION_MAX_AGE_MS = 12 * 60 * 60 * 1000; // 12-hour session window
+  let assignedEmp = null;
+  let assignedUsr = null;
 
   // 1a. If Desk is specified, enforce desk active status, assigned doctor active presence & hospital isolation
   if (deskId) {
@@ -353,8 +402,8 @@ async function serveNext(tenantId, department = null, deskId = null, doctorInfo 
     }
 
     // Doctor Availability Enforcement:
-    const assignedEmp = deskRec.employees;
-    const assignedUsr = assignedEmp.users;
+    assignedEmp = deskRec.employees;
+    assignedUsr = assignedEmp.users;
     const lastLogin = assignedUsr?.last_login_at ? new Date(assignedUsr.last_login_at).getTime() : null;
     const isStale = !lastLogin || (Date.now() - lastLogin > SESSION_MAX_AGE_MS);
     const isDocActive = (assignedEmp.status === "active" && assignedUsr?.status === "active" && !isStale);
@@ -424,6 +473,28 @@ async function serveNext(tenantId, department = null, deskId = null, doctorInfo 
       if (!docName) docName = empRec.name;
       if (!docEmail) docEmail = empRec.email || usr?.email;
     }
+  }
+
+  // 1c. DOCTOR DUTY STATUS ENFORCEMENT (Active vs On Break / Emergency Round / Off Duty)
+  const dutyDocId = docId || (assignedEmp ? (assignedEmp.user_id || assignedEmp.id) : null);
+  const dutyDocEmail = docEmail || (assignedEmp ? (assignedEmp.email || assignedUsr?.email) : null);
+  const dutyStatusInfo = getDoctorDutyStatus(dutyDocId, dutyDocEmail);
+
+  if (dutyStatusInfo && dutyStatusInfo.status && dutyStatusInfo.status !== "ACTIVE") {
+    const statusLabels = {
+      ON_BREAK: "on Tea / Lunch Break",
+      EMERGENCY_ROUND: "on Emergency / ICU Round",
+      OFF_DUTY: "Off Duty (Shift Ended)",
+    };
+    const label = statusLabels[dutyStatusInfo.status] || dutyStatusInfo.status;
+    const err = new Error(
+      `Cannot assign patient: Doctor '${docName || "Desk Doctor"}' is currently ${label}. Please switch duty status to 'Active' before calling patients.`
+    );
+    err.status = 409;
+    err.code = dutyStatusInfo.status === "OFF_DUTY" ? "DOCTOR_OFF_DUTY" : "DOCTOR_ON_BREAK";
+    err.duty_status = dutyStatusInfo.status;
+    err.status_changed_at = dutyStatusInfo.status_changed_at;
+    throw err;
   }
 
   // 2. STRICT ENFORCEMENT: A doctor can only serve ONE patient at a time!
@@ -1208,4 +1279,6 @@ module.exports = {
   getTicketDetails,
   markNoShow,
   saveTicketPrescription,
+  getDoctorDutyStatus,
+  setDoctorDutyStatus,
 };
