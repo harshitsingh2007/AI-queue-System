@@ -415,7 +415,22 @@ export default function App() {
   const [analytics, setAnalytics] = useState(null);
   const [queueSnapshot, setQueueSnapshot] = useState([]);
   const [servingTickets, setServingTickets] = useState([]);
-  const [activeTicket, setActiveTicket] = useState(null);
+  const [heldTickets, setHeldTickets] = useState([]);
+  const [activeTicket, setActiveTicket] = useState(() => {
+    try {
+      const saved = localStorage.getItem("ai_queue_active_ticket");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && ["waiting", "serving", "on_hold", "hold"].includes(String(parsed.status || "").toLowerCase())) {
+          return parsed;
+        }
+        localStorage.removeItem("ai_queue_active_ticket");
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [ticketQrData, setTicketQrData] = useState(null);
   const [kioskQrData, setKioskQrData] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
@@ -430,7 +445,73 @@ export default function App() {
 
   useEffect(() => {
     activeTicketRef.current = activeTicket;
+    try {
+      if (
+        activeTicket &&
+        activeTicket.ticket_id &&
+        ["waiting", "serving", "on_hold", "hold"].includes(String(activeTicket.status || "").toLowerCase())
+      ) {
+        localStorage.setItem("ai_queue_active_ticket", JSON.stringify(activeTicket));
+      } else {
+        localStorage.removeItem("ai_queue_active_ticket");
+      }
+    } catch (e) {}
   }, [activeTicket]);
+
+  // Ensure QR code is loaded whenever activeTicket is restored or active
+  useEffect(() => {
+    if (
+      activeTicket &&
+      activeTicket.ticket_id &&
+      ["waiting", "serving", "on_hold", "hold"].includes(String(activeTicket.status || "").toLowerCase()) &&
+      !ticketQrData
+    ) {
+      fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${activeTicket.ticket_id}`)
+        .then((r) => r.json())
+        .then((qr) => setTicketQrData(qr))
+        .catch((e) => console.log("QR error in App:", e));
+    }
+  }, [activeTicket?.ticket_id, activeTicket?.status, ticketQrData]);
+
+  // Auto-restore active ticket from history on mount / login if state is empty or stale
+  useEffect(() => {
+    const ident =
+      currentUser?.email ||
+      currentUser?.username ||
+      localStorage.getItem("last_patient_name") ||
+      "";
+    if (!ident.trim()) return;
+
+    fetch(`${API_BASE}/api/v1/plugin/tickets/history/${encodeURIComponent(ident.trim())}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && Array.isArray(d.tickets) && d.tickets.length > 0) {
+          const active = d.tickets.find((t) =>
+            ["waiting", "serving", "on_hold", "hold"].includes(String(t.status || "").toLowerCase())
+          );
+          if (active) {
+            setActiveTicket((prev) => {
+              if (!prev || prev.ticket_id !== active.ticket_id) {
+                return active;
+              }
+              return { ...prev, ...active };
+            });
+          } else {
+            // No live tickets found; clear active ticket if it was completed
+            setActiveTicket((prev) => {
+              if (prev && !["waiting", "serving", "on_hold", "hold"].includes(String(prev.status || "").toLowerCase())) {
+                try {
+                  localStorage.removeItem("ai_queue_active_ticket");
+                } catch (e) {}
+                return null;
+              }
+              return prev;
+            });
+          }
+        }
+      })
+      .catch((e) => console.log("Active ticket restore error:", e));
+  }, [currentUser]);
 
   // Sync page & tab state when URL changes
   useEffect(() => {
@@ -492,6 +573,9 @@ export default function App() {
       if (data.serving) {
         setServingTickets(dept && dept !== "all" ? data.serving.filter(t => (t.service_category || "").toLowerCase() === dept) : data.serving);
       }
+      if (data.held) {
+        setHeldTickets(dept && dept !== "all" ? data.held.filter(t => (t.service_category || "").toLowerCase() === dept) : data.held);
+      }
     });
 
     socket.on("queue_updated", (data) => {
@@ -510,13 +594,21 @@ export default function App() {
       if (data.serving) {
         setServingTickets(dept && dept !== "all" ? data.serving.filter(t => (t.service_category || "").toLowerCase() === dept) : data.serving);
       }
+      if (data.held) {
+        setHeldTickets(dept && dept !== "all" ? data.held.filter(t => (t.service_category || "").toLowerCase() === dept) : data.held);
+      }
     });
 
     socket.on("ticket_cancelled", (data) => {
-      if (data && data.ticket) {
+      if (data && (data.ticket || data.ticket_id)) {
+        const tId = data.ticket?.ticket_id || data.ticket_id;
         const cur = activeTicketRef.current;
-        if (cur && cur.ticket_id === data.ticket.ticket_id) {
-          setActiveTicket(data.ticket);
+        if (cur && cur.ticket_id === tId) {
+          setActiveTicket(null);
+          setTicketQrData(null);
+          try {
+            localStorage.removeItem("ai_queue_active_ticket");
+          } catch (e) {}
         }
       }
       refreshData();
@@ -526,17 +618,31 @@ export default function App() {
       if (data && data.ticket) {
         const cur = activeTicketRef.current;
         if (cur && (cur.ticket_id === data.ticket.ticket_id || cur.ticket_id === data.ticket_id)) {
-          setActiveTicket(data.ticket);
+          const s = String(data.ticket.status || "").toLowerCase();
+          if (["waiting", "serving", "on_hold", "hold"].includes(s)) {
+            setActiveTicket(data.ticket);
+          } else {
+            setActiveTicket(null);
+            setTicketQrData(null);
+            try {
+              localStorage.removeItem("ai_queue_active_ticket");
+            } catch (e) {}
+          }
         }
       }
       refreshData();
     });
 
     socket.on("ticket_completed", (data) => {
-      if (data && data.ticket) {
+      if (data && (data.ticket || data.ticket_id)) {
+        const tId = data.ticket?.ticket_id || data.ticket_id;
         const cur = activeTicketRef.current;
-        if (cur && (cur.ticket_id === data.ticket.ticket_id || cur.ticket_id === data.ticket_id)) {
-          setActiveTicket(data.ticket);
+        if (cur && cur.ticket_id === tId) {
+          setActiveTicket(null);
+          setTicketQrData(null);
+          try {
+            localStorage.removeItem("ai_queue_active_ticket");
+          } catch (e) {}
         }
       }
       refreshData();
@@ -546,7 +652,16 @@ export default function App() {
       if (data && data.ticket) {
         const cur = activeTicketRef.current;
         if (cur && (cur.ticket_id === data.ticket.ticket_id || cur.ticket_id === data.ticket_id)) {
-          setActiveTicket(data.ticket);
+          const s = String(data.ticket.status || "").toLowerCase();
+          if (["waiting", "serving", "on_hold", "hold"].includes(s)) {
+            setActiveTicket(data.ticket);
+          } else {
+            setActiveTicket(null);
+            setTicketQrData(null);
+            try {
+              localStorage.removeItem("ai_queue_active_ticket");
+            } catch (e) {}
+          }
         }
       }
       refreshData();
@@ -612,8 +727,49 @@ export default function App() {
     fetch(`${API_BASE}/api/v1/plugin/queue/${tenantId}${deptQuery}`)
       .then((r) => r.json())
       .then((d) => {
-        setQueueSnapshot(d.snapshot || []);
-        setServingTickets(d.serving || []);
+        const snap = d.snapshot || [];
+        const srv = d.serving || [];
+        const hld = d.held || [];
+        setQueueSnapshot(snap);
+        setServingTickets(srv);
+        setHeldTickets(hld);
+
+        const cur = activeTicketRef.current;
+        if (cur && cur.ticket_id) {
+          const match =
+            snap.find((t) => t.ticket_id === cur.ticket_id) ||
+            srv.find((t) => t.ticket_id === cur.ticket_id) ||
+            hld.find((t) => t.ticket_id === cur.ticket_id);
+          if (match) {
+            const s = String(match.status || "").toLowerCase();
+            if (["waiting", "serving", "on_hold", "hold"].includes(s)) {
+              setActiveTicket((prev) => ({ ...prev, ...match }));
+            } else {
+              setActiveTicket(null);
+              setTicketQrData(null);
+              try {
+                localStorage.removeItem("ai_queue_active_ticket");
+              } catch (e) {}
+            }
+          } else {
+            // Ticket is no longer in live queue; verify if it was completed or departed
+            fetch(`${API_BASE}/api/v1/plugin/ticket/${cur.ticket_id}`)
+              .then((r) => r.json())
+              .then((td) => {
+                if (td && td.ticket) {
+                  const s = String(td.ticket.status || "").toLowerCase();
+                  if (!["waiting", "serving", "on_hold", "hold"].includes(s)) {
+                    setActiveTicket(null);
+                    setTicketQrData(null);
+                    try {
+                      localStorage.removeItem("ai_queue_active_ticket");
+                    } catch (e) {}
+                  }
+                }
+              })
+              .catch(() => {});
+          }
+        }
       })
       .catch((e) => console.log("Queue error:", e));
 
@@ -742,6 +898,67 @@ export default function App() {
         department: dept,
         prescription_notes: prescriptionNotes,
       });
+    }
+  };
+
+  const handleHoldTicket = async (ticketId, graceMinutes = 10) => {
+    if (socketRef.current) {
+      socketRef.current.emit("hold_ticket", {
+        tenant_id: tenantId,
+        ticket_id: ticketId,
+        grace_minutes: graceMinutes,
+      });
+    } else {
+      await fetch(`${API_BASE}/api/v1/plugin/hold-ticket`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_id: tenantId, ticket_id: ticketId, grace_minutes: graceMinutes }),
+      }).catch(() => {});
+      refreshData();
+    }
+  };
+
+  const handleRecallTicket = async (ticketId, targetMode = "auto") => {
+    if (socketRef.current) {
+      socketRef.current.emit("recall_ticket", {
+        tenant_id: tenantId,
+        ticket_id: ticketId,
+        doctor_id: currentUser?.id,
+        doctor_name: currentUser?.name || currentUser?.username,
+        doctor_email: currentUser?.email,
+        target_mode: targetMode,
+      });
+    } else {
+      await fetch(`${API_BASE}/api/v1/plugin/recall-ticket`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          ticket_id: ticketId,
+          doctor_id: currentUser?.id,
+          doctor_name: currentUser?.name || currentUser?.username,
+          doctor_email: currentUser?.email,
+          target_mode: targetMode,
+        }),
+      }).catch(() => {});
+      refreshData();
+    }
+  };
+
+  const handleMarkNoShow = async (ticketId, reason = "Patient did not appear after grace period") => {
+    if (socketRef.current) {
+      socketRef.current.emit("mark_noshow", {
+        tenant_id: tenantId,
+        ticket_id: ticketId,
+        reason,
+      });
+    } else {
+      await fetch(`${API_BASE}/api/v1/plugin/no-show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenant_id: tenantId, ticket_id: ticketId, reason }),
+      }).catch(() => {});
+      refreshData();
     }
   };
 
@@ -906,8 +1123,12 @@ export default function App() {
                   analytics={analytics}
                   queueSnapshot={queueSnapshot}
                   servingTickets={servingTickets}
+                  heldTickets={heldTickets}
                   handleServeNext={handleServeNext}
                   handleCompleteTicket={handleCompleteTicket}
+                  handleHoldTicket={handleHoldTicket}
+                  handleRecallTicket={handleRecallTicket}
+                  handleMarkNoShow={handleMarkNoShow}
                   handleCounterChange={handleCounterChange}
                   refreshData={refreshData}
                   language={language}

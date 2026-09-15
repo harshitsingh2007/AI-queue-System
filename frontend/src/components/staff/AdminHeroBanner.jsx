@@ -20,6 +20,7 @@ export default function AdminHeroBanner({
   branding = null,
   waitingCount = 0,
   servingCount = 0,
+  heldCount = 0,
   servingTicket,
   nextTicket,
   appointmentsCount = 0,
@@ -692,8 +693,13 @@ export default function AdminHeroBanner({
               </svg>
             </div>
             <div>
-              <div className="hero-stat-value" style={{ color: "#FDE047" }}>
-                {waitingCount} {isHi ? "प्रतीक्षारत" : "Waiting"}
+              <div className="hero-stat-value" style={{ color: "#FDE047", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>{waitingCount} {isHi ? "प्रतीक्षारत" : "Waiting"}</span>
+                {heldCount > 0 && (
+                  <span style={{ fontSize: "11.5px", color: "#FB923C", background: "rgba(251, 146, 60, 0.18)", padding: "1px 6px", borderRadius: "6px" }}>
+                    {heldCount} ⏸️
+                  </span>
+                )}
               </div>
               <div className="hero-stat-label">
                 {isHi ? "प्रतीक्षारत मरीज़" : "Live in Queue"}

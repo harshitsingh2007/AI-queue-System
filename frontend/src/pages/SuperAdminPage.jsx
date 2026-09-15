@@ -7275,7 +7275,15 @@ export default function SuperAdminPage({
                       <input
                         type="time"
                         value={brandingForm.opd_end_time || "20:00"}
-                        onChange={(e) => setBrandingForm({ ...brandingForm, opd_end_time: e.target.value })}
+                        onChange={(e) => {
+                          const newEnd = e.target.value;
+                          setBrandingForm((prev) => ({
+                            ...prev,
+                            opd_end_time: newEnd,
+                            registration_close_time: newEnd,
+                            registration_cutoff_time: (!prev.registration_cutoff_time || prev.registration_cutoff_time === prev.opd_end_time) ? newEnd : prev.registration_cutoff_time,
+                          }));
+                        }}
                         style={fieldInputStyle}
                       />
                     </div>

@@ -5,7 +5,15 @@
  */
 
 const engine = require("../services/queueEngine");
-const { joinQueue, serveNext, completeTicket, markNoShow } = require("../services/ticketService");
+const {
+  joinQueue,
+  serveNext,
+  completeTicket,
+  markNoShow,
+  holdTicket,
+  recallTicket,
+  recordAnnouncement,
+} = require("../services/ticketService");
 const { verifyFamilyMemberOwnership } = require("../services/familyService");
 const { closeAndExpirePreviousDayQueues } = require("../services/dailyClosureService");
 const { getIo, broadcastQueueUpdate } = require("../socket");
@@ -26,10 +34,10 @@ async function joinQueueEndpoint(req, res, next) {
       tenant_id = "city-hospital-01",
       consumer_type = "hospital",
       service_category = "consultation",
-      name = "Patient",
+      name,
       urgency,
       priority: explicitPriority,
-      user_email = "",
+      user_email,
       age = 30,
       gender = "other",
       medical_condition = "general_checkup",
@@ -39,20 +47,22 @@ async function joinQueueEndpoint(req, res, next) {
 
     const priority = urgencyToPriority(consumer_type, urgency, explicitPriority);
 
-    // Enforce daily registration cutoff and operating days unless emergency ticket
-    if (priority !== PRIORITY_EMERGENCY) {
+    // Registration window check
+    if (consumer_type === "hospital" && tenant_id) {
       try {
-        const branding = await getHospitalBranding(tenant_id);
-        if (branding) {
+        const brand = await getHospitalBranding(tenant_id);
+        if (brand) {
+          const start = brand.opd_start_time || brand.registration_open_time || "08:00";
+          const end = brand.opd_end_time || brand.registration_close_time || "20:00";
           const now = new Date();
-          // Operating days validation
-          if (Array.isArray(branding.operating_days) && branding.operating_days.length > 0) {
-            const currentDayName = now.toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", weekday: "long" });
-            const isOperatingDay = branding.operating_days.some(
-              (d) => String(d).toLowerCase() === currentDayName.toLowerCase()
-            );
-            if (!isOperatingDay) {
-              const notice = branding.closed_notice || `Facility OPD is closed on ${currentDayName}s. Emergency triage is open.`;
+          const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+          const todayName = days[now.getDay()];
+
+          // Check operating days if configured
+          if (Array.isArray(brand.operating_days) && brand.operating_days.length > 0 && !brand.operating_days.includes(todayName)) {
+            if (priority !== PRIORITY_EMERGENCY) {
+              const notice = brand.closed_notice ||
+                `Online registration for ${brand.hospital_name || "this hospital"} is closed today (${todayName}). Emergency cases can still walk in.`;
               return res.status(403).json({
                 status: "error",
                 detail: notice,
@@ -62,20 +72,12 @@ async function joinQueueEndpoint(req, res, next) {
             }
           }
 
-          // Registration cutoff time validation
-          if (branding.registration_cutoff_time) {
-            const timeParts = now.toLocaleTimeString("en-US", {
-              timeZone: "Asia/Kolkata",
-              hour12: false,
-              hour: "2-digit",
-              minute: "2-digit",
-            }).split(":");
-            const currentMins = parseInt(timeParts[0], 10) * 60 + parseInt(timeParts[1], 10);
-            const cutoffParts = branding.registration_cutoff_time.split(":");
-            const cutoffMins = parseInt(cutoffParts[0], 10) * 60 + parseInt(cutoffParts[1], 10);
+          const curTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
-            if (currentMins > cutoffMins) {
-              const notice = branding.closed_notice || `Daily registration cutoff was at ${branding.registration_cutoff_time}. Token issuance is closed for today.`;
+          if (curTime < start || curTime > end) {
+            if (priority !== PRIORITY_EMERGENCY) {
+              const notice = brand.closed_notice || brand.registration_closed_notice ||
+                `Online registration for ${brand.hospital_name || "this hospital"} is closed for today (${start} - ${end}). Emergency cases can still walk in.`;
               return res.status(403).json({
                 status: "error",
                 detail: notice,
@@ -188,17 +190,93 @@ async function completeEndpoint(req, res, next) {
   }
 }
 
-async function noShowEndpoint(req, res, next) {
+async function holdTicketEndpoint(req, res, next) {
   try {
-    const { tenant_id = "city-hospital-01", ticket_id } = req.body;
+    const { tenant_id = "city-hospital-01", ticket_id, grace_minutes = 10 } = req.body;
 
-    await markNoShow(tenant_id, ticket_id);
+    const ticket = await holdTicket(tenant_id, ticket_id, grace_minutes);
     const io = getIo();
     if (io) {
+      io.to(tenant_id).emit("ticket_held", { ticket });
       await broadcastQueueUpdate(io, tenant_id);
     }
 
-    return res.status(200).json({ success: true });
+    return res.status(200).json({
+      success: true,
+      ticket,
+      message: `Ticket #${ticket_id} placed on hold for ${grace_minutes} minutes grace period.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function recallTicketEndpoint(req, res, next) {
+  try {
+    const { tenant_id = "city-hospital-01", ticket_id, target_mode = "auto" } = req.body;
+
+    const doctorInfo = {
+      id: req.body.doctor_id || req.user?.id || null,
+      name: req.body.doctor_name || req.user?.name || null,
+      email: req.body.doctor_email || req.user?.email || null,
+    };
+
+    const ticket = await recallTicket(tenant_id, ticket_id, doctorInfo, target_mode);
+    const io = getIo();
+    if (io) {
+      io.to(tenant_id).emit("ticket_recalled", { ticket });
+      await broadcastQueueUpdate(io, tenant_id);
+    }
+
+    return res.status(200).json({
+      success: true,
+      ticket,
+      message: `Ticket #${ticket_id} recalled successfully.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function reAnnounceEndpoint(req, res, next) {
+  try {
+    const { tenant_id = "city-hospital-01", ticket_id, ticket } = req.body;
+    const tid = ticket_id || ticket?.ticket_id;
+
+    let updatedTicket = null;
+    if (tid) {
+      updatedTicket = await recordAnnouncement(tenant_id, tid);
+    }
+
+    const finalTicket = updatedTicket || ticket || { ticket_id: tid };
+    const io = getIo();
+    if (io) {
+      io.to(tenant_id).emit("now_serving", { ticket: finalTicket, re_announced: true });
+      await broadcastQueueUpdate(io, tenant_id);
+    }
+
+    return res.status(200).json({
+      success: true,
+      ticket: finalTicket,
+      announcement_count: finalTicket.announcement_count || 1,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function noShowEndpoint(req, res, next) {
+  try {
+    const { tenant_id = "city-hospital-01", ticket_id, reason } = req.body;
+
+    await markNoShow(tenant_id, ticket_id, reason);
+    const io = getIo();
+    if (io) {
+      io.to(tenant_id).emit("ticket_noshow", { ticket_id });
+      await broadcastQueueUpdate(io, tenant_id);
+    }
+
+    return res.status(200).json({ success: true, ticket_id });
   } catch (error) {
     next(error);
   }
@@ -241,10 +319,12 @@ async function getQueueEndpoint(req, res, next) {
 
     const snapshot = await engine.getQueueSnapshot(tenantId, department, dateQuery);
     const serving = isHistorical ? [] : await engine.getServingTickets(tenantId, department, dateQuery);
+    const held = isHistorical ? [] : await engine.getHeldTickets(tenantId, department, dateQuery);
 
     return res.status(200).json({
       snapshot,
       serving,
+      held,
       is_historical: !!isHistorical,
       queue_date: String(dateQuery || today),
     });
@@ -314,6 +394,9 @@ module.exports = {
   serveNextEndpoint,
   completeEndpoint,
   noShowEndpoint,
+  holdTicketEndpoint,
+  recallTicketEndpoint,
+  reAnnounceEndpoint,
   countersEndpoint,
   getQueueEndpoint,
   getQueueHistoryEndpoint,

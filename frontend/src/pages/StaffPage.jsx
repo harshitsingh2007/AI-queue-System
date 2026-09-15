@@ -19,8 +19,12 @@ export default function StaffPage({
   analytics,
   queueSnapshot = [],
   servingTickets = [],
+  heldTickets = [],
   handleServeNext,
   handleCompleteTicket,
+  handleHoldTicket,
+  handleRecallTicket,
+  handleMarkNoShow,
   handleCounterChange,
   refreshData,
   language = "en",
@@ -47,6 +51,16 @@ export default function StaffPage({
   const [transferStatusMsg, setTransferStatusMsg] = useState("");
   const [announceFeedbackMsg, setAnnounceFeedbackMsg] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
+
+  // Announcement Counter map: { [ticketId]: number }
+  const [announcementCounts, setAnnouncementCounts] = useState({});
+
+  // Real-time ticking clock for held grace countdown timers
+  const [nowSec, setNowSec] = useState(() => Date.now() / 1000);
+  useEffect(() => {
+    const timer = setInterval(() => setNowSec(Date.now() / 1000), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Doctor Prescription Modal State
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
@@ -315,23 +329,117 @@ export default function StaffPage({
 
   const handleReAnnounce = async (ticket) => {
     try {
+      const tid = ticket.ticket_id;
+      const currentCnt = (announcementCounts[tid] || ticket.announcement_count || 1) + 1;
+      setAnnouncementCounts((prev) => ({ ...prev, [tid]: currentCnt }));
+
       if (socketRef && socketRef.current) {
-        socketRef.current.emit("re_announce", { tenant_id: tenantId, ticket });
+        socketRef.current.emit("re_announce", { tenant_id: tenantId, ticket: { ...ticket, announcement_count: currentCnt }, ticket_id: tid });
       } else {
         await fetch(`${API_BASE}/api/v1/plugin/re-announce`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tenant_id: tenantId, ticket_id: ticket.ticket_id }),
+          body: JSON.stringify({ tenant_id: tenantId, ticket_id: tid }),
         });
       }
+
       setAnnounceFeedbackMsg(
         language === "hi"
-          ? `📢 टोकन #${ticket.ticket_id} (${ticket.name}) की पुनः घोषणा प्रसारित की गई!`
-          : `📢 Broadcasted call for #${ticket.ticket_id} (${ticket.name}) to Patient Portal & Speakers!`
+          ? `📢 टोकन #${tid} (${ticket.name}) की कॉल संख्या ${currentCnt} प्रसारित की गई!`
+          : `📢 Broadcasted Announcement #${currentCnt} for Token #${tid} (${ticket.name})!`
       );
       setTimeout(() => setAnnounceFeedbackMsg(""), 3500);
     } catch (e) {
       console.log("Re-announce broadcast error:", e);
+    }
+  };
+
+  const handleSkipToHold = async (ticket) => {
+    if (!ticket) return;
+    try {
+      if (handleHoldTicket) {
+        await handleHoldTicket(ticket.ticket_id, 10);
+      } else {
+        await fetch(`${API_BASE}/api/v1/plugin/hold-ticket`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tenant_id: tenantId, ticket_id: ticket.ticket_id, grace_minutes: 10 }),
+        });
+        if (refreshData) refreshData();
+      }
+      setAnnounceFeedbackMsg(
+        language === "hi"
+          ? `⏸️ टोकन #${ticket.ticket_id} (${ticket.name}) को 10 मिनट के ग्रेस पीरियड पर रखा गया। डेस्क अगले मरीज़ हेतु खाली है!`
+          : `⏸️ Token #${ticket.ticket_id} (${ticket.name}) placed on 10-Minute Grace Period. Desk is now available for next patient!`
+      );
+      setTimeout(() => setAnnounceFeedbackMsg(""), 6000);
+    } catch (e) {
+      console.log("Hold ticket error:", e);
+    }
+  };
+
+  const handleRecallHeld = async (ticket) => {
+    if (!ticket) return;
+    try {
+      if (handleRecallTicket) {
+        await handleRecallTicket(ticket.ticket_id, isDoctorBusy ? "queue" : "auto");
+      } else {
+        await fetch(`${API_BASE}/api/v1/plugin/recall-ticket`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            ticket_id: ticket.ticket_id,
+            doctor_id: currentUser?.id,
+            doctor_name: currentUser?.name || currentUser?.username,
+            doctor_email: currentUser?.email,
+            target_mode: isDoctorBusy ? "queue" : "auto",
+          }),
+        });
+        if (refreshData) refreshData();
+      }
+      setAnnounceFeedbackMsg(
+        language === "hi"
+          ? `🟢 टोकन #${ticket.ticket_id} (${ticket.name}) को पुनः सक्रिय किया गया!`
+          : `🟢 Recalled #${ticket.ticket_id} (${ticket.name}) back to active queue!`
+      );
+      setTimeout(() => setAnnounceFeedbackMsg(""), 4500);
+    } catch (e) {
+      console.log("Recall ticket error:", e);
+    }
+  };
+
+  const handleFinalizeNoShow = async (ticket) => {
+    if (!ticket) return;
+    const confirmMsg =
+      language === "hi"
+        ? `क्या आप टोकन #${ticket.ticket_id} (${ticket.name}) को 'अनुपस्थित (No-Show)' चिह्नित करना चाहते हैं?`
+        : `Mark Token #${ticket.ticket_id} (${ticket.name}) as No-Show (absent after grace window)?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      if (handleMarkNoShow) {
+        await handleMarkNoShow(ticket.ticket_id, "Patient absent after repeated announcements & grace period");
+      } else {
+        await fetch(`${API_BASE}/api/v1/plugin/no-show`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            ticket_id: ticket.ticket_id,
+            reason: "Patient absent after repeated announcements & grace period",
+          }),
+        });
+        if (refreshData) refreshData();
+      }
+      setAnnounceFeedbackMsg(
+        language === "hi"
+          ? `🛑 टोकन #${ticket.ticket_id} को 'अनुपस्थित (No-Show)' दर्ज किया गया।`
+          : `🛑 Token #${ticket.ticket_id} marked as No-Show.`
+      );
+      setTimeout(() => setAnnounceFeedbackMsg(""), 4000);
+    } catch (e) {
+      console.log("Finalize no-show error:", e);
     }
   };
 
@@ -842,6 +950,7 @@ export default function StaffPage({
         analytics={analytics}
         waitingCount={queueSnapshot.length}
         servingCount={servingTickets.length}
+        heldCount={heldTickets.length}
         servingTicket={primaryServing}
         nextTicket={queueSnapshot.length > 0 ? queueSnapshot[0] : null}
         appointmentsCount={appointments.length}
@@ -876,15 +985,29 @@ export default function StaffPage({
                 <span className="tab-title-text">
                   {language === "hi" ? "डेस्क संचालन" : "Desk Operations"}
                 </span>
-                <span
-                  className="tab-count-badge"
-                  style={{
-                    background: activeTab === "ops" ? "#38BDF8" : "#E0F2FE",
-                    color: activeTab === "ops" ? "#0F172A" : "#0284C7",
-                  }}
-                >
-                  {servingTickets.length}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span
+                    className="tab-count-badge"
+                    style={{
+                      background: activeTab === "ops" ? "#38BDF8" : "#E0F2FE",
+                      color: activeTab === "ops" ? "#0F172A" : "#0284C7",
+                    }}
+                  >
+                    {servingTickets.length}
+                  </span>
+                  {heldTickets.length > 0 && (
+                    <span
+                      className="tab-count-badge"
+                      style={{
+                        background: activeTab === "ops" ? "#FCD34D" : "#FEF3C7",
+                        color: activeTab === "ops" ? "#78350F" : "#92400E",
+                      }}
+                      title={`${heldTickets.length} Patients on Hold / Grace`}
+                    >
+                      {heldTickets.length} ⏸️
+                    </span>
+                  )}
+                </div>
               </div>
               <span className="tab-sub-text" style={{ color: activeTab === "ops" ? "#BAE6FD" : "#64748B" }}>
                 {language === "hi" ? "कॉलिंग एवं ई-प्रिस्क्रिप्शन" : "Calling & E-Prescribe"}
@@ -1254,41 +1377,115 @@ export default function StaffPage({
                         boxShadow: "0 4px 16px -2px rgba(2, 132, 199, 0.08)",
                         display: "flex",
                         flexDirection: "column",
-                        gap: "14px",
+                        gap: "0px",
                       }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                          <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "#0F172A", color: "#38BDF8", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: 900 }}>
-                            #{ticket.ticket_id}
+                      {/* Top Header: Patient Identity, Token Badge, and Call Status */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+                          {/* Token Number Badge */}
+                          <div
+                            style={{
+                              padding: "6px 14px",
+                              borderRadius: "10px",
+                              background: "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
+                              color: "#38BDF8",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "15px",
+                              fontWeight: 900,
+                              letterSpacing: "0.5px",
+                              boxShadow: "0 2px 6px rgba(15, 23, 42, 0.15)",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {String(ticket.ticket_id).startsWith("#") ? ticket.ticket_id : `#${ticket.ticket_id}`}
                           </div>
+
                           <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                               <h3 style={{ margin: 0, fontSize: "17px", color: "#0F172A", fontWeight: 800 }}>
                                 {ticket.name}
                               </h3>
-                              <span style={{ padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0284C7", fontSize: "11px", fontWeight: 700 }}>
+                              <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#E0F2FE", color: "#0284C7", fontSize: "11px", fontWeight: 700 }}>
                                 {getCategoryLabel(ticket.service_category, language)}
                               </span>
                               {ticket.served_by_doctor_name && (
-                                <span style={{ padding: "2px 8px", borderRadius: "6px", background: "#F1F5F9", color: "#475569", fontSize: "11px", fontWeight: 700 }}>
+                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#F1F5F9", color: "#475569", fontSize: "11px", fontWeight: 700 }}>
                                   👨‍⚕️ {ticket.served_by_doctor_name}
                                 </span>
                               )}
                             </div>
-                            <span style={{ fontSize: "12px", color: "#64748B", marginTop: "2px", display: "block" }}>
-                              {ticket.age || 35} {language === "hi" ? "वर्ष" : "yrs"} • {t(ticket.gender || "male", language)} • {language === "hi" ? "लक्षण:" : "Symptom:"} {(ticket.medical_condition || "general").replace(/_/g, " ")}
+                            <span style={{ fontSize: "12.5px", color: "#64748B", marginTop: "3px", display: "block" }}>
+                              {ticket.age || 30} {language === "hi" ? "वर्ष" : "yrs"} • {t(ticket.gender || "male", language)} • {language === "hi" ? "लक्षण:" : "Symptom:"} {(ticket.medical_condition || "general_checkup").replace(/_/g, " ")}
                             </span>
                           </div>
                         </div>
 
-                        {/* Action Buttons: Re-Announce, Prescribe, Transfer, Complete */}
+                        {/* Top-Right Status & Announcement Counter */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          {(() => {
+                            const callCnt = announcementCounts[ticket.ticket_id] || ticket.announcement_count || 1;
+                            const isMaxCalls = callCnt >= 3;
+                            return (
+                              <span
+                                style={{
+                                  padding: "5px 10px",
+                                  borderRadius: "8px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 800,
+                                  background: isMaxCalls ? "#FEF2F2" : callCnt > 1 ? "#FEF3C7" : "#F0F9FF",
+                                  color: isMaxCalls ? "#DC2626" : callCnt > 1 ? "#D97706" : "#0284C7",
+                                  border: `1px solid ${isMaxCalls ? "#FECACA" : callCnt > 1 ? "#FDE68A" : "#BAE6FD"}`,
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "5px",
+                                }}
+                                title={isMaxCalls ? "3 announcements broadcasted. Patient absent - recommended to Skip/Hold." : `Announcement ${callCnt} of 3`}
+                              >
+                                <span>{isMaxCalls ? "⚠️" : "📢"}</span>
+                                <span>
+                                  {isMaxCalls
+                                    ? (language === "hi" ? "3 कॉल प्रसारित (अनुपस्थित)" : "3 Calls Sent (Absent)")
+                                    : (language === "hi" ? `कॉल ${callCnt}/3` : `Call ${callCnt} of 3`)}
+                                </span>
+                              </span>
+                            );
+                          })()}
+
+                          <span
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: "8px",
+                              fontSize: "11.5px",
+                              fontWeight: 800,
+                              background: "#ECFDF5",
+                              color: "#059669",
+                              border: "1px solid #A7F3D0",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                            }}
+                          >
+                            <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
+                            <span>{language === "hi" ? "परामर्श जारी" : "In Consultation"}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Divider */}
+                      <div style={{ height: "1px", background: "#E2E8F0", marginBottom: "14px" }} />
+
+                      {/* Bottom Action Toolbar: Utilities on Left, Clinical Actions on Right */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                        {/* Left Utilities: Re-Announce, Skip/Hold, Transfer */}
                         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
                             onClick={() => handleReAnnounce(ticket)}
                             style={announceBtnStyle}
-                            title="Broadcast Announcement"
+                            title="Broadcast Re-Announcement to Patient Portal & Audio Speakers"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
@@ -1297,7 +1494,48 @@ export default function StaffPage({
                             <span>{t("reAnnounce", language)}</span>
                           </button>
 
-                          {/* Write E-Prescription (Rx) Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleSkipToHold(ticket)}
+                            style={{
+                              padding: "8px 13px",
+                              borderRadius: "10px",
+                              border: "1.5px solid #FCD34D",
+                              background: "#FFFBEB",
+                              color: "#B45309",
+                              fontWeight: 800,
+                              fontSize: "12px",
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              transition: "all 0.15s ease",
+                              boxShadow: "0 2px 6px rgba(245, 158, 11, 0.12)",
+                            }}
+                            title="Patient absent after announcements: Put on 10-minute hold grace period and free desk for next patient"
+                          >
+                            <span style={{ fontSize: "13px" }}>⏸️</span>
+                            <span>{language === "hi" ? "स्किप / होल्ड (10 मि. ग्रेस)" : "Skip / Hold (10m)"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTransferModal(ticket)}
+                            style={transferTriggerBtnStyle}
+                            title="Route Patient to Another Department"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                              <polyline points="14 2 14 8 20 8" />
+                              <line x1="12" y1="18" x2="12" y2="12" />
+                              <line x1="9" y1="15" x2="15" y2="15" />
+                            </svg>
+                            <span>{t("transferPrescribe", language)}</span>
+                          </button>
+                        </div>
+
+                        {/* Right Clinical Consultation: Prescribe & Complete */}
+                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
                           <button
                             type="button"
                             onClick={() => handleOpenPrescriptionModal(ticket)}
@@ -1323,21 +1561,6 @@ export default function StaffPage({
                                 ? (language === "hi" ? "पर्ची संपादित करें (Rx)" : "Edit Rx")
                                 : (language === "hi" ? "दवा पर्ची (Rx)" : "Prescribe (Rx)")}
                             </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenTransferModal(ticket)}
-                            style={transferTriggerBtnStyle}
-                            title="Route Patient to Another Department"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                              <polyline points="14 2 14 8 20 8" />
-                              <line x1="12" y1="18" x2="12" y2="12" />
-                              <line x1="9" y1="15" x2="15" y2="15" />
-                            </svg>
-                            <span>{t("transferPrescribe", language)}</span>
                           </button>
 
                           <button
@@ -1416,6 +1639,204 @@ export default function StaffPage({
                   ))}
                 </div>
               )}
+
+              {/* DEDICATED ON-HOLD / 10-MINUTE GRACE PERIOD PATIENTS SECTION */}
+              <div
+                style={{
+                  marginTop: "28px",
+                  paddingTop: "24px",
+                  borderTop: "1.5px dashed #CBD5E1",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#FEF3C7", color: "#B45309", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px" }}>
+                      ⏸️
+                    </div>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: "16px", color: "#0F172A", fontWeight: 800 }}>
+                        {language === "hi" ? "होल्ड / 10 मिनट ग्रेस पीरियड कतार" : "On-Hold / 10-Min Grace Period Patients"}
+                      </h3>
+                      <span style={{ fontSize: "12px", color: "#64748B" }}>
+                        {language === "hi"
+                          ? "अनुपस्थित मरीज़ों को 10 मिनट की छूट। आगमन पर पुनः बुलाएं अथवा No-Show चिह्नित करें।"
+                          : "Patients absent after 3 calls held for 10-min grace window. Recall on arrival or finalize No-Show."}
+                      </span>
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 800,
+                      padding: "3px 10px",
+                      borderRadius: "9999px",
+                      background: heldTickets.length > 0 ? "#FEF3C7" : "#F1F5F9",
+                      color: heldTickets.length > 0 ? "#B45309" : "#64748B",
+                      border: `1px solid ${heldTickets.length > 0 ? "#FDE68A" : "#CBD5E1"}`,
+                    }}
+                  >
+                    {heldTickets.length} {language === "hi" ? "होल्ड पर" : "On Hold"}
+                  </span>
+                </div>
+
+                {heldTickets.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "18px 20px",
+                      background: "#F8FAFC",
+                      borderRadius: "14px",
+                      border: "1px solid #E2E8F0",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                      color: "#64748B",
+                      fontSize: "12.5px",
+                    }}
+                  >
+                    <span style={{ fontSize: "18px" }}>✅</span>
+                    <span>
+                      {language === "hi"
+                        ? "वर्तमान में कोई मरीज़ होल्ड पर नहीं है। सभी परामर्श सुचारु रूप से चल रहे हैं।"
+                        : "No patients currently on hold. All active consultations running on schedule."}
+                    </span>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    {heldTickets.map((ht) => {
+                      const holdStart = ht.hold_start_time || ht.join_timestamp || nowSec;
+                      const holdUntil = ht.hold_until || (holdStart + 600);
+                      const remainingSecs = Math.max(0, Math.floor(holdUntil - nowSec));
+                      const mins = Math.floor(remainingSecs / 60);
+                      const secs = remainingSecs % 60;
+                      const timerStr = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+                      const isExpired = remainingSecs <= 0;
+
+                      return (
+                        <div
+                          key={ht.ticket_id}
+                          style={{
+                            background: isExpired ? "#FFF5F5" : "#FFFDF5",
+                            borderRadius: "14px",
+                            border: `1.5px solid ${isExpired ? "#FECACA" : "#FDE68A"}`,
+                            padding: "14px 18px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: "12px",
+                            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.03)",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                            <div
+                              style={{
+                                padding: "4px 10px",
+                                minWidth: "56px",
+                                height: "36px",
+                                borderRadius: "10px",
+                                background: isExpired ? "#991B1B" : "#B45309",
+                                color: "#FFFFFF",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: "14px",
+                                fontWeight: 900,
+                                whiteSpace: "nowrap",
+                                letterSpacing: "0.5px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {String(ht.ticket_id).startsWith("#") ? ht.ticket_id : `#${ht.ticket_id}`}
+                            </div>
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                <strong style={{ fontSize: "15px", color: "#0F172A" }}>{ht.name}</strong>
+                                <span style={{ padding: "1px 7px", borderRadius: "5px", background: "#FEF3C7", color: "#92400E", fontSize: "10.5px", fontWeight: 700 }}>
+                                  {getCategoryLabel(ht.service_category, language)}
+                                </span>
+                                <span style={{ fontSize: "11px", color: "#64748B" }}>
+                                  {ht.age || 30} yrs • {(ht.medical_condition || "general").replace(/_/g, " ")}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    padding: "2px 8px",
+                                    borderRadius: "6px",
+                                    fontSize: "11px",
+                                    fontWeight: 800,
+                                    background: isExpired ? "#FEE2E2" : "#FEF3C7",
+                                    color: isExpired ? "#DC2626" : "#B45309",
+                                  }}
+                                >
+                                  <span>{isExpired ? "⚠️" : "⏱️"}</span>
+                                  <span>
+                                    {isExpired
+                                      ? (language === "hi" ? "10 मिनट ग्रेस समाप्त (No-Show)" : "10-Min Grace Expired")
+                                      : (language === "hi" ? `ग्रेस समय शेष: ${timerStr}` : `Grace Remaining: ${timerStr}`)}
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            {/* Recall / Resume Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleRecallHeld(ht)}
+                              style={{
+                                padding: "7px 14px",
+                                borderRadius: "10px",
+                                border: "none",
+                                background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+                                color: "#FFFFFF",
+                                fontSize: "12px",
+                                fontWeight: 800,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                boxShadow: "0 2px 6px rgba(5, 150, 105, 0.25)",
+                              }}
+                              title="Patient has arrived: Restore into active consultation or top of queue"
+                            >
+                              <span>🟢</span>
+                              <span>{language === "hi" ? "मरीज़ पुनः बुलाएं (Recall)" : "Recall Patient"}</span>
+                            </button>
+
+                            {/* Mark No-Show Finalize Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleFinalizeNoShow(ht)}
+                              style={{
+                                padding: "7px 12px",
+                                borderRadius: "10px",
+                                border: "1px solid #FECACA",
+                                background: "#FEF2F2",
+                                color: "#DC2626",
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "5px",
+                              }}
+                              title="Finalize as No-Show if patient did not appear"
+                            >
+                              <span>🛑</span>
+                              <span>{language === "hi" ? "अनुपस्थित (No-Show)" : "Mark No-Show"}</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

@@ -10,6 +10,9 @@ const {
   serveNextEndpoint,
   completeEndpoint,
   noShowEndpoint,
+  holdTicketEndpoint,
+  recallTicketEndpoint,
+  reAnnounceEndpoint,
   countersEndpoint,
   getQueueEndpoint,
   getQueueHistoryEndpoint,
@@ -24,6 +27,9 @@ router.post("/join", optionalAuth, joinQueueEndpoint);
 router.post("/queue/join", optionalAuth, joinQueueEndpoint);
 router.post("/serve-next", optionalAuth, serveNextEndpoint);
 router.post("/complete", optionalAuth, completeEndpoint);
+router.post("/hold-ticket", optionalAuth, holdTicketEndpoint);
+router.post("/recall-ticket", optionalAuth, recallTicketEndpoint);
+router.post("/re-announce", optionalAuth, reAnnounceEndpoint);
 router.post("/no-show", optionalAuth, noShowEndpoint);
 router.post("/counters", optionalAuth, countersEndpoint);
 router.get("/queue/:tenant_id", optionalAuth, getQueueEndpoint);

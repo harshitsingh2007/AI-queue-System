@@ -15,6 +15,10 @@ const {
   adjustQueuePosition,
   setDoctorDutyStatus,
   getDoctorDutyStatus,
+  holdTicket,
+  recallTicket,
+  recordAnnouncement,
+  markNoShow,
 } = require("../services/ticketService");
 const { triggerModelRetrain } = require("../services/aiService");
 const { PRIORITY_EMERGENCY, PRIORITY_ROUTINE, PRIORITY_STANDARD } = require("../utils/clinicalComplexity");
@@ -31,9 +35,10 @@ async function broadcastQueueUpdate(io, tenantId) {
   const tid = String(tenantId || "city-hospital-01").trim();
   const snapshot = await engine.getQueueSnapshot(tid);
   const serving = await engine.getServingTickets(tid);
+  const held = await engine.getHeldTickets(tid);
   const analytics = await engine.getTenantAnalytics(tid);
 
-  io.to(tid).emit("queue_update", { snapshot, serving });
+  io.to(tid).emit("queue_update", { snapshot, serving, held });
   io.to(tid).emit("analytics_update", analytics);
 
   const alerts = await engine.getTicketsNeedingTurnAlert(tid);
@@ -64,9 +69,10 @@ function initSocket(server, corsOrigin = "*") {
 
       const snapshot = await engine.getQueueSnapshot(tenantId);
       const serving = await engine.getServingTickets(tenantId);
+      const held = await engine.getHeldTickets(tenantId);
       const analytics = await engine.getTenantAnalytics(tenantId);
 
-      socket.emit("queue_update", { snapshot, serving });
+      socket.emit("queue_update", { snapshot, serving, held });
       socket.emit("analytics_update", analytics);
     });
 
@@ -174,12 +180,73 @@ function initSocket(server, corsOrigin = "*") {
       }
     });
 
+    // hold_ticket (10-minute Grace Period)
+    socket.on("hold_ticket", async (data = {}) => {
+      try {
+        const tenantId = data.tenant_id || "city-hospital-01";
+        const ticketId = data.ticket_id;
+        const graceMinutes = data.grace_minutes || 10;
+
+        const held = await holdTicket(tenantId, ticketId, graceMinutes);
+        io.to(tenantId).emit("ticket_held", { ticket: held });
+        await broadcastQueueUpdate(io, tenantId);
+        socket.emit("hold_success", { ticket: held });
+      } catch (err) {
+        socket.emit("error", { message: err.message });
+      }
+    });
+
+    // recall_ticket (Recall from On-Hold back to Serving or Priority Queue)
+    socket.on("recall_ticket", async (data = {}) => {
+      try {
+        const tenantId = data.tenant_id || "city-hospital-01";
+        const ticketId = data.ticket_id;
+        const doctorInfo = {
+          id: data.doctor_id || socket.user?.id || null,
+          name: data.doctor_name || socket.user?.name || null,
+          email: data.doctor_email || socket.user?.email || null,
+        };
+        const targetMode = data.target_mode || "auto";
+
+        const recalled = await recallTicket(tenantId, ticketId, doctorInfo, targetMode);
+        io.to(tenantId).emit("ticket_recalled", { ticket: recalled });
+        await broadcastQueueUpdate(io, tenantId);
+        socket.emit("recall_success", { ticket: recalled });
+      } catch (err) {
+        socket.emit("error", { message: err.message });
+      }
+    });
+
+    // mark_noshow / noshow_ticket
+    socket.on("mark_noshow", async (data = {}) => {
+      try {
+        const tenantId = data.tenant_id || "city-hospital-01";
+        const ticketId = data.ticket_id;
+        const reason = data.reason || "Patient did not appear after grace period";
+
+        await markNoShow(tenantId, ticketId, reason);
+        io.to(tenantId).emit("ticket_noshow", { ticket_id: ticketId });
+        await broadcastQueueUpdate(io, tenantId);
+      } catch (err) {
+        socket.emit("error", { message: err.message });
+      }
+    });
+
     // re_announce
     socket.on("re_announce", async (data = {}) => {
-      const tenantId = data.tenant_id || "city-hospital-01";
-      const ticket = data.ticket;
-      if (ticket) {
-        io.to(tenantId).emit("now_serving", { ticket });
+      try {
+        const tenantId = data.tenant_id || "city-hospital-01";
+        const ticket = data.ticket;
+        const ticketId = ticket?.ticket_id || data.ticket_id;
+        if (ticketId) {
+          const updatedTicket = await recordAnnouncement(tenantId, ticketId);
+          io.to(tenantId).emit("now_serving", { ticket: updatedTicket || ticket, re_announced: true });
+          await broadcastQueueUpdate(io, tenantId);
+        } else if (ticket) {
+          io.to(tenantId).emit("now_serving", { ticket, re_announced: true });
+        }
+      } catch (e) {
+        if (data.ticket) io.to(data.tenant_id || "city-hospital-01").emit("now_serving", { ticket: data.ticket, re_announced: true });
       }
     });
 

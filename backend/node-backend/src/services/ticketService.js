@@ -1183,14 +1183,238 @@ async function getTicketDetails(ticketId, tenantId = "city-hospital-01") {
 }
 
 /**
+ * Record Patient Announcement / Call count.
+ */
+async function recordAnnouncement(tenantId, ticketId) {
+  const tenant = engine._getTenant(tenantId);
+  let ticket = tenant.tickets.get(ticketId);
+
+  if (!ticket) {
+    const row = await prisma.tickets.findUnique({ where: { ticket_id: ticketId } });
+    if (row) {
+      ticket = {
+        ...row,
+        join_timestamp: dtToEpoch(row.join_timestamp),
+        effective_timestamp: dtToEpoch(row.effective_timestamp),
+        serve_start_time: row.serve_start_time ? dtToEpoch(row.serve_start_time) : null,
+        queue_date: parseQueueDate(row.queue_date),
+      };
+      tenant.tickets.set(ticketId, ticket);
+    }
+  }
+
+  if (!ticket) return null;
+
+  ticket.announcement_count = (ticket.announcement_count || 1) + 1;
+  ticket.last_announced_at = Date.now() / 1000.0;
+  await saveTicketToDb(ticket);
+
+  const hid = await engine.resolveHospitalId(tenantId);
+  await engine.logQueueEvent({
+    hospitalId: hid,
+    ticketId: ticket.ticket_id,
+    eventType: "ANNOUNCED",
+    oldStatus: ticket.status,
+    newStatus: ticket.status,
+    metadata: {
+      announcement_count: ticket.announcement_count,
+      last_announced_at: ticket.last_announced_at,
+    },
+  });
+
+  return ticket;
+}
+
+/**
+ * Hold Ticket / 10-Minute Grace Period.
+ * Moves patient from 'serving' or 'waiting' into 'on_hold' status, freeing the doctor desk.
+ */
+async function holdTicket(tenantId, ticketId, graceMinutes = 10) {
+  const tenant = engine._getTenant(tenantId);
+  let ticket = tenant.tickets.get(ticketId);
+
+  if (!ticket) {
+    const row = await prisma.tickets.findUnique({ where: { ticket_id: ticketId } });
+    if (row) {
+      ticket = {
+        ...row,
+        join_timestamp: dtToEpoch(row.join_timestamp),
+        effective_timestamp: dtToEpoch(row.effective_timestamp),
+        serve_start_time: row.serve_start_time ? dtToEpoch(row.serve_start_time) : null,
+        queue_date: parseQueueDate(row.queue_date),
+      };
+      tenant.tickets.set(ticketId, ticket);
+    }
+  }
+
+  if (!ticket) {
+    throw new Error(`Ticket #${ticketId} not found.`);
+  }
+
+  const prevStatus = ticket.status || "serving";
+  const now = Date.now() / 1000.0;
+  const graceSecs = Math.max(60, (parseInt(graceMinutes, 10) || 10) * 60);
+
+  ticket.status = "on_hold";
+  ticket.hold_start_time = now;
+  ticket.hold_until = now + graceSecs;
+  ticket.grace_minutes = Math.round(graceSecs / 60);
+
+  // Clear doctor/desk assignment on held ticket so desk is available for next patient
+  const heldDocId = ticket.served_by_doctor_id;
+  const heldDeskId = ticket.desk_id;
+  ticket.previous_doctor_id = heldDocId;
+  ticket.previous_desk_id = heldDeskId;
+
+  await saveTicketToDb(ticket);
+
+  // Free desk
+  if (ticket.ticket_id) {
+    await prisma.desks.updateMany({
+      where: { current_ticket_id: ticket.ticket_id },
+      data: {
+        status: "AVAILABLE",
+        current_ticket_id: "",
+        updated_at: new Date(),
+      },
+    }).catch(() => {});
+  }
+
+  const hid = await engine.resolveHospitalId(tenantId);
+  await engine.logQueueEvent({
+    hospitalId: hid,
+    ticketId: ticket.ticket_id,
+    eventType: "PUT_ON_HOLD",
+    oldStatus: prevStatus,
+    newStatus: "on_hold",
+    metadata: {
+      hold_start_time: ticket.hold_start_time,
+      hold_until: ticket.hold_until,
+      grace_minutes: ticket.grace_minutes,
+      previous_doctor_id: heldDocId,
+      queue_date: ticket.queue_date || getCurrentQueueDate(),
+    },
+  });
+
+  engine._rebuildHeap(tenantId);
+  await engine.recalculateWaitTimes(tenantId);
+  return ticket;
+}
+
+/**
+ * Recall Ticket from On-Hold back to Active Service or Priority Waiting.
+ */
+async function recallTicket(tenantId, ticketId, doctorInfo = null, targetMode = "auto") {
+  const tenant = engine._getTenant(tenantId);
+  let ticket = tenant.tickets.get(ticketId);
+
+  if (!ticket) {
+    const row = await prisma.tickets.findUnique({ where: { ticket_id: ticketId } });
+    if (row) {
+      ticket = {
+        ...row,
+        join_timestamp: dtToEpoch(row.join_timestamp),
+        effective_timestamp: dtToEpoch(row.effective_timestamp),
+        serve_start_time: row.serve_start_time ? dtToEpoch(row.serve_start_time) : null,
+        queue_date: parseQueueDate(row.queue_date),
+      };
+      tenant.tickets.set(ticketId, ticket);
+    }
+  }
+
+  if (!ticket) {
+    throw new Error(`Ticket #${ticketId} not found.`);
+  }
+
+  const now = Date.now() / 1000.0;
+  const today = getCurrentQueueDate();
+
+  // Normalize doctor info
+  let docId = doctorInfo?.id || doctorInfo?.doctor_id || null;
+  let docName = doctorInfo?.name || doctorInfo?.doctor_name || null;
+  let docEmail = doctorInfo?.email || doctorInfo?.doctor_email || null;
+
+  // Check if doctor is currently free to immediately resume serving
+  let isDocFree = true;
+  if (docId || docEmail || docName) {
+    const busyTicket = Array.from(tenant.tickets.values()).find(
+      (t) =>
+        t.status === "serving" &&
+        t.ticket_id !== ticketId &&
+        parseQueueDate(t.queue_date) === today &&
+        ((docId && t.served_by_doctor_id && String(t.served_by_doctor_id) === String(docId)) ||
+         (docEmail && t.served_by_doctor_email && String(t.served_by_doctor_email).toLowerCase() === String(docEmail).toLowerCase()) ||
+         (docName && t.served_by_doctor_name && String(t.served_by_doctor_name).trim().toLowerCase() === String(docName).trim().toLowerCase()))
+    );
+    if (busyTicket) isDocFree = false;
+  }
+
+  const shouldServeImmediately = targetMode === "serving" || (targetMode === "auto" && isDocFree);
+
+  if (shouldServeImmediately) {
+    ticket.status = "serving";
+    ticket.serve_start_time = now;
+    ticket.position = 0;
+    if (docId) ticket.served_by_doctor_id = docId;
+    if (docName) ticket.served_by_doctor_name = docName;
+    if (docEmail) ticket.served_by_doctor_email = docEmail;
+  } else {
+    // Restore to waiting queue with Priority 1 & earliest effective timestamp (Position 1)
+    ticket.status = "waiting";
+    ticket.priority_level = 1; // Highest clinical priority on recall
+    ticket.effective_timestamp = now - 3600; // Float to top
+    ticket.position = 1;
+    tenant.queue.push([1, ticket.effective_timestamp, ticket.ticket_id]);
+  }
+
+  await saveTicketToDb(ticket);
+
+  const hid = await engine.resolveHospitalId(tenantId);
+  await engine.logQueueEvent({
+    hospitalId: hid,
+    ticketId: ticket.ticket_id,
+    eventType: shouldServeImmediately ? "RECALLED_TO_SERVING" : "RECALLED_TO_QUEUE",
+    oldStatus: "on_hold",
+    newStatus: ticket.status,
+    metadata: {
+      doctor_id: docId,
+      doctor_name: docName,
+      recalled_at: now,
+      queue_date: ticket.queue_date || today,
+    },
+  });
+
+  engine._rebuildHeap(tenantId);
+  await engine.recalculateWaitTimes(tenantId);
+  return ticket;
+}
+
+/**
  * Mark No-Show.
  */
-async function markNoShow(tenantId, ticketId) {
+async function markNoShow(tenantId, ticketId, reason = "Patient did not appear after grace period") {
   const tenant = engine._getTenant(tenantId);
-  const ticket = tenant.tickets.get(ticketId);
+  let ticket = tenant.tickets.get(ticketId);
+
+  if (!ticket) {
+    const row = await prisma.tickets.findUnique({ where: { ticket_id: ticketId } });
+    if (row) {
+      ticket = {
+        ...row,
+        join_timestamp: dtToEpoch(row.join_timestamp),
+        effective_timestamp: dtToEpoch(row.effective_timestamp),
+        serve_start_time: row.serve_start_time ? dtToEpoch(row.serve_start_time) : null,
+        queue_date: parseQueueDate(row.queue_date),
+      };
+      tenant.tickets.set(ticketId, ticket);
+    }
+  }
+
   if (ticket) {
+    const prevStatus = ticket.status || "on_hold";
     ticket.status = "no_show";
     ticket.serve_end_time = Date.now() / 1000.0;
+    ticket.cancellation_reason = reason;
     await saveTicketToDb(ticket);
 
     const hid = await engine.resolveHospitalId(tenantId);
@@ -1198,9 +1422,12 @@ async function markNoShow(tenantId, ticketId) {
       hospitalId: hid,
       ticketId: ticket.ticket_id,
       eventType: "NO_SHOW",
-      oldStatus: "serving",
+      oldStatus: prevStatus,
       newStatus: "no_show",
-      metadata: { queue_date: ticket.queue_date || getCurrentQueueDate() },
+      metadata: {
+        reason,
+        queue_date: ticket.queue_date || getCurrentQueueDate(),
+      },
     });
   }
 
@@ -1217,7 +1444,7 @@ async function markNoShow(tenantId, ticketId) {
 
   engine._rebuildHeap(tenantId);
   await engine.recalculateWaitTimes(tenantId);
-  return { success: true };
+  return { success: true, ticket_id: ticketId };
 }
 
 /**
@@ -1278,6 +1505,9 @@ module.exports = {
   adjustQueuePosition,
   getTicketDetails,
   markNoShow,
+  holdTicket,
+  recallTicket,
+  recordAnnouncement,
   saveTicketPrescription,
   getDoctorDutyStatus,
   setDoctorDutyStatus,

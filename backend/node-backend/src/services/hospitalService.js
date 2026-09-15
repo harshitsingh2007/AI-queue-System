@@ -28,8 +28,10 @@ const DEFAULT_BRANDING = {
   slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
   opd_start_time: "08:00",
   opd_end_time: "20:00",
-  registration_cutoff_time: "19:00",
-  operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  registration_open_time: "08:00",
+  registration_close_time: "20:00",
+  registration_cutoff_time: "20:00",
+  operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
   closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
 };
 
@@ -400,6 +402,19 @@ async function updateHospitalBranding(hospitalCode, brandingData) {
     ...existing,
     ...brandingData,
   };
+
+  if (brandingData.opd_start_time) {
+    merged.registration_open_time = brandingData.opd_start_time;
+  }
+  if (brandingData.opd_end_time) {
+    merged.registration_close_time = brandingData.opd_end_time;
+  }
+  if (brandingData.registration_open_time) {
+    merged.opd_start_time = brandingData.registration_open_time;
+  }
+  if (brandingData.registration_close_time) {
+    merged.opd_end_time = brandingData.registration_close_time;
+  }
 
   const updatePayload = {
     branding_json: merged,

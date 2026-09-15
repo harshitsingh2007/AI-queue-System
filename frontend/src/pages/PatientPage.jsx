@@ -120,6 +120,46 @@ export default function PatientPage({
     }
   });
 
+  const isLiveTicketStatus = (ticket) => {
+    if (!ticket || !ticket.status) return false;
+    const s = String(ticket.status).toLowerCase();
+    return ["waiting", "serving", "on_hold", "hold"].includes(s);
+  };
+
+  const isLiveTicket = activeTicket && isLiveTicketStatus(activeTicket);
+
+  // If activeTicket becomes completed or departed, clear it immediately from instant check-in
+  useEffect(() => {
+    if (activeTicket && !isLiveTicketStatus(activeTicket)) {
+      setActiveTicket(null);
+      if (setTicketQrData) setTicketQrData(null);
+      try {
+        localStorage.removeItem("ai_queue_active_ticket");
+      } catch (e) {}
+    }
+  }, [activeTicket, setActiveTicket, setTicketQrData]);
+
+  // Ensure activeTicket is restored from familyTickets or localStorage on mount/refresh ONLY IF LIVE
+  useEffect(() => {
+    if (!activeTicket) {
+      const candidate = familyTickets[selectedMemberId] || familyTickets["self"] || (() => {
+        try {
+          const s = localStorage.getItem("ai_queue_active_ticket");
+          return s ? JSON.parse(s) : null;
+        } catch (e) { return null; }
+      })();
+      if (candidate && candidate.ticket_id && isLiveTicketStatus(candidate)) {
+        setActiveTicket(candidate);
+        fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${candidate.ticket_id}`)
+          .then((r) => r.json())
+          .then((qr) => {
+            if (setTicketQrData) setTicketQrData(qr);
+          })
+          .catch(() => {});
+      }
+    }
+  }, [activeTicket, familyTickets, selectedMemberId, setActiveTicket, setTicketQrData]);
+
   // Sync tab with URL, including "family" tab
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -507,18 +547,26 @@ export default function PatientPage({
       }
     }
 
-    if (hospitalBranding.registration_cutoff_time) {
-      const [cutH, cutM] = hospitalBranding.registration_cutoff_time.split(":").map(Number);
-      const curH = now.getHours();
-      const curM = now.getMinutes();
-      if (curH > cutH || (curH === cutH && curM >= cutM)) {
-        return {
-          isClosed: true,
-          reason: language === "hi"
-            ? `आज का पंजीकरण कटऑफ समय (${hospitalBranding.registration_cutoff_time}) समाप्त हो चुका है।`
-            : `Today's registration cutoff (${hospitalBranding.registration_cutoff_time}) has passed.`,
-        };
-      }
+    const opdStart = hospitalBranding.opd_start_time || hospitalBranding.registration_open_time || "08:00";
+    const opdEnd = hospitalBranding.opd_end_time || hospitalBranding.registration_close_time || "20:00";
+    const curTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    if (curTime < opdStart) {
+      return {
+        isClosed: true,
+        reason: language === "hi"
+          ? `ओपीडी पंजीकरण प्रातः ${opdStart} बजे से प्रारंभ होगा।`
+          : `OPD registration opens at ${opdStart}.`,
+      };
+    }
+
+    if (curTime > opdEnd) {
+      return {
+        isClosed: true,
+        reason: language === "hi"
+          ? `आज का ओपीडी समय (${opdEnd}) समाप्त हो चुका है।`
+          : `Today's OPD hours (${opdStart} - ${opdEnd}) have ended.`,
+      };
     }
 
     return { isClosed: false, reason: "" };
@@ -599,14 +647,17 @@ export default function PatientPage({
     if (member.age) setAge(member.age);
     if (member.gender) setGender(member.gender.toLowerCase());
 
-    // If this family member already has an active ticket in familyTickets, switch activeTicket to it
-    if (familyTickets[member.id]) {
-      const memTicket = familyTickets[member.id];
+    // If this family member already has a live active ticket in familyTickets, switch activeTicket to it
+    const memTicket = familyTickets[member.id];
+    if (memTicket && isLiveTicketStatus(memTicket)) {
       setActiveTicket(memTicket);
       fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${memTicket.ticket_id}`)
         .then((r) => r.json())
         .then((qr) => setTicketQrData(qr))
         .catch((e) => console.log("QR error:", e));
+    } else {
+      setActiveTicket(null);
+      if (setTicketQrData) setTicketQrData(null);
     }
     setStatusMsg(`${t("profileSwitchedMsg", language)} ${member.name}`);
   };
@@ -795,6 +846,11 @@ export default function PatientPage({
         const tkt = t;
         setActiveTicket(t);
 
+        try {
+          localStorage.setItem("last_patient_name", name);
+          localStorage.setItem("ai_queue_active_ticket", JSON.stringify(t));
+        } catch (e) {}
+
         // Record ticket in family tickets map under active member
         setFamilyTickets((prev) => {
           const updated = { ...prev, [selectedMemberId]: t };
@@ -946,8 +1002,11 @@ export default function PatientPage({
         throw new Error(data.detail || data.message || "Failed to cancel ticket.");
       }
 
-      const cancelledTicket = data.ticket || { ...activeTicket, status: "cancelled", cancellation_reason: reasonText };
-      setActiveTicket(cancelledTicket);
+      setActiveTicket(null);
+      if (setTicketQrData) setTicketQrData(null);
+      try {
+        localStorage.removeItem("ai_queue_active_ticket");
+      } catch (e) {}
 
       // Clean from familyTickets map
       setFamilyTickets((prev) => {
@@ -2058,8 +2117,8 @@ export default function PatientPage({
               )}
             </div>
 
-            {/* Digital Ticket Pass (if active) */}
-            {activeTicket && (
+            {/* Digital Ticket Pass (only if live: waiting, serving, on_hold) */}
+            {isLiveTicket && (
               <DigitalTicketPassCard
                 activeTicket={activeTicket}
                 setActiveTicket={setActiveTicket}

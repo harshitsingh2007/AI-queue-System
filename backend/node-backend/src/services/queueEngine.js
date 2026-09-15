@@ -721,6 +721,57 @@ class NodeQueueEngine {
   }
 
   /**
+   * Retrieves on-hold / grace period tickets for today or target date.
+   */
+  async getHeldTickets(tenantId, department = null, queueDate = null) {
+    const targetDate = parseQueueDate(queueDate);
+    const today = getCurrentQueueDate();
+    const deptFilter = String(department || "").trim().toLowerCase();
+
+    if (targetDate === today) {
+      const tenant = this._getTenant(tenantId);
+      let held = Array.from(tenant.tickets.values()).filter(
+        (t) => ["on_hold", "hold"].includes(String(t.status || "").toLowerCase()) && parseQueueDate(t.queue_date) === today
+      );
+
+      if (deptFilter && deptFilter !== "all") {
+        held = held.filter((t) => String(t.service_category).trim().toLowerCase() === deptFilter);
+      }
+
+      held.sort((a, b) => {
+        const hA = a.hold_start_time || a.join_timestamp || 0;
+        const hB = b.hold_start_time || b.join_timestamp || 0;
+        return hB - hA;
+      });
+
+      return held;
+    }
+
+    const hid = await this.resolveHospitalId(tenantId);
+    const where = {
+      hospital_id: hid,
+      queue_date: queueDateToPrismaDate(targetDate),
+      status: { in: ["on_hold", "hold"] },
+    };
+
+    if (deptFilter && deptFilter !== "all") {
+      const deptId = await this.resolveDepartmentId(hid, deptFilter);
+      if (deptId) where.department_id = deptId;
+    }
+
+    const rows = await prisma.tickets.findMany({
+      where,
+      orderBy: { updated_at: "desc" },
+    });
+
+    return rows.map((r) => ({
+      ...r,
+      join_timestamp: dtToEpoch(r.join_timestamp),
+      queue_date: targetDate,
+    }));
+  }
+
+  /**
    * Retrieves historical queue tickets for given date.
    */
   async getHistoricalQueueTickets(tenantId, queueDate, department = null) {
