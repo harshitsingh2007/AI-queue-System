@@ -46,12 +46,16 @@ export default function Footer({ language = "en", hospitalName, currentUser }) {
           margin-top: 40px;
           padding-top: 24px;
           padding-bottom: 20px;
-          border-top: 1px solid #E2E8F0;
+          border-top: 1px solid var(--patient-card-border, #E2E8F0);
           display: flex;
           justify-content: space-between;
           align-items: center;
           flex-wrap: wrap;
           gap: 16px;
+        }
+
+        body.theme-dark .user-dashboard-footer {
+          border-top-color: #1E293B;
         }
 
         .footer-heartbeat-svg {
@@ -91,17 +95,17 @@ export default function Footer({ language = "en", hospitalName, currentUser }) {
           </svg>
         </div>
         <div style={{ textAlign: "left" }}>
-          <div style={{ fontWeight: 800, fontSize: "14px", color: "#0F172A", letterSpacing: "-0.2px", lineHeight: "1.2" }}>
+          <div style={{ fontWeight: 800, fontSize: "14px", color: "var(--patient-text-main, #0F172A)", letterSpacing: "-0.2px", lineHeight: "1.2" }}>
             {effectiveHospitalName}
           </div>
-          <div style={{ fontSize: "11px", color: "#64748B", fontWeight: 500, marginTop: "1px" }}>
+          <div style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", fontWeight: 500, marginTop: "1px" }}>
             {language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा" : "Care you can trust"}
           </div>
         </div>
       </div>
 
       {/* 2. Center: Dynamic Copyright with Hospital Name */}
-      <div style={{ fontSize: "12.5px", color: "#64748B", fontWeight: 500 }}>
+      <div style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)", fontWeight: 500 }}>
         {language === "hi"
           ? `© ${currentYear} ${effectiveHospitalName}. सर्वाधिकार सुरक्षित.`
           : `© ${currentYear} ${effectiveHospitalName}. All rights reserved.`}

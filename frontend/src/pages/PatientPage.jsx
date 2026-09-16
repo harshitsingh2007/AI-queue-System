@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
-import { t, getCategoryLabel, getStatusLabel } from "../utils/i18n";
+import { t, getCategoryLabel, getStatusLabel, SYMPTOM_OPTIONS, RISK_OPTIONS, formatSymptomLabel, formatRiskLabel } from "../utils/i18n";
 import { printTokenPass, printAppointmentRecord, printPrescriptionSlip } from "../utils/printPassHelper";
 import QueueStepper from "../components/patient/QueueStepper";
 import HeroBanner from "../components/patient/HeroBanner";
@@ -43,6 +43,7 @@ export default function PatientPage({
   onSwitchHospital = null,
   hospitalBranding: hospitalBrandingProp = null,
   onUpdateHospitalBranding = null,
+  theme = "light",
 }) {
   // Family Members & Dependents Management
   // Use App-level state when provided, fall back to local state
@@ -128,18 +129,43 @@ export default function PatientPage({
 
   const isLiveTicket = activeTicket && isLiveTicketStatus(activeTicket);
 
+  const removeTicketFromFamilyTickets = useCallback((ticketId) => {
+    if (!ticketId) return;
+    setFamilyTickets((prev) => {
+      const updated = { ...prev };
+      let changed = false;
+      Object.keys(updated).forEach((k) => {
+        if (updated[k]?.ticket_id === ticketId) {
+          delete updated[k];
+          changed = true;
+        }
+      });
+      if (changed) {
+        try {
+          const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+          localStorage.setItem(ticketStorageKey, JSON.stringify(updated));
+        } catch (e) {}
+      }
+      return changed ? updated : prev;
+    });
+  }, [currentUser]);
+
   // If activeTicket becomes completed or departed, clear it immediately from instant check-in
   useEffect(() => {
     if (activeTicket && !isLiveTicketStatus(activeTicket)) {
+      const tId = activeTicket.ticket_id;
       setActiveTicket(null);
       if (setTicketQrData) setTicketQrData(null);
       try {
         localStorage.removeItem("ai_queue_active_ticket");
       } catch (e) {}
+      if (tId) {
+        removeTicketFromFamilyTickets(tId);
+      }
     }
-  }, [activeTicket, setActiveTicket, setTicketQrData]);
+  }, [activeTicket, setActiveTicket, setTicketQrData, removeTicketFromFamilyTickets]);
 
-  // Ensure activeTicket is restored from familyTickets or localStorage on mount/refresh ONLY IF LIVE
+  // Ensure activeTicket is restored from familyTickets or localStorage on mount/refresh ONLY IF LIVE ON SERVER
   useEffect(() => {
     if (!activeTicket) {
       const candidate = familyTickets[selectedMemberId] || familyTickets["self"] || (() => {
@@ -149,25 +175,51 @@ export default function PatientPage({
         } catch (e) { return null; }
       })();
       if (candidate && candidate.ticket_id && isLiveTicketStatus(candidate)) {
-        setActiveTicket(candidate);
-        fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${candidate.ticket_id}`)
+        // Authoritatively check backend to ensure candidate hasn't been completed or cancelled
+        fetch(`${API_BASE}/api/v1/plugin/ticket/${candidate.ticket_id}`)
           .then((r) => r.json())
-          .then((qr) => {
-            if (setTicketQrData) setTicketQrData(qr);
+          .then((d) => {
+            if (d.status === "success" && d.ticket) {
+              if (isLiveTicketStatus(d.ticket)) {
+                setActiveTicket(d.ticket);
+                fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${d.ticket.ticket_id}`)
+                  .then((rqr) => rqr.json())
+                  .then((qr) => {
+                    if (setTicketQrData) setTicketQrData(qr);
+                  })
+                  .catch(() => {});
+              } else {
+                // Ticket was already completed or cancelled on the server! Clean up local storage
+                removeTicketFromFamilyTickets(candidate.ticket_id);
+                try {
+                  localStorage.removeItem("ai_queue_active_ticket");
+                } catch (e) {}
+              }
+            }
           })
-          .catch(() => {});
+          .catch(() => {
+            // Offline fallback
+            setActiveTicket(candidate);
+          });
       }
     }
-  }, [activeTicket, familyTickets, selectedMemberId, setActiveTicket, setTicketQrData]);
+  }, [activeTicket, familyTickets, selectedMemberId, setActiveTicket, setTicketQrData, removeTicketFromFamilyTickets]);
 
-  // Sync tab with URL, including "family" tab
+  // Sync tab with URL, including "family" and "history" tabs and aliases
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get("tab");
     if (tabParam && ["walkin", "book", "my_apts", "history", "family"].includes(tabParam.toLowerCase())) {
       return tabParam.toLowerCase();
     }
-    return currentTab || "walkin";
+    const pageParam = (params.get("page") || params.get("view") || "").toLowerCase();
+    if (["history", "appointment_history", "past_appointments"].includes(pageParam)) return "history";
+    if (["my_apts", "appointments", "my_appointments"].includes(pageParam)) return "my_apts";
+    if (["book", "booking", "schedule"].includes(pageParam)) return "book";
+    if (["family", "dependents"].includes(pageParam)) return "family";
+    return (currentTab && ["walkin", "book", "my_apts", "history", "family"].includes(currentTab.toLowerCase()))
+      ? currentTab.toLowerCase()
+      : "walkin";
   });
 
   useEffect(() => {
@@ -180,9 +232,18 @@ export default function PatientPage({
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
+      const pageParam = (params.get("page") || params.get("view") || "").toLowerCase();
       if (tabParam && ["walkin", "book", "my_apts", "history", "family"].includes(tabParam.toLowerCase())) {
         setActiveTab(tabParam.toLowerCase());
-      } else {
+      } else if (["history", "appointment_history", "past_appointments"].includes(pageParam)) {
+        setActiveTab("history");
+      } else if (["my_apts", "appointments", "my_appointments"].includes(pageParam)) {
+        setActiveTab("my_apts");
+      } else if (["book", "booking", "schedule"].includes(pageParam)) {
+        setActiveTab("book");
+      } else if (["family", "dependents"].includes(pageParam)) {
+        setActiveTab("family");
+      } else if (pageParam === "patient") {
         setActiveTab("walkin");
       }
     };
@@ -191,13 +252,20 @@ export default function PatientPage({
   }, []);
 
   const handleTabChange = (tabKey) => {
-    setActiveTab(tabKey);
+    const cleanKey = (tabKey || "").toLowerCase();
+    setActiveTab(cleanKey);
+    if (cleanKey === "history") {
+      fetchUserAppointments();
+      fetchUserTicketHistory();
+    } else if (cleanKey === "my_apts") {
+      fetchUserAppointments();
+    }
     if (navigateTo) {
-      navigateTo("patient", tabKey);
+      navigateTo("patient", cleanKey);
     } else {
       const url = new URL(window.location.href);
       url.searchParams.set("page", "patient");
-      url.searchParams.set("tab", tabKey);
+      url.searchParams.set("tab", cleanKey);
       window.history.pushState({}, "", url.toString());
     }
   };
@@ -206,6 +274,7 @@ export default function PatientPage({
   const [age, setAge] = useState(currentUser && currentUser.age ? currentUser.age : 35);
   const [gender, setGender] = useState(currentUser && currentUser.gender ? currentUser.gender.toLowerCase() : "male");
   const [medicalCondition, setMedicalCondition] = useState("general_checkup");
+  const [customSymptom, setCustomSymptom] = useState("");
   const [preExistingCondition, setPreExistingCondition] = useState("none");
   const [category, setCategory] = useState("consultation");
   const [priority, setPriority] = useState(2);
@@ -368,7 +437,7 @@ export default function PatientPage({
         ticket_id: fallbackTicket?.ticket_id || parsed.ticket_id || "",
         age: fallbackTicket?.age || 30,
         gender: fallbackTicket?.gender || "Patient",
-        hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
+        hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && Array.isArray(hospitalsList) && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
       };
     }
 
@@ -391,7 +460,7 @@ export default function PatientPage({
       ticket_id: fallbackTicket?.ticket_id || fallbackTicket?.appointment_id || "",
       age: fallbackTicket?.age || 30,
       gender: fallbackTicket?.gender || "Patient",
-      hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
+      hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && Array.isArray(hospitalsList) && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
     };
   };
 
@@ -438,7 +507,7 @@ export default function PatientPage({
     fetch(`${API_BASE}/api/v1/plugin/appointments/user/${encodedIdent}${extraName}`)
       .then((r) => r.json())
       .then((d) => {
-        const apts = d.appointments || [];
+        const apts = Array.isArray(d?.appointments) ? d.appointments : [];
         setUserAppointments(apts);
       })
       .catch((e) => console.log("Appointments fetch error:", e));
@@ -588,24 +657,66 @@ export default function PatientPage({
     fetch(`${API_BASE}/api/v1/plugin/tickets/history/${encodedIdent}${extraName}`)
       .then((r) => r.json())
       .then((d) => {
-        setUserTicketHistory(d.tickets || []);
+        const tickets = Array.isArray(d?.tickets) ? d.tickets : [];
+        setUserTicketHistory(tickets);
+        // If current activeTicket is present in history and completed/cancelled, clear it
+        if (activeTicket?.ticket_id) {
+          const matching = tickets.find((t) => t.ticket_id === activeTicket.ticket_id);
+          if (matching && !isLiveTicketStatus(matching)) {
+            setActiveTicket(null);
+            if (setTicketQrData) setTicketQrData(null);
+            try {
+              localStorage.removeItem("ai_queue_active_ticket");
+            } catch (e) {}
+            removeTicketFromFamilyTickets(matching.ticket_id);
+          }
+        }
       })
       .catch((e) => console.log("Ticket history fetch error:", e));
-  }, [currentUser, name]);
+  }, [currentUser, name, activeTicket?.ticket_id, removeTicketFromFamilyTickets, setActiveTicket, setTicketQrData]);
 
-  // Auto-sync latest ticket data (including prescription_notes) whenever activeTicket exists
+  // Auto-sync latest ticket data (status, position, wait time, prescription_notes) whenever activeTicket exists
   useEffect(() => {
-    if (activeTicket && activeTicket.ticket_id && !activeTicket.prescription_notes) {
+    if (!activeTicket?.ticket_id) return;
+
+    let isSubscribed = true;
+
+    const syncTicketStatus = () => {
       fetch(`${API_BASE}/api/v1/plugin/ticket/${activeTicket.ticket_id}`)
         .then((r) => r.json())
         .then((d) => {
-          if (d.status === "success" && d.ticket && d.ticket.prescription_notes) {
-            setActiveTicket((prev) => ({ ...prev, ...d.ticket }));
+          if (!isSubscribed) return;
+          if (d.status === "success" && d.ticket) {
+            const live = isLiveTicketStatus(d.ticket);
+            if (!live) {
+              // Ticket was completed or cancelled on the server! Clear from active queue view
+              setActiveTicket(null);
+              if (setTicketQrData) setTicketQrData(null);
+              try {
+                localStorage.removeItem("ai_queue_active_ticket");
+              } catch (e) {}
+              removeTicketFromFamilyTickets(d.ticket.ticket_id);
+              fetchUserTicketHistory();
+              fetchUserAppointments();
+            } else {
+              setActiveTicket((prev) => ({ ...prev, ...d.ticket }));
+            }
           }
         })
         .catch(() => {});
-    }
-  }, [activeTicket?.ticket_id, activeTicket?.status, setActiveTicket]);
+    };
+
+    // Immediately sync on mount / activeTicket change
+    syncTicketStatus();
+
+    // Poll every 5 seconds to catch doctor completing or serving ticket in real time
+    const interval = setInterval(syncTicketStatus, 5000);
+
+    return () => {
+      isSubscribed = false;
+      clearInterval(interval);
+    };
+  }, [activeTicket?.ticket_id, removeTicketFromFamilyTickets, fetchUserTicketHistory, fetchUserAppointments, setActiveTicket, setTicketQrData]);
 
   const selectedMember = familyMembers.find((m) => m.id === selectedMemberId) || familyMembers[0];
 
@@ -833,7 +944,7 @@ export default function PatientPage({
           user_email: currentUser ? currentUser.email : "",
           age: Number(age) || 30,
           gender: gender,
-          medical_condition: medicalCondition,
+          medical_condition: medicalCondition === "other_custom" ? (customSymptom.trim() || "Other Symptom") : medicalCondition,
           pre_existing_condition: preExistingCondition,
           // Include family_member_id when booking for a dependent
           ...(selectedMemberId && selectedMemberId !== "self" ? { family_member_id: selectedMemberId } : {}),
@@ -1085,6 +1196,151 @@ export default function PatientPage({
   return (
     <div style={{ width: "100%", paddingBottom: "40px" }}>
       <style>{`
+        :root {
+          --patient-card-bg: #FFFFFF;
+          --patient-card-border: #E2E8F0;
+          --patient-text-main: #0F172A;
+          --patient-text-sub: #64748B;
+          --patient-sub-card: #F8FAFC;
+          --patient-tag-bg: #F0F9FF;
+          --patient-tag-color: #0369A1;
+          --patient-tag-border: #BAE6FD;
+          --apt-active-bg: #F0F9FF;
+          --apt-active-border: #BAE6FD;
+          --emergency-card-bg: #FEF2F2;
+          --emergency-card-border: #FECACA;
+          --emergency-card-text: #DC2626;
+        }
+
+        body.theme-dark {
+          --patient-card-bg: #0F172A;
+          --patient-card-border: #1E293B;
+          --patient-text-main: #F8FAFC;
+          --patient-text-sub: #94A3B8;
+          --patient-sub-card: #1E293B;
+          --patient-tag-bg: rgba(2, 132, 199, 0.18);
+          --patient-tag-color: #38BDF8;
+          --patient-tag-border: rgba(56, 189, 248, 0.3);
+          --apt-active-bg: rgba(2, 132, 199, 0.16);
+          --apt-active-border: #0284C7;
+          --emergency-card-bg: rgba(220, 38, 38, 0.14);
+          --emergency-card-border: rgba(220, 38, 38, 0.35);
+          --emergency-card-text: #F87171;
+        }
+
+        body.theme-dark .patient-tabs-bar {
+          background: #0F172A;
+          border-color: #1E293B;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        body.theme-dark .patient-nav-title {
+          color: #F8FAFC;
+        }
+
+        body.theme-dark .tab-button-modern.inactive {
+          background: #1E293B;
+          color: #F1F5F9;
+          border-color: #334155;
+        }
+
+        body.theme-dark .tab-button-modern.inactive:hover {
+          background: #27354A;
+          border-color: #475569;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-icon-wrapper {
+          background: #0F172A;
+          color: #38BDF8;
+        }
+
+        body.theme-dark .telemetry-sidebar-card {
+          background: #0F172A;
+          border-color: #1E293B;
+          color: #F8FAFC;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+        }
+
+        body.theme-dark .form-field-label {
+          color: #CBD5E1;
+        }
+
+        body.theme-dark .modern-form-input {
+          background: #1E293B;
+          border-color: #334155;
+          color: #F8FAFC;
+        }
+
+        body.theme-dark .modern-form-input:focus {
+          border-color: #38BDF8;
+          box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+        }
+
+        body.theme-dark .modern-triage-card.inactive-triage {
+          background: #1E293B;
+          border-color: #334155;
+        }
+
+        body.theme-dark .modern-triage-card.inactive-triage .triage-title {
+          color: #F1F5F9;
+        }
+
+        body.theme-dark .modern-triage-card.inactive-triage .triage-subtitle {
+          color: #94A3B8;
+        }
+
+        body.theme-dark .modern-triage-card.inactive-triage:hover {
+          background: #27354A;
+          border-color: #475569;
+        }
+
+        body.theme-dark .modern-triage-card.active-routine {
+          background: linear-gradient(135deg, rgba(2, 132, 199, 0.28) 0%, rgba(14, 165, 233, 0.18) 100%);
+          border-color: #38BDF8;
+          box-shadow: 0 4px 16px rgba(56, 189, 248, 0.2);
+        }
+
+        body.theme-dark .modern-triage-card.active-routine .triage-title {
+          color: #38BDF8;
+        }
+
+        body.theme-dark .modern-triage-card.active-routine .triage-subtitle {
+          color: #BAE6FD;
+        }
+
+        body.theme-dark .modern-triage-card.active-emergency {
+          background: linear-gradient(135deg, rgba(239, 68, 68, 0.28) 0%, rgba(220, 38, 38, 0.18) 100%);
+          border-color: #F87171;
+          box-shadow: 0 4px 16px rgba(248, 113, 113, 0.2);
+        }
+
+        body.theme-dark .modern-triage-card.active-emergency .triage-title {
+          color: #FCA5A5;
+        }
+
+        body.theme-dark .modern-triage-card.active-emergency .triage-subtitle {
+          color: #FECACA;
+        }
+
+        body.theme-dark .patient-modal-box {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15) !important;
+        }
+
+        body.theme-dark .patient-secondary-btn {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #CBD5E1 !important;
+        }
+
+        body.theme-dark .patient-secondary-btn:hover {
+          background: #27354A !important;
+          border-color: #475569 !important;
+          color: #F8FAFC !important;
+        }
+
         .patient-nav-section {
           margin-bottom: 24px;
         }
@@ -1337,32 +1593,68 @@ export default function PatientPage({
           cursor: pointer;
           text-align: left;
           width: 100%;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
           outline: none;
           user-select: none;
           box-sizing: border-box;
         }
 
         .modern-triage-card.active-routine {
-          background: #F0F9FF;
-          border: 1.5px solid #0284C7;
-          box-shadow: 0 2px 8px rgba(2, 132, 199, 0.08);
+          background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%);
+          border: 2px solid #0284C7;
+          box-shadow: 0 4px 14px rgba(2, 132, 199, 0.15);
+        }
+
+        .modern-triage-card.active-routine .triage-title {
+          color: #0369A1;
+          font-weight: 800;
+          font-size: 13.5px;
+        }
+
+        .modern-triage-card.active-routine .triage-subtitle {
+          color: #0284C7;
+          font-size: 11.5px;
+          font-weight: 600;
         }
 
         .modern-triage-card.active-emergency {
-          background: #FEF2F2;
-          border: 1.5px solid #DC2626;
-          box-shadow: 0 2px 8px rgba(220, 38, 38, 0.08);
+          background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%);
+          border: 2px solid #EF4444;
+          box-shadow: 0 4px 14px rgba(239, 68, 68, 0.18);
+        }
+
+        .modern-triage-card.active-emergency .triage-title {
+          color: #DC2626;
+          font-weight: 800;
+          font-size: 13.5px;
+        }
+
+        .modern-triage-card.active-emergency .triage-subtitle {
+          color: #B91C1C;
+          font-size: 11.5px;
+          font-weight: 600;
         }
 
         .modern-triage-card.inactive-triage {
           background: #FFFFFF;
-          border: 1px solid #E2E8F0;
+          border: 1.5px solid #CBD5E1;
+        }
+
+        .modern-triage-card.inactive-triage .triage-title {
+          color: #334155;
+          font-weight: 700;
+          font-size: 13.5px;
+        }
+
+        .modern-triage-card.inactive-triage .triage-subtitle {
+          color: #64748B;
+          font-size: 11.5px;
+          font-weight: 500;
         }
 
         .modern-triage-card.inactive-triage:hover {
           background: #F8FAFC;
-          border-color: #CBD5E1;
+          border-color: #94A3B8;
         }
 
         .modern-submit-btn {
@@ -1434,22 +1726,20 @@ export default function PatientPage({
                 gap: "6px",
                 padding: "6px 14px",
                 borderRadius: "10px",
-                background: "#F0F9FF",
-                border: "1.5px solid #BAE6FD",
-                color: "#0369A1",
+                background: "var(--patient-tag-bg, #F0F9FF)",
+                border: "1.5px solid var(--patient-tag-border, #BAE6FD)",
+                color: "var(--patient-tag-color, #0369A1)",
                 fontSize: "12.5px",
                 fontWeight: 800,
                 cursor: "pointer",
                 boxShadow: "0 1px 3px rgba(2, 132, 199, 0.1)",
                 transition: "all 0.15s ease",
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "#F0F9FF"; }}
               title={language === "hi" ? "अस्पताल बदलें" : "Switch Hospital Facility"}
             >
               <span>🏥</span>
               <span>{currentHospitalDisplayName}</span>
-              <span style={{ fontSize: "11px", color: "#0284C7", background: "#E0F2FE", padding: "2px 7px", borderRadius: "5px", marginLeft: "2px", fontWeight: 800 }}>
+              <span style={{ fontSize: "11px", color: "var(--patient-tag-color, #0284C7)", background: "var(--patient-sub-card, #E0F2FE)", padding: "2px 7px", borderRadius: "5px", marginLeft: "2px", fontWeight: 800 }}>
                 🔄 {language === "hi" ? "बदलें" : "Change"}
               </span>
             </button>
@@ -1464,6 +1754,7 @@ export default function PatientPage({
           {/* Tab 1: Instant Walk-In Ticket */}
           <button
             type="button"
+            id="patient-tab-walkin"
             onClick={() => handleTabChange("walkin")}
             className={`tab-button-modern ${activeTab === "walkin" ? "active" : "inactive"}`}
           >
@@ -1486,6 +1777,7 @@ export default function PatientPage({
           {/* Tab 2: Book Time Slot */}
           <button
             type="button"
+            id="patient-tab-book"
             onClick={() => handleTabChange("book")}
             className={`tab-button-modern ${activeTab === "book" ? "active" : "inactive"}`}
           >
@@ -1511,6 +1803,7 @@ export default function PatientPage({
           {/* Tab 3: My Appointments */}
           <button
             type="button"
+            id="patient-tab-my-apts"
             onClick={() => handleTabChange("my_apts")}
             className={`tab-button-modern ${activeTab === "my_apts" ? "active" : "inactive"}`}
           >
@@ -1546,6 +1839,7 @@ export default function PatientPage({
           {/* Tab 4: Appointment History */}
           <button
             type="button"
+            id="patient-tab-history"
             onClick={() => handleTabChange("history")}
             className={`tab-button-modern ${activeTab === "history" ? "active" : "inactive"}`}
           >
@@ -1622,10 +1916,10 @@ export default function PatientPage({
                   {/* Form Header with Walk-In Badge */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
                     <div>
-                      <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.4px" }}>
+                      <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, letterSpacing: "-0.4px" }}>
                         {t("instantWalkin", language)}
                       </h2>
-                      <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
+                      <p style={{ margin: 0, color: "var(--patient-text-sub, #64748B)", fontSize: "13px" }}>
                         {hospitalBranding?.hospital_name || hospitalBranding?.name || HOSPITAL_CONFIG.name} — {language === "hi" ? "तत्काल टोकन एवं प्रतीक्षा ट्रैकर" : "Instant Token & Real-Time Wait Tracker"}
                       </p>
                     </div>
@@ -1633,9 +1927,9 @@ export default function PatientPage({
                       style={{
                         padding: "4px 10px",
                         borderRadius: "6px",
-                        background: "#F0F9FF",
-                        color: "#0284C7",
-                        border: "1px solid #BAE6FD",
+                        background: "var(--patient-tag-bg, #F0F9FF)",
+                        color: "var(--patient-tag-color, #0284C7)",
+                        border: "1px solid var(--patient-tag-border, #BAE6FD)",
                         fontSize: "11px",
                         fontWeight: 700,
                       }}
@@ -1808,17 +2102,43 @@ export default function PatientPage({
                         </label>
                         <select
                           value={medicalCondition}
-                          onChange={(e) => setMedicalCondition(e.target.value)}
+                          onChange={(e) => {
+                            setMedicalCondition(e.target.value);
+                            if (e.target.value !== "other_custom") {
+                              setCustomSymptom("");
+                            }
+                          }}
                           className="modern-form-input modern-form-select"
                         >
-                          <option value="general_checkup">{t("symptom_general_checkup", language)}</option>
-                          <option value="fever_flu">{t("symptom_fever_flu", language)}</option>
-                          <option value="chest_pain_severe">{t("symptom_chest_pain_severe", language)}</option>
-                          <option value="breathing_difficulty">{t("symptom_breathing_difficulty", language)}</option>
-                          <option value="fracture_trauma">{t("symptom_fracture_trauma", language)}</option>
-                          <option value="skin_allergy">{t("symptom_skin_allergy", language)}</option>
-                          <option value="pediatric_care">{t("symptom_pediatric_care", language)}</option>
+                          {SYMPTOM_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {language === "hi" ? opt.labelHi : opt.label}
+                            </option>
+                          ))}
                         </select>
+
+                        {/* Custom Symptom Input if user selects Other */}
+                        {medicalCondition === "other_custom" && (
+                          <div style={{ marginTop: "10px" }}>
+                            <label style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px", marginBottom: "5px" }}>
+                              <span>✏️</span> {t("customSymptomLabel", language)}
+                            </label>
+                            <input
+                              type="text"
+                              value={customSymptom}
+                              onChange={(e) => setCustomSymptom(e.target.value)}
+                              placeholder={t("customSymptomPlaceholder", language)}
+                              required
+                              className="modern-form-input"
+                              style={{
+                                borderColor: "#0284C7",
+                                background: "var(--patient-tag-bg, #F0F9FF)",
+                                fontSize: "13px",
+                                fontWeight: 600,
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -1835,11 +2155,11 @@ export default function PatientPage({
                         onChange={(e) => setPreExistingCondition(e.target.value)}
                         className="modern-form-input modern-form-select"
                       >
-                        <option value="none">{t("risk_none", language)}</option>
-                        <option value="diabetes">{t("risk_diabetes", language)}</option>
-                        <option value="hypertension">{t("risk_hypertension", language)}</option>
-                        <option value="cardiac_history">{t("risk_cardiac_history", language)}</option>
-                        <option value="asthma_copd">{t("risk_asthma_copd", language)}</option>
+                        {RISK_OPTIONS.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {language === "hi" ? opt.labelHi : opt.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -1863,27 +2183,28 @@ export default function PatientPage({
                         >
                           <div
                             style={{
-                              width: "28px",
-                              height: "28px",
+                              width: "32px",
+                              height: "32px",
                               borderRadius: "50%",
-                              background: priority === 2 ? "#0284C7" : "transparent",
-                              color: priority === 2 ? "#FFFFFF" : "#64748B",
+                              background: priority === 2 ? "#0284C7" : "var(--patient-sub-card, #F1F5F9)",
+                              color: priority === 2 ? "#FFFFFF" : "var(--patient-text-sub, #64748B)",
+                              border: priority === 2 ? "none" : "1px solid var(--patient-card-border, #CBD5E1)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               flexShrink: 0,
-                              transition: "all 0.15s ease",
+                              transition: "all 0.18s ease",
                             }}
                           >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={priority === 2 ? "3" : "2"} strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={priority === 2 ? "3" : "2"} strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="20 6 9 17 4 12" />
                             </svg>
                           </div>
                           <div>
-                            <div style={{ fontWeight: 800, fontSize: "13.5px", color: priority === 2 ? "#0369A1" : "#1E293B" }}>
+                            <div className="triage-title">
                               {t("routineCase", language)}
                             </div>
-                            <div style={{ fontSize: "11.5px", color: priority === 2 ? "#0284C7" : "#64748B", marginTop: "2px", fontWeight: 500 }}>
+                            <div className="triage-subtitle" style={{ marginTop: "2px" }}>
                               {t("standardOrder", language)}
                             </div>
                           </div>
@@ -1897,29 +2218,30 @@ export default function PatientPage({
                         >
                           <div
                             style={{
-                              width: "28px",
-                              height: "28px",
+                              width: "32px",
+                              height: "32px",
                               borderRadius: "50%",
-                              background: priority === 1 ? "#DC2626" : "transparent",
-                              color: priority === 1 ? "#FFFFFF" : "#64748B",
+                              background: priority === 1 ? "#EF4444" : "var(--patient-sub-card, #F1F5F9)",
+                              color: priority === 1 ? "#FFFFFF" : "var(--patient-text-sub, #64748B)",
+                              border: priority === 1 ? "none" : "1px solid var(--patient-card-border, #CBD5E1)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               flexShrink: 0,
-                              transition: "all 0.15s ease",
+                              transition: "all 0.18s ease",
                             }}
                           >
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={priority === 1 ? "2.5" : "1.8"} strokeLinecap="round" strokeLinejoin="round">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={priority === 1 ? "2.5" : "1.8"} strokeLinecap="round" strokeLinejoin="round">
                               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                               <line x1="12" y1="9" x2="12" y2="13" />
                               <line x1="12" y1="17" x2="12.01" y2="17" />
                             </svg>
                           </div>
                           <div>
-                            <div style={{ fontWeight: 800, fontSize: "13.5px", color: priority === 1 ? "#991B1B" : "#1E293B" }}>
+                            <div className="triage-title">
                               {t("emergencyCase", language)}
                             </div>
-                            <div style={{ fontSize: "11.5px", color: priority === 1 ? "#DC2626" : "#64748B", marginTop: "2px", fontWeight: 500 }}>
+                            <div className="triage-subtitle" style={{ marginTop: "2px" }}>
                               {t("priorityJump", language)}
                             </div>
                           </div>
@@ -1951,10 +2273,10 @@ export default function PatientPage({
               {activeTab === "book" && (
                 <div>
                   <div style={{ marginBottom: "16px" }}>
-                    <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.3px" }}>
+                    <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, letterSpacing: "-0.3px" }}>
                       {t("bookSlot", language)}
                     </h2>
-                    <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
+                    <p style={{ margin: 0, color: "var(--patient-text-sub, #64748B)", fontSize: "13px" }}>
                       {hospitalBranding?.hospital_name || hospitalBranding?.name || HOSPITAL_CONFIG.name} — {language === "hi" ? "भविष्य का समय स्लॉट रिज़र्व करें" : "Reserve a future appointment slot. Scan code upon arrival to merge into priority queue line."}
                     </p>
                   </div>
@@ -2053,9 +2375,9 @@ export default function PatientPage({
                             style={{
                               padding: "10px 4px",
                               borderRadius: "8px",
-                              border: aptTimeSlot === slot ? "2px solid #0284C7" : "1px solid #CBD5E1",
-                              background: aptTimeSlot === slot ? "#F0F9FF" : "#F8FAFC",
-                              color: aptTimeSlot === slot ? "#0284C7" : "#475569",
+                              border: aptTimeSlot === slot ? "2px solid #0284C7" : "1px solid var(--patient-card-border, #CBD5E1)",
+                              background: aptTimeSlot === slot ? "var(--patient-tag-bg, #F0F9FF)" : "var(--patient-sub-card, #F8FAFC)",
+                              color: aptTimeSlot === slot ? "#0284C7" : "var(--patient-text-sub, #475569)",
                               fontWeight: 700,
                               fontSize: "11.5px",
                               cursor: "pointer",
@@ -2166,10 +2488,10 @@ export default function PatientPage({
         <div style={standaloneCardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
+              <h3 style={{ margin: 0, fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800 }}>
                 {t("myActiveAppointments", language)}
               </h3>
-              <span style={{ fontSize: "12px", color: "#64748B" }}>
+              <span style={{ fontSize: "12px", color: "var(--patient-text-sub, #64748B)" }}>
                 {t("activeAptsSubtitle", language)}
               </span>
             </div>
@@ -2179,7 +2501,7 @@ export default function PatientPage({
                 placeholder={t("enterCodePlaceholder", language)}
                 value={checkInCode}
                 onChange={(e) => setCheckInCode(e.target.value)}
-                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "12px", width: "180px" }}
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #0F172A)", fontSize: "12px", width: "180px" }}
               />
               <button onClick={() => handleAppointmentCheckIn(checkInCode)} style={quickCheckInBtnStyle}>
                 {t("checkInBtn", language)}
@@ -2188,7 +2510,7 @@ export default function PatientPage({
           </div>
 
           {/* Name lookup for guests / unmatched users */}
-          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "#F0F9FF", borderRadius: "12px", border: "1px solid #BAE6FD", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "var(--patient-tag-bg, #F0F9FF)", borderRadius: "12px", border: "1px solid var(--patient-tag-border, #BAE6FD)", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7" }}>🔍 Look up by name:</span>
             <input
               id="apt-search-name"
@@ -2203,7 +2525,7 @@ export default function PatientPage({
                 }
               }}
               placeholder="Enter your full name (e.g. Alice Wonderland)"
-              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #BAE6FD", fontSize: "13px", outline: "none" }}
+              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #BAE6FD)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #0F172A)", fontSize: "13px", outline: "none" }}
             />
             <button
               id="apt-search-btn"
@@ -2221,9 +2543,9 @@ export default function PatientPage({
           </div>
 
           {activeAppointments.length === 0 ? (
-            <div style={{ padding: "40px 24px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #E2E8F0", color: "#94A3B8" }}>
-              <p style={{ margin: "0 0 6px 0", color: "#64748B", fontWeight: 600, fontSize: "14px" }}>{t("noActiveAptsMsg", language)}</p>
-              <p style={{ margin: "0 0 14px 0", color: "#94A3B8", fontSize: "12px" }}>Search by your name above or reserve a new slot below.</p>
+            <div style={{ padding: "40px 24px", textAlign: "center", background: "var(--patient-sub-card, #F8FAFC)", borderRadius: "16px", border: "1px solid var(--patient-card-border, #E2E8F0)", color: "var(--patient-text-sub, #94A3B8)" }}>
+              <p style={{ margin: "0 0 6px 0", color: "var(--patient-text-main, #64748B)", fontWeight: 600, fontSize: "14px" }}>{t("noActiveAptsMsg", language)}</p>
+              <p style={{ margin: "0 0 14px 0", color: "var(--patient-text-sub, #94A3B8)", fontSize: "12px" }}>Search by your name above or reserve a new slot below.</p>
               <button
                 type="button"
                 onClick={() => handleTabChange("book")}
@@ -2244,8 +2566,8 @@ export default function PatientPage({
                         fontSize: "11px",
                         fontWeight: 700,
                         color: "#0369A1",
-                        background: "#F0F9FF",
-                        border: "1px solid #BAE6FD",
+                        background: "var(--patient-tag-bg, #F0F9FF)",
+                        border: "1px solid var(--patient-tag-border, #BAE6FD)",
                         padding: "2px 8px",
                         borderRadius: "6px",
                         display: "inline-flex",
@@ -2255,10 +2577,10 @@ export default function PatientPage({
                         🏥 {getHospitalNameForRecord(apt)}
                       </span>
                     </div>
-                    <p style={{ margin: "6px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px" }}>
+                    <p style={{ margin: "6px 0 0 0", color: "var(--patient-text-main, #0F172A)", fontWeight: 700, fontSize: "15px" }}>
                       {apt.patient_name} — {apt.service_category.toUpperCase()}
                     </p>
-                    <span style={{ fontSize: "12.5px", color: "#64748B", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                    <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
                       <span>🏥 <strong>{getHospitalNameForRecord(apt)}</strong></span>
                       <span>•</span>
                       <span>Date: <strong>{apt.appointment_date}</strong></span>
@@ -2277,8 +2599,8 @@ export default function PatientPage({
                           marginTop: "10px",
                           padding: "10px 14px",
                           borderRadius: "10px",
-                          background: "#F0F9FF",
-                          border: "1.5px solid #BAE6FD",
+                          background: "var(--patient-tag-bg, #F0F9FF)",
+                          border: "1.5px solid var(--patient-tag-border, #BAE6FD)",
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
@@ -2303,7 +2625,7 @@ export default function PatientPage({
                               padding: "5px 12px",
                               borderRadius: "7px",
                               border: "1.5px solid #0284C7",
-                              background: "#FFFFFF",
+                              background: "var(--patient-card-bg, #FFFFFF)",
                               color: "#0284C7",
                               fontSize: "11.5px",
                               fontWeight: 800,
@@ -2350,17 +2672,17 @@ export default function PatientPage({
         <div style={standaloneCardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div>
-              <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "#0F172A", fontWeight: 800 }}>
+              <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800 }}>
                 {t("appointmentHistory", language)}
               </h3>
-              <span style={{ fontSize: "12.5px", color: "#64748B" }}>
+              <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)" }}>
                 {t("historySubtitle", language)}
               </span>
             </div>
           </div>
 
           {/* Name lookup for guests / unmatched users */}
-          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "#F0F9FF", borderRadius: "12px", border: "1px solid #BAE6FD", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "var(--patient-tag-bg, #F0F9FF)", borderRadius: "12px", border: "1px solid var(--patient-tag-border, #BAE6FD)", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
             <span style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7" }}>🔍 Look up by name:</span>
             <input
               id="history-search-name"
@@ -2376,7 +2698,7 @@ export default function PatientPage({
                 }
               }}
               placeholder="Enter your full name (e.g. Harshit Singh)"
-              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid #BAE6FD", fontSize: "13px", outline: "none" }}
+              style={{ flex: 1, minWidth: "180px", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #BAE6FD)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #0F172A)", fontSize: "13px", outline: "none" }}
             />
             <button
               id="history-search-btn"
@@ -2395,9 +2717,9 @@ export default function PatientPage({
           </div>
 
           {historyAppointments.length === 0 && historyTickets.length === 0 ? (
-            <div style={{ padding: "48px 24px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #E2E8F0", color: "#94A3B8", fontSize: "13.5px" }}>
-              <p style={{ margin: "0 0 8px 0", fontSize: "14px", fontWeight: 600, color: "#64748B" }}>{t("noHistoryMsg", language)}</p>
-              <p style={{ margin: 0, fontSize: "12px" }}>Search by your name above to find past visits.</p>
+            <div style={{ padding: "48px 24px", textAlign: "center", background: "var(--patient-sub-card, #F8FAFC)", borderRadius: "16px", border: "1px solid var(--patient-card-border, #E2E8F0)", color: "var(--patient-text-sub, #94A3B8)", fontSize: "13.5px" }}>
+              <p style={{ margin: "0 0 8px 0", fontSize: "14px", fontWeight: 600, color: "var(--patient-text-main, #64748B)" }}>{t("noHistoryMsg", language)}</p>
+              <p style={{ margin: 0, fontSize: "12px", color: "var(--patient-text-sub, #94A3B8)" }}>Search by your name above to find past visits.</p>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -2407,7 +2729,7 @@ export default function PatientPage({
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
                     <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", textTransform: "uppercase", letterSpacing: "0.5px" }}>🎫 Walk-in Queue Tickets</span>
-                    <div style={{ flex: 1, height: "1px", background: "#BAE6FD" }} />
+                    <div style={{ flex: 1, height: "1px", background: "var(--patient-tag-border, #BAE6FD)" }} />
                   </div>
                   {historyTickets.map((tk) => (
                     <div key={tk.ticket_id} style={aptCardRowStyle(tk.status)}>
@@ -2415,15 +2737,15 @@ export default function PatientPage({
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                           <span style={{ fontSize: "15px", fontWeight: 900, color: "#0284C7" }}>#{tk.ticket_id}</span>
                           <span style={aptStatusBadgeStyle(tk.status)}>{getStatusLabel(tk.status || "completed", language)}</span>
-                          <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600, padding: "2px 7px", background: "#F1F5F9", borderRadius: "5px", border: "1px solid #E2E8F0" }}>
+                          <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", fontWeight: 600, padding: "2px 7px", background: "var(--patient-sub-card, #F1F5F9)", borderRadius: "5px", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
                             Walk-in
                           </span>
                           <span style={{
                             fontSize: "11px",
                             fontWeight: 700,
                             color: "#0369A1",
-                            background: "#F0F9FF",
-                            border: "1px solid #BAE6FD",
+                            background: "var(--patient-tag-bg, #F0F9FF)",
+                            border: "1px solid var(--patient-tag-border, #BAE6FD)",
                             padding: "2px 8px",
                             borderRadius: "6px",
                             display: "inline-flex",
@@ -2433,10 +2755,10 @@ export default function PatientPage({
                             🏥 {getHospitalNameForRecord(tk)}
                           </span>
                         </div>
-                        <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14.5px" }}>
+                        <p style={{ margin: "4px 0 0 0", color: "var(--patient-text-main, #0F172A)", fontWeight: 700, fontSize: "14.5px" }}>
                           {tk.name} — {getCategoryLabel(tk.service_category || "consultation", language)}
                         </p>
-                        <span style={{ fontSize: "12px", color: "#64748B", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                        <span style={{ fontSize: "12px", color: "var(--patient-text-sub, #64748B)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
                           <span>🏥 <strong>{getHospitalNameForRecord(tk)}</strong></span>
                           <span>•</span>
                           <span>{tk.created_at ? new Date(tk.created_at).toLocaleDateString() : ""}</span>
@@ -2463,18 +2785,18 @@ export default function PatientPage({
                               marginTop: "12px",
                               padding: "14px 16px",
                               borderRadius: "14px",
-                              background: "#F0F9FF",
-                              border: "1.5px solid #BAE6FD",
+                              background: "var(--patient-tag-bg, #F0F9FF)",
+                              border: "1.5px solid var(--patient-tag-border, #BAE6FD)",
                               boxShadow: "0 2px 8px rgba(2, 132, 199, 0.06)",
                             }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E0F2FE", paddingBottom: "10px", marginBottom: "10px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid var(--patient-card-border, #E0F2FE)", paddingBottom: "10px", marginBottom: "10px" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                                   <span style={{ fontSize: "12px", fontWeight: 900, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px" }}>
                                     <span>💊</span>
                                     <span>{t("ePrescriptionLabel", language)}</span>
                                   </span>
                                   {rx.doctor_name && (
-                                    <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
+                                    <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "var(--patient-tag-bg, #E0F2FE)", color: "#0369A1", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
                                       👨‍⚕️ {rx.doctor_name} {rx.doctor_department ? `(${getCategoryLabel(rx.doctor_department, language)})` : ""}
                                     </span>
                                   )}
@@ -2486,7 +2808,7 @@ export default function PatientPage({
                                     padding: "6px 14px",
                                     borderRadius: "8px",
                                     border: "1.5px solid #0284C7",
-                                    background: "#FFFFFF",
+                                    background: "var(--patient-card-bg, #FFFFFF)",
                                     color: "#0284C7",
                                     fontSize: "12px",
                                     fontWeight: 800,
@@ -2497,8 +2819,6 @@ export default function PatientPage({
                                     boxShadow: "0 1px 3px rgba(2, 132, 199, 0.12)",
                                     transition: "all 0.15s ease",
                                   }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
                                 >
                                   <span>📄</span>
                                   <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View Rx Slip"}</span>
@@ -2508,8 +2828,8 @@ export default function PatientPage({
                                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                                     {rx.diagnosis && (
                                       <div style={{ fontSize: "13px", color: "#0369A1" }}>
-                                        <strong style={{ color: "#0F172A" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
-                                        <span style={{ fontWeight: 800, color: "#0284C7", background: "#E0F2FE", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
+                                        <strong style={{ color: "var(--patient-text-main, #0F172A)" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
+                                        <span style={{ fontWeight: 800, color: "#0284C7", background: "var(--patient-tag-bg, #E0F2FE)", padding: "2px 8px", borderRadius: "6px", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
                                           {rx.diagnosis}
                                         </span>
                                       </div>
@@ -2528,8 +2848,8 @@ export default function PatientPage({
                                                 fontSize: "12px",
                                                 fontWeight: 700,
                                                 color: "#0369A1",
-                                                background: "#FFFFFF",
-                                                border: "1px solid #BAE6FD",
+                                                background: "var(--patient-card-bg, #FFFFFF)",
+                                                border: "1px solid var(--patient-tag-border, #BAE6FD)",
                                                 padding: "3px 9px",
                                                 borderRadius: "6px",
                                                 display: "inline-flex",
@@ -2566,7 +2886,7 @@ export default function PatientPage({
                             })()}
                         </div>
                         <div style={{ textAlign: "right", marginLeft: "14px" }}>
-                        <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("finalVisitStatus", language)}</span>
+                        <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>{t("finalVisitStatus", language)}</span>
                         <span style={{ fontSize: "12px", fontWeight: 800, color: tk.status === "completed" ? "#0284C7" : "#DC2626" }}>
                           {getStatusLabel(tk.status || "completed", language)}
                         </span>
@@ -2581,7 +2901,7 @@ export default function PatientPage({
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: historyTickets.length > 0 ? "10px" : "0", marginBottom: "4px" }}>
                     <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", textTransform: "uppercase", letterSpacing: "0.5px" }}>📅 Pre-Scheduled Appointments</span>
-                    <div style={{ flex: 1, height: "1px", background: "#BAE6FD" }} />
+                    <div style={{ flex: 1, height: "1px", background: "var(--patient-tag-border, #BAE6FD)" }} />
                   </div>
                   {historyAppointments.map((apt) => (
                     <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
@@ -2592,9 +2912,9 @@ export default function PatientPage({
                           <span style={{
                             fontSize: "11px",
                             fontWeight: 700,
-                            color: "#0369A1",
-                            background: "#F0F9FF",
-                            border: "1px solid #BAE6FD",
+                            color: "var(--patient-tag-color, #0369A1)",
+                            background: "var(--patient-tag-bg, #F0F9FF)",
+                            border: "1px solid var(--patient-tag-border, #BAE6FD)",
                             padding: "2px 8px",
                             borderRadius: "6px",
                             display: "inline-flex",
@@ -2609,10 +2929,10 @@ export default function PatientPage({
                             </span>
                           )}
                         </div>
-                        <p style={{ margin: "4px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "14.5px" }}>
+                        <p style={{ margin: "4px 0 0 0", color: "var(--patient-text-main, #0F172A)", fontWeight: 700, fontSize: "14.5px" }}>
                           {apt.patient_name} — {getCategoryLabel(apt.service_category || "consultation", language)}
                         </p>
-                        <span style={{ fontSize: "12px", color: "#64748B", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
+                        <span style={{ fontSize: "12px", color: "var(--patient-text-sub, #64748B)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
                           <span>🏥 <strong>{getHospitalNameForRecord(apt)}</strong></span>
                           <span>•</span>
                           <span>{t("dateLabel", language)}: {apt.appointment_date}</span>
@@ -2622,7 +2942,7 @@ export default function PatientPage({
 
                         {/* Digital Rx Slip section if notes present or appointment completed */}
                         {(() => {
-                          const effectiveRxNotes = apt.prescription_notes || (apt.ticket_id && userTicketHistory.find((t) => t.ticket_id === apt.ticket_id)?.prescription_notes) || "";
+                          const effectiveRxNotes = apt.prescription_notes || (apt.ticket_id && Array.isArray(userTicketHistory) && userTicketHistory.find((t) => String(t.ticket_id) === String(apt.ticket_id))?.prescription_notes) || "";
                           const canShowRx = effectiveRxNotes || (apt.status || "").toLowerCase() === "completed";
                           if (!canShowRx) return null;
                           const rx = parsePrescription(effectiveRxNotes, apt);
@@ -2632,18 +2952,18 @@ export default function PatientPage({
                               marginTop: "12px",
                               padding: "14px 16px",
                               borderRadius: "14px",
-                              background: "#F0F9FF",
-                              border: "1.5px solid #BAE6FD",
+                              background: "var(--patient-tag-bg, #F0F9FF)",
+                              border: "1.5px solid var(--patient-tag-border, #BAE6FD)",
                               boxShadow: "0 2px 8px rgba(2, 132, 199, 0.06)",
                             }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E0F2FE", paddingBottom: "10px", marginBottom: "10px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid var(--patient-card-border, #E0F2FE)", paddingBottom: "10px", marginBottom: "10px" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                                   <span style={{ fontSize: "12px", fontWeight: 900, color: "#0284C7", display: "flex", alignItems: "center", gap: "5px" }}>
                                     <span>💊</span>
                                     <span>{t("ePrescriptionLabel", language)}</span>
                                   </span>
                                   {rx.doctor_name && (
-                                    <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
+                                    <span style={{ fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "6px", background: "var(--patient-tag-bg, #E0F2FE)", color: "var(--patient-tag-color, #0369A1)", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
                                       👨‍⚕️ {rx.doctor_name} {rx.doctor_department ? `(${getCategoryLabel(rx.doctor_department, language)})` : ""}
                                     </span>
                                   )}
@@ -2655,7 +2975,7 @@ export default function PatientPage({
                                     padding: "6px 14px",
                                     borderRadius: "8px",
                                     border: "1.5px solid #0284C7",
-                                    background: "#FFFFFF",
+                                    background: "var(--patient-card-bg, #FFFFFF)",
                                     color: "#0284C7",
                                     fontSize: "12px",
                                     fontWeight: 800,
@@ -2666,8 +2986,8 @@ export default function PatientPage({
                                     boxShadow: "0 1px 3px rgba(2, 132, 199, 0.12)",
                                     transition: "all 0.15s ease",
                                   }}
-                                  onMouseEnter={(e) => { e.currentTarget.style.background = "#E0F2FE"; }}
-                                  onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--patient-tag-bg, #E0F2FE)"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = "var(--patient-card-bg, #FFFFFF)"; }}
                                 >
                                   <span>📄</span>
                                   <span>{language === "hi" ? "दवा पर्ची देखें (Rx)" : "View Rx Slip"}</span>
@@ -2676,9 +2996,9 @@ export default function PatientPage({
 
                                   <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                                     {rx.diagnosis && (
-                                      <div style={{ fontSize: "13px", color: "#0369A1" }}>
-                                        <strong style={{ color: "#0F172A" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
-                                        <span style={{ fontWeight: 800, color: "#0284C7", background: "#E0F2FE", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
+                                      <div style={{ fontSize: "13px", color: "var(--patient-tag-color, #0369A1)" }}>
+                                        <strong style={{ color: "var(--patient-text-main, #0F172A)" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
+                                        <span style={{ fontWeight: 800, color: "#0284C7", background: "var(--patient-tag-bg, #E0F2FE)", padding: "2px 8px", borderRadius: "6px", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
                                           {rx.diagnosis}
                                         </span>
                                       </div>
@@ -2686,7 +3006,7 @@ export default function PatientPage({
 
                                     {rx.medicines && rx.medicines.length > 0 && (
                                       <div style={{ marginTop: "4px" }}>
-                                        <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#0369A1", textTransform: "uppercase" }}>
+                                        <span style={{ fontSize: "11.5px", fontWeight: 800, color: "var(--patient-tag-color, #0369A1)", textTransform: "uppercase" }}>
                                           {language === "hi" ? "निर्धारित दवाइयाँ" : "Prescribed Medicines"}:
                                         </span>
                                         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
@@ -2696,9 +3016,9 @@ export default function PatientPage({
                                               style={{
                                                 fontSize: "12px",
                                                 fontWeight: 700,
-                                                color: "#0369A1",
-                                                background: "#FFFFFF",
-                                                border: "1px solid #BAE6FD",
+                                                color: "var(--patient-tag-color, #0369A1)",
+                                                background: "var(--patient-card-bg, #FFFFFF)",
+                                                border: "1px solid var(--patient-tag-border, #BAE6FD)",
                                                 padding: "3px 9px",
                                                 borderRadius: "6px",
                                                 display: "inline-flex",
@@ -2719,13 +3039,13 @@ export default function PatientPage({
                                     )}
 
                                     {rx.advice && (
-                                      <div style={{ fontSize: "12px", color: "#0369A1", marginTop: "4px", fontStyle: "italic" }}>
+                                      <div style={{ fontSize: "12px", color: "var(--patient-tag-color, #0369A1)", marginTop: "4px", fontStyle: "italic" }}>
                                         <strong>{language === "hi" ? "सलाह" : "Advice"}:</strong> "{rx.advice}"
                                       </div>
                                     )}
 
                                     {rx.lab_tests && rx.lab_tests !== "no" && (
-                                      <div style={{ fontSize: "12px", color: "#0369A1", marginTop: "2px" }}>
+                                      <div style={{ fontSize: "12px", color: "var(--patient-tag-color, #0369A1)", marginTop: "2px" }}>
                                         <strong>🧪 {language === "hi" ? "जाँच" : "Tests"}:</strong> {rx.lab_tests}
                                       </div>
                                     )}
@@ -2736,10 +3056,10 @@ export default function PatientPage({
                         </div>
 
                       <div style={{ textAlign: "right", marginLeft: "14px" }}>
-                        <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>
+                        <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>
                           {t("finalVisitStatus", language)}
                         </span>
-                        <span style={{ fontSize: "12px", fontWeight: 800, color: apt.status === "completed" ? "#0284C7" : "#0284C7" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 800, color: "#0284C7" }}>
                           {getStatusLabel(apt.status || "completed", language)}
                         </span>
                       </div>
@@ -2755,13 +3075,13 @@ export default function PatientPage({
         /* FAMILY PROFILES MANAGEMENT FULL VIEW */
         <div style={standaloneCardStyle}>
           {/* Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", flexWrap: "wrap", gap: "16px", borderBottom: "1px solid #E2E8F0", paddingBottom: "18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", flexWrap: "wrap", gap: "16px", borderBottom: "1px solid var(--patient-card-border, #E2E8F0)", paddingBottom: "18px" }}>
             <div>
-              <h3 style={{ margin: "0 0 6px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "10px" }}>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: "22px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, display: "flex", alignItems: "center", gap: "10px" }}>
                 <span>👨‍👩‍👧‍👦</span>
                 <span>{language === "hi" ? "परिवार सदस्य एवं आश्रित प्रोफ़ाइल" : "Family Member & Dependent Profiles"}</span>
               </h3>
-              <span style={{ fontSize: "13px", color: "#64748B" }}>
+              <span style={{ fontSize: "13px", color: "var(--patient-text-sub, #64748B)" }}>
                 {language === "hi"
                   ? "एक-क्लिक टोकन एवं क्लिनिक अपॉइंटमेंट के लिए अपने बच्चों, जीवनसाथी या बुजुर्ग माता-पिता को जोड़ें।"
                   : "Easily register children, spouse, or elderly parents for one-tap queue tickets and scheduled clinic visits."}
@@ -2818,9 +3138,9 @@ export default function PatientPage({
                 <div
                   key={member.id}
                   style={{
-                    background: isSelected ? "#F0F9FF" : "#FFFFFF",
+                    background: isSelected ? "var(--patient-tag-bg, #F0F9FF)" : "var(--patient-card-bg, #FFFFFF)",
                     borderRadius: "16px",
-                    border: isSelected ? "2px solid #0284C7" : "1px solid #E2E8F0",
+                    border: isSelected ? "2px solid #0284C7" : "1px solid var(--patient-card-border, #E2E8F0)",
                     padding: "20px",
                     display: "flex",
                     flexDirection: "column",
@@ -2839,8 +3159,8 @@ export default function PatientPage({
                             width: "44px",
                             height: "44px",
                             borderRadius: "12px",
-                            background: isSelected ? "#0284C7" : "#F1F5F9",
-                            color: isSelected ? "#FFFFFF" : "#0369A1",
+                            background: isSelected ? "#0284C7" : "var(--patient-sub-card, #F1F5F9)",
+                            color: isSelected ? "#FFFFFF" : "var(--patient-tag-color, #0369A1)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -2859,7 +3179,7 @@ export default function PatientPage({
                             : "🧑"}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 800, fontSize: "16px", color: "#0F172A" }}>
+                          <div style={{ fontWeight: 800, fontSize: "16px", color: "var(--patient-text-main, #0F172A)" }}>
                             {member.name}
                           </div>
                           <span
@@ -2870,9 +3190,9 @@ export default function PatientPage({
                               borderRadius: "6px",
                               fontSize: "11px",
                               fontWeight: 700,
-                              background: isSelf ? "#E0F2FE" : "#F0F9FF",
-                              color: isSelf ? "#0369A1" : "#0284C7",
-                              border: "1px solid #BAE6FD",
+                              background: isSelf ? "var(--patient-tag-bg, #E0F2FE)" : "var(--patient-tag-bg, #F0F9FF)",
+                              color: isSelf ? "var(--patient-tag-color, #0369A1)" : "#0284C7",
+                              border: "1px solid var(--patient-tag-border, #BAE6FD)",
                             }}
                           >
                             {relationLabel}
@@ -2898,7 +3218,7 @@ export default function PatientPage({
                     </div>
 
                     {/* Member Details */}
-                    <div style={{ fontSize: "12.5px", color: "#64748B", display: "flex", flexDirection: "column", gap: "4px", marginTop: "8px" }}>
+                    <div style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)", display: "flex", flexDirection: "column", gap: "4px", marginTop: "8px" }}>
                       <div>
                         <strong>{language === "hi" ? "उम्र" : "Age"}:</strong> {member.age || "—"} {language === "hi" ? "वर्ष" : "yrs"}
                         {" • "}
@@ -2918,7 +3238,7 @@ export default function PatientPage({
                   </div>
 
                   {/* Card Actions */}
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", paddingTop: "12px", borderTop: "1px solid #E2E8F0" }}>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", paddingTop: "12px", borderTop: "1px solid var(--patient-card-border, #E2E8F0)" }}>
                     {!isSelected ? (
                       <button
                         type="button"
@@ -2927,8 +3247,8 @@ export default function PatientPage({
                           flex: 1,
                           padding: "8px 12px",
                           borderRadius: "8px",
-                          border: "1px solid #BAE6FD",
-                          background: "#E0F2FE",
+                          border: "1px solid var(--patient-tag-border, #BAE6FD)",
+                          background: "var(--patient-tag-bg, #E0F2FE)",
                           color: "#0284C7",
                           fontSize: "12px",
                           fontWeight: 700,
@@ -2965,9 +3285,9 @@ export default function PatientPage({
                           style={{
                             padding: "8px 12px",
                             borderRadius: "8px",
-                            border: "1px solid #CBD5E1",
-                            background: "#FFFFFF",
-                            color: "#475569",
+                            border: "1px solid var(--patient-card-border, #CBD5E1)",
+                            background: "var(--patient-card-bg, #FFFFFF)",
+                            color: "var(--patient-text-main, #475569)",
                             fontSize: "12px",
                             fontWeight: 700,
                             cursor: "pointer",
@@ -3037,33 +3357,33 @@ export default function PatientPage({
       {/* Cancel Confirmation Modal */}
       {showCancelModal && activeTicket && (
         <div style={modalBackdropStyle}>
-          <div style={modalContentStyle}>
+          <div className="patient-modal-box" style={modalContentStyle}>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#FEF2F2", color: "#DC2626", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "var(--emergency-card-bg, #FEF2F2)", color: "var(--emergency-card-text, #DC2626)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
                 ⚠️
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800 }}>
                   Cancel Ticket?
                 </h3>
-                <span style={{ fontSize: "12px", color: "#64748B" }}>
+                <span style={{ fontSize: "12px", color: "var(--patient-text-sub, #64748B)" }}>
                   Ticket #{activeTicket.ticket_id}
                 </span>
               </div>
             </div>
 
-            <p style={{ fontSize: "13.5px", color: "#475569", margin: "0 0 16px 0", lineHeight: 1.5 }}>
+            <p style={{ fontSize: "13.5px", color: "var(--patient-text-sub, #475569)", margin: "0 0 16px 0", lineHeight: 1.5 }}>
               Are you sure you want to cancel ticket <strong>#{activeTicket.ticket_id}</strong>? This will remove you from the active queue.
             </p>
 
             <div style={{ marginBottom: "18px" }}>
-              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "var(--patient-text-main, #334155)", marginBottom: "6px" }}>
                 Reason (optional):
               </label>
               <select
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
-                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "13px", marginBottom: cancelReason === "Other" ? "8px" : "0" }}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #0F172A)", fontSize: "13px", marginBottom: cancelReason === "Other" ? "8px" : "0" }}
               >
                 <option value="Running late">Running late</option>
                 <option value="Feeling better / no longer needed">Feeling better / no longer needed</option>
@@ -3078,13 +3398,13 @@ export default function PatientPage({
                   placeholder="Please specify reason..."
                   value={otherCancelReason}
                   onChange={(e) => setOtherCancelReason(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #CBD5E1", fontSize: "13px", boxSizing: "border-box" }}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #0F172A)", fontSize: "13px", boxSizing: "border-box" }}
                 />
               )}
             </div>
 
             {cancelError && (
-              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", fontSize: "12.5px", marginBottom: "16px", fontWeight: 600 }}>
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "var(--emergency-card-bg, #FEF2F2)", border: "1px solid var(--emergency-card-border, #FECACA)", color: "var(--emergency-card-text, #DC2626)", fontSize: "12.5px", marginBottom: "16px", fontWeight: 600 }}>
                 {cancelError}
               </div>
             )}
@@ -3094,7 +3414,8 @@ export default function PatientPage({
                 type="button"
                 onClick={() => setShowCancelModal(false)}
                 disabled={cancelLoading}
-                style={{ padding: "10px 18px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#334155", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+                className="patient-secondary-btn"
+                style={{ padding: "10px 18px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-sub-card, #F8FAFC)", color: "var(--patient-text-main, #334155)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
               >
                 Keep Ticket
               </button>
@@ -3115,34 +3436,34 @@ export default function PatientPage({
       {/* Adjust Queue Modal */}
       {showAdjustModal && activeTicket && (
         <div style={modalBackdropStyle}>
-          <div style={modalContentStyle}>
+          <div className="patient-modal-box" style={modalContentStyle}>
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#F0F9FF", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+              <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "var(--patient-tag-bg, #F0F9FF)", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
                 ⏱️
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
+                <h3 style={{ margin: 0, fontSize: "18px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800 }}>
                   Running late?
                 </h3>
-                <span style={{ fontSize: "12px", color: "#64748B" }}>
+                <span style={{ fontSize: "12px", color: "var(--patient-text-sub, #64748B)" }}>
                   Move your position back in the queue.
                 </span>
               </div>
             </div>
 
-            <div style={{ background: "#F8FAFC", padding: "12px 14px", borderRadius: "10px", border: "1px solid #E2E8F0", marginBottom: "16px" }}>
+            <div style={{ background: "var(--patient-sub-card, #F8FAFC)", padding: "12px 14px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #E2E8F0)", marginBottom: "16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: "12.5px", color: "#64748B" }}>Ticket:</span>
-                <strong style={{ fontSize: "13px", color: "#0F172A" }}>#{activeTicket.ticket_id}</strong>
+                <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)" }}>Ticket:</span>
+                <strong style={{ fontSize: "13px", color: "var(--patient-text-main, #0F172A)" }}>#{activeTicket.ticket_id}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-                <span style={{ fontSize: "12.5px", color: "#64748B" }}>Current Position:</span>
+                <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)" }}>Current Position:</span>
                 <strong style={{ fontSize: "15px", color: "#0284C7" }}>#{activeTicket.position}</strong>
               </div>
             </div>
 
             <div style={{ marginBottom: "16px" }}>
-              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "8px" }}>
+              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 700, color: "var(--patient-text-main, #334155)", marginBottom: "8px" }}>
                 Move back:
               </label>
               {(() => {
@@ -3161,9 +3482,9 @@ export default function PatientPage({
                           style={{
                             padding: "12px 6px",
                             borderRadius: "10px",
-                            border: isSelected ? "2px solid #0284C7" : "1px solid #CBD5E1",
-                            background: isSelected ? "#F0F9FF" : isDisabled ? "#F1F5F9" : "#FFFFFF",
-                            color: isSelected ? "#0284C7" : isDisabled ? "#94A3B8" : "#0F172A",
+                            border: isSelected ? "2px solid #0284C7" : "1px solid var(--patient-card-border, #CBD5E1)",
+                            background: isSelected ? "var(--patient-tag-bg, #F0F9FF)" : isDisabled ? "var(--patient-sub-card, #F1F5F9)" : "var(--patient-card-bg, #FFFFFF)",
+                            color: isSelected ? "#0284C7" : isDisabled ? "#94A3B8" : "var(--patient-text-main, #0F172A)",
                             fontWeight: isSelected ? 800 : 600,
                             fontSize: "12.5px",
                             cursor: isDisabled ? "not-allowed" : "pointer",
@@ -3179,7 +3500,7 @@ export default function PatientPage({
               })()}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", fontSize: "12px", color: "#64748B", background: "#F8FAFC", padding: "8px 12px", borderRadius: "8px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", fontSize: "12px", color: "var(--patient-text-sub, #64748B)", background: "var(--patient-sub-card, #F8FAFC)", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
               <span>Remaining adjustment:</span>
               <strong style={{ color: "#0369A1", fontSize: "13px" }}>
                 {Math.max(0, 3 - (activeTicket.adjustment_count || 0))} of 3
@@ -3187,13 +3508,13 @@ export default function PatientPage({
             </div>
 
             {adjustError && (
-              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", fontSize: "12.5px", marginBottom: "16px", fontWeight: 600 }}>
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "var(--emergency-card-bg, #FEF2F2)", border: "1px solid var(--emergency-card-border, #FECACA)", color: "var(--emergency-card-text, #DC2626)", fontSize: "12.5px", marginBottom: "16px", fontWeight: 600 }}>
                 {adjustError}
               </div>
             )}
 
             {adjustSuccessMsg && (
-              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "#F0F9FF", border: "1px solid #BAE6FD", color: "#0284C7", fontSize: "12.5px", marginBottom: "16px", fontWeight: 700, textAlign: "center" }}>
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "var(--patient-tag-bg, #F0F9FF)", border: "1px solid var(--patient-tag-border, #BAE6FD)", color: "#0284C7", fontSize: "12.5px", marginBottom: "16px", fontWeight: 700, textAlign: "center" }}>
                 ✓ {adjustSuccessMsg}
               </div>
             )}
@@ -3203,7 +3524,8 @@ export default function PatientPage({
                 type="button"
                 onClick={() => setShowAdjustModal(false)}
                 disabled={adjustLoading}
-                style={{ padding: "10px 18px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#334155", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+                className="patient-secondary-btn"
+                style={{ padding: "10px 18px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-sub-card, #F8FAFC)", color: "var(--patient-text-main, #334155)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
               >
                 Cancel
               </button>
@@ -3228,6 +3550,7 @@ export default function PatientPage({
           onClick={() => setShowHospitalModal(false)}
         >
           <div
+            className="patient-modal-box"
             style={{
               ...modalContentStyle,
               maxWidth: "560px",
@@ -3258,10 +3581,10 @@ export default function PatientPage({
                   🏥
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "#0F172A" }}>
+                  <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
                     {language === "hi" ? "अस्पताल या स्वास्थ्य केंद्र बदलें" : "Switch Hospital Facility"}
                   </h3>
-                  <div style={{ fontSize: "12px", color: "#64748B", marginTop: "2px" }}>
+                  <div style={{ fontSize: "12px", color: "var(--patient-text-sub, #64748B)", marginTop: "2px" }}>
                     {language === "hi"
                       ? "किसी भी पंजीकृत अस्पताल की लाइव कतार व सेवाओं तक पहुँचें।"
                       : "Connect to any registered hospital across our unified network."}
@@ -3272,13 +3595,13 @@ export default function PatientPage({
                 type="button"
                 onClick={() => setShowHospitalModal(false)}
                 style={{
-                  background: "#F1F5F9",
+                  background: "var(--patient-sub-card, #F1F5F9)",
                   border: "none",
                   borderRadius: "8px",
                   width: "30px",
                   height: "30px",
                   cursor: "pointer",
-                  color: "#64748B",
+                  color: "var(--patient-text-sub, #64748B)",
                   fontSize: "15px",
                   display: "flex",
                   alignItems: "center",
@@ -3300,19 +3623,20 @@ export default function PatientPage({
                   width: "100%",
                   padding: "10px 14px 10px 38px",
                   borderRadius: "12px",
-                  border: "1.5px solid #E2E8F0",
+                  border: "1.5px solid var(--patient-card-border, #E2E8F0)",
                   fontSize: "13px",
                   outline: "none",
-                  background: "#F8FAFC",
+                  background: "var(--patient-sub-card, #F8FAFC)",
+                  color: "var(--patient-text-main, #0F172A)",
                   boxSizing: "border-box",
                 }}
                 onFocus={(e) => {
                   e.target.style.borderColor = "#0284C7";
-                  e.target.style.background = "#FFFFFF";
+                  e.target.style.background = "var(--patient-card-bg, #FFFFFF)";
                 }}
                 onBlur={(e) => {
-                  e.target.style.borderColor = "#E2E8F0";
-                  e.target.style.background = "#F8FAFC";
+                  e.target.style.borderColor = "var(--patient-card-border, #E2E8F0)";
+                  e.target.style.background = "var(--patient-sub-card, #F8FAFC)";
                 }}
               />
               <span
@@ -3374,7 +3698,7 @@ export default function PatientPage({
 
                 if (filtered.length === 0) {
                   return (
-                    <div style={{ textAlign: "center", padding: "30px 12px", color: "#64748B", fontSize: "13px" }}>
+                    <div style={{ textAlign: "center", padding: "30px 12px", color: "var(--patient-text-sub, #64748B)", fontSize: "13px" }}>
                       <div style={{ fontSize: "32px", marginBottom: "8px" }}>🏥</div>
                       <div style={{ fontWeight: 600 }}>{language === "hi" ? "कोई अस्पताल नहीं मिला" : "No hospitals matching search"}</div>
                     </div>
@@ -3390,8 +3714,8 @@ export default function PatientPage({
                       style={{
                         padding: "12px 14px",
                         borderRadius: "12px",
-                        border: isCurrent ? "2px solid #0284C7" : "1.5px solid #E2E8F0",
-                        background: isCurrent ? "#F0F9FF" : "#FFFFFF",
+                        border: isCurrent ? "2px solid #0284C7" : "1.5px solid var(--patient-card-border, #E2E8F0)",
+                        background: isCurrent ? "var(--patient-tag-bg, #F0F9FF)" : "var(--patient-card-bg, #FFFFFF)",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
@@ -3402,19 +3726,19 @@ export default function PatientPage({
                       onMouseEnter={(e) => {
                         if (!isCurrent) {
                           e.currentTarget.style.borderColor = "#BAE6FD";
-                          e.currentTarget.style.background = "#F8FAFC";
+                          e.currentTarget.style.background = "var(--patient-sub-card, #F8FAFC)";
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!isCurrent) {
-                          e.currentTarget.style.borderColor = "#E2E8F0";
-                          e.currentTarget.style.background = "#FFFFFF";
+                          e.currentTarget.style.borderColor = "var(--patient-card-border, #E2E8F0)";
+                          e.currentTarget.style.background = "var(--patient-card-bg, #FFFFFF)";
                         }
                       }}
                     >
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                          <span style={{ fontWeight: 800, fontSize: "14px", color: "#0F172A" }}>
+                          <span style={{ fontWeight: 800, fontSize: "14px", color: "var(--patient-text-main, #0F172A)" }}>
                             {hosp.name}
                           </span>
                           {isCurrent && (
@@ -3436,8 +3760,8 @@ export default function PatientPage({
                             style={{
                               fontSize: "10.5px",
                               fontWeight: 700,
-                              color: "#64748B",
-                              background: "#F1F5F9",
+                              color: "var(--patient-text-sub, #64748B)",
+                              background: "var(--patient-sub-card, #F1F5F9)",
                               padding: "2px 7px",
                               borderRadius: "4px",
                             }}
@@ -3446,12 +3770,12 @@ export default function PatientPage({
                           </span>
                         </div>
                         {hosp.address && (
-                          <div style={{ fontSize: "11.5px", color: "#475569", marginTop: "3px" }}>
+                          <div style={{ fontSize: "11.5px", color: "var(--patient-text-sub, #475569)", marginTop: "3px" }}>
                             📍 {hosp.address}
                           </div>
                         )}
                         {hosp.phone && (
-                          <div style={{ fontSize: "11px", color: "#64748B", marginTop: "1px" }}>
+                          <div style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", marginTop: "1px" }}>
                             📞 {hosp.phone}
                           </div>
                         )}
@@ -3466,9 +3790,9 @@ export default function PatientPage({
                         style={{
                           padding: "6px 14px",
                           borderRadius: "8px",
-                          border: isCurrent ? "1px solid #0284C7" : "1px solid #CBD5E1",
-                          background: isCurrent ? "#0284C7" : "#F8FAFC",
-                          color: isCurrent ? "#FFFFFF" : "#334155",
+                          border: isCurrent ? "1px solid #0284C7" : "1px solid var(--patient-card-border, #CBD5E1)",
+                          background: isCurrent ? "#0284C7" : "var(--patient-sub-card, #F8FAFC)",
+                          color: isCurrent ? "#FFFFFF" : "var(--patient-text-main, #334155)",
                           fontSize: "12px",
                           fontWeight: 700,
                           cursor: "pointer",
@@ -3491,15 +3815,16 @@ export default function PatientPage({
         <div style={modalBackdropStyle} onClick={() => setShowPrescriptionModal(false)}>
           <div
             id="printable-rx-slip"
+            className="patient-modal-box"
             style={{
               ...modalContentStyle,
               maxWidth: "680px",
               maxHeight: "90vh",
               overflowY: "auto",
               padding: "26px 30px",
-              background: "#FFFFFF",
+              background: "var(--patient-card-bg, #FFFFFF)",
               borderRadius: "16px",
-              border: "1.5px solid #CBD5E1",
+              border: "1.5px solid var(--patient-card-border, #CBD5E1)",
               boxShadow: "0 20px 40px rgba(15, 23, 42, 0.15)",
             }}
             onClick={(e) => e.stopPropagation()}
@@ -3511,7 +3836,7 @@ export default function PatientPage({
                   ℞
                 </div>
                 <div>
-                  <h2 style={{ margin: 0, fontSize: "20px", color: "#0F172A", fontWeight: 900, letterSpacing: "-0.3px" }}>
+                  <h2 style={{ margin: 0, fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 900, letterSpacing: "-0.3px" }}>
                     {viewingPrescriptionData?.hospital_name || getHospitalNameForRecord(viewingPrescriptionData) || currentHospitalDisplayName || "City General Hospital"}
                   </h2>
                   <span style={{ fontSize: "11.5px", color: "#0284C7", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -3521,33 +3846,33 @@ export default function PatientPage({
               </div>
 
               <div style={{ textAlign: "right" }}>
-                <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>Date & Time</span>
-                <strong style={{ fontSize: "12px", color: "#0F172A" }}>
+                <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>Date & Time</span>
+                <strong style={{ fontSize: "12px", color: "var(--patient-text-main, #0F172A)" }}>
                   {viewingPrescriptionData.prescribed_at ? new Date(viewingPrescriptionData.prescribed_at).toLocaleDateString() : new Date().toLocaleDateString()}
                 </strong>
-                <span style={{ fontSize: "10px", color: "#64748B", display: "block" }}>
+                <span style={{ fontSize: "10px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>
                   {viewingPrescriptionData.prescribed_at ? new Date(viewingPrescriptionData.prescribed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
                 </span>
               </div>
             </div>
 
             {/* 2. Patient & Doctor Information Bar */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", background: "#F8FAFC", padding: "12px 14px", borderRadius: "10px", border: "1px solid #E2E8F0", marginBottom: "16px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", background: "var(--patient-sub-card, #F8FAFC)", padding: "12px 14px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #E2E8F0)", marginBottom: "16px" }}>
               <div>
-                <span style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Patient Details</span>
-                <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#0F172A", marginTop: "2px" }}>
+                <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)", fontWeight: 700, textTransform: "uppercase" }}>Patient Details</span>
+                <div style={{ fontSize: "13.5px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)", marginTop: "2px" }}>
                   {viewingPrescriptionData.patient_name}
                 </div>
-                <div style={{ fontSize: "11px", color: "#475569" }}>
+                <div style={{ fontSize: "11px", color: "var(--patient-text-sub, #475569)" }}>
                   {viewingPrescriptionData.age} yrs • {viewingPrescriptionData.gender} • Token #{viewingPrescriptionData.ticket_id}
                 </div>
               </div>
               <div>
-                <span style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 700, textTransform: "uppercase" }}>Attending Physician</span>
+                <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)", fontWeight: 700, textTransform: "uppercase" }}>Attending Physician</span>
                 <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#0284C7", marginTop: "2px" }}>
                   {viewingPrescriptionData.doctor_name}
                 </div>
-                <div style={{ fontSize: "11px", color: "#475569" }}>
+                <div style={{ fontSize: "11px", color: "var(--patient-text-sub, #475569)" }}>
                   Department: {getCategoryLabel(viewingPrescriptionData.doctor_department, language)}
                   {viewingPrescriptionData.doctor_employee_id && ` (ID: ${viewingPrescriptionData.doctor_employee_id})`}
                 </div>
@@ -3557,19 +3882,19 @@ export default function PatientPage({
             {/* 3. Provisional Diagnosis & Tests */}
             <div style={{ marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6px" }}>
-                <span style={{ fontSize: "12px", fontWeight: 800, color: "#0F172A" }}>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
                   Clinical Diagnosis:
                 </span>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#0284C7", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
+                <span style={{ fontSize: "13px", fontWeight: 700, color: "#0284C7", background: "var(--patient-tag-bg, #F0F9FF)", padding: "2px 8px", borderRadius: "6px", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
                   {viewingPrescriptionData.diagnosis || "General Consultation & Clinical Checkup"}
                 </span>
               </div>
               {viewingPrescriptionData.lab_tests && viewingPrescriptionData.lab_tests !== "no" && (
                 <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginTop: "4px" }}>
-                  <span style={{ fontSize: "12px", fontWeight: 800, color: "#0F172A" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
                     Tests Ordered:
                   </span>
-                  <span style={{ fontSize: "12.5px", color: "#475569", fontWeight: 600 }}>
+                  <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #475569)", fontWeight: 600 }}>
                     🧪 {viewingPrescriptionData.lab_tests}
                   </span>
                 </div>
@@ -3578,15 +3903,15 @@ export default function PatientPage({
 
             {/* 4. Prescribed Medications Table */}
             <div style={{ marginBottom: "18px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 900, color: "#0F172A", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <div style={{ fontSize: "12px", fontWeight: 900, color: "var(--patient-text-main, #0F172A)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
                 <span style={{ color: "#0284C7", fontSize: "16px" }}>℞</span> Prescribed Medications
               </div>
 
               {viewingPrescriptionData.medicines && viewingPrescriptionData.medicines.length > 0 ? (
-                <div style={{ overflowX: "auto", border: "1px solid #E2E8F0", borderRadius: "8px" }}>
+                <div style={{ overflowX: "auto", border: "1px solid var(--patient-card-border, #E2E8F0)", borderRadius: "8px" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", textAlign: "left" }}>
                     <thead>
-                      <tr style={{ background: "#F1F5F9", borderBottom: "1.5px solid #CBD5E1", color: "#475569", fontWeight: 800 }}>
+                      <tr style={{ background: "var(--patient-sub-card, #F1F5F9)", borderBottom: "1.5px solid var(--patient-card-border, #CBD5E1)", color: "var(--patient-text-sub, #475569)", fontWeight: 800 }}>
                         <th style={{ padding: "8px 10px" }}>#</th>
                         <th style={{ padding: "8px 10px" }}>Medicine Name</th>
                         <th style={{ padding: "8px 10px" }}>Dosage</th>
@@ -3597,20 +3922,20 @@ export default function PatientPage({
                     </thead>
                     <tbody>
                       {viewingPrescriptionData.medicines.map((med, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid #F1F5F9", background: idx % 2 === 0 ? "#FFFFFF" : "#F8FAFC" }}>
-                          <td style={{ padding: "8px 10px", fontWeight: 700, color: "#64748B" }}>{idx + 1}</td>
-                          <td style={{ padding: "8px 10px", fontWeight: 800, color: "#0F172A" }}>{med.name}</td>
+                        <tr key={idx} style={{ borderBottom: "1px solid var(--patient-card-border, #F1F5F9)", background: idx % 2 === 0 ? "var(--patient-card-bg, #FFFFFF)" : "var(--patient-sub-card, #F8FAFC)" }}>
+                          <td style={{ padding: "8px 10px", fontWeight: 700, color: "var(--patient-text-sub, #64748B)" }}>{idx + 1}</td>
+                          <td style={{ padding: "8px 10px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>{med.name}</td>
                           <td style={{ padding: "8px 10px", color: "#0284C7", fontWeight: 700 }}>{med.dosage || "-"}</td>
                           <td style={{ padding: "8px 10px", fontWeight: 700, color: "#0284C7" }}>{med.frequency || "-"}</td>
-                          <td style={{ padding: "8px 10px", color: "#334155" }}>{med.duration || "-"}</td>
-                          <td style={{ padding: "8px 10px", color: "#64748B", fontStyle: "italic" }}>{med.instructions || "After food"}</td>
+                          <td style={{ padding: "8px 10px", color: "var(--patient-text-sub, #334155)" }}>{med.duration || "-"}</td>
+                          <td style={{ padding: "8px 10px", color: "var(--patient-text-sub, #64748B)", fontStyle: "italic" }}>{med.instructions || "After food"}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
-                <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "8px", border: "1px solid #E2E8F0", fontSize: "13px", color: "#334155", fontStyle: "italic" }}>
+                <div style={{ padding: "12px 14px", background: "var(--patient-sub-card, #F8FAFC)", borderRadius: "8px", border: "1px solid var(--patient-card-border, #E2E8F0)", fontSize: "13px", color: "var(--patient-text-main, #334155)", fontStyle: "italic" }}>
                   "{viewingPrescriptionData.advice || "No specific medications listed. Consultation completed."}"
                 </div>
               )}
@@ -3618,11 +3943,11 @@ export default function PatientPage({
 
             {/* 5. Doctor's Advice & Lifestyle Instructions */}
             {viewingPrescriptionData.advice && (
-              <div style={{ marginBottom: "14px", padding: "10px 14px", background: "#F0F9FF", borderRadius: "10px", border: "1px solid #BAE6FD" }}>
+              <div style={{ marginBottom: "14px", padding: "10px 14px", background: "var(--patient-tag-bg, #F0F9FF)", borderRadius: "10px", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
                 <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", display: "block", marginBottom: "2px", textTransform: "uppercase" }}>
                   📋 Doctor's Advice & Guidelines:
                 </span>
-                <p style={{ margin: 0, fontSize: "12.5px", color: "#0F172A" }}>
+                <p style={{ margin: 0, fontSize: "12.5px", color: "var(--patient-text-main, #0F172A)" }}>
                   {viewingPrescriptionData.advice}
                 </p>
               </div>
@@ -3630,7 +3955,7 @@ export default function PatientPage({
 
             {/* 6. Follow-up consultation */}
             {viewingPrescriptionData.follow_up && (
-              <div style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#475569" }}>
+              <div style={{ marginBottom: "16px", display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--patient-text-sub, #475569)" }}>
                 <span>🗓️</span>
                 <strong>Follow-Up:</strong>
                 <span>{viewingPrescriptionData.follow_up}</span>
@@ -3638,7 +3963,7 @@ export default function PatientPage({
             )}
 
             {/* 7. Electronic Validation Stamp */}
-            <div style={{ borderTop: "1px dashed #CBD5E1", paddingTop: "12px", marginTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ borderTop: "1px dashed var(--patient-card-border, #CBD5E1)", paddingTop: "12px", marginTop: "14px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
                 <span>✓</span>
                 <span>Digitally Authenticated & Recorded in Hospital OPD System</span>
@@ -3653,7 +3978,8 @@ export default function PatientPage({
               <button
                 type="button"
                 onClick={() => setShowPrescriptionModal(false)}
-                style={{ padding: "9px 18px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#334155", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
+                className="patient-secondary-btn"
+                style={{ padding: "9px 18px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-sub-card, #F8FAFC)", color: "var(--patient-text-main, #334155)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}
               >
                 Close
               </button>
@@ -3695,11 +4021,12 @@ export default function PatientPage({
 
 // Styling definitions
 const standaloneCardStyle = {
-  background: "#FFFFFF",
+  background: "var(--patient-card-bg, #FFFFFF)",
   borderRadius: "20px",
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--patient-card-border, #E2E8F0)",
   padding: "28px 32px",
   boxShadow: "0 4px 20px -2px rgba(0, 0, 0, 0.03)",
+  color: "var(--patient-text-main, #0F172A)",
 };
 
 const fieldLabelWithIconStyle = {
@@ -3707,7 +4034,7 @@ const fieldLabelWithIconStyle = {
   alignItems: "center",
   gap: "6px",
   fontSize: "12.5px",
-  color: "#334155",
+  color: "var(--patient-text-sub, #334155)",
   marginBottom: "8px",
   fontWeight: 600,
 };
@@ -3716,9 +4043,9 @@ const fieldInputStyle = {
   width: "100%",
   padding: "12px 14px",
   borderRadius: "10px",
-  border: "1px solid #E2E8F0",
-  background: "#FFFFFF",
-  color: "#0F172A",
+  border: "1px solid var(--patient-card-border, #E2E8F0)",
+  background: "var(--patient-card-bg, #FFFFFF)",
+  color: "var(--patient-text-main, #0F172A)",
   fontSize: "13.5px",
   outline: "none",
   transition: "border 0.2s ease, box-shadow 0.2s ease",
@@ -3777,9 +4104,10 @@ const aptCardRowStyle = (status) => {
       justifyContent: "space-between",
       alignItems: "center",
       padding: "14px",
-      background: "#F0F9FF",
+      background: "var(--apt-active-bg, #F0F9FF)",
       borderRadius: "12px",
-      border: "1px solid #BAE6FD",
+      border: "1px solid var(--apt-active-border, #BAE6FD)",
+      color: "var(--patient-text-main, #0F172A)",
     };
   }
   if (s === "completed" || s === "transferred") {
@@ -3788,9 +4116,10 @@ const aptCardRowStyle = (status) => {
       justifyContent: "space-between",
       alignItems: "center",
       padding: "14px",
-      background: "#FFFFFF",
+      background: "var(--patient-card-bg, #FFFFFF)",
       borderRadius: "12px",
-      border: "1px solid #E2E8F0",
+      border: "1px solid var(--patient-card-border, #E2E8F0)",
+      color: "var(--patient-text-main, #0F172A)",
     };
   }
   return {
@@ -3798,19 +4127,20 @@ const aptCardRowStyle = (status) => {
     justifyContent: "space-between",
     alignItems: "center",
     padding: "14px",
-    background: "#F8FAFC",
+    background: "var(--patient-sub-card, #F8FAFC)",
     borderRadius: "12px",
-    border: "1px solid #CBD5E1",
+    border: "1px solid var(--patient-card-border, #CBD5E1)",
+    color: "var(--patient-text-main, #0F172A)",
   };
 };
 
 const aptStatusBadgeStyle = (status) => {
   const s = (status || "").toLowerCase();
-  if (s === "completed") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1" };
-  if (s === "transferred") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#E0F2FE", color: "#0284C7", border: "1px solid #BAE6FD" };
+  if (s === "completed") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "var(--patient-sub-card, #F1F5F9)", color: "var(--patient-text-sub, #475569)", border: "1px solid var(--patient-card-border, #CBD5E1)" };
+  if (s === "transferred") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "var(--patient-tag-bg, #E0F2FE)", color: "var(--patient-tag-color, #0284C7)", border: "1px solid var(--patient-tag-border, #BAE6FD)" };
   if (s === "serving") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#FEF3C7", color: "#D97706", border: "1px solid #FDE68A" };
-  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F0F9FF", color: "#0284C7", border: "1px solid #BAE6FD" };
-  if (s === "cancelled" || s === "no_show" || s === "expired") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" };
+  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "var(--patient-tag-bg, #F0F9FF)", color: "var(--patient-tag-color, #0284C7)", border: "1px solid var(--patient-tag-border, #BAE6FD)" };
+  if (s === "cancelled" || s === "no_show" || s === "expired") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "var(--emergency-card-bg, #FEF2F2)", color: "var(--emergency-card-text, #DC2626)", border: "1px solid var(--emergency-card-border, #FECACA)" };
   return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
 };
 
@@ -3819,9 +4149,9 @@ const passStatusBadgeStyle = (status) => ({
   borderRadius: "6px",
   fontSize: "11px",
   fontWeight: 700,
-  background: status === "serving" ? "#F0F9FF" : "#FEF3C7",
-  color: status === "serving" ? "#0284C7" : "#D97706",
-  border: status === "serving" ? "1px solid #BAE6FD" : "1px solid #FDE68A",
+  background: status === "serving" ? "var(--patient-tag-bg, #F0F9FF)" : "#FEF3C7",
+  color: status === "serving" ? "var(--patient-tag-color, #0284C7)" : "#D97706",
+  border: status === "serving" ? "1px solid var(--patient-tag-border, #BAE6FD)" : "1px solid #FDE68A",
 });
 
 const dashboardFooterStyle = {
@@ -3869,11 +4199,11 @@ function QueueTelemetrySidebar({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#0EA5E9", boxShadow: "0 0 8px #0EA5E9" }} />
-            <span style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A" }}>
+            <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
               {language === "hi" ? "लाइव कतार मॉनिटर" : "Live Queue Monitor"}
             </span>
           </div>
-          <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "var(--patient-tag-bg, #F0F9FF)", padding: "2px 8px", borderRadius: "6px" }}>
             {analytics ? `${analytics.active_counters} ${language === "hi" ? "डेस्क सक्रिय" : "Desks Active"}` : (language === "hi" ? "2 डेस्क सक्रिय" : "2 Desks Active")}
           </span>
         </div>
@@ -3904,19 +4234,19 @@ function QueueTelemetrySidebar({
 
         {/* Live Wait Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-          <div style={{ background: "#F8FAFC", padding: "10px 12px", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-            <span style={{ fontSize: "10.5px", color: "#64748B", display: "block" }}>
+          <div style={{ background: "var(--patient-sub-card, #F8FAFC)", padding: "10px 12px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
+            <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>
               {language === "hi" ? "औसत प्रतीक्षा" : "Est. Avg Wait"}
             </span>
             <span style={{ fontSize: "16px", fontWeight: 800, color: "#0284C7" }}>
               {analytics ? analytics.avg_wait_minutes : 12} {language === "hi" ? "मिनट" : "min"}
             </span>
           </div>
-          <div style={{ background: "#F8FAFC", padding: "10px 12px", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-            <span style={{ fontSize: "10.5px", color: "#64748B", display: "block" }}>
+          <div style={{ background: "var(--patient-sub-card, #F8FAFC)", padding: "10px 12px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
+            <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>
               {language === "hi" ? "कतार में" : "In Line"}
             </span>
-            <span style={{ fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
+            <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
               {queueSnapshot.length} {language === "hi" ? "मरीज़" : "patients"}
             </span>
           </div>
@@ -3926,17 +4256,17 @@ function QueueTelemetrySidebar({
       {/* 2. Next in Line Preview */}
       {queueSnapshot.length > 0 && (
         <div className="telemetry-sidebar-card" style={{ padding: "18px" }}>
-          <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A", display: "flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ fontSize: "12.5px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)", display: "flex", alignItems: "center", gap: "6px" }}>
             <span>📋</span> {language === "hi" ? "कतार में अगले टोकन" : "Next Up in Queue"}
           </span>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px" }}>
             {queueSnapshot.slice(0, 3).map((item) => (
-              <div key={item.ticket_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: "8px", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+              <div key={item.ticket_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: "8px", background: "var(--patient-sub-card, #F8FAFC)", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 800, color: "#64748B" }}>#{item.position}</span>
+                  <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--patient-text-sub, #64748B)" }}>#{item.position}</span>
                   <div>
-                    <strong style={{ fontSize: "12.5px", color: "#0F172A" }}>#{item.ticket_id}</strong>
-                    <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{item.name}</span>
+                    <strong style={{ fontSize: "12.5px", color: "var(--patient-text-main, #0F172A)" }}>#{item.ticket_id}</strong>
+                    <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>{item.name}</span>
                   </div>
                 </div>
                 <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>
@@ -3947,21 +4277,6 @@ function QueueTelemetrySidebar({
           </div>
         </div>
       )}
-
-      {/* 3. Hospital Helpline Card */}
-      <div className="telemetry-sidebar-card" style={{ background: "#FEF2F2", borderColor: "#FECACA", padding: "18px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "16px" }}>🚨</span>
-          <div>
-            <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#991B1B" }}>
-              {language === "hi" ? "24/7 आपातकालीन ट्राइएज" : "24/7 Emergency Triage"}
-            </div>
-            <div style={{ fontSize: "11px", color: "#DC2626" }}>
-              {branding?.emergency_helpline || (language === "hi" ? "हेल्पलाइन: 108 / 1800-456-CARE" : "Helpline: 108 / +1 (800) 456-CARE")}
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -3987,8 +4302,8 @@ function DigitalTicketPassCard({
     <div style={{ ...standaloneCardStyle, border: "2px solid #0284C7" }}>
       {/* Active Family Pass Switcher */}
       {Object.keys(familyTickets).length > 1 && (
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", background: "#F1F5F9", padding: "8px 12px", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-          <span style={{ fontSize: "11px", fontWeight: 700, color: "#475569" }}>{t("switchTicket", language)}:</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px", background: "var(--patient-sub-card, #F1F5F9)", padding: "8px 12px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--patient-text-sub, #475569)" }}>{t("switchTicket", language)}:</span>
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             {Object.entries(familyTickets).map(([memId, tick]) => {
               const isCurrent = activeTicket.ticket_id === tick.ticket_id;
@@ -4000,9 +4315,9 @@ function DigitalTicketPassCard({
                   style={{
                     padding: "3px 9px",
                     borderRadius: "6px",
-                    border: isCurrent ? "1.5px solid #0284C7" : "1px solid #CBD5E1",
-                    background: isCurrent ? "#0284C7" : "#FFFFFF",
-                    color: isCurrent ? "#FFFFFF" : "#0F172A",
+                    border: isCurrent ? "1.5px solid #0284C7" : "1px solid var(--patient-card-border, #CBD5E1)",
+                    background: isCurrent ? "#0284C7" : "var(--patient-card-bg, #FFFFFF)",
+                    color: isCurrent ? "#FFFFFF" : "var(--patient-text-main, #0F172A)",
                     fontSize: "11px",
                     fontWeight: isCurrent ? 800 : 600,
                     cursor: "pointer",
@@ -4016,12 +4331,12 @@ function DigitalTicketPassCard({
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #E0F2FE", paddingBottom: "14px", marginBottom: "16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--patient-card-border, #E0F2FE)", paddingBottom: "14px", marginBottom: "16px" }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "2px" }}>
-            <span style={{ fontSize: "11px", color: "#64748B", textTransform: "uppercase", fontWeight: 600 }}>{t("livePassTitle", language)}</span>
+            <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", textTransform: "uppercase", fontWeight: 600 }}>{t("livePassTitle", language)}</span>
             {activeTicket.name && (
-              <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 6px", borderRadius: "4px", background: "#E0F2FE", color: "#0369A1", border: "1px solid #BAE6FD" }}>
+              <span style={{ fontSize: "10px", fontWeight: 700, padding: "1px 6px", borderRadius: "4px", background: "var(--patient-tag-bg, #E0F2FE)", color: "var(--patient-tag-color, #0369A1)", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
                 👤 {activeTicket.name}
               </span>
             )}
@@ -4031,32 +4346,32 @@ function DigitalTicketPassCard({
           </h2>
         </div>
         <div style={{ textAlign: "right" }}>
-          <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{t("currentStatus", language)}</span>
+          <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>{t("currentStatus", language)}</span>
           <span style={passStatusBadgeStyle(activeTicket.status)}>{getStatusLabel(activeTicket.status, language)}</span>
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "16px", marginBottom: "20px" }}>
         <div style={{ minWidth: 0 }}>
-          <span style={{ fontSize: "11px", color: "#64748B" }}>{t("patientDemographics", language)}</span>
-          <p style={{ margin: "2px 0 0 0", color: "#0F172A", fontWeight: 700, fontSize: "15px", wordBreak: "break-word" }}>
+          <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)" }}>{t("patientDemographics", language)}</span>
+          <p style={{ margin: "2px 0 0 0", color: "var(--patient-text-main, #0F172A)", fontWeight: 700, fontSize: "15px", wordBreak: "break-word" }}>
             {activeTicket.name} ({activeTicket.age || 30} {language === "hi" ? "वर्ष" : "yrs"}, {t(activeTicket.gender || "male", language)})
           </p>
         </div>
         <div style={{ minWidth: 0 }}>
-          <span style={{ fontSize: "11px", color: "#64748B" }}>{t("deptCategory", language)}</span>
+          <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)" }}>{t("deptCategory", language)}</span>
           <p style={{ margin: "2px 0 0 0", color: "#0284C7", fontWeight: 700, fontSize: "15px", wordBreak: "break-word" }}>
             {getCategoryLabel(activeTicket.service_category || "consultation", language)}
           </p>
         </div>
         <div style={{ minWidth: 0 }}>
-          <span style={{ fontSize: "11px", color: "#64748B" }}>{t("pos", language)}</span>
+          <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)" }}>{t("pos", language)}</span>
           <p style={{ margin: "2px 0 0 0", color: "#D97706", fontWeight: 800, fontSize: "24px" }}>
             #{activeTicket.position}
           </p>
         </div>
         <div style={{ minWidth: 0 }}>
-          <span style={{ fontSize: "11px", color: "#64748B" }}>{t("estWait", language)}</span>
+          <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)" }}>{t("estWait", language)}</span>
           <p style={{ margin: "2px 0 0 0", color: "#0284C7", fontWeight: 800, fontSize: "24px" }}>
             {activeTicket.estimated_wait_minutes} {language === "hi" ? "मिनट" : "min"}
           </p>
@@ -4072,11 +4387,11 @@ function DigitalTicketPassCard({
             marginBottom: "16px",
             padding: "16px 18px",
             borderRadius: "14px",
-            background: "linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 50%, #E0F2FE 100%)",
+            background: "linear-gradient(135deg, rgba(5, 150, 105, 0.15) 0%, rgba(16, 185, 129, 0.08) 50%, rgba(2, 132, 199, 0.12) 100%)",
             border: "2px solid #059669",
             boxShadow: "0 4px 14px rgba(5, 150, 105, 0.12)",
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", borderBottom: "1px solid #A7F3D0", paddingBottom: "10px", marginBottom: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", borderBottom: "1px solid rgba(5, 150, 105, 0.3)", paddingBottom: "10px", marginBottom: "10px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <span style={{
                   width: "36px",
@@ -4093,10 +4408,10 @@ function DigitalTicketPassCard({
                   ℞
                 </span>
                 <div>
-                  <div style={{ fontSize: "14.5px", fontWeight: 900, color: "#065F46", letterSpacing: "-0.2px" }}>
+                  <div style={{ fontSize: "14.5px", fontWeight: 900, color: "#10B981", letterSpacing: "-0.2px" }}>
                     {language === "hi" ? "डिजिटल दवा पर्ची (ई-प्रिस्क्रिप्शन)" : "Digital E-Prescription (Rx Slip)"}
                   </div>
-                  <div style={{ fontSize: "11.5px", color: "#047857", fontWeight: 700 }}>
+                  <div style={{ fontSize: "11.5px", color: "#34D399", fontWeight: 700 }}>
                     {rx?.doctor_name ? `👨‍⚕️ ${rx.doctor_name}` : "Consultant Physician"} {rx?.doctor_department ? `• ${rx.doctor_department}` : ""}
                   </div>
                 </div>
@@ -4128,9 +4443,9 @@ function DigitalTicketPassCard({
             </div>
 
             {rx?.diagnosis && (
-              <div style={{ fontSize: "12.5px", color: "#065F46", marginBottom: "6px" }}>
-                <strong style={{ color: "#0F172A" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
-                <span style={{ fontWeight: 700, color: "#047857", background: "#D1FAE5", padding: "2px 8px", borderRadius: "5px", border: "1px solid #A7F3D0" }}>
+              <div style={{ fontSize: "12.5px", color: "#10B981", marginBottom: "6px" }}>
+                <strong style={{ color: "var(--patient-text-main, #0F172A)" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
+                <span style={{ fontWeight: 700, color: "#059669", background: "var(--patient-tag-bg, #D1FAE5)", padding: "2px 8px", borderRadius: "5px", border: "1px solid rgba(5, 150, 105, 0.3)" }}>
                   {rx.diagnosis}
                 </span>
               </div>
@@ -4138,7 +4453,7 @@ function DigitalTicketPassCard({
 
             {rx?.medicines && rx.medicines.length > 0 && (
               <div style={{ marginTop: "6px" }}>
-                <span style={{ fontSize: "11px", fontWeight: 800, color: "#047857", textTransform: "uppercase" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#10B981", textTransform: "uppercase" }}>
                   {language === "hi" ? "दवाइयाँ" : "Prescribed Medicines"}:
                 </span>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
@@ -4150,9 +4465,9 @@ function DigitalTicketPassCard({
                         fontWeight: 700,
                         padding: "3px 8px",
                         borderRadius: "6px",
-                        background: "#FFFFFF",
-                        border: "1px solid #A7F3D0",
-                        color: "#065F46",
+                        background: "var(--patient-card-bg, #FFFFFF)",
+                        border: "1px solid var(--patient-tag-border, #A7F3D0)",
+                        color: "#059669",
                       }}
                     >
                       💊 {m.name} {m.dosage ? `(${m.dosage})` : ""}
@@ -4163,7 +4478,7 @@ function DigitalTicketPassCard({
             )}
 
             {rx?.advice && (
-              <div style={{ marginTop: "8px", fontSize: "12px", color: "#334155", background: "#FFFFFF", padding: "8px 12px", borderRadius: "8px", border: "1px solid #A7F3D0" }}>
+              <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--patient-text-main, #334155)", background: "var(--patient-card-bg, #FFFFFF)", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-tag-border, #A7F3D0)" }}>
                 <strong>{language === "hi" ? "सलाह" : "Advice"}:</strong> {rx.advice}
               </div>
             )}
@@ -4178,9 +4493,9 @@ function DigitalTicketPassCard({
           marginBottom: "14px",
           padding: "12px 16px",
           borderRadius: "10px",
-          background: "#F0FDF4",
-          border: "1px solid #A7F3D0",
-          color: "#065F46",
+          background: "var(--patient-tag-bg, #F0FDF4)",
+          border: "1px solid rgba(5, 150, 105, 0.3)",
+          color: "#10B981",
           fontSize: "12.5px",
           fontWeight: 600,
           display: "flex",
@@ -4209,8 +4524,8 @@ function DigitalTicketPassCard({
               minWidth: "130px",
               padding: "10px 16px",
               borderRadius: "10px",
-              border: (activeTicket.adjustment_count || 0) >= 3 ? "1px solid #E2E8F0" : "1.5px solid #0284C7",
-              background: (activeTicket.adjustment_count || 0) >= 3 ? "#F1F5F9" : "#F0F9FF",
+              border: (activeTicket.adjustment_count || 0) >= 3 ? "1px solid var(--patient-card-border, #E2E8F0)" : "1.5px solid #0284C7",
+              background: (activeTicket.adjustment_count || 0) >= 3 ? "var(--patient-sub-card, #F1F5F9)" : "var(--patient-tag-bg, #F0F9FF)",
               color: (activeTicket.adjustment_count || 0) >= 3 ? "#94A3B8" : "#0284C7",
               fontSize: "12.5px",
               fontWeight: 700,
@@ -4239,9 +4554,9 @@ function DigitalTicketPassCard({
               minWidth: "130px",
               padding: "10px 16px",
               borderRadius: "10px",
-              border: "1.5px solid #FECACA",
-              background: "#FEF2F2",
-              color: "#DC2626",
+              border: "1.5px solid var(--emergency-card-border, #FECACA)",
+              background: "var(--emergency-card-bg, #FEF2F2)",
+              color: "var(--emergency-card-text, #DC2626)",
               fontSize: "12.5px",
               fontWeight: 700,
               cursor: "pointer",
@@ -4259,13 +4574,13 @@ function DigitalTicketPassCard({
       )}
 
       {ticketQrData && (
-        <div style={{ textAlign: "center", borderTop: "1px solid #E0F2FE", paddingTop: "18px" }}>
+        <div style={{ textAlign: "center", borderTop: "1px solid var(--patient-card-border, #E0F2FE)", paddingTop: "18px" }}>
           <img
             src={ticketQrData.qr_code_base64}
             alt="Ticket QR Code"
-            style={{ width: "130px", height: "130px", borderRadius: "12px", background: "#fff", padding: "6px", border: "1px solid #CBD5E1" }}
+            style={{ width: "130px", height: "130px", borderRadius: "12px", background: "#fff", padding: "6px", border: "1px solid var(--patient-card-border, #CBD5E1)" }}
           />
-          <p style={{ margin: "6px 0 0 0", fontSize: "12px", color: "#64748B" }}>
+          <p style={{ margin: "6px 0 0 0", fontSize: "12px", color: "var(--patient-text-sub, #64748B)" }}>
             {t("scanQrHint", language)}
           </p>
         </div>
@@ -4279,7 +4594,7 @@ function DigitalTicketPassCard({
             padding: "9px 18px",
             borderRadius: "10px",
             border: "1px solid #0284C7",
-            background: "#F0F9FF",
+            background: "var(--patient-tag-bg, #F0F9FF)",
             color: "#0284C7",
             fontSize: "12px",
             fontWeight: 800,
@@ -4310,12 +4625,13 @@ const modalBackdropStyle = {
 };
 
 const modalContentStyle = {
-  background: "#FFFFFF",
+  background: "var(--patient-card-bg, #FFFFFF)",
   borderRadius: "20px",
   maxWidth: "440px",
   width: "100%",
   padding: "26px",
-  boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-  border: "1px solid #E2E8F0",
+  boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.35)",
+  border: "1px solid var(--patient-card-border, #E2E8F0)",
+  color: "var(--patient-text-main, #0F172A)",
   boxSizing: "border-box",
 };

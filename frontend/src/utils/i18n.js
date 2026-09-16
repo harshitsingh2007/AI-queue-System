@@ -30,10 +30,15 @@ export const TRANSLATIONS = {
     medicalDeptLabel: "Medical Department",
     serviceDeptLabel: "Service Department",
     primarySymptomLabel: "Primary Symptom / Medical Reason",
+    symptomLabel: "Primary Symptom / Medical Reason",
+    customSymptomLabel: "Describe Your Symptom / Health Concern",
+    customSymptomPlaceholder: "Describe your symptom / reason (e.g. Swelling in ankle, severe earache)",
     preExistingLabel: "Pre-Existing Chronic Conditions / Risk Factors",
     urgencyLabel: "Urgency / Triage Level",
+    priorityTriageLabel: "Priority & Triage Level",
     
     // Form Options & Buttons
+    routineCase: "Routine Consultation",
     routineCheckup: "Routine Checkup",
     standardOrder: "Standard Queue Order",
     emergencyCase: "Emergency Case",
@@ -42,13 +47,34 @@ export const TRANSLATIONS = {
     bookSlotBtn: "Reserve Appointment Slot",
     
     // Symptoms
-    symptomGeneral: "OPD General Consultation",
-    symptomCardiac: "Chest Pain / Cardiac Symptoms",
-    symptomFever: "High Fever / Acute Infection",
-    symptomTrauma: "Fracture / Physical Injury",
-    symptomAsthma: "Shortness of Breath / Asthma",
-    symptomFollowup: "Prescription Refill / Follow-up",
-    symptomLab: "Pathology Blood / Sample Collection",
+    symptomGeneral: "General Checkup & Consultation",
+    symptomCardiac: "Severe Chest Pain / Heart Discomfort",
+    symptomFever: "High Fever, Viral Flu & Chills",
+    symptomTrauma: "Fracture, Sprain & Physical Trauma",
+    symptomAsthma: "Shortness of Breath / Asthma Attack",
+    symptomFollowup: "Prescription Refill & Follow-up Visit",
+    symptomLab: "Pathology Blood & Diagnostic Tests",
+    symptom_general_checkup: "General Checkup & Consultation",
+    symptom_fever_flu: "High Fever, Viral Flu & Chills",
+    symptom_cough_cold: "Cough, Cold & Sore Throat",
+    symptom_chest_pain_severe: "Severe Chest Pain / Heart Discomfort",
+    symptom_breathing_difficulty: "Shortness of Breath / Asthma Attack",
+    symptom_headache_migraine: "Severe Headache & Migraine",
+    symptom_stomach_pain: "Abdominal Pain, Acidity & Vomiting",
+    symptom_fracture_trauma: "Fracture, Sprain & Physical Trauma",
+    symptom_skin_allergy: "Skin Rash, Allergy & Itching",
+    symptom_pediatric_care: "Pediatric & Child Health Care",
+    symptom_ortho_joint_pain: "Back Pain & Joint Stiffness",
+    symptom_eye_infection: "Eye Infection, Redness & Vision Issue",
+    symptom_ent_issue: "Ear, Nose & Throat (ENT) Pain",
+    symptom_dental_pain: "Dental Pain & Toothache",
+    symptom_diabetes_care: "Diabetes & Blood Sugar Checkup",
+    symptom_bp_hypertension: "High Blood Pressure & Dizziness",
+    symptom_urinary_issue: "Urinary Infection & Kidney Discomfort",
+    symptom_women_health: "Women's Health & Gynecology",
+    symptom_followup_refill: "Prescription Refill & Follow-up Visit",
+    symptom_lab_blood_test: "Pathology Blood & Diagnostic Tests",
+    symptom_other_custom: "✏️ Other Symptom (Type Your Own)",
 
     // Risk Factors
     riskNone: "None / Healthy Baseline",
@@ -56,6 +82,14 @@ export const TRANSLATIONS = {
     riskBP: "High Blood Pressure / Hypertension",
     riskHeart: "Heart Disease / Cardiac History",
     riskLung: "Asthma / Chronic Lung Disease",
+    risk_none: "None / Healthy Baseline",
+    risk_diabetes: "Diabetes Mellitus",
+    risk_hypertension: "High Blood Pressure / Hypertension",
+    risk_cardiac_history: "Heart Disease / Cardiac History",
+    risk_asthma_copd: "Asthma / Chronic Lung Disease",
+    risk_kidney_disease: "Chronic Kidney Disease",
+    risk_elderly: "Senior Citizen (65+ years)",
+    risk_pregnancy: "Pregnancy / Maternity",
     
     // Ticket Pass & Kiosk Labels
     livePassTitle: "Live Queue Token Pass",
@@ -259,10 +293,15 @@ export const TRANSLATIONS = {
     medicalDeptLabel: "चिकित्सा विभाग",
     serviceDeptLabel: "सेवा विभाग (डिपार्टमेंट)",
     primarySymptomLabel: "मुख्य लक्षण / बीमारी का कारण",
+    symptomLabel: "मुख्य लक्षण / बीमारी का कारण",
+    customSymptomLabel: "अपना लक्षण / स्वास्थ्य समस्या लिखें",
+    customSymptomPlaceholder: "अपना लक्षण विस्तार से लिखें (जैसे: टखने में सूजन, कान का गंभीर दर्द)",
     preExistingLabel: "पूर्व-विद्यमान पुरानी बीमारियाँ / जोखिम",
     urgencyLabel: "आपातकालीन स्तर (Triage)",
+    priorityTriageLabel: "प्राथमिकता एवं आपातकालीन स्तर (Triage)",
     
     // Form Options & Buttons
+    routineCase: "सामान्य परामर्श (Routine)",
     routineCheckup: "सामान्य जांच",
     standardOrder: "सामान्य क्रम",
     emergencyCase: "आपातकालीन स्थिति",
@@ -271,13 +310,34 @@ export const TRANSLATIONS = {
     bookSlotBtn: "अपॉइंटमेंट स्लॉट बुक करें",
     
     // Symptoms
-    symptomGeneral: "ओपीडी सामान्य परामर्श",
-    symptomCardiac: "सीने में दर्द / हृदय संबंधित लक्षण",
-    symptomFever: "तेज़ बुखार / तीव्र संक्रमण",
-    symptomTrauma: "फ्रैक्चर / शारीरिक चोट",
-    symptomAsthma: "सांस फूलना / अस्थमा",
-    symptomFollowup: "दवा रीफिल / फॉलो-अप जांच",
-    symptomLab: "पैथोलॉजी रक्त / नमूना संग्रह",
+    symptomGeneral: "सामान्य परामर्श एवं जांच",
+    symptomCardiac: "सीने में गंभीर दर्द / हृदय संबंधित लक्षण",
+    symptomFever: "तेज़ बुखार, वायरल फ्लू और ठंड लगना",
+    symptomTrauma: "फ्रैक्चर, मोच और शारीरिक चोट",
+    symptomAsthma: "सांस लेने में तकलीफ / अस्थमा",
+    symptomFollowup: "दवा रीफिल एवं फॉलो-अप जांच",
+    symptomLab: "पैथोलॉजी रक्त एवं नैदानिक जांच",
+    symptom_general_checkup: "सामान्य परामर्श एवं नियमित जांच",
+    symptom_fever_flu: "तेज़ बुखार, वायरल फ्लू और ठंड लगना",
+    symptom_cough_cold: "खांसी, जुकाम और गले में खराश",
+    symptom_chest_pain_severe: "सीने में गंभीर दर्द / हृदय संबंधित लक्षण",
+    symptom_breathing_difficulty: "सांस लेने में तकलीफ / अस्थमा का दौरा",
+    symptom_headache_migraine: "गंभीर सिरदर्द एवं माइग्रेन",
+    symptom_stomach_pain: "पेट में दर्द, एसिडिटी और उल्टी",
+    symptom_fracture_trauma: "फ्रैक्चर, मोच और शारीरिक चोट",
+    symptom_skin_allergy: "त्वचा एलर्जी, दाने और खुजली",
+    symptom_pediatric_care: "बाल चिकित्सा एवं शिशु स्वास्थ्य",
+    symptom_ortho_joint_pain: "कमर और जोड़ों का पुराना दर्द",
+    symptom_eye_infection: "आंखों में संक्रमण, लाली और दृष्टि समस्या",
+    symptom_ent_issue: "कान, नाक और गले की समस्या (ENT)",
+    symptom_dental_pain: "दांत और मसूड़ों का दर्द",
+    symptom_diabetes_care: "मधुमेह एवं ब्लड शुगर जांच",
+    symptom_bp_hypertension: "उच्च रक्तचाप एवं चक्कर आना",
+    symptom_urinary_issue: "मूत्र संक्रमण एवं गुर्दे की तकलीफ",
+    symptom_women_health: "महिला स्वास्थ्य एवं स्त्री रोग",
+    symptom_followup_refill: "दवा रीफिल एवं फॉलो-अप परामर्श",
+    symptom_lab_blood_test: "पैथोलॉजी रक्त एवं नैदानिक जांच",
+    symptom_other_custom: "✏️ अन्य लक्षण (अपना लक्षण लिखें)",
 
     // Risk Factors
     riskNone: "कोई नहीं / सामान्य",
@@ -285,6 +345,14 @@ export const TRANSLATIONS = {
     riskBP: "उच्च रक्तचाप (बीपी)",
     riskHeart: "हृदय रोग इतिहास",
     riskLung: "अस्थमा / फेफड़ों की बीमारी",
+    risk_none: "कोई नहीं / सामान्य",
+    risk_diabetes: "मधुमेह (डायबिटीज)",
+    risk_hypertension: "उच्च रक्तचाप (हाइपरटेंशन)",
+    risk_cardiac_history: "हृदय रोग का इतिहास",
+    risk_asthma_copd: "अस्थमा / फेफड़ों की बीमारी",
+    risk_kidney_disease: "गुर्दे की पुरानी बीमारी",
+    risk_elderly: "वरिष्ठ नागरिक (65+ वर्ष)",
+    risk_pregnancy: "गर्भावस्था",
     
     // Ticket Pass & Kiosk Labels
     livePassTitle: "लाइव कतार टोकन पास",
@@ -503,3 +571,71 @@ export const getStatusLabel = (status, lang = "en") => {
   };
   return map[status] || status;
 };
+
+export const SYMPTOM_OPTIONS = [
+  { id: "general_checkup", key: "symptom_general_checkup", label: "General Checkup & Consultation", labelHi: "सामान्य परामर्श एवं नियमित जांच" },
+  { id: "fever_flu", key: "symptom_fever_flu", label: "High Fever, Viral Flu & Chills", labelHi: "तेज़ बुखार, वायरल फ्लू और ठंड लगना" },
+  { id: "cough_cold", key: "symptom_cough_cold", label: "Cough, Cold & Sore Throat", labelHi: "खांसी, जुकाम और गले में खराश" },
+  { id: "chest_pain_severe", key: "symptom_chest_pain_severe", label: "Severe Chest Pain / Heart Discomfort", labelHi: "सीने में गंभीर दर्द / हृदय संबंधित लक्षण" },
+  { id: "breathing_difficulty", key: "symptom_breathing_difficulty", label: "Shortness of Breath / Asthma Attack", labelHi: "सांस लेने में तकलीफ / अस्थमा का दौरा" },
+  { id: "headache_migraine", key: "symptom_headache_migraine", label: "Severe Headache & Migraine", labelHi: "गंभीर सिरदर्द एवं माइग्रेन" },
+  { id: "stomach_pain", key: "symptom_stomach_pain", label: "Abdominal Pain, Acidity & Vomiting", labelHi: "पेट में दर्द, एसिडिटी और उल्टी" },
+  { id: "fracture_trauma", key: "symptom_fracture_trauma", label: "Fracture, Sprain & Physical Trauma", labelHi: "फ्रैक्चर, मोच और शारीरिक चोट" },
+  { id: "skin_allergy", key: "symptom_skin_allergy", label: "Skin Rash, Allergy & Itching", labelHi: "त्वचा एलर्जी, दाने और खुजली" },
+  { id: "pediatric_care", key: "symptom_pediatric_care", label: "Pediatric & Child Health Care", labelHi: "बाल चिकित्सा एवं शिशु स्वास्थ्य" },
+  { id: "ortho_joint_pain", key: "symptom_ortho_joint_pain", label: "Back Pain & Joint Stiffness", labelHi: "कमर और जोड़ों का पुराना दर्द" },
+  { id: "eye_infection", key: "symptom_eye_infection", label: "Eye Infection, Redness & Vision Issue", labelHi: "आंखों में संक्रमण, लाली और दृष्टि समस्या" },
+  { id: "ent_issue", key: "symptom_ent_issue", label: "Ear, Nose & Throat (ENT) Pain", labelHi: "कान, नाक और गले की समस्या (ENT)" },
+  { id: "dental_pain", key: "symptom_dental_pain", label: "Dental Pain & Toothache", labelHi: "दांत और मसूड़ों का दर्द" },
+  { id: "diabetes_care", key: "symptom_diabetes_care", label: "Diabetes & Blood Sugar Checkup", labelHi: "मधुमेह एवं ब्लड शुगर जांच" },
+  { id: "bp_hypertension", key: "symptom_bp_hypertension", label: "High Blood Pressure & Dizziness", labelHi: "उच्च रक्तचाप एवं चक्कर आना" },
+  { id: "urinary_issue", key: "symptom_urinary_issue", label: "Urinary Infection & Kidney Discomfort", labelHi: "मूत्र संक्रमण एवं गुर्दे की तकलीफ" },
+  { id: "women_health", key: "symptom_women_health", label: "Women's Health & Gynecology", labelHi: "महिला स्वास्थ्य एवं स्त्री रोग" },
+  { id: "followup_refill", key: "symptom_followup_refill", label: "Prescription Refill & Follow-up Visit", labelHi: "दवा रीफिल एवं फॉलो-अप परामर्श" },
+  { id: "lab_blood_test", key: "symptom_lab_blood_test", label: "Pathology Blood & Diagnostic Tests", labelHi: "पैथोलॉजी रक्त एवं नैदानिक जांच" },
+  { id: "other_custom", key: "symptom_other_custom", label: "✏️ Other Symptom (Type Your Own)", labelHi: "✏️ अन्य लक्षण (अपना लक्षण लिखें)" },
+];
+
+export const RISK_OPTIONS = [
+  { id: "none", key: "risk_none", label: "None / Healthy Baseline", labelHi: "कोई नहीं / सामान्य स्वास्थ्य" },
+  { id: "diabetes", key: "risk_diabetes", label: "Diabetes Mellitus", labelHi: "मधुमेह (डायबिटीज)" },
+  { id: "hypertension", key: "risk_hypertension", label: "High Blood Pressure / Hypertension", labelHi: "उच्च रक्तचाप (हाइपरटेंशन)" },
+  { id: "cardiac_history", key: "risk_cardiac_history", label: "Heart Disease / Cardiac History", labelHi: "हृदय रोग का इतिहास" },
+  { id: "asthma_copd", key: "risk_asthma_copd", label: "Asthma / Chronic Lung Disease", labelHi: "अस्थमा / फेफड़ों की बीमारी" },
+  { id: "kidney_disease", key: "risk_kidney_disease", label: "Chronic Kidney Disease", labelHi: "गुर्दे की पुरानी बीमारी" },
+  { id: "elderly", key: "risk_elderly", label: "Senior Citizen (65+ years)", labelHi: "वरिष्ठ नागरिक (65+ वर्ष)" },
+  { id: "pregnancy", key: "risk_pregnancy", label: "Pregnancy / Maternity", labelHi: "गर्भावस्था" },
+];
+
+export function formatSymptomLabel(val, lang = "en") {
+  if (!val) return "";
+  const opt = SYMPTOM_OPTIONS.find((s) => s.id === val || s.key === val);
+  if (opt) {
+    return lang === "hi" ? opt.labelHi : opt.label;
+  }
+  const trans = t(val, lang);
+  if (trans && trans !== val && !trans.startsWith("symptom_")) {
+    return trans;
+  }
+  return String(val)
+    .replace(/^symptom_/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function formatRiskLabel(val, lang = "en") {
+  if (!val) return "";
+  const opt = RISK_OPTIONS.find((r) => r.id === val || r.key === val);
+  if (opt) {
+    return lang === "hi" ? opt.labelHi : opt.label;
+  }
+  const trans = t(val, lang);
+  if (trans && trans !== val && !trans.startsWith("risk_")) {
+    return trans;
+  }
+  return String(val)
+    .replace(/^risk_/i, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+

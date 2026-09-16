@@ -31,6 +31,19 @@ const DEFAULT_BRANDING = {
   registration_open_time: "08:00",
   registration_close_time: "20:00",
   registration_cutoff_time: "20:00",
+  about_us_title: "About City General Hospital",
+  about_us_subtitle: "Care you can trust • NABH Accredited",
+  about_us: "City General Hospital is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.",
+  about_us_hi: "सिटी जनरल अस्पताल मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।",
+  about_service_1: "24/7 Emergency Triage • Priority ambulance & ICU care",
+  about_service_2: "AI Wait Prediction • Live queue synchronization",
+  about_service_3: "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho",
+  about_service_4: "Digital E-Prescriptions • Seamless pharmacy refills",
+  address: "742 Evergreen Healthcare Ave, Medical District, Suite 100",
+  opd_helpdesk_phone: "+1 (800) 456-7890 (Ext: 101)",
+  opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
+  opd_helpdesk_hours_hi: "सोम – शनि: सुबह 8:00 – रात 8:00",
+  support_email: "support@citygeneralhospital.org",
   operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
   closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
 };
@@ -374,9 +387,13 @@ async function getHospitalBranding(hospitalCode) {
     hospital_name: hosp.name,
     hospital_code: hosp.hospital_code,
     logo_url: raw.logo_url || hosp.logo_url || "",
-    phone: hosp.phone || "",
-    email: hosp.email || "",
-    address: hosp.address || "",
+    phone: hosp.phone || raw.opd_helpdesk_phone || raw.emergency_helpline || DEFAULT_BRANDING.opd_helpdesk_phone,
+    opd_helpdesk_phone: raw.opd_helpdesk_phone || hosp.phone || DEFAULT_BRANDING.opd_helpdesk_phone,
+    opd_helpdesk_hours: raw.opd_helpdesk_hours || DEFAULT_BRANDING.opd_helpdesk_hours,
+    opd_helpdesk_hours_hi: raw.opd_helpdesk_hours_hi || DEFAULT_BRANDING.opd_helpdesk_hours_hi,
+    email: hosp.email || raw.support_email || raw.email || DEFAULT_BRANDING.support_email,
+    support_email: raw.support_email || raw.email || hosp.email || DEFAULT_BRANDING.support_email,
+    address: hosp.address || raw.address || DEFAULT_BRANDING.address,
     status: hosp.status || "active",
   };
 }
@@ -429,10 +446,23 @@ async function updateHospitalBranding(hospitalCode, brandingData) {
   } else if (brandingData.name && brandingData.name.trim()) {
     updatePayload.name = brandingData.name.trim();
   }
-  if (brandingData.emergency_helpline && brandingData.emergency_helpline.trim()) {
+  if (brandingData.address !== undefined) {
+    updatePayload.address = brandingData.address.trim();
+  }
+  if (brandingData.support_email !== undefined) {
+    updatePayload.email = brandingData.support_email.trim();
+  } else if (brandingData.email !== undefined) {
+    updatePayload.email = brandingData.email.trim();
+  }
+  if (brandingData.opd_helpdesk_phone !== undefined) {
+    updatePayload.phone = brandingData.opd_helpdesk_phone.trim();
+  } else if (brandingData.emergency_helpline && brandingData.emergency_helpline.trim()) {
     updatePayload.phone = brandingData.emergency_helpline.trim();
   } else if (brandingData.phone && brandingData.phone.trim()) {
     updatePayload.phone = brandingData.phone.trim();
+  }
+  if (brandingData.about_us && brandingData.about_us.trim()) {
+    updatePayload.description = brandingData.about_us.trim();
   }
 
   const updatedHosp = await prisma.hospitals.update({
@@ -447,7 +477,9 @@ async function updateHospitalBranding(hospitalCode, brandingData) {
       ...merged,
       hospital_name: updatedHosp.name,
       logo_url: updatedHosp.logo_url || merged.logo_url,
-      phone: updatedHosp.phone || merged.emergency_helpline,
+      phone: updatedHosp.phone || merged.opd_helpdesk_phone || merged.emergency_helpline,
+      address: updatedHosp.address || merged.address,
+      email: updatedHosp.email || merged.support_email,
     },
   };
 }

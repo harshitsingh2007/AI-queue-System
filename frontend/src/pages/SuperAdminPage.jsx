@@ -184,6 +184,8 @@ export default function SuperAdminPage({
   navigateTo,
   hospitalBranding = null,
   onUpdateHospitalBranding = null,
+  theme = "light",
+  setTheme = null,
 }) {
   const isHi = language === "hi";
 
@@ -208,7 +210,13 @@ export default function SuperAdminPage({
 
   // Hospital 360 Command Console Configuration
   const [overviewDisplayMode, setOverviewDisplayMode] = useState("360"); // "360" | "classic"
-  const [hosp360Theme, setHosp360Theme] = useState("dark"); // "dark" | "light"
+  const [hosp360Theme, setHosp360Theme] = useState(theme === "dark" ? "dark" : "light");
+
+  useEffect(() => {
+    if (theme) {
+      setHosp360Theme(theme);
+    }
+  }, [theme]);
 
   // Deep-Dive Selected Hospital Mode
   const [selectedHospital, setSelectedHospital] = useState(null);
@@ -251,14 +259,27 @@ export default function SuperAdminPage({
     tagline: "Care you can trust • NABH Accredited",
     emergency_helpline: "Emergency Helpline: 108 / +91 98765 43210",
     slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
+    about_us_title: "About City General Hospital",
+    about_us_subtitle: "Care you can trust • NABH Accredited",
+    about_us: "City General Hospital is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.",
+    about_us_hi: "सिटी जनरल अस्पताल मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।",
+    about_service_1: "24/7 Emergency Triage • Priority ambulance & ICU care",
+    about_service_2: "AI Wait Prediction • Live queue synchronization",
+    about_service_3: "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho",
+    about_service_4: "Digital E-Prescriptions • Seamless pharmacy refills",
     opd_start_time: "08:00",
     opd_end_time: "20:00",
     registration_cutoff_time: "19:00",
     operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
     closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+    address: "742 Evergreen Healthcare Ave, Medical District, Suite 100",
+    opd_helpdesk_phone: "+1 (800) 456-7890 (Ext: 101)",
+    opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
+    opd_helpdesk_hours_hi: "सोम – शनि: सुबह 8:00 – रात 8:00",
+    support_email: "support@citygeneralhospital.org",
   });
   const [isSavingBranding, setIsSavingBranding] = useState(false);
-  const [activeBrandingTab, setActiveBrandingTab] = useState("theme"); // "theme" | "slip" | "hours"
+  const [activeBrandingTab, setActiveBrandingTab] = useState("theme"); // "theme" | "about" | "slip" | "hours" | "contact"
 
   const getAuthHeaders = useCallback(() => {
     const headers = { "Content-Type": "application/json" };
@@ -766,13 +787,26 @@ export default function SuperAdminPage({
     try {
       const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${editHospitalForm.hospital_code}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(editHospitalForm),
       });
       const data = await res.json();
       if (res.ok && data.status === "success") {
         setShowEditHospitalModal(false);
         notify(isHi ? `✓ अस्पताल जानकारी अद्यतन की गई!` : `✓ Hospital details updated successfully!`);
+        
+        window.dispatchEvent(new CustomEvent("hospital_branding_updated", {
+          detail: {
+            hospital_code: editHospitalForm.hospital_code,
+            branding: {
+              hospital_name: editHospitalForm.name,
+              address: editHospitalForm.address,
+              phone: editHospitalForm.phone,
+              email: editHospitalForm.email,
+            },
+          },
+        }));
+
         fetchGlobalData();
         fetchHospitalDeepDive(editHospitalForm.hospital_code);
       } else {
@@ -821,11 +855,24 @@ export default function SuperAdminPage({
       tagline: "Care you can trust • NABH Accredited",
       emergency_helpline: "Emergency Helpline: 108 / +91 98765 43210",
       slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
+      about_us_title: `About ${hosp.name || "City General Hospital"}`,
+      about_us_subtitle: "Care you can trust • NABH Accredited",
+      about_us: hosp.description || "City General Hospital is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.",
+      about_us_hi: "सिटी जनरल अस्पताल मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।",
+      about_service_1: "24/7 Emergency Triage • Priority ambulance & ICU care",
+      about_service_2: "AI Wait Prediction • Live queue synchronization",
+      about_service_3: "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho",
+      about_service_4: "Digital E-Prescriptions • Seamless pharmacy refills",
       opd_start_time: "08:00",
       opd_end_time: "20:00",
       registration_cutoff_time: "19:00",
       operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
       closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+      address: hosp.address || "742 Evergreen Healthcare Ave, Medical District, Suite 100",
+      opd_helpdesk_phone: hosp.phone || "+1 (800) 456-7890 (Ext: 101)",
+      opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
+      opd_helpdesk_hours_hi: "सोम – शनि: सुबह 8:00 – रात 8:00",
+      support_email: hosp.email || "support@citygeneralhospital.org",
     });
     setShowBrandingModal(true);
 
@@ -843,11 +890,24 @@ export default function SuperAdminPage({
           tagline: data.branding.tagline || "Care you can trust • NABH Accredited",
           emergency_helpline: data.branding.emergency_helpline || "Emergency Helpline: 108 / +91 98765 43210",
           slip_footer_text: data.branding.slip_footer_text || "Non-transferable official patient record. Please keep until consultation is complete.",
+          about_us_title: data.branding.about_us_title || `About ${hosp.name || "City General Hospital"}`,
+          about_us_subtitle: data.branding.about_us_subtitle || data.branding.tagline || "Care you can trust • NABH Accredited",
+          about_us: data.branding.about_us || hosp.description || "City General Hospital is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.",
+          about_us_hi: data.branding.about_us_hi || "सिटी जनरल अस्पताल मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।",
+          about_service_1: data.branding.about_service_1 || "24/7 Emergency Triage • Priority ambulance & ICU care",
+          about_service_2: data.branding.about_service_2 || "AI Wait Prediction • Live queue synchronization",
+          about_service_3: data.branding.about_service_3 || "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho",
+          about_service_4: data.branding.about_service_4 || "Digital E-Prescriptions • Seamless pharmacy refills",
           opd_start_time: data.branding.opd_start_time || "08:00",
           opd_end_time: data.branding.opd_end_time || "20:00",
           registration_cutoff_time: data.branding.registration_cutoff_time || "19:00",
           operating_days: Array.isArray(data.branding.operating_days) ? data.branding.operating_days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
           closed_notice: data.branding.closed_notice || "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
+          address: data.branding.address || hosp.address || "742 Evergreen Healthcare Ave, Medical District, Suite 100",
+          opd_helpdesk_phone: data.branding.opd_helpdesk_phone || hosp.phone || "+1 (800) 456-7890 (Ext: 101)",
+          opd_helpdesk_hours: data.branding.opd_helpdesk_hours || "Mon – Sat: 8:00 AM – 8:00 PM",
+          opd_helpdesk_hours_hi: data.branding.opd_helpdesk_hours_hi || "सोम – शनि: सुबह 8:00 – रात 8:00",
+          support_email: data.branding.support_email || data.branding.email || hosp.email || "support@citygeneralhospital.org",
         });
       }
     } catch (e) {
@@ -1816,6 +1876,262 @@ export default function SuperAdminPage({
         .hosp360-nav-btn:hover {
           transform: translateY(-1px);
         }
+
+        :root {
+          --superadmin-bg: #F8FAFC;
+          --superadmin-card-bg: #FFFFFF;
+          --superadmin-card-border: #E2E8F0;
+          --superadmin-text-main: #0F172A;
+          --superadmin-text-sub: #334155;
+          --superadmin-text-muted: #64748B;
+          --superadmin-sub-card: #F8FAFC;
+          --superadmin-input-bg: #FFFFFF;
+          --superadmin-input-border: #CBD5E1;
+          --superadmin-card-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
+        }
+
+        body.theme-dark {
+          --superadmin-bg: #090D16;
+          --superadmin-card-bg: #0F172A;
+          --superadmin-card-border: #1E293B;
+          --superadmin-text-main: #F8FAFC;
+          --superadmin-text-sub: #CBD5E1;
+          --superadmin-text-muted: #94A3B8;
+          --superadmin-sub-card: #1E293B;
+          --superadmin-input-bg: #1E293B;
+          --superadmin-input-border: #334155;
+          --superadmin-card-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Hero Right Column in Dark Mode */
+        body.theme-dark .superadmin-hero-right-col {
+          background: linear-gradient(180deg, #090e1f 0%, #0F172A 100%) !important;
+          border-left: 1px solid rgba(2, 132, 199, 0.25) !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-badge {
+          background: rgba(15, 23, 42, 0.9) !important;
+          border-color: rgba(56, 189, 248, 0.3) !important;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-card {
+          background: rgba(15, 23, 42, 0.85) !important;
+          border-color: rgba(56, 189, 248, 0.25) !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-card .superadmin-telemetry-label {
+          color: #94A3B8 !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-card .superadmin-telemetry-val {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-footer {
+          background: rgba(15, 23, 42, 0.85) !important;
+          border-color: rgba(56, 189, 248, 0.25) !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-nav-section {
+          background: #0F172A;
+          border-color: #1E293B;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        body.theme-dark .superadmin-nav-header {
+          border-bottom-color: #1E293B;
+        }
+
+        body.theme-dark .superadmin-nav-title {
+          color: #F8FAFC;
+        }
+
+        body.theme-dark .tab-button-modern.inactive {
+          background: #1E293B;
+          border-color: #334155;
+          color: #F1F5F9;
+        }
+
+        body.theme-dark .tab-button-modern.inactive:hover {
+          background: #27354A;
+          border-color: #475569;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-icon-wrapper {
+          background: #0F172A;
+          color: #38BDF8;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-title-text {
+          color: #F8FAFC;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-sub-text {
+          color: #94A3B8 !important;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-count-badge {
+          background: rgba(2, 132, 199, 0.25) !important;
+          color: #38BDF8 !important;
+        }
+
+        body.theme-dark .tab-button-modern.active .tab-count-badge {
+          background: #FFFFFF !important;
+          color: #0284C7 !important;
+        }
+
+        body.theme-dark .telemetry-sidebar-card {
+          background: #0F172A;
+          border-color: #1E293B;
+          color: #F8FAFC;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+        }
+
+        body.theme-dark .telemetry-sidebar-card h3 {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .telemetry-sidebar-card span {
+          color: #94A3B8;
+        }
+
+        /* Standalone Tab Cards in Dark Mode */
+        body.theme-dark .standalone-card {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        /* Headings & Texts in Dashboard */
+        body.theme-dark .superadmin-portal-dashboard h2,
+        body.theme-dark .superadmin-portal-dashboard h3,
+        body.theme-dark .superadmin-portal-dashboard h4,
+        body.theme-dark .superadmin-portal-dashboard strong {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-portal-dashboard p {
+          color: #94A3B8 !important;
+        }
+
+        /* Inputs, Selects, Textareas across all SuperAdmin */
+        body.theme-dark .superadmin-portal-dashboard input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+        body.theme-dark .superadmin-portal-dashboard select,
+        body.theme-dark .superadmin-portal-dashboard textarea,
+        body.theme-dark .superadmin-modal-box input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+        body.theme-dark .superadmin-modal-box select,
+        body.theme-dark .superadmin-modal-box textarea {
+          background-color: #1E293B !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark input::placeholder,
+        body.theme-dark textarea::placeholder {
+          color: #64748B !important;
+        }
+
+        body.theme-dark input:focus,
+        body.theme-dark select:focus,
+        body.theme-dark textarea:focus {
+          border-color: #38BDF8 !important;
+          box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18) !important;
+        }
+
+        /* Tables in Dark Mode */
+        body.theme-dark table thead tr {
+          background: #1E293B !important;
+          border-bottom-color: #334155 !important;
+        }
+
+        body.theme-dark table tbody tr {
+          border-bottom-color: #1E293B !important;
+        }
+
+        body.theme-dark table tbody tr:hover {
+          background: rgba(255, 255, 255, 0.03) !important;
+        }
+
+        body.theme-dark table th {
+          background: #1E293B !important;
+          color: #94A3B8 !important;
+        }
+
+        body.theme-dark table td {
+          color: #CBD5E1 !important;
+        }
+
+        /* Modals in Dark Mode */
+        body.theme-dark .superadmin-modal-box {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15) !important;
+        }
+
+        body.theme-dark .superadmin-modal-box h3 {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-modal-box label {
+          color: #CBD5E1 !important;
+        }
+
+        body.theme-dark .modal-cancel-btn {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #CBD5E1 !important;
+        }
+
+        body.theme-dark .modal-cancel-btn:hover {
+          background: #27354A !important;
+          border-color: #475569 !important;
+          color: #F8FAFC !important;
+        }
+
+        /* Secondary buttons in dark mode */
+        body.theme-dark .superadmin-secondary-btn {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #CBD5E1 !important;
+        }
+
+        body.theme-dark .superadmin-secondary-btn:hover {
+          background: #27354A !important;
+          border-color: #475569 !important;
+          color: #F8FAFC !important;
+        }
+
+        /* Feedback Toast */
+        body.theme-dark .superadmin-feedback-toast {
+          background: rgba(2, 132, 199, 0.18) !important;
+          border-color: #0284C7 !important;
+          color: #38BDF8 !important;
+        }
+
+        /* Hospital 360 Cyber theme overrides in dark mode */
+        body.theme-dark .hosp360-container-light {
+          background: #090D14 !important;
+          color: #F1F5F9 !important;
+          border-color: rgba(255, 255, 255, 0.1) !important;
+          box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5), 0 0 40px rgba(2, 132, 199, 0.05) !important;
+        }
+
+        body.theme-dark .hosp360-kpi-card-light {
+          background: #0F1622 !important;
+          border-color: rgba(255, 255, 255, 0.08) !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .hosp360-panel-light {
+          background: #0F1622 !important;
+          border-color: rgba(255, 255, 255, 0.08) !important;
+          color: #F8FAFC !important;
+        }
       `}</style>
 
       {/* 1. SUPER ADMIN HERO SECTION (Real-Time Live Telemetry) */}
@@ -1900,25 +2216,25 @@ export default function SuperAdminPage({
         {/* Right Column: Live Network Telemetry & Hospital Vector */}
         <div className="superadmin-hero-right-col" style={{ padding: "24px 28px", display: "flex", flexDirection: "column", justifyContent: "space-between", position: "relative", boxSizing: "border-box" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", zIndex: 3, flexWrap: "wrap", gap: "8px" }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(8px)", padding: "4px 12px", borderRadius: "9999px", border: "1px solid #BAE6FD", boxShadow: "0 2px 8px rgba(2, 132, 199, 0.08)" }}>
+            <div className="superadmin-hero-telemetry-badge" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(8px)", padding: "4px 12px", borderRadius: "9999px", border: "1px solid #BAE6FD", boxShadow: "0 2px 8px rgba(2, 132, 199, 0.08)" }}>
               <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
               <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", letterSpacing: "0.2px" }}>
                 {isHi ? "लाइव नेटवर्क टेलीमेट्री" : "LIVE CLOUD TELEMETRY"}
               </span>
             </div>
-            <div style={{ fontSize: "11px", fontWeight: 700, color: "#0369A1", background: "rgba(255, 255, 255, 0.85)", padding: "4px 10px", borderRadius: "8px", border: "1px solid #BAE6FD", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+            <div className="superadmin-hero-telemetry-badge" style={{ fontSize: "11px", fontWeight: 700, color: "#0369A1", background: "rgba(255, 255, 255, 0.85)", padding: "4px 10px", borderRadius: "8px", border: "1px solid #BAE6FD", display: "inline-flex", alignItems: "center", gap: "5px" }}>
               <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#0284C7" }} />
               <span>4s Real-Time Sync</span>
             </div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", width: "100%", margin: "14px 0", zIndex: 3 }}>
-            <div style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
+            <div className="superadmin-hero-telemetry-card" style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "सक्रिय कतारें" : "Active In Queue"}</span>
+                <span className="superadmin-telemetry-label" style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "सक्रिय कतारें" : "Active In Queue"}</span>
                 <span style={{ color: "#0284C7" }}><IconClock size={16} /></span>
               </div>
-              <div style={{ fontSize: "22px", fontWeight: 800, color: "#0284C7", lineHeight: 1.1 }}>
+              <div className="superadmin-telemetry-val" style={{ fontSize: "22px", fontWeight: 800, color: "#0284C7", lineHeight: 1.1 }}>
                 {overview.active_queues || 0}
               </div>
               <span style={{ fontSize: "10px", color: "#0369A1", fontWeight: 600, display: "block", marginTop: "2px" }}>
@@ -1926,12 +2242,12 @@ export default function SuperAdminPage({
               </span>
             </div>
 
-            <div style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
+            <div className="superadmin-hero-telemetry-card" style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "कुल विज़िट" : "Lifetime Visits"}</span>
+                <span className="superadmin-telemetry-label" style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "कुल विज़िट" : "Lifetime Visits"}</span>
                 <span style={{ color: "#16A34A" }}><IconTrendingUp size={16} /></span>
               </div>
-              <div style={{ fontSize: "22px", fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
+              <div className="superadmin-telemetry-val" style={{ fontSize: "22px", fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
                 {overview.total_tickets || 0}
               </div>
               <span style={{ fontSize: "10px", color: "#16A34A", fontWeight: 700, display: "block", marginTop: "2px" }}>
@@ -1940,7 +2256,7 @@ export default function SuperAdminPage({
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", zIndex: 3, background: "rgba(255, 255, 255, 0.8)", padding: "6px 12px", borderRadius: "10px", border: "1px solid rgba(186, 230, 253, 0.6)" }}>
+          <div className="superadmin-hero-telemetry-footer" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", zIndex: 3, background: "rgba(255, 255, 255, 0.8)", padding: "6px 12px", borderRadius: "10px", border: "1px solid rgba(186, 230, 253, 0.6)" }}>
             <span style={{ fontSize: "11px", fontWeight: 700, color: "#0F172A", display: "inline-flex", alignItems: "center", gap: "6px" }}>
               <IconCpu size={14} color="#0284C7" />
               <span>{isHi ? "AI कतार एल्गोरिदम" : "AI Routing Engine"}: <strong style={{ color: "#0284C7" }}>v2.4 Online</strong></span>
@@ -6902,7 +7218,7 @@ export default function SuperAdminPage({
             </div>
 
             {/* Navigation Tabs */}
-            <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid #E2E8F0", paddingBottom: "10px", marginBottom: "20px" }}>
+            <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid #E2E8F0", paddingBottom: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
               <button
                 type="button"
                 onClick={() => setActiveBrandingTab("theme")}
@@ -6923,6 +7239,28 @@ export default function SuperAdminPage({
               >
                 <span>🎨</span>
                 <span>{isHi ? "थीम और लोगो" : "Theme & Logo"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveBrandingTab("about")}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: activeBrandingTab === "about" ? (brandingForm.primary_color || "#0284C7") : "#F1F5F9",
+                  color: activeBrandingTab === "about" ? "#FFFFFF" : "#475569",
+                  fontWeight: 800,
+                  fontSize: "12.5px",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <span>📖</span>
+                <span>{isHi ? "हमारे बारे में (About Us)" : "About Us & Services"}</span>
               </button>
 
               <button
@@ -6967,6 +7305,28 @@ export default function SuperAdminPage({
               >
                 <span>⏰</span>
                 <span>{isHi ? "संचालन समय व कटऑफ" : "Operating Hours & Cutoff"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveBrandingTab("contact")}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: activeBrandingTab === "contact" ? (brandingForm.primary_color || "#0284C7") : "#F1F5F9",
+                  color: activeBrandingTab === "contact" ? "#FFFFFF" : "#475569",
+                  fontWeight: 800,
+                  fontSize: "12.5px",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <span>📍</span>
+                <span>{isHi ? "पता एवं सहायता डेस्क" : "Address & Help Desk"}</span>
               </button>
             </div>
 
@@ -7112,11 +7472,72 @@ export default function SuperAdminPage({
                       ))}
                     </div>
 
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "10px" }}>
+                      <input
+                        type="file"
+                        id="superadmin-logo-file-input"
+                        accept="image/png, image/jpeg, image/svg+xml, image/webp"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const file = e.target.files && e.target.files[0];
+                          if (file) {
+                            if (file.size > 2 * 1024 * 1024) {
+                              notify(isHi ? "लोगो फ़ाइल 2MB से कम होनी चाहिए" : "Logo image must be under 2MB", "error");
+                              return;
+                            }
+                            const reader = new FileReader();
+                            reader.onload = (loadEvt) => {
+                              setBrandingForm({ ...brandingForm, logo_url: loadEvt.target.result });
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => document.getElementById("superadmin-logo-file-input")?.click()}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: "8px",
+                          border: "1.5px solid #0284C7",
+                          background: "#F0F9FF",
+                          color: "#0284C7",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <span>📁</span>
+                        <span>{isHi ? "कंप्यूटर से लोगो अपलोड करें" : "Upload Logo from Device"}</span>
+                      </button>
+                      {brandingForm.logo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setBrandingForm({ ...brandingForm, logo_url: "" })}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            border: "1px solid #CBD5E1",
+                            background: "#FFFFFF",
+                            color: "#64748B",
+                            fontSize: "11.5px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {isHi ? "हटाएं (डिफ़ॉल्ट)" : "Clear Logo"}
+                        </button>
+                      )}
+                    </div>
+
                     <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
                       <div style={{ flex: 1 }}>
                         <input
                           type="url"
-                          placeholder="https://example.com/hospital-logo.png"
+                          placeholder={isHi ? "या इमेज URL पेस्ट करें (https://...)" : "Or paste image URL (https://...)"}
                           value={brandingForm.logo_url || ""}
                           onChange={(e) => setBrandingForm({ ...brandingForm, logo_url: e.target.value })}
                           style={fieldInputStyle}
@@ -7146,11 +7567,210 @@ export default function SuperAdminPage({
                         )}
                       </div>
                     </div>
+
+                    <p style={{ margin: "8px 0 0 0", fontSize: "11.5px", color: "#64748B", lineHeight: "1.4" }}>
+                      💡 <strong>{isHi ? "ब्राउज़र टैब लोगो:" : "Browser Tab Icon:"}</strong>{" "}
+                      {isHi
+                        ? "यह लोगो केवल इस अस्पताल के मरीज़ों और कर्मचारियों (Staff) के ब्राउज़र टैब (Favicon) में दिखाई देगा। यह विश्व स्तर (Globally) पर अन्य अस्पतालों या सुपर एडमिन पर लागू नहीं होगा।"
+                        : "This uploaded logo will automatically appear in the browser tab icon (favicon) exclusively for this hospital's affiliate patients and staff. It is never applied globally to other hospitals or the Super Admin overview."}
+                    </p>
                   </div>
                 </div>
               )}
 
-              {/* TAB 2: TOKEN SLIP & HELPLINE SETTINGS + LIVE PREVIEW */}
+              {/* TAB 2: ABOUT US & CLINICAL SERVICES CUSTOMIZATION */}
+              {activeBrandingTab === "about" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: "20px" }}>
+                  {/* Left Column: Form Controls */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "अस्पताल शीर्षक (Modal Title)" : "About Us Modal Title"}</label>
+                      <input
+                        type="text"
+                        placeholder={`e.g. About ${brandingTargetHospital?.name || "City General Hospital"}`}
+                        value={brandingForm.about_us_title || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, about_us_title: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "उपशीर्षक / ध्येय (Subtitle / Motto)" : "About Us Subtitle / Care Motto"}</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Care you can trust • NABH Accredited"
+                        value={brandingForm.about_us_subtitle || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, about_us_subtitle: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "अस्पताल विवरण (English Story / Mission)" : "About Hospital Description (English)"}</label>
+                      <textarea
+                        rows="3"
+                        placeholder="Premier medical institution dedicated to patient-first care with AI queue orchestration..."
+                        value={brandingForm.about_us || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, about_us: e.target.value })}
+                        style={{ ...fieldInputStyle, resize: "vertical" }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>{isHi ? "हिंदी विवरण (Hindi Translation)" : "About Hospital Description (Hindi / द्विभाषी)"}</label>
+                      <textarea
+                        rows="3"
+                        placeholder="मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है..."
+                        value={brandingForm.about_us_hi || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, about_us_hi: e.target.value })}
+                        style={{ ...fieldInputStyle, resize: "vertical" }}
+                      />
+                    </div>
+
+                    {/* Key Services / Highlights (4 Highlights) */}
+                    <div style={{ background: "#F8FAFC", padding: "12px 14px", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
+                      <label style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
+                        {isHi ? "4 प्रमुख विशेषताएं व सेवाएं (Key Highlights)" : "4 Key Clinical Highlights / Features"}
+                      </label>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                        <div>
+                          <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 700 }}>Feature 1</span>
+                          <input
+                            type="text"
+                            placeholder="e.g. 24/7 Emergency Triage"
+                            value={brandingForm.about_service_1 || ""}
+                            onChange={(e) => setBrandingForm({ ...brandingForm, about_service_1: e.target.value })}
+                            style={{ ...fieldInputStyle, padding: "7px 10px", fontSize: "12px" }}
+                          />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 700 }}>Feature 2</span>
+                          <input
+                            type="text"
+                            placeholder="e.g. AI Wait Prediction"
+                            value={brandingForm.about_service_2 || ""}
+                            onChange={(e) => setBrandingForm({ ...brandingForm, about_service_2: e.target.value })}
+                            style={{ ...fieldInputStyle, padding: "7px 10px", fontSize: "12px" }}
+                          />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 700 }}>Feature 3</span>
+                          <input
+                            type="text"
+                            placeholder="e.g. Multi-Specialty OPD"
+                            value={brandingForm.about_service_3 || ""}
+                            onChange={(e) => setBrandingForm({ ...brandingForm, about_service_3: e.target.value })}
+                            style={{ ...fieldInputStyle, padding: "7px 10px", fontSize: "12px" }}
+                          />
+                        </div>
+                        <div>
+                          <span style={{ fontSize: "10px", color: "#64748B", fontWeight: 700 }}>Feature 4</span>
+                          <input
+                            type="text"
+                            placeholder="e.g. Digital E-Prescriptions"
+                            value={brandingForm.about_service_4 || ""}
+                            onChange={(e) => setBrandingForm({ ...brandingForm, about_service_4: e.target.value })}
+                            style={{ ...fieldInputStyle, padding: "7px 10px", fontSize: "12px" }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Live Interactive "About Us" Modal Preview */}
+                  <div>
+                    <span style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
+                      👁️ {isHi ? "मरीज़ पोर्टल 'About Us' पूर्वावलोकन" : "Patient Portal 'About Us' Preview"}
+                    </span>
+                    <div
+                      style={{
+                        background: "#FFFFFF",
+                        borderRadius: "18px",
+                        border: `1.5px solid ${brandingForm.primary_color || "#0284C7"}40`,
+                        padding: "20px",
+                        boxShadow: "0 12px 28px -4px rgba(0,0,0,0.12)",
+                      }}
+                    >
+                      {/* Header row with logo shield */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
+                        <div
+                          style={{
+                            width: "36px",
+                            height: "36px",
+                            borderRadius: "10px",
+                            background: brandingForm.primary_color || "#0284C7",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {brandingForm.logo_url ? (
+                            <img src={brandingForm.logo_url} alt="Logo" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
+                          ) : (
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                              <path d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z" fill="#044E3B" />
+                              <path d="M12 7.5v9M7.5 12h9" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: "15px", color: "#0F172A", fontWeight: 800 }}>
+                            {brandingForm.about_us_title || `About ${brandingTargetHospital?.name || "City General Hospital"}`}
+                          </h4>
+                          <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>
+                            {brandingForm.about_us_subtitle || brandingForm.tagline || "Care you can trust • NABH Accredited"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Description Preview */}
+                      <p style={{ fontSize: "12.5px", color: "#334155", lineHeight: "1.55", margin: "0 0 14px 0" }}>
+                        {brandingForm.about_us || "Premier medical institution dedicated to patient-first care with AI-driven intelligent queue orchestration..."}
+                      </p>
+
+                      {/* Key Features Grid */}
+                      <div style={{ background: "#F8FAFC", borderRadius: "10px", padding: "10px 12px", border: "1px solid #E2E8F0", marginBottom: "14px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "11px" }}>
+                          <div>
+                            <strong style={{ color: brandingForm.primary_color || "#0284C7" }}>✓ {brandingForm.about_service_1 || "24/7 Emergency Triage"}</strong>
+                          </div>
+                          <div>
+                            <strong style={{ color: brandingForm.primary_color || "#0284C7" }}>✓ {brandingForm.about_service_2 || "AI Wait Prediction"}</strong>
+                          </div>
+                          <div>
+                            <strong style={{ color: brandingForm.primary_color || "#0284C7" }}>✓ {brandingForm.about_service_3 || "Multi-Specialty OPD"}</strong>
+                          </div>
+                          <div>
+                            <strong style={{ color: brandingForm.primary_color || "#0284C7" }}>✓ {brandingForm.about_service_4 || "Digital E-Prescriptions"}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          style={{
+                            padding: "6px 14px",
+                            borderRadius: "8px",
+                            border: "none",
+                            background: "#F1F5F9",
+                            color: "#475569",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "default",
+                          }}
+                        >
+                          {isHi ? "बंद करें (Close)" : "Close"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: TOKEN SLIP & HELPLINE SETTINGS + LIVE PREVIEW */}
               {activeBrandingTab === "slip" && (
                 <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: "18px" }}>
                   {/* Form Controls */}
@@ -7363,6 +7983,133 @@ export default function SuperAdminPage({
                 </div>
               )}
 
+              {/* TAB 5: ADDRESS & OPD RECEPTION / QUEUE HELP DESK */}
+              {activeBrandingTab === "contact" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {/* Hospital Campus Address */}
+                  <div>
+                    <label style={fieldLabelStyle}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>📍</span>
+                        <span>{isHi ? "अस्पताल परिसर पता (Hospital Campus Address)" : "Hospital Campus Address"}</span>
+                      </span>
+                    </label>
+                    <textarea
+                      rows="3"
+                      placeholder="e.g., 742 Evergreen Healthcare Ave, Medical District, Suite 100"
+                      value={brandingForm.address || ""}
+                      onChange={(e) => setBrandingForm({ ...brandingForm, address: e.target.value })}
+                      style={{ ...fieldInputStyle, resize: "none" }}
+                    />
+                    <div style={{ fontSize: "11px", color: "#64748B", marginTop: "4px" }}>
+                      {isHi
+                        ? "यह पता रोगी पोर्टल, संपर्क पॉपअप और डिजिटल पर्ची पर प्रदर्शित होता है।"
+                        : "Displayed across patient portal headers, support modals, and official appointment slips."}
+                    </div>
+                  </div>
+
+                  {/* OPD Reception & Queue Help Desk */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                    <div>
+                      <label style={fieldLabelStyle}>
+                        <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>🏥</span>
+                          <span>{isHi ? "ओपीडी रिसेप्शन एवं सहायता फ़ोन" : "OPD Reception & Queue Help Desk Phone"}</span>
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., +1 (800) 456-7890 (Ext: 101)"
+                        value={brandingForm.opd_helpdesk_phone || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, opd_helpdesk_phone: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>
+                        <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span>✉️</span>
+                          <span>{isHi ? "सहायता / संपर्क ईमेल" : "Support & Inquiries Email"}</span>
+                        </span>
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="e.g., support@citygeneralhospital.org"
+                        value={brandingForm.support_email || brandingForm.email || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, support_email: e.target.value, email: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+                  </div>
+
+                  {/* OPD Help Desk Operating Hours */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                    <div>
+                      <label style={fieldLabelStyle}>
+                        <span>{isHi ? "ओपीडी सहायता डेस्क समय (अंग्रेजी)" : "OPD Help Desk Hours (English)"}</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Mon – Sat: 8:00 AM – 8:00 PM"
+                        value={brandingForm.opd_helpdesk_hours || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, opd_helpdesk_hours: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabelStyle}>
+                        <span>{isHi ? "ओपीडी सहायता डेस्क समय (हिंदी)" : "OPD Help Desk Hours (Hindi)"}</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., सोम – शनि: सुबह 8:00 – रात 8:00"
+                        value={brandingForm.opd_helpdesk_hours_hi || ""}
+                        onChange={(e) => setBrandingForm({ ...brandingForm, opd_helpdesk_hours_hi: e.target.value })}
+                        style={fieldInputStyle}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 24/7 Emergency Ambulance Helpline */}
+                  <div>
+                    <label style={{ ...fieldLabelStyle, color: "#DC2626" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>🚨</span>
+                        <span>{isHi ? "24/7 आपातकालीन एम्बुलेंस हेल्पलाइन" : "24/7 Emergency Ambulance Helpline"}</span>
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Emergency Helpline: 108 / +91 98765 43210"
+                      value={brandingForm.emergency_helpline || ""}
+                      onChange={(e) => setBrandingForm({ ...brandingForm, emergency_helpline: e.target.value })}
+                      style={{ ...fieldInputStyle, borderColor: "#FECACA", background: "#FFF5F5" }}
+                    />
+                  </div>
+
+                  {/* Live Preview Card */}
+                  <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "12px", padding: "14px" }}>
+                    <div style={{ fontSize: "12px", fontWeight: 800, color: "#475569", marginBottom: "8px", textTransform: "uppercase" }}>
+                      {isHi ? "लाइव संपर्क कार्ड पूर्वावलोकन" : "Live Patient Modal Preview"}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                      <div style={{ padding: "10px", background: "#FFFFFF", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7" }}>🏥 OPD Reception & Queue Help Desk</div>
+                        <div style={{ fontSize: "13px", fontWeight: 700, color: "#0F172A", marginTop: "2px" }}>{brandingForm.opd_helpdesk_phone || "+1 (800) 456-7890 (Ext: 101)"}</div>
+                        <div style={{ fontSize: "11px", color: "#64748B" }}>{brandingForm.opd_helpdesk_hours || "Mon – Sat: 8:00 AM – 8:00 PM"}</div>
+                      </div>
+                      <div style={{ padding: "10px", background: "#FFFFFF", borderRadius: "8px", border: "1px solid #E2E8F0" }}>
+                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7" }}>📍 Hospital Campus Address</div>
+                        <div style={{ fontSize: "12px", color: "#334155", marginTop: "2px" }}>{brandingForm.address || "742 Evergreen Healthcare Ave, Medical District, Suite 100"}</div>
+                        <div style={{ fontSize: "11px", color: "#64748B" }}>Email: {brandingForm.support_email || brandingForm.email || "support@citygeneralhospital.org"}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Modal Actions */}
               <div style={{ display: "flex", gap: "10px", marginTop: "10px", borderTop: "1px solid #E2E8F0", paddingTop: "14px" }}>
                 <button
@@ -7383,6 +8130,14 @@ export default function SuperAdminPage({
                     tagline: "Care you can trust • NABH Accredited",
                     emergency_helpline: "Emergency Helpline: 108 / +91 98765 43210",
                     slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
+                    about_us_title: `About ${brandingTargetHospital?.name || "City General Hospital"}`,
+                    about_us_subtitle: "Care you can trust • NABH Accredited",
+                    about_us: "City General Hospital is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.",
+                    about_us_hi: "सिटी जनरल अस्पताल मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।",
+                    about_service_1: "24/7 Emergency Triage • Priority ambulance & ICU care",
+                    about_service_2: "AI Wait Prediction • Live queue synchronization",
+                    about_service_3: "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho",
+                    about_service_4: "Digital E-Prescriptions • Seamless pharmacy refills",
                     opd_start_time: "08:00",
                     opd_end_time: "20:00",
                     registration_cutoff_time: "19:00",
@@ -7494,11 +8249,12 @@ function SuperAdminHospitalIllustration() {
 // Styles
 // ------------------------------------------------------------------
 const standaloneCardStyle = {
-  background: "#FFFFFF",
+  background: "var(--superadmin-card-bg, #FFFFFF)",
   borderRadius: "24px",
-  border: "1.5px solid #E2E8F0",
+  border: "1.5px solid var(--superadmin-card-border, #E2E8F0)",
   padding: "26px",
-  boxShadow: "0 4px 20px -2px rgba(2, 132, 199, 0.04)",
+  boxShadow: "var(--superadmin-card-shadow, 0 4px 20px -2px rgba(2, 132, 199, 0.04))",
+  color: "var(--superadmin-text-main, #0F172A)",
 };
 
 const feedbackToastStyle = {
@@ -7518,8 +8274,9 @@ const searchInputStyle = {
   width: "100%",
   padding: "9px 14px",
   borderRadius: "10px",
-  border: "1px solid #CBD5E1",
-  background: "#F8FAFC",
+  border: "1px solid var(--superadmin-input-border, #CBD5E1)",
+  background: "var(--superadmin-input-bg, #F8FAFC)",
+  color: "var(--superadmin-text-main, #0F172A)",
   fontSize: "12.5px",
   outline: "none",
 };
@@ -7527,7 +8284,9 @@ const searchInputStyle = {
 const hospitalCardStyle = {
   borderRadius: "18px",
   padding: "18px",
-  border: "1.5px solid #E2E8F0",
+  border: "1.5px solid var(--superadmin-card-border, #E2E8F0)",
+  background: "var(--superadmin-card-bg, #FFFFFF)",
+  color: "var(--superadmin-text-main, #0F172A)",
   display: "flex",
   flexDirection: "column",
   justifyContent: "space-between",
@@ -7560,9 +8319,9 @@ const primarySmallBtnStyle = {
 const secondarySmallBtnStyle = {
   padding: "9px 12px",
   borderRadius: "10px",
-  background: "#F8FAFC",
-  color: "#334155",
-  border: "1px solid #CBD5E1",
+  background: "var(--superadmin-sub-card, #F8FAFC)",
+  color: "var(--superadmin-text-sub, #334155)",
+  border: "1px solid var(--superadmin-input-border, #CBD5E1)",
   fontWeight: 700,
   fontSize: "12px",
   cursor: "pointer",
@@ -7590,9 +8349,9 @@ const sidebarSecondaryBtnStyle = {
   gap: "8px",
   padding: "11px 16px",
   borderRadius: "12px",
-  border: "1px solid #CBD5E1",
-  background: "#F8FAFC",
-  color: "#334155",
+  border: "1px solid var(--superadmin-input-border, #CBD5E1)",
+  background: "var(--superadmin-sub-card, #F8FAFC)",
+  color: "var(--superadmin-text-sub, #334155)",
   fontSize: "13px",
   fontWeight: 700,
   cursor: "pointer",
@@ -7604,9 +8363,9 @@ const sidebarSelectStyle = {
   width: "100%",
   padding: "10px 12px",
   borderRadius: "10px",
-  border: "1px solid #CBD5E1",
-  background: "#F8FAFC",
-  color: "#0F172A",
+  border: "1px solid var(--superadmin-input-border, #CBD5E1)",
+  background: "var(--superadmin-input-bg, #F8FAFC)",
+  color: "var(--superadmin-text-main, #0F172A)",
   fontSize: "13px",
   fontWeight: 700,
   outline: "none",
@@ -7615,7 +8374,7 @@ const sidebarSelectStyle = {
 const tableThStyle = {
   padding: "12px 14px",
   fontWeight: 800,
-  color: "#475569",
+  color: "var(--superadmin-text-muted, #475569)",
   fontSize: "11.5px",
   textTransform: "uppercase",
   letterSpacing: "0.5px",
@@ -7623,7 +8382,7 @@ const tableThStyle = {
 
 const tableTdStyle = {
   padding: "12px 14px",
-  color: "#334155",
+  color: "var(--superadmin-text-sub, #334155)",
 };
 
 const roleBadgeStyle = (role) => {
@@ -7655,9 +8414,9 @@ const copySmallBtnStyle = {
 const editSmallBtnStyle = {
   padding: "4px 10px",
   borderRadius: "8px",
-  border: "1px solid #CBD5E1",
-  background: "#FFFFFF",
-  color: "#334155",
+  border: "1px solid var(--superadmin-input-border, #CBD5E1)",
+  background: "var(--superadmin-card-bg, #FFFFFF)",
+  color: "var(--superadmin-text-sub, #334155)",
   fontSize: "11px",
   fontWeight: 700,
   cursor: "pointer",
@@ -7674,20 +8433,22 @@ const deleteSmallBtnStyle = {
 };
 
 const deptDeskBoxStyle = {
-  background: "#F8FAFC",
+  background: "var(--superadmin-sub-card, #F8FAFC)",
   borderRadius: "14px",
   padding: "14px",
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--superadmin-card-border, #E2E8F0)",
+  color: "var(--superadmin-text-main, #0F172A)",
 };
 
 const deskCardItemStyle = (status) => ({
   padding: "12px",
   borderRadius: "10px",
-  background: status === "ACTIVE" ? "#F0F9FF" : status === "BUSY" ? "#FFFBEB" : status === "AVAILABLE" ? "#F8FAFC" : "#FFFFFF",
-  border: status === "ACTIVE" ? "1.5px solid #0284C7" : status === "BUSY" ? "1.5px solid #F59E0B" : "1px solid #CBD5E1",
+  background: status === "ACTIVE" ? "rgba(2, 132, 199, 0.16)" : status === "BUSY" ? "rgba(245, 158, 11, 0.16)" : status === "AVAILABLE" ? "var(--superadmin-sub-card, #F8FAFC)" : "var(--superadmin-card-bg, #FFFFFF)",
+  border: status === "ACTIVE" ? "1.5px solid #0284C7" : status === "BUSY" ? "1.5px solid #F59E0B" : "1px solid var(--superadmin-input-border, #CBD5E1)",
   display: "flex",
   flexDirection: "column",
   gap: "5px",
+  color: "var(--superadmin-text-main, #0F172A)",
 });
 
 const deskStatusPillStyle = (status) => {
@@ -7722,26 +8483,27 @@ const toggleDeskBtnStyle = {
   marginTop: "4px",
   padding: "4px 8px",
   borderRadius: "6px",
-  border: "1px solid #CBD5E1",
-  background: "#FFFFFF",
-  color: "#334155",
+  border: "1px solid var(--superadmin-input-border, #CBD5E1)",
+  background: "var(--superadmin-card-bg, #FFFFFF)",
+  color: "var(--superadmin-text-sub, #334155)",
   fontSize: "10.5px",
   fontWeight: 700,
   cursor: "pointer",
 };
 
 const deptCardStyle = {
-  background: "#FFFFFF",
+  background: "var(--superadmin-card-bg, #FFFFFF)",
   borderRadius: "12px",
   padding: "14px",
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--superadmin-card-border, #E2E8F0)",
+  color: "var(--superadmin-text-main, #0F172A)",
 };
 
 const fieldLabelStyle = {
   display: "block",
   fontSize: "12px",
   fontWeight: 700,
-  color: "#334155",
+  color: "var(--superadmin-text-sub, #334155)",
   marginBottom: "4px",
 };
 
@@ -7749,17 +8511,18 @@ const fieldInputStyle = {
   width: "100%",
   padding: "9px 12px",
   borderRadius: "10px",
-  border: "1px solid #CBD5E1",
+  border: "1px solid var(--superadmin-input-border, #CBD5E1)",
   fontSize: "13px",
   outline: "none",
-  background: "#FFFFFF",
+  background: "var(--superadmin-input-bg, #FFFFFF)",
+  color: "var(--superadmin-text-main, #0F172A)",
   boxSizing: "border-box",
 };
 
 const modalOverlayStyle = {
   position: "fixed",
   inset: 0,
-  background: "rgba(15, 23, 42, 0.5)",
+  background: "rgba(15, 23, 42, 0.65)",
   backdropFilter: "blur(6px)",
   display: "flex",
   alignItems: "center",
@@ -7769,13 +8532,14 @@ const modalOverlayStyle = {
 };
 
 const modalContentStyle = {
-  background: "#FFFFFF",
+  background: "var(--superadmin-card-bg, #FFFFFF)",
   borderRadius: "22px",
   maxWidth: "500px",
   width: "100%",
   padding: "26px",
-  boxShadow: "0 24px 48px -10px rgba(0, 0, 0, 0.25)",
-  border: "1px solid #E2E8F0",
+  boxShadow: "0 24px 48px -10px rgba(0, 0, 0, 0.5)",
+  border: "1px solid var(--superadmin-card-border, #E2E8F0)",
+  color: "var(--superadmin-text-main, #0F172A)",
   maxHeight: "90vh",
   overflowY: "auto",
 };
@@ -7792,9 +8556,9 @@ const modalCancelBtnStyle = {
   flex: 1,
   padding: "10px",
   borderRadius: "10px",
-  border: "1px solid #CBD5E1",
-  background: "#F8FAFC",
-  color: "#64748B",
+  border: "1px solid var(--superadmin-input-border, #CBD5E1)",
+  background: "var(--superadmin-sub-card, #F8FAFC)",
+  color: "var(--superadmin-text-muted, #64748B)",
   fontWeight: 700,
   fontSize: "13px",
   cursor: "pointer",

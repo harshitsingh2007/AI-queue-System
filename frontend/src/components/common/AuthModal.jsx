@@ -185,7 +185,7 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
   };
 
   const modalBody = (
-    <div style={isInline ? { width: "100%", textAlign: "left" } : modalCardStyle}>
+    <div className="auth-modal-card" style={isInline ? { width: "100%", textAlign: "left" } : modalCardStyle}>
       <style>{`
         .auth-modal-row-2col {
           display: grid;
@@ -196,6 +196,24 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
           .auth-modal-row-2col {
             grid-template-columns: 1fr !important;
           }
+        }
+        body.theme-dark .auth-modal-card {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8) !important;
+        }
+        body.theme-dark .auth-modal-card h2 {
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .auth-modal-card label {
+          color: #CBD5E1 !important;
+        }
+        body.theme-dark .auth-modal-card input,
+        body.theme-dark .auth-modal-card select {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
         }
       `}</style>
       {/* Header Bar */}

@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI-Powered Smart Queue Management System</title>
+    <link id="app-dynamic-favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230284C7'%3E%3Cpath d='M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z'/%3E%3C/svg%3E" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -20,11 +21,49 @@
         margin: 0;
         padding: 0;
       }
+      :root {
+        --patient-card-bg: #FFFFFF;
+        --patient-card-border: #E2E8F0;
+        --patient-text-main: #0F172A;
+        --patient-text-sub: #64748B;
+        --patient-sub-card: #F8FAFC;
+        --patient-tag-bg: #F0F9FF;
+        --patient-tag-color: #0369A1;
+        --patient-tag-border: #BAE6FD;
+        --apt-active-bg: #F0F9FF;
+        --apt-active-border: #BAE6FD;
+        --emergency-card-bg: #FEF2F2;
+        --emergency-card-border: #FECACA;
+        --emergency-card-text: #DC2626;
+      }
       body {
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         background-color: #F8FAFC;
         color: #0F172A;
         min-height: 100vh;
+        transition: background-color 0.25s ease, color 0.25s ease;
+      }
+      body.theme-dark {
+        background-color: #090D16;
+        color: #F1F5F9;
+        --patient-card-bg: #0F172A;
+        --patient-card-border: #1E293B;
+        --patient-text-main: #F8FAFC;
+        --patient-text-sub: #94A3B8;
+        --patient-sub-card: #1E293B;
+        --patient-tag-bg: rgba(2, 132, 199, 0.18);
+        --patient-tag-color: #38BDF8;
+        --patient-tag-border: rgba(56, 189, 248, 0.3);
+        --apt-active-bg: rgba(2, 132, 199, 0.16);
+        --apt-active-border: #0284C7;
+        --emergency-card-bg: rgba(220, 38, 38, 0.14);
+        --emergency-card-border: rgba(220, 38, 38, 0.35);
+        --emergency-card-text: #F87171;
+        color-scheme: dark;
+      }
+      body.theme-dark select option {
+        background-color: #0F172A;
+        color: #F8FAFC;
       }
       #root {
         width: 100%;

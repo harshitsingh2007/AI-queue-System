@@ -5,7 +5,7 @@
  * Opens the native browser print / "Save as PDF" dialog with zero external dependencies.
  */
 
-import { t, getCategoryLabel, getStatusLabel } from "./i18n";
+import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel, formatRiskLabel } from "./i18n";
 
 /**
  * Triggers the browser print/PDF dialog using a dedicated hidden iframe.
@@ -342,12 +342,12 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
     </tr>
     <tr>
       <td class="label">${t("symptomRisk", lang)}</td>
-      <td class="val">${(ticket.medical_condition || "general_checkup").replace(/_/g, " ").toUpperCase()}</td>
+      <td class="val">${formatSymptomLabel(ticket.medical_condition, lang)}</td>
     </tr>
-    ${ticket.pre_existing_condition ? `
+    ${ticket.pre_existing_condition && ticket.pre_existing_condition !== "none" ? `
     <tr>
-      <td class="label">${t("riskLabel", lang)}</td>
-      <td class="val">${ticket.pre_existing_condition.toUpperCase()}</td>
+      <td class="label">${t("preExistingLabel", lang) || "Risk Factor"}</td>
+      <td class="val">${formatRiskLabel(ticket.pre_existing_condition, lang)}</td>
     </tr>` : ""}
   </table>
 

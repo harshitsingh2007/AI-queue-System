@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { API_BASE } from "../config/hospitalConfig";
-import { t, getCategoryLabel, getStatusLabel } from "../utils/i18n";
+import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel, formatRiskLabel } from "../utils/i18n";
 import AdminHeroBanner from "../components/staff/AdminHeroBanner";
 import Footer from "../components/common/Footer";
 
@@ -1418,7 +1418,7 @@ export default function StaffPage({
                               )}
                             </div>
                             <span style={{ fontSize: "12.5px", color: "#64748B", marginTop: "3px", display: "block" }}>
-                              {ticket.age || 30} {language === "hi" ? "वर्ष" : "yrs"} • {t(ticket.gender || "male", language)} • {language === "hi" ? "लक्षण:" : "Symptom:"} {(ticket.medical_condition || "general_checkup").replace(/_/g, " ")}
+                              {ticket.age || 30} {language === "hi" ? "वर्ष" : "yrs"} • {t(ticket.gender || "male", language)} • {language === "hi" ? "लक्षण:" : "Symptom:"} {formatSymptomLabel(ticket.medical_condition, language)}
                             </span>
                           </div>
                         </div>
@@ -1755,7 +1755,7 @@ export default function StaffPage({
                                   {getCategoryLabel(ht.service_category, language)}
                                 </span>
                                 <span style={{ fontSize: "11px", color: "#64748B" }}>
-                                  {ht.age || 30} yrs • {(ht.medical_condition || "general").replace(/_/g, " ")}
+                                  {ht.age || 30} {language === "hi" ? "वर्ष" : "yrs"} • {formatSymptomLabel(ht.medical_condition, language)}
                                 </span>
                               </div>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
@@ -1902,10 +1902,12 @@ export default function StaffPage({
                             </span>
                           </td>
                           <td style={{ ...staffTdStyle, fontSize: "12px", color: "#0284C7", fontWeight: 600 }}>
-                            {(ticket.medical_condition || "general").replace(/_/g, " ").toUpperCase()}
-                            <span style={{ display: "block", fontSize: "10.5px", color: "#64748B" }}>
-                              {t("riskLabel", language)}: {(ticket.pre_existing_condition || "none").toUpperCase()}
-                            </span>
+                            {formatSymptomLabel(ticket.medical_condition, language)}
+                            {ticket.pre_existing_condition && ticket.pre_existing_condition !== "none" && (
+                              <span style={{ display: "block", fontSize: "10.5px", color: "#64748B" }}>
+                                {t("preExistingLabel", language) || "Risk"}: {formatRiskLabel(ticket.pre_existing_condition, language)}
+                              </span>
+                            )}
                           </td>
                           <td style={staffTdStyle}>
                             <span style={badgePrioStyle(ticket.complexity_score > 1.4 ? "#DC2626" : "#0284C7")}>

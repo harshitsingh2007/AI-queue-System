@@ -34,6 +34,9 @@ export default function Header({
   currentHospitalTenant = "city-hospital-01",
   onSwitchHospital,
   hospitalBranding = null,
+  theme: themeProp = null,
+  setTheme: setThemeProp = null,
+  onToggleTheme = null,
 }) {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
@@ -41,6 +44,55 @@ export default function Header({
   const [showContactModal, setShowContactModal] = useState(false);
   const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
   const [familySwitcherExpanded, setFamilySwitcherExpanded] = useState(false);
+
+  // Theme state synchronized with props and localStorage
+  const [theme, setTheme] = useState(() => {
+    if (themeProp) return themeProp;
+    try {
+      const saved = localStorage.getItem("ai_queue_theme");
+      if (saved === "dark" || saved === "light") return saved;
+      if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    } catch (e) {}
+    return "light";
+  });
+
+  useEffect(() => {
+    if (themeProp && themeProp !== theme) {
+      setTheme(themeProp);
+    }
+  }, [themeProp]);
+
+  useEffect(() => {
+    const handleThemeEvent = (e) => {
+      const t = typeof e?.detail === "string" ? e.detail : e?.detail?.theme;
+      if (t && (t === "dark" || t === "light")) {
+        setTheme(t);
+      }
+    };
+    window.addEventListener("theme_changed", handleThemeEvent);
+    return () => window.removeEventListener("theme_changed", handleThemeEvent);
+  }, []);
+
+  const handleToggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    try {
+      localStorage.setItem("ai_queue_theme", nextTheme);
+      document.documentElement.setAttribute("data-theme", nextTheme);
+      if (nextTheme === "dark") {
+        document.body.classList.add("theme-dark");
+      } else {
+        document.body.classList.remove("theme-dark");
+      }
+      window.dispatchEvent(new CustomEvent("theme_changed", { detail: nextTheme }));
+    } catch (e) {}
+    if (setThemeProp) setThemeProp(nextTheme);
+    if (onToggleTheme) onToggleTheme(nextTheme);
+  };
+
+  const isDarkHeader = theme === "dark" && (activePage === "patient" || activePage === "superadmin");
 
   // Multi-Hospital Facility Active Display
   const [hospitalsList, setHospitalsList] = useState([]);
@@ -102,6 +154,50 @@ export default function Header({
 
   const brandPrimary = hospitalBranding?.primary_color || "#0284C7";
 
+  // Dynamic About Us Branding Variables
+  const displayAboutTitle =
+    (language === "hi" && hospitalBranding?.about_us_title_hi) ||
+    hospitalBranding?.about_us_title ||
+    (language === "hi" ? `${displayHospitalName} के बारे में` : `About ${displayHospitalName}`);
+
+  const displayAboutSubtitle =
+    hospitalBranding?.about_us_subtitle ||
+    displayTagline;
+
+  const displayAboutBody =
+    (language === "hi" && hospitalBranding?.about_us_hi) ||
+    hospitalBranding?.about_us ||
+    (language === "hi"
+      ? `${displayHospitalName} मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।`
+      : `${displayHospitalName} is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.`);
+
+  const displayService1 = hospitalBranding?.about_service_1 || (language === "hi" ? "24/7 आपातकालीन ट्राइएज • प्राथमिकता एम्बुलेंस एवं आईसीयू" : "24/7 Emergency Triage • Priority ambulance & ICU care");
+  const displayService2 = hospitalBranding?.about_service_2 || (language === "hi" ? "AI प्रतीक्षा भविष्यवाणी • लाइव कतार सिंक्रोनाइज़ेशन" : "AI Wait Prediction • Live queue synchronization");
+  const displayService3 = hospitalBranding?.about_service_3 || (language === "hi" ? "बहु-विशेषज्ञता ओपीडी • सामान्य, हृदय, न्यूरो, ऑर्थो" : "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho");
+  const displayService4 = hospitalBranding?.about_service_4 || (language === "hi" ? "डिजिटल ई-प्रिस्क्रिप्शन • सहज फार्मेसी रीफिल" : "Digital E-Prescriptions • Seamless pharmacy refills");
+
+  // Dynamic Contact & Help Desk Info
+  const displayAddress =
+    hospitalBranding?.address ||
+    currentHospitalObj?.address ||
+    "742 Evergreen Healthcare Ave, Medical District, Suite 100";
+
+  const displayHelpdeskPhone =
+    hospitalBranding?.opd_helpdesk_phone ||
+    currentHospitalObj?.phone ||
+    "+1 (800) 456-7890 (Ext: 101)";
+
+  const displayHelpdeskHours =
+    (language === "hi" ? hospitalBranding?.opd_helpdesk_hours_hi : null) ||
+    hospitalBranding?.opd_helpdesk_hours ||
+    (language === "hi" ? "सोम – शनि: सुबह 8:00 – रात 8:00" : "Mon – Sat: 8:00 AM – 8:00 PM");
+
+  const displayEmail =
+    hospitalBranding?.support_email ||
+    hospitalBranding?.email ||
+    currentHospitalObj?.email ||
+    "support@citygeneralhospital.org";
+
   const profileRef = useRef(null);
   const langRef = useRef(null);
 
@@ -160,7 +256,7 @@ export default function Header({
 
   return (
     <>
-      <header style={headerContainerStyle} className="user-dashboard-header">
+      <header style={headerContainerStyle} className={`user-dashboard-header ${isDarkHeader ? "dark-theme-header" : ""}`}>
         <style>{`
           .user-dashboard-header {
             display: flex;
@@ -178,8 +274,167 @@ export default function Header({
             z-index: 100;
             flex-wrap: nowrap;
             gap: 10px;
-            transition: all 0.2s ease;
+            transition: all 0.25s ease;
             white-space: nowrap;
+          }
+
+          /* Dark Mode Header Overrides */
+          .user-dashboard-header.dark-theme-header {
+            background: rgba(15, 23, 42, 0.94) !important;
+            border: 1px solid rgba(51, 65, 85, 0.85) !important;
+            box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.12) !important;
+          }
+
+          /* Small Theme Toggle Button (User Portal Only) */
+          .header-theme-toggle-btn {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            border-radius: 9999px;
+            background: #E2E8F0;
+            border: 1.5px solid #CBD5E1;
+            cursor: pointer;
+            outline: none;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            box-sizing: border-box;
+            flex-shrink: 0;
+            transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
+            user-select: none;
+          }
+
+          .header-theme-toggle-btn:hover {
+            border-color: #0284C7;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 8px rgba(2, 132, 199, 0.25);
+          }
+
+          .header-theme-toggle-btn.is-dark {
+            background: #0B1120;
+            border-color: #334155;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(56, 189, 248, 0.2);
+          }
+
+          .header-theme-toggle-btn.is-dark:hover {
+            border-color: #38BDF8;
+          }
+
+          .theme-track-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 1;
+          }
+
+          .theme-sun-track {
+            margin-left: 3px;
+            opacity: 0.9;
+          }
+
+          .theme-moon-track {
+            margin-right: 3px;
+            opacity: 0.85;
+          }
+
+          .theme-toggle-knob {
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 19px;
+            height: 19px;
+            border-radius: 50%;
+            background: #FFFFFF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease;
+            z-index: 2;
+          }
+
+          .header-theme-toggle-btn.is-dark .theme-toggle-knob {
+            transform: translateX(23px);
+            background: #1E293B;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(56, 189, 248, 0.3);
+          }
+
+          .user-dashboard-header.dark-theme-header .header-pill-btn {
+            background: #1E293B !important;
+            border-color: #334155 !important;
+            color: #F8FAFC !important;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+          }
+
+          .user-dashboard-header.dark-theme-header .header-pill-btn:hover {
+            background: #283548 !important;
+            border-color: #38BDF8 !important;
+            box-shadow: 0 3px 12px rgba(56, 189, 248, 0.15) !important;
+          }
+
+          .user-dashboard-header.dark-theme-header .header-nav-btn {
+            color: #94A3B8;
+          }
+
+          .user-dashboard-header.dark-theme-header .header-nav-btn:hover {
+            color: #38BDF8;
+            background: #1E293B;
+            border-color: rgba(56, 189, 248, 0.3);
+          }
+
+          .user-dashboard-header.dark-theme-header .header-nav-btn.active {
+            color: #38BDF8;
+            background: rgba(2, 132, 199, 0.2);
+            border-color: #0284C7;
+          }
+
+          .user-dashboard-header.dark-theme-header .header-dropdown-menu {
+            background: #1E293B !important;
+            border-color: #334155 !important;
+            color: #F8FAFC !important;
+            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+          }
+
+          body.theme-dark .header-modal-content,
+          [data-theme="dark"] .header-modal-content,
+          .user-dashboard-header.dark-theme-header .header-modal-content {
+            background: #0F172A !important;
+            border: 1px solid #334155 !important;
+            color: #F8FAFC !important;
+            box-shadow: 0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15) !important;
+          }
+
+          body.theme-dark .header-dropdown-menu,
+          [data-theme="dark"] .header-dropdown-menu,
+          .user-dashboard-header.dark-theme-header .header-dropdown-menu {
+            background: #0F172A !important;
+            border-color: #334155 !important;
+            color: #F8FAFC !important;
+            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+          }
+
+          body.theme-dark .header-dropdown-item,
+          [data-theme="dark"] .header-dropdown-item,
+          .user-dashboard-header.dark-theme-header .header-dropdown-item {
+            color: #CBD5E1 !important;
+          }
+
+          body.theme-dark .header-dropdown-item:hover,
+          [data-theme="dark"] .header-dropdown-item:hover,
+          .user-dashboard-header.dark-theme-header .header-dropdown-item:hover {
+            background: #1E293B !important;
+            color: #38BDF8 !important;
+          }
+
+          body.theme-dark .header-dropdown-item.active,
+          [data-theme="dark"] .header-dropdown-item.active,
+          .user-dashboard-header.dark-theme-header .header-dropdown-item.active {
+            background: #1E293B !important;
+            color: #38BDF8 !important;
           }
 
           .header-nav-btn {
@@ -409,14 +664,14 @@ export default function Header({
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "nowrap" }}>
-              <span style={{ fontWeight: 900, fontSize: "15.5px", color: "#0F172A", letterSpacing: "-0.3px", lineHeight: "1.2", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ fontWeight: 900, fontSize: "15.5px", color: isDarkHeader ? "#F8FAFC" : "#0F172A", letterSpacing: "-0.3px", lineHeight: "1.2", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {displayHospitalName}
               </span>
-              <span style={{ padding: "1.5px 6px", borderRadius: "12px", background: "#F0F9FF", color: brandPrimary, fontSize: "9px", fontWeight: 800, border: `1px solid ${brandPrimary}40`, whiteSpace: "nowrap" }}>
+              <span style={{ padding: "1.5px 6px", borderRadius: "12px", background: isDarkHeader ? "rgba(2, 132, 199, 0.2)" : "#F0F9FF", color: brandPrimary, fontSize: "9px", fontWeight: 800, border: `1px solid ${brandPrimary}40`, whiteSpace: "nowrap" }}>
                 NABH ACCREDITED
               </span>
             </div>
-            <div style={{ fontSize: "11px", color: "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "5px", flexWrap: "nowrap" }}>
+            <div style={{ fontSize: "11px", color: isDarkHeader ? "#94A3B8" : "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "5px", flexWrap: "nowrap" }}>
               <span style={{ maxWidth: "130px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {displayTagline}
               </span>
@@ -485,18 +740,20 @@ export default function Header({
             </button>
           )}
 
-          {/* Emergency 24/7 Hotline Button */}
-          <button
-            type="button"
-            onClick={() => setShowContactModal(true)}
-            className="header-emergency-pill"
-            title="Emergency Care & Helpline"
-          >
-            <span>🚨</span>
-            <span style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {displayEmergencyText}
-            </span>
-          </button>
+          {/* Emergency 24/7 Hotline Button (Hidden on Super Admin Portal) */}
+          {activePage !== "superadmin" && (
+            <button
+              type="button"
+              onClick={() => setShowContactModal(true)}
+              className="header-emergency-pill"
+              title="Emergency Care & Helpline"
+            >
+              <span>🚨</span>
+              <span style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayEmergencyText}
+              </span>
+            </button>
+          )}
 
           {/* About Us & Contact - displayed on patient portal to avoid crowding admin/staff header */}
           {activePage === "patient" && (
@@ -528,8 +785,61 @@ export default function Header({
           )}
         </nav>
 
-        {/* 3. Right: Language Selector & Patient Profile Dropdown */}
+        {/* 3. Right: Theme Toggle (User Portal Only), Language Selector & Patient Profile Dropdown */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative", flexShrink: 0 }}>
+          {/* Theme Toggle Switch (Available for Patient & Super Admin Portals) */}
+          {(activePage === "patient" || activePage === "superadmin") && (
+            <button
+              type="button"
+              onClick={handleToggleTheme}
+              className={`header-theme-toggle-btn ${theme === "dark" ? "is-dark" : "is-light"}`}
+              title={
+                theme === "dark"
+                  ? (language === "hi" ? "लाइट थीम (दिन)" : "Switch to Light Theme")
+                  : (language === "hi" ? "डार्क थीम (रात)" : "Switch to Dark Theme")
+              }
+              aria-label="Toggle dark and light theme"
+              role="switch"
+              aria-checked={theme === "dark"}
+            >
+              <span className="theme-track-icon theme-sun-track" aria-hidden="true">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="4.5" fill="#FDE68A" />
+                  <line x1="12" y1="1" x2="12" y2="3" />
+                  <line x1="12" y1="21" x2="12" y2="23" />
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                  <line x1="1" y1="12" x2="3" y2="12" />
+                  <line x1="21" y1="12" x2="23" y2="12" />
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                </svg>
+              </span>
+              <span className="theme-track-icon theme-moon-track" aria-hidden="true">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="#38BDF8" stroke="#0284C7" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              </span>
+              <span className="theme-toggle-knob">
+                {theme === "dark" ? (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="#38BDF8" stroke="#0284C7" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                ) : (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="4.5" fill="#FBBF24" />
+                    <line x1="12" y1="1" x2="12" y2="3" />
+                    <line x1="12" y1="21" x2="12" y2="23" />
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                    <line x1="1" y1="12" x2="3" y2="12" />
+                    <line x1="21" y1="12" x2="23" y2="12" />
+                  </svg>
+                )}
+              </span>
+            </button>
+          )}
+
           {/* Language Selector Pill Button */}
           <div ref={langRef} style={{ position: "relative" }}>
             <button
@@ -599,7 +909,7 @@ export default function Header({
                 <div style={{ ...dropdownAvatarStyle, width: "28px", height: "28px", fontSize: "12px" }}>
                   {activeDisplayName.charAt(0).toUpperCase()}
                 </div>
-                <span style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: "13px", fontWeight: 800, color: isDarkHeader ? "#F8FAFC" : "#0F172A", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {activeDisplayName}
                 </span>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "2px" }}>
@@ -611,13 +921,13 @@ export default function Header({
               {profileDropdownOpen && (
                 <div className="header-dropdown-menu" style={{ width: "290px", padding: "10px" }}>
                   {/* Account Header */}
-                  <div style={{ padding: "10px 12px 12px 12px", marginBottom: "8px", background: "#F8FAFC", borderRadius: "12px", border: "1px solid #E2E8F0" }}>
+                  <div style={{ padding: "10px 12px 12px 12px", marginBottom: "8px", background: isDarkHeader ? "#0F172A" : "#F8FAFC", borderRadius: "12px", border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                       <div style={{ ...dropdownAvatarStyle, width: "36px", height: "36px", fontSize: "14px", background: "#0284C7", color: "#FFFFFF" }}>
                         {activeDisplayName.charAt(0).toUpperCase()}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: "13.5px", color: "#0F172A", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{ fontWeight: 800, fontSize: "13.5px", color: isDarkHeader ? "#F8FAFC" : "#0F172A", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {activeDisplayName}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
@@ -722,32 +1032,10 @@ export default function Header({
                           </button>
                         );
                       })}
-
                     </>
                   )}
 
-                  {/* Super Admin Switch Shortcut (Strictly for Super Admin Only) */}
-                  {(currentUser?.role === "super_admin" || currentUser?.role === "superadmin") && (
-                    <>
-                      <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
-                      <button
-                        type="button"
-                        className="header-dropdown-item"
-                        onClick={() => {
-                          setProfileDropdownOpen(false);
-                          navigateTo("superadmin");
-                        }}
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 21h18M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
-                          <path d="M9 10h6M12 7v6" />
-                        </svg>
-                        <span>{language === "hi" ? "सुपर एडमिन पोर्टल" : "Super Admin Portal"}</span>
-                      </button>
-                    </>
-                  )}
-
-                  <div style={{ height: "1px", background: "#E2E8F0", margin: "6px 0" }} />
+                  <div style={{ height: "1px", background: isDarkHeader ? "#334155" : "#E2E8F0", margin: "6px 0" }} />
 
                   {/* Sign Out Button */}
                   <button
@@ -801,56 +1089,79 @@ export default function Header({
       {/* 4. ABOUT US MODAL */}
       {showAboutModal && (
         <div className="header-modal-overlay" onClick={() => setShowAboutModal(false)}>
-          <div className="header-modal-content" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="header-modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: isDarkHeader ? "#0F172A" : "#FFFFFF",
+              border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0",
+              color: isDarkHeader ? "#F8FAFC" : "#0F172A",
+              boxShadow: isDarkHeader ? "0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15)" : undefined,
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-              <div style={modalLogoShieldStyle}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z"
-                    fill="#044E3B"
+              <div style={{ ...modalLogoShieldStyle, background: displayLogoUrl ? (isDarkHeader ? "#1E293B" : "#FFFFFF") : brandPrimary, border: displayLogoUrl ? `1.5px solid ${brandPrimary}` : "none" }}>
+                {displayLogoUrl ? (
+                  <img
+                    src={displayLogoUrl}
+                    alt="Logo"
+                    style={{ width: "24px", height: "24px", objectFit: "contain", borderRadius: "6px" }}
                   />
-                  <path
-                    d="M12 7.5v9M7.5 12h9"
-                    stroke="#FFFFFF"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                ) : (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z"
+                      fill={brandPrimary}
+                    />
+                    <path
+                      d="M12 7.5v9M7.5 12h9"
+                      stroke="#FFFFFF"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                )}
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
-                  {language === "hi" ? "सिटी जनरल अस्पताल के बारे में" : "About City General Hospital"}
+                <h3 style={{ margin: 0, fontSize: "18px", color: isDarkHeader ? "#F8FAFC" : "#0F172A", fontWeight: 800 }}>
+                  {displayAboutTitle}
                 </h3>
-                <span style={{ fontSize: "12px", color: "#64748B" }}>
-                  {language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा" : "Care you can trust"}
+                <span style={{ fontSize: "12px", color: isDarkHeader ? "#94A3B8" : "#64748B" }}>
+                  {displayAboutSubtitle}
                 </span>
               </div>
             </div>
 
-            <p style={{ fontSize: "13.5px", color: "#334155", lineHeight: "1.6", margin: "0 0 16px 0" }}>
-              {language === "hi"
-                ? "सिटी जनरल अस्पताल मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।"
-                : "City General Hospital is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically."}
+            <p style={{ fontSize: "13.5px", color: isDarkHeader ? "#CBD5E1" : "#334155", lineHeight: "1.6", margin: "0 0 16px 0", whiteSpace: "pre-line" }}>
+              {displayAboutBody}
             </p>
 
-            <div style={{ background: "#F8FAFC", borderRadius: "12px", padding: "14px", border: "1px solid #E2E8F0", marginBottom: "20px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px" }}>
+            <div style={{ background: isDarkHeader ? "#1E293B" : "#F8FAFC", borderRadius: "12px", padding: "14px", border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0", marginBottom: "20px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "12px" }}>
                 <div>
-                  <strong style={{ color: "#0284C7" }}>{language === "hi" ? "✓ 24/7 आपातकालीन ट्राइएज" : "✓ 24/7 Emergency Triage"}</strong>
-                  <div style={{ color: "#64748B", marginTop: "2px" }}>{language === "hi" ? "प्राथमिकता एम्बुलेंस एवं आईसीयू" : "Priority ambulance & ICU care"}</div>
+                  <strong style={{ color: brandPrimary }}>✓ {displayService1.split("•")[0] || displayService1}</strong>
+                  {displayService1.includes("•") && (
+                    <div style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{displayService1.split("•").slice(1).join("•").trim()}</div>
+                  )}
                 </div>
                 <div>
-                  <strong style={{ color: "#0284C7" }}>{language === "hi" ? "✓ AI प्रतीक्षा भविष्यवाणी" : "✓ AI Wait Prediction"}</strong>
-                  <div style={{ color: "#64748B", marginTop: "2px" }}>{language === "hi" ? "लाइव कतार सिंक्रोनाइज़ेशन" : "Live queue synchronization"}</div>
+                  <strong style={{ color: brandPrimary }}>✓ {displayService2.split("•")[0] || displayService2}</strong>
+                  {displayService2.includes("•") && (
+                    <div style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{displayService2.split("•").slice(1).join("•").trim()}</div>
+                  )}
                 </div>
                 <div>
-                  <strong style={{ color: "#0284C7" }}>{language === "hi" ? "✓ बहु-विशेषज्ञता ओपीडी" : "✓ Multi-Specialty OPD"}</strong>
-                  <div style={{ color: "#64748B", marginTop: "2px" }}>{language === "hi" ? "सामान्य, हृदय, न्यूरो, ऑर्थो" : "General, Cardiac, Neuro, Ortho"}</div>
+                  <strong style={{ color: brandPrimary }}>✓ {displayService3.split("•")[0] || displayService3}</strong>
+                  {displayService3.includes("•") && (
+                    <div style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{displayService3.split("•").slice(1).join("•").trim()}</div>
+                  )}
                 </div>
                 <div>
-                  <strong style={{ color: "#0284C7" }}>{language === "hi" ? "✓ डिजिटल ई-प्रिस्क्रिप्शन" : "✓ Digital E-Prescriptions"}</strong>
-                  <div style={{ color: "#64748B", marginTop: "2px" }}>{language === "hi" ? "सहज फार्मेसी रीफिल" : "Seamless pharmacy refills"}</div>
+                  <strong style={{ color: brandPrimary }}>✓ {displayService4.split("•")[0] || displayService4}</strong>
+                  {displayService4.includes("•") && (
+                    <div style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{displayService4.split("•").slice(1).join("•").trim()}</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -869,9 +1180,18 @@ export default function Header({
       {/* 5. CONTACT US MODAL */}
       {showContactModal && (
         <div className="header-modal-overlay" onClick={() => setShowContactModal(false)}>
-          <div className="header-modal-content" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="header-modal-content"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: isDarkHeader ? "#0F172A" : "#FFFFFF",
+              border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0",
+              color: isDarkHeader ? "#F8FAFC" : "#0F172A",
+              boxShadow: isDarkHeader ? "0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15)" : undefined,
+            }}
+          >
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-              <div style={{ ...modalLogoShieldStyle, background: displayLogoUrl ? "#FFFFFF" : brandPrimary, border: displayLogoUrl ? `1.5px solid ${brandPrimary}` : "none" }}>
+              <div style={{ ...modalLogoShieldStyle, background: displayLogoUrl ? (isDarkHeader ? "#1E293B" : "#FFFFFF") : brandPrimary, border: displayLogoUrl ? `1.5px solid ${brandPrimary}` : "none" }}>
                 {displayLogoUrl ? (
                   <img
                     src={displayLogoUrl}
@@ -895,47 +1215,49 @@ export default function Header({
                 )}
               </div>
               <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
+                <h3 style={{ margin: 0, fontSize: "18px", color: isDarkHeader ? "#F8FAFC" : "#0F172A", fontWeight: 800 }}>
                   {language === "hi" ? "संपर्क एवं सहायता डेस्क" : "Contact & Support"}
                 </h3>
-                <span style={{ fontSize: "12px", color: "#64748B" }}>
+                <span style={{ fontSize: "12px", color: isDarkHeader ? "#94A3B8" : "#64748B" }}>
                   {displayHospitalName} • {displayTagline}
                 </span>
               </div>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "12px", marginBottom: "20px" }}>
-              <div style={contactInfoCardStyle}>
+              <div style={{ ...contactInfoCardStyle, background: isDarkHeader ? "#1E293B" : "#F8FAFC", border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0" }}>
                 <div style={{ fontWeight: 700, fontSize: "12.5px", color: "#DC2626", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>🚨</span> {language === "hi" ? "24/7 आपातकालीन एम्बुलेंस हेल्पलाइन" : "24/7 Emergency Ambulance Helpline"}
                 </div>
-                <div style={{ fontSize: "15px", fontWeight: 800, color: "#0F172A", marginTop: "3px" }}>
+                <div style={{ fontSize: "15px", fontWeight: 800, color: isDarkHeader ? "#F8FAFC" : "#0F172A", marginTop: "3px" }}>
                   {displayEmergencyText}
                 </div>
               </div>
 
-              <div style={contactInfoCardStyle}>
-                <div style={{ fontWeight: 700, fontSize: "12.5px", color: "#0284C7", display: "flex", alignItems: "center", gap: "6px" }}>
+              <div style={{ ...contactInfoCardStyle, background: isDarkHeader ? "#1E293B" : "#F8FAFC", border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, fontSize: "12.5px", color: "#38BDF8", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>🏥</span> {language === "hi" ? "ओपीडी रिसेप्शन एवं कतार सहायता" : "OPD Reception & Queue Help Desk"}
                 </div>
-                <div style={{ fontSize: "14px", fontWeight: 700, color: "#0F172A", marginTop: "3px" }}>
-                  +1 (800) 456-7890 (Ext: 101)
+                <div style={{ fontSize: "14px", fontWeight: 700, color: isDarkHeader ? "#F8FAFC" : "#0F172A", marginTop: "3px" }}>
+                  {displayHelpdeskPhone}
                 </div>
-                <div style={{ fontSize: "11.5px", color: "#64748B", marginTop: "2px" }}>
-                  {language === "hi" ? "सोम – शनि: सुबह 8:00 – रात 8:00" : "Mon – Sat: 8:00 AM – 8:00 PM"}
+                <div style={{ fontSize: "11.5px", color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>
+                  {displayHelpdeskHours}
                 </div>
               </div>
 
-              <div style={contactInfoCardStyle}>
-                <div style={{ fontWeight: 700, fontSize: "12.5px", color: "#0284C7", display: "flex", alignItems: "center", gap: "6px" }}>
+              <div style={{ ...contactInfoCardStyle, background: isDarkHeader ? "#1E293B" : "#F8FAFC", border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, fontSize: "12.5px", color: "#38BDF8", display: "flex", alignItems: "center", gap: "6px" }}>
                   <span>📍</span> {language === "hi" ? "अस्पताल पता" : "Hospital Campus Address"}
                 </div>
-                <div style={{ fontSize: "12.5px", color: "#334155", marginTop: "3px" }}>
-                  742 Evergreen Healthcare Ave, Medical District, Suite 100
+                <div style={{ fontSize: "12.5px", color: isDarkHeader ? "#CBD5E1" : "#334155", marginTop: "3px" }}>
+                  {displayAddress}
                 </div>
-                <div style={{ fontSize: "11.5px", color: "#64748B", marginTop: "2px" }}>
-                  Email: support@citygeneralhospital.org
-                </div>
+                {displayEmail && (
+                  <div style={{ fontSize: "11.5px", color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>
+                    Email: {displayEmail}
+                  </div>
+                )}
               </div>
             </div>
 

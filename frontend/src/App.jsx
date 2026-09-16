@@ -24,6 +24,7 @@ import KioskPage from "./pages/KioskPage";
 import SuperAdminPage from "./pages/SuperAdminPage";
 
 import { announceTicketVoice } from "./utils/voiceSynthesizer";
+import { updateBrowserTabBrand } from "./utils/dynamicFavicon";
 
 function getInitialPage(user) {
   let effectiveUser = user;
@@ -35,6 +36,7 @@ function getInitialPage(user) {
   }
   const userRole = effectiveUser ? (effectiveUser.role || "").toLowerCase() : "";
   const isSuperAdminUser = userRole === "super_admin" || userRole === "superadmin";
+  const isStaffUser = ["admin", "doctor", "staff", "receptionist"].includes(userRole);
   const path = window.location.pathname.toLowerCase();
   if (path.startsWith("/kiosk") || path.includes("kiosk") || path.includes("tv")) return "kiosk";
 
@@ -137,6 +139,44 @@ export default function App() {
     } catch (e) {}
     return "walkin";
   });
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem("ai_queue_theme");
+      if (saved === "dark" || saved === "light") return saved;
+      if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    } catch (e) {}
+    return "light";
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("ai_queue_theme", theme);
+      document.documentElement.setAttribute("data-theme", theme);
+      if (theme === "dark" && (activePage === "patient" || activePage === "superadmin")) {
+        document.body.classList.add("theme-dark");
+        document.body.style.backgroundColor = "#090D16";
+        document.body.style.color = "#F1F5F9";
+      } else {
+        document.body.classList.remove("theme-dark");
+        document.body.style.backgroundColor = "#F8FAFC";
+        document.body.style.color = "#0F172A";
+      }
+    } catch (e) {}
+  }, [theme, activePage]);
+
+  useEffect(() => {
+    const handleThemeChange = (e) => {
+      const newTheme = typeof e?.detail === "string" ? e.detail : e?.detail?.theme;
+      if (newTheme && (newTheme === "dark" || newTheme === "light")) {
+        setTheme(newTheme);
+      }
+    };
+    window.addEventListener("theme_changed", handleThemeChange);
+    return () => window.removeEventListener("theme_changed", handleThemeChange);
+  }, []);
+
   const tenantId = currentHospitalTenant || HOSPITAL_CONFIG.tenantId;
 
   // Global White-Label Hospital Branding State
@@ -175,14 +215,60 @@ export default function App() {
     }
   }, [hospitalBranding]);
 
+  // Dynamic Browser Tab Favicon and Title Scoped Exclusively to Hospital-Affiliated Patients and Staff
+  useEffect(() => {
+    const role = (currentUser?.role || "").toLowerCase();
+    const isStaffAffiliate = Boolean(
+      currentUser &&
+      ["admin", "doctor", "staff", "receptionist"].includes(role) &&
+      currentUser.hospital_code &&
+      currentUser.hospital_code !== "all"
+    );
+
+    const isPatientAffiliate = Boolean(
+      activePage === "patient" ||
+      activePage === "kiosk" ||
+      role === "user" ||
+      role === "patient" ||
+      !currentUser
+    );
+
+    const isSuperAdminGlobal = Boolean(
+      (role === "super_admin" || role === "superadmin") &&
+      activePage === "superadmin"
+    );
+
+    // Only apply hospital brand logo in tab for patients and staff of that hospital; never globally for super admin
+    const isAffiliate = (isStaffAffiliate || isPatientAffiliate) && !isSuperAdminGlobal;
+
+    updateBrowserTabBrand({
+      logoUrl: hospitalBranding?.logo_url,
+      hospitalName: hospitalBranding?.hospital_name || hospitalBranding?.name,
+      isAffiliate,
+      isSuperAdmin: isSuperAdminGlobal,
+      role,
+    });
+  }, [hospitalBranding, currentUser, activePage]);
+
   useEffect(() => {
     const handleBrandingEvent = (e) => {
+      const targetCode = e?.detail?.hospital_code;
       const b = e?.detail?.branding || e?.detail;
-      if (b) setHospitalBranding((prev) => ({ ...prev, ...b }));
+      if (!b) return;
+
+      const activeCode =
+        (currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role) && currentUser.hospital_code && currentUser.hospital_code !== "all")
+          ? currentUser.hospital_code
+          : (currentHospitalTenant || HOSPITAL_CONFIG.tenantId);
+
+      // Only apply branding updates if the event is for the hospital currently active/affiliated
+      if (!targetCode || String(targetCode).trim().toLowerCase() === String(activeCode).trim().toLowerCase()) {
+        setHospitalBranding((prev) => ({ ...prev, ...b }));
+      }
     };
     window.addEventListener("hospital_branding_updated", handleBrandingEvent);
     return () => window.removeEventListener("hospital_branding_updated", handleBrandingEvent);
-  }, []);
+  }, [currentUser, currentHospitalTenant]);
 
   const navigateTo = useCallback((page, tab = null) => {
     let targetPage = page;
@@ -473,6 +559,30 @@ export default function App() {
     }
   }, [activeTicket?.ticket_id, activeTicket?.status, ticketQrData]);
 
+  // Verify activeTicket status against backend on mount or whenever ticket_id changes
+  useEffect(() => {
+    if (!activeTicket?.ticket_id) return;
+    fetch(`${API_BASE}/api/v1/plugin/ticket/${activeTicket.ticket_id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.status === "success" && d.ticket) {
+          const live = ["waiting", "serving", "on_hold", "hold"].includes(
+            String(d.ticket.status || "").toLowerCase()
+          );
+          if (!live) {
+            setActiveTicket(null);
+            setTicketQrData(null);
+            try {
+              localStorage.removeItem("ai_queue_active_ticket");
+            } catch (e) {}
+          } else {
+            setActiveTicket((prev) => ({ ...prev, ...d.ticket }));
+          }
+        }
+      })
+      .catch((e) => console.log("Ticket verification error in App:", e));
+  }, [activeTicket?.ticket_id]);
+
   // Auto-restore active ticket from history on mount / login if state is empty or stale
   useEffect(() => {
     const ident =
@@ -485,7 +595,7 @@ export default function App() {
     fetch(`${API_BASE}/api/v1/plugin/tickets/history/${encodeURIComponent(ident.trim())}`)
       .then((r) => r.json())
       .then((d) => {
-        if (d && Array.isArray(d.tickets) && d.tickets.length > 0) {
+        if (d && Array.isArray(d.tickets)) {
           const active = d.tickets.find((t) =>
             ["waiting", "serving", "on_hold", "hold"].includes(String(t.status || "").toLowerCase())
           );
@@ -497,16 +607,17 @@ export default function App() {
               return { ...prev, ...active };
             });
           } else {
-            // No live tickets found; clear active ticket if it was completed
+            // No live tickets found on server for this user; clear any stale active ticket
             setActiveTicket((prev) => {
-              if (prev && !["waiting", "serving", "on_hold", "hold"].includes(String(prev.status || "").toLowerCase())) {
+              if (prev) {
                 try {
                   localStorage.removeItem("ai_queue_active_ticket");
                 } catch (e) {}
                 return null;
               }
-              return prev;
+              return null;
             });
+            setTicketQrData(null);
           }
         }
       })
@@ -673,7 +784,15 @@ export default function App() {
 
     socket.on("hospital_branding_updated", (data) => {
       if (data && data.branding) {
-        setHospitalBranding((prev) => ({ ...prev, ...data.branding }));
+        const targetCode = data.hospital_code || data.branding.hospital_code;
+        const activeCode =
+          (currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role) && currentUser.hospital_code && currentUser.hospital_code !== "all")
+            ? currentUser.hospital_code
+            : (currentHospitalTenant || HOSPITAL_CONFIG.tenantId);
+
+        if (!targetCode || String(targetCode).trim().toLowerCase() === String(activeCode).trim().toLowerCase()) {
+          setHospitalBranding((prev) => ({ ...prev, ...data.branding }));
+        }
       }
     });
 
@@ -1015,7 +1134,7 @@ export default function App() {
   }
 
   return (
-    <div style={appBgStyle}>
+    <div style={(activePage === "patient" || activePage === "superadmin") && theme === "dark" ? darkAppBgStyle : appBgStyle}>
       <div style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}>
         {/* Top Navigation Header Bar */}
         <Header
@@ -1036,6 +1155,8 @@ export default function App() {
           currentHospitalTenant={currentHospitalTenant}
           onSwitchHospital={handleSwitchHospital}
           hospitalBranding={hospitalBranding}
+          theme={theme}
+          setTheme={setTheme}
         />
 
         {/* Main Content Router */}
@@ -1079,6 +1200,7 @@ export default function App() {
                     onSwitchHospital={handleSwitchHospital}
                     hospitalBranding={hospitalBranding}
                     onUpdateHospitalBranding={setHospitalBranding}
+                    theme={theme}
                   />
                 </ErrorBoundary>
               )
@@ -1103,6 +1225,8 @@ export default function App() {
                   navigateTo={navigateTo}
                   hospitalBranding={hospitalBranding}
                   onUpdateHospitalBranding={setHospitalBranding}
+                  theme={theme}
+                  setTheme={setTheme}
                 />
               )
             )}
@@ -1193,6 +1317,14 @@ const appBgStyle = {
   minHeight: "100vh",
   background: "linear-gradient(135deg, #F8FAFC 0%, #F0F9FF 100%)",
   color: "#0F172A",
+  fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
+  padding: "20px 28px",
+};
+
+const darkAppBgStyle = {
+  minHeight: "100vh",
+  background: "linear-gradient(135deg, #090D16 0%, #0F172A 100%)",
+  color: "#F1F5F9",
   fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
   padding: "20px 28px",
 };

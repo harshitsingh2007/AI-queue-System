@@ -157,9 +157,9 @@ export function AddFamilyMemberModal({
                     flex: 1,
                     padding: "8px 12px",
                     borderRadius: "8px",
-                    border: gender === g ? "2px solid #0284C7" : "1px solid #CBD5E1",
-                    background: gender === g ? "#F0F9FF" : "#FFFFFF",
-                    color: gender === g ? "#0369A1" : "#475569",
+                    border: gender === g ? "2px solid #0284C7" : "1px solid var(--patient-card-border, #CBD5E1)",
+                    background: gender === g ? "var(--patient-tag-bg, #F0F9FF)" : "var(--patient-sub-card, #FFFFFF)",
+                    color: gender === g ? "#0284C7" : "var(--patient-text-sub, #475569)",
                     fontSize: "12px",
                     fontWeight: 700,
                     textAlign: "center",
@@ -322,7 +322,7 @@ export function EditFamilyMemberModal({
             <label style={fieldLabelStyle}>{language === "hi" ? "लिंग" : "Gender"}</label>
             <div style={{ display: "flex", gap: "10px" }}>
               {["male", "female", "other"].map((g) => (
-                <label key={g} style={{ flex: 1, padding: "8px 12px", borderRadius: "8px", border: gender === g ? "2px solid #0284C7" : "1px solid #CBD5E1", background: gender === g ? "#F0F9FF" : "#FFFFFF", color: gender === g ? "#0369A1" : "#475569", fontSize: "12px", fontWeight: 700, textAlign: "center", cursor: "pointer", textTransform: "capitalize", transition: "all 0.15s ease" }}>
+                <label key={g} style={{ flex: 1, padding: "8px 12px", borderRadius: "8px", border: gender === g ? "2px solid #0284C7" : "1px solid var(--patient-card-border, #CBD5E1)", background: gender === g ? "var(--patient-tag-bg, #F0F9FF)" : "var(--patient-sub-card, #FFFFFF)", color: gender === g ? "#0284C7" : "var(--patient-text-sub, #475569)", fontSize: "12px", fontWeight: 700, textAlign: "center", cursor: "pointer", textTransform: "capitalize", transition: "all 0.15s ease" }}>
                   <input type="radio" name="editMemberGender" value={g} checked={gender === g} onChange={() => setGender(g)} style={{ display: "none" }} />
                   {g}
                 </label>
@@ -458,12 +458,13 @@ export default function FamilyMemberSwitcher({
 
 // Styling definitions
 const containerStyle = {
-  background: "#FFFFFF",
+  background: "var(--patient-card-bg, #FFFFFF)",
   borderRadius: "14px",
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--patient-card-border, #E2E8F0)",
   padding: "12px 16px",
   marginBottom: "18px",
   boxShadow: "0 1px 4px rgba(0, 0, 0, 0.03)",
+  color: "var(--patient-text-main, #0F172A)",
 };
 
 const headerRowStyle = {
@@ -479,9 +480,9 @@ const addTriggerBtnStyle = {
   gap: "5px",
   padding: "5px 12px",
   borderRadius: "8px",
-  border: "1px solid #BAE6FD",
-  background: "#F0F9FF",
-  color: "#0369A1",
+  border: "1px solid var(--patient-tag-border, #BAE6FD)",
+  background: "var(--patient-tag-bg, #F0F9FF)",
+  color: "var(--patient-tag-color, #0369A1)",
   fontWeight: 800,
   fontSize: "11.5px",
   cursor: "pointer",
@@ -503,9 +504,9 @@ const getPillStyle = (isSelected) => ({
   gap: "8px",
   padding: "7px 13px",
   borderRadius: "10px",
-  border: isSelected ? "1.5px solid #0284C7" : "1px solid #CBD5E1",
-  background: isSelected ? "#0284C7" : "#F8FAFC",
-  color: isSelected ? "#FFFFFF" : "#0F172A",
+  border: isSelected ? "1.5px solid #0284C7" : "1px solid var(--patient-card-border, #CBD5E1)",
+  background: isSelected ? "#0284C7" : "var(--patient-sub-card, #F8FAFC)",
+  color: isSelected ? "#FFFFFF" : "var(--patient-text-main, #0F172A)",
   cursor: "pointer",
   whiteSpace: "nowrap",
   transition: "all 0.2s ease",
@@ -519,15 +520,11 @@ const getTagStyle = (isSelected, isSelf) => ({
   fontWeight: 800,
   background: isSelected
     ? "rgba(255, 255, 255, 0.25)"
-    : isSelf
-    ? "#F0F9FF"
-    : "#E0F2FE",
+    : "var(--patient-tag-bg, #F0F9FF)",
   color: isSelected
     ? "#FFFFFF"
-    : isSelf
-    ? "#0369A1"
-    : "#0284C7",
-  border: isSelected ? "1px solid rgba(255, 255, 255, 0.3)" : "none",
+    : "var(--patient-tag-color, #0369A1)",
+  border: isSelected ? "1px solid rgba(255, 255, 255, 0.3)" : "1px solid var(--patient-tag-border, transparent)",
 });
 
 const deleteMemberBtnStyle = (isSelected) => ({
@@ -547,7 +544,7 @@ const modalOverlayStyle = {
   left: 0,
   right: 0,
   bottom: 0,
-  background: "rgba(15, 23, 42, 0.55)",
+  background: "rgba(15, 23, 42, 0.65)",
   backdropFilter: "blur(4px)",
   WebkitBackdropFilter: "blur(4px)",
   display: "flex",
@@ -558,13 +555,14 @@ const modalOverlayStyle = {
 };
 
 const modalContentStyle = {
-  background: "#FFFFFF",
+  background: "var(--patient-card-bg, #FFFFFF)",
   borderRadius: "18px",
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--patient-card-border, #E2E8F0)",
+  color: "var(--patient-text-main, #0F172A)",
   width: "100%",
   maxWidth: "420px",
   padding: "24px",
-  boxShadow: "0 20px 40px rgba(0, 0, 0, 0.15)",
+  boxShadow: "0 20px 40px rgba(0, 0, 0, 0.35)",
 };
 
 const modalHeaderStyle = {
@@ -573,7 +571,7 @@ const modalHeaderStyle = {
   alignItems: "flex-start",
   marginBottom: "18px",
   paddingBottom: "12px",
-  borderBottom: "1px solid #E2E8F0",
+  borderBottom: "1px solid var(--patient-card-border, #E2E8F0)",
 };
 
 const closeBtnStyle = {
@@ -589,7 +587,7 @@ const fieldLabelStyle = {
   display: "block",
   fontSize: "12px",
   fontWeight: 700,
-  color: "#334155",
+  color: "var(--patient-text-sub, #334155)",
   marginBottom: "6px",
 };
 
@@ -597,9 +595,9 @@ const inputStyle = {
   width: "100%",
   padding: "9px 12px",
   borderRadius: "8px",
-  border: "1px solid #CBD5E1",
-  background: "#F8FAFC",
-  color: "#0F172A",
+  border: "1px solid var(--patient-card-border, #CBD5E1)",
+  background: "var(--patient-sub-card, #F8FAFC)",
+  color: "var(--patient-text-main, #0F172A)",
   fontSize: "13px",
   outline: "none",
   boxSizing: "border-box",
@@ -608,9 +606,9 @@ const inputStyle = {
 const cancelBtnStyle = {
   padding: "8px 16px",
   borderRadius: "8px",
-  border: "1px solid #CBD5E1",
-  background: "#FFFFFF",
-  color: "#475569",
+  border: "1px solid var(--patient-card-border, #CBD5E1)",
+  background: "var(--patient-sub-card, #FFFFFF)",
+  color: "var(--patient-text-sub, #475569)",
   fontSize: "12px",
   fontWeight: 700,
   cursor: "pointer",
