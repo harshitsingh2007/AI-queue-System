@@ -218,28 +218,27 @@ export default function App() {
   // Dynamic Browser Tab Favicon and Title Scoped Exclusively to Hospital-Affiliated Patients and Staff
   useEffect(() => {
     const role = (currentUser?.role || "").toLowerCase();
+    const isSuperAdminGlobal = Boolean(
+      activePage === "superadmin" ||
+      role === "super_admin" ||
+      role === "superadmin"
+    );
+
     const isStaffAffiliate = Boolean(
       currentUser &&
       ["admin", "doctor", "staff", "receptionist"].includes(role) &&
       currentUser.hospital_code &&
-      currentUser.hospital_code !== "all"
+      currentUser.hospital_code !== "all" &&
+      activePage !== "superadmin"
     );
 
     const isPatientAffiliate = Boolean(
-      activePage === "patient" ||
-      activePage === "kiosk" ||
-      role === "user" ||
-      role === "patient" ||
-      !currentUser
+      (activePage === "patient" || activePage === "kiosk" || role === "user" || role === "patient" || !currentUser) &&
+      activePage !== "superadmin"
     );
 
-    const isSuperAdminGlobal = Boolean(
-      (role === "super_admin" || role === "superadmin") &&
-      activePage === "superadmin"
-    );
-
-    // Only apply hospital brand logo in tab for patients and staff of that hospital; never globally for super admin
-    const isAffiliate = (isStaffAffiliate || isPatientAffiliate) && !isSuperAdminGlobal;
+    // Only apply hospital brand logo in tab for patients and staff of that hospital; never in super admin portal
+    const isAffiliate = (isStaffAffiliate || isPatientAffiliate) && !isSuperAdminGlobal && activePage !== "superadmin";
 
     updateBrowserTabBrand({
       logoUrl: hospitalBranding?.logo_url,

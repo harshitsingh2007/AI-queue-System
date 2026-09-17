@@ -2,16 +2,19 @@
  * dynamicFavicon.js
  * -----------------
  * Manages the browser tab icon (favicon) and title dynamically based on
- * the active hospital's white-label branding uploaded by Super Admin.
+ * the active portal (Super Admin vs Hospital White-Labeling Tenant).
  *
  * Scoping Rule:
- * The uploaded hospital logo is strictly visible in the browser tab ONLY for
- * patients and staff affiliated with that specific hospital. It is NOT applied globally
- * (e.g., in the Super Admin dashboard or across unrelated hospital tenants).
+ * 1. Super Admin Portal: Always displays the exclusive Super Admin Cyber Shield Favicon (never individual hospital tenant logos).
+ * 2. Hospital Tenant (Patients & Staff): Displays the custom hospital logo uploaded by Super Admin.
+ * 3. Default: Standard clinical AI Queue Favicon.
  */
 
 export const DEFAULT_FAVICON_SVG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230284C7'%3E%3Cpath d='M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-2 10h-4v4h-2v-4H7v-2h4V7h2v4h4v2z'/%3E%3C/svg%3E";
+
+export const SUPER_ADMIN_FAVICON_SVG =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%230EA5E9'/%3E%3Cstop offset='100%25' stop-color='%230369A1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 2L3 6v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V6l-9-4z' fill='%230F172A' stroke='%2338BDF8' stroke-width='1.5'/%3E%3Cpath d='M12 7v10M7 12h10' stroke='url(%23g)' stroke-width='2.5' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='12' r='2' fill='%2338BDF8'/%3E%3C/svg%3E";
 
 /**
  * Updates the browser tab favicon and document title.
@@ -20,8 +23,8 @@ export const DEFAULT_FAVICON_SVG =
  * @param {string|null} options.logoUrl - The hospital logo URL or base64 data URI uploaded by Super Admin.
  * @param {string|null} options.hospitalName - The hospital name.
  * @param {boolean} options.isAffiliate - True if the visitor is an affiliate patient or staff member of this hospital.
- * @param {boolean} options.isSuperAdmin - True if current user is Super Admin in the global admin portal.
- * @param {string} [options.role] - Current user role (e.g., "doctor", "nurse", "staff", "patient").
+ * @param {boolean} options.isSuperAdmin - True if current user is in the Super Admin portal.
+ * @param {string} [options.role] - Current user role (e.g., "doctor", "nurse", "staff", "patient", "super_admin").
  */
 export function updateBrowserTabBrand({
   logoUrl = null,
@@ -34,9 +37,15 @@ export function updateBrowserTabBrand({
 
   // 1. Determine target icon URL
   const hasCustomLogo = Boolean(logoUrl && typeof logoUrl === "string" && logoUrl.trim().length > 0);
-  const targetIcon = (isAffiliate && !isSuperAdmin && hasCustomLogo)
-    ? logoUrl.trim()
-    : DEFAULT_FAVICON_SVG;
+  let targetIcon = DEFAULT_FAVICON_SVG;
+
+  if (isSuperAdmin) {
+    // Super Admin portal always receives the distinctive Super Admin Shield favicon
+    targetIcon = SUPER_ADMIN_FAVICON_SVG;
+  } else if (isAffiliate && hasCustomLogo) {
+    // Tenant patients & hospital staff get the tenant hospital logo
+    targetIcon = logoUrl.trim();
+  }
 
   // 2. Update favicon in browser head (robust replace pattern for Chromium & Firefox)
   try {
@@ -90,3 +99,4 @@ export function updateBrowserTabBrand({
     console.log("Document title update error:", err);
   }
 }
+
