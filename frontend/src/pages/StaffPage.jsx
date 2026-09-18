@@ -32,6 +32,8 @@ export default function StaffPage({
   navigateTo,
   hospitalBranding = null,
   onUpdateHospitalBranding = null,
+  theme = "light",
+  setTheme = null,
 }) {
   const [localBranding, setLocalBranding] = useState(hospitalBranding);
 
@@ -40,6 +42,58 @@ export default function StaffPage({
       setLocalBranding(hospitalBranding);
     }
   }, [hospitalBranding]);
+
+  // Synchronized Theme State
+  const [currentTheme, setCurrentTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem("ai_queue_theme");
+      if (saved === "dark" || saved === "light") return saved;
+      if (theme === "dark" || theme === "light") return theme;
+      if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    } catch (e) {}
+    return theme || "light";
+  });
+
+  useEffect(() => {
+    if (theme && (theme === "dark" || theme === "light") && theme !== currentTheme) {
+      setCurrentTheme(theme);
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    const handleThemeChange = (e) => {
+      const t = typeof e?.detail === "string" ? e.detail : e?.detail?.theme;
+      if (t && (t === "dark" || t === "light")) {
+        setCurrentTheme(t);
+      }
+    };
+    window.addEventListener("theme_changed", handleThemeChange);
+    return () => window.removeEventListener("theme_changed", handleThemeChange);
+  }, []);
+
+  const handleToggleTheme = () => {
+    const nextTheme = currentTheme === "dark" ? "light" : "dark";
+    setCurrentTheme(nextTheme);
+    try {
+      localStorage.setItem("ai_queue_theme", nextTheme);
+      document.documentElement.setAttribute("data-theme", nextTheme);
+      if (nextTheme === "dark") {
+        document.body.classList.add("theme-dark");
+        document.body.style.backgroundColor = "#090D16";
+        document.body.style.color = "#F1F5F9";
+      } else {
+        document.body.classList.remove("theme-dark");
+        document.body.style.backgroundColor = "#F8FAFC";
+        document.body.style.color = "#0F172A";
+      }
+      window.dispatchEvent(new CustomEvent("theme_changed", { detail: nextTheme }));
+    } catch (e) {}
+    if (setTheme) setTheme(nextTheme);
+  };
+
+  const isDark = currentTheme === "dark";
 
   const [activeTab, setActiveTab] = useState("ops"); // "ops" | "queue" | "apts" | "ml"
   const [appointments, setAppointments] = useState([]);
@@ -793,8 +847,27 @@ export default function StaffPage({
   });
 
   return (
-    <div style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}>
+    <div
+      style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}
+      className={`staff-portal-wrapper ${isDark ? "dark-theme-staff" : ""}`}
+    >
       <style>{`
+        .staff-portal-wrapper {
+          transition: background-color 0.2s ease, color 0.2s ease;
+          --staff-card-bg: #FFFFFF;
+          --staff-card-border: #E2E8F0;
+          --staff-card-text: #0F172A;
+          --staff-sub-bg: #F8FAFC;
+          --staff-sub-border: #E2E8F0;
+          --staff-btn-bg: #FFFFFF;
+          --staff-btn-text: #334155;
+          --staff-th-bg: #F8FAFC;
+          --staff-td-border: #F1F5F9;
+          --staff-muted-text: #64748B;
+          --staff-dropzone-bg: #F0F9FF;
+          --staff-dropzone-border: #BAE6FD;
+        }
+
         .admin-tabs-bar {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -808,8 +881,9 @@ export default function StaffPage({
           gap: 12px;
           padding: 14px 18px;
           border-radius: 16px;
-          border: 1px solid #E2E8F0;
-          background: #FFFFFF;
+          border: 1px solid var(--staff-card-border, #E2E8F0);
+          background: var(--staff-card-bg, #FFFFFF);
+          color: var(--staff-card-text, #0F172A);
           cursor: pointer;
           transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
           text-align: left;
@@ -901,9 +975,9 @@ export default function StaffPage({
         }
 
         .telemetry-sidebar-card {
-          background: #FFFFFF;
+          background: var(--staff-card-bg, #FFFFFF);
           border-radius: 20px;
-          border: 1px solid #E2E8F0;
+          border: 1px solid var(--staff-card-border, #E2E8F0);
           padding: 20px;
           box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
           display: flex;
@@ -938,6 +1012,253 @@ export default function StaffPage({
         .admin-action-btn-primary:active {
           transform: translateY(0);
         }
+
+        /* Top Quick Theme Toggle Bar */
+        .staff-theme-toolbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+          padding: 8px 14px;
+          border-radius: 14px;
+          background: rgba(255, 255, 255, 0.85);
+          border: 1px solid #E2E8F0;
+          backdrop-filter: blur(8px);
+        }
+
+        .staff-quick-theme-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 14px;
+          border-radius: 9999px;
+          border: 1.5px solid #CBD5E1;
+          background: #FFFFFF;
+          color: #0F172A;
+          font-size: 12px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          outline: none;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        }
+
+        .staff-quick-theme-btn:hover {
+          border-color: #0284C7;
+          background: #F0F9FF;
+          box-shadow: 0 2px 8px rgba(2, 132, 199, 0.15);
+        }
+
+        /* ---------------------------------------------------- */
+        /* COMPREHENSIVE DARK THEME RULES FOR DOCTOR/STAFF DESK */
+        /* ---------------------------------------------------- */
+        body.theme-dark,
+        [data-theme="dark"],
+        .dark-theme-staff {
+          color-scheme: dark;
+        }
+
+        body.theme-dark .staff-portal-wrapper,
+        [data-theme="dark"] .staff-portal-wrapper,
+        .dark-theme-staff {
+          color: #F1F5F9 !important;
+          --staff-card-bg: #0F172A;
+          --staff-card-border: #334155;
+          --staff-card-text: #F1F5F9;
+          --staff-sub-bg: #1E293B;
+          --staff-sub-border: #334155;
+          --staff-btn-bg: #1E293B;
+          --staff-btn-text: #E2E8F0;
+          --staff-th-bg: #1E293B;
+          --staff-td-border: #1E293B;
+          --staff-muted-text: #94A3B8;
+          --staff-dropzone-bg: #0B1120;
+          --staff-dropzone-border: #0284C7;
+        }
+
+        body.theme-dark .staff-theme-toolbar,
+        [data-theme="dark"] .staff-theme-toolbar,
+        .dark-theme-staff .staff-theme-toolbar {
+          background: rgba(15, 23, 42, 0.88) !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .staff-quick-theme-btn,
+        [data-theme="dark"] .staff-quick-theme-btn,
+        .dark-theme-staff .staff-quick-theme-btn {
+          background: #1E293B !important;
+          border-color: #475569 !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        body.theme-dark .staff-quick-theme-btn:hover,
+        [data-theme="dark"] .staff-quick-theme-btn:hover,
+        .dark-theme-staff .staff-quick-theme-btn:hover {
+          border-color: #38BDF8 !important;
+          background: #283548 !important;
+          box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
+        }
+
+        body.theme-dark .tab-button-modern.inactive,
+        [data-theme="dark"] .tab-button-modern.inactive,
+        .dark-theme-staff .tab-button-modern.inactive {
+          background: #0F172A !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+        }
+
+        body.theme-dark .tab-button-modern.inactive:hover,
+        [data-theme="dark"] .tab-button-modern.inactive:hover,
+        .dark-theme-staff .tab-button-modern.inactive:hover {
+          background: #1E293B !important;
+          border-color: #38BDF8 !important;
+          box-shadow: 0 6px 18px rgba(56, 189, 248, 0.15) !important;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-icon-wrapper,
+        [data-theme="dark"] .tab-button-modern.inactive .tab-icon-wrapper,
+        .dark-theme-staff .tab-button-modern.inactive .tab-icon-wrapper {
+          background: #1E293B !important;
+          color: #38BDF8 !important;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-sub-text,
+        [data-theme="dark"] .tab-button-modern.inactive .tab-sub-text,
+        .dark-theme-staff .tab-button-modern.inactive .tab-sub-text {
+          color: #94A3B8 !important;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-count-badge,
+        [data-theme="dark"] .tab-button-modern.inactive .tab-count-badge,
+        .dark-theme-staff .tab-button-modern.inactive .tab-count-badge {
+          background: #1E293B !important;
+          color: #38BDF8 !important;
+          border: 1px solid #334155 !important;
+        }
+
+        body.theme-dark .telemetry-sidebar-card,
+        [data-theme="dark"] .telemetry-sidebar-card,
+        .dark-theme-staff .telemetry-sidebar-card {
+          background: #0F172A !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper input,
+        body.theme-dark .staff-portal-wrapper select,
+        body.theme-dark .staff-portal-wrapper textarea,
+        [data-theme="dark"] .staff-portal-wrapper input,
+        [data-theme="dark"] .staff-portal-wrapper select,
+        [data-theme="dark"] .staff-portal-wrapper textarea,
+        .dark-theme-staff input,
+        .dark-theme-staff select,
+        .dark-theme-staff textarea {
+          background-color: #1E293B !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper input::placeholder,
+        body.theme-dark .staff-portal-wrapper textarea::placeholder,
+        [data-theme="dark"] .staff-portal-wrapper input::placeholder,
+        [data-theme="dark"] .staff-portal-wrapper textarea::placeholder,
+        .dark-theme-staff input::placeholder,
+        .dark-theme-staff textarea::placeholder {
+          color: #64748B !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper input:focus,
+        body.theme-dark .staff-portal-wrapper select:focus,
+        body.theme-dark .staff-portal-wrapper textarea:focus,
+        [data-theme="dark"] .staff-portal-wrapper input:focus,
+        [data-theme="dark"] .staff-portal-wrapper select:focus,
+        [data-theme="dark"] .staff-portal-wrapper textarea:focus,
+        .dark-theme-staff input:focus,
+        .dark-theme-staff select:focus,
+        .dark-theme-staff textarea:focus {
+          border-color: #38BDF8 !important;
+          box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2) !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper table,
+        [data-theme="dark"] .staff-portal-wrapper table,
+        .dark-theme-staff table {
+          color: #F1F5F9 !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper th,
+        [data-theme="dark"] .staff-portal-wrapper th,
+        .dark-theme-staff th {
+          background: #1E293B !important;
+          color: #94A3B8 !important;
+          border-bottom-color: #334155 !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper td,
+        [data-theme="dark"] .staff-portal-wrapper td,
+        .dark-theme-staff td {
+          border-bottom-color: #1E293B !important;
+          color: #F1F5F9 !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper tr:hover td,
+        [data-theme="dark"] .staff-portal-wrapper tr:hover td,
+        .dark-theme-staff tr:hover td {
+          background: rgba(30, 41, 59, 0.7) !important;
+        }
+
+        /* Direct Overrides for Inner Cards & Empty-State Boxes in Dark Mode */
+        body.theme-dark .staff-portal-wrapper .staff-empty-box,
+        [data-theme="dark"] .staff-portal-wrapper .staff-empty-box,
+        .dark-theme-staff .staff-empty-box,
+        body.theme-dark .staff-portal-wrapper [style*="background: #F8FAFC"],
+        body.theme-dark .staff-portal-wrapper [style*="background:#F8FAFC"],
+        body.theme-dark .staff-portal-wrapper [style*="background: rgb(248, 250, 252)"],
+        body.theme-dark .staff-portal-wrapper [style*="background: #FFFFFF"],
+        body.theme-dark .staff-portal-wrapper [style*="background:#FFFFFF"],
+        body.theme-dark .staff-portal-wrapper [style*="background: rgb(255, 255, 255)"],
+        .dark-theme-staff [style*="background: #F8FAFC"],
+        .dark-theme-staff [style*="background:#F8FAFC"],
+        .dark-theme-staff [style*="background: rgb(248, 250, 252)"],
+        .dark-theme-staff [style*="background: #FFFFFF"],
+        .dark-theme-staff [style*="background:#FFFFFF"],
+        .dark-theme-staff [style*="background: rgb(255, 255, 255)"] {
+          background: #131D31 !important;
+          border-color: #27354E !important;
+          color: #F1F5F9 !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper [style*="color: #0F172A"],
+        body.theme-dark .staff-portal-wrapper [style*="color:#0F172A"],
+        body.theme-dark .staff-portal-wrapper [style*="color: rgb(15, 23, 42)"],
+        .dark-theme-staff [style*="color: #0F172A"],
+        .dark-theme-staff [style*="color:#0F172A"],
+        .dark-theme-staff [style*="color: rgb(15, 23, 42)"],
+        body.theme-dark .staff-portal-wrapper h2,
+        body.theme-dark .staff-portal-wrapper h3,
+        body.theme-dark .staff-portal-wrapper h4,
+        body.theme-dark .staff-portal-wrapper strong,
+        .dark-theme-staff h2,
+        .dark-theme-staff h3,
+        .dark-theme-staff h4,
+        .dark-theme-staff strong {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .staff-portal-wrapper [style*="color: #64748B"],
+        body.theme-dark .staff-portal-wrapper [style*="color:#64748B"],
+        body.theme-dark .staff-portal-wrapper [style*="color: rgb(100, 116, 139)"],
+        .dark-theme-staff [style*="color: #64748B"],
+        .dark-theme-staff [style*="color:#64748B"],
+        .dark-theme-staff [style*="color: rgb(100, 116, 139)"],
+        body.theme-dark .staff-portal-wrapper p,
+        .dark-theme-staff p {
+          color: #94A3B8 !important;
+        }
       `}</style>
 
       {/* 1. EXECUTIVE ADMIN HERO SECTION (100% Live Telemetry) */}
@@ -965,8 +1286,38 @@ export default function StaffPage({
         onEndBreak={() => handleUpdateDutyStatus("ACTIVE")}
       />
 
-      {/* 2. UNIFIED ADMIN NAVIGATION HUB (4 TABS) */}
+      {/* 2. UNIFIED ADMIN NAVIGATION HUB (4 TABS) + QUICK THEME SWITCHER */}
       <section style={{ marginBottom: "24px" }}>
+        {/* Quick Duty & Dark Mode Status Bar */}
+        <div className="staff-theme-toolbar">
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: isDark ? "#94A3B8" : "#64748B" }}>
+            <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: isDoctorBusy ? "#F59E0B" : "#10B981" }} />
+            <strong style={{ color: isDark ? "#F8FAFC" : "#0F172A" }}>
+              {currentUser?.name || "Dr. Staff Desk"}
+            </strong>
+            <span>•</span>
+            <span>{getCategoryLabel(adminDept, language)}</span>
+            <span>•</span>
+            <span style={{ color: "#38BDF8", fontWeight: 700 }}>
+              {language === "hi" ? "AI कतार सक्रिय" : "Live AI Telemetry"}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleTheme}
+            className="staff-quick-theme-btn"
+            title={isDark ? (language === "hi" ? "लाइट मोड पर स्विच करें" : "Switch to Light Theme") : (language === "hi" ? "डार्क मोड पर स्विच करें" : "Switch to Dark Theme")}
+          >
+            <span>{isDark ? "☀️" : "🌙"}</span>
+            <span>
+              {isDark
+                ? (language === "hi" ? "लाइट मोड (दिन)" : "Light Mode")
+                : (language === "hi" ? "डार्क मोड (रात)" : "Dark Mode")}
+            </span>
+          </button>
+        </div>
+
         <div className="admin-tabs-bar">
           {/* Tab 1: Desk Operations & Calling */}
           <button
@@ -1355,12 +1706,22 @@ export default function StaffPage({
               </div>
 
               {servingTickets.length === 0 ? (
-                <div style={{ padding: "48px 24px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #E2E8F0", color: "#94A3B8" }}>
+                <div
+                  className={`staff-empty-box ${isDark ? "dark-mode-box" : ""}`}
+                  style={{
+                    padding: "48px 24px",
+                    textAlign: "center",
+                    background: isDark ? "#131D31" : "var(--staff-sub-bg, #F8FAFC)",
+                    borderRadius: "16px",
+                    border: isDark ? "1px solid #27354E" : "1px solid var(--staff-sub-border, #E2E8F0)",
+                    color: isDark ? "#94A3B8" : "var(--staff-muted-text, #94A3B8)",
+                  }}
+                >
                   <div style={{ fontSize: "36px", marginBottom: "10px" }}>🩺</div>
-                  <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: "#0F172A" }}>
+                  <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: isDark ? "#F8FAFC" : "var(--staff-card-text, #0F172A)" }}>
                     {t("noServingTickets", language)}
                   </h4>
-                  <p style={{ margin: 0, fontSize: "12.5px", color: "#64748B" }}>
+                  <p style={{ margin: 0, fontSize: "12.5px", color: isDark ? "#94A3B8" : "var(--staff-muted-text, #64748B)" }}>
                     {language === "hi" ? "कतार में से अगले मरीज़ को बुलाने हेतु 'अगला टोकन बुलाएं' बटन दबाएं।" : "Click 'Call Next Ticket' above to admit the highest-priority patient in line."}
                   </p>
                 </div>
@@ -1370,8 +1731,8 @@ export default function StaffPage({
                     <div
                       key={ticket.ticket_id}
                       style={{
-                        background: "#FFFFFF",
-                        border: "1.5px solid #BAE6FD",
+                        background: "var(--staff-card-bg, #FFFFFF)",
+                        border: "1.5px solid var(--staff-card-border, #BAE6FD)",
                         borderRadius: "16px",
                         padding: "18px 20px",
                         boxShadow: "0 4px 16px -2px rgba(2, 132, 199, 0.08)",
@@ -1681,15 +2042,16 @@ export default function StaffPage({
 
                 {heldTickets.length === 0 ? (
                   <div
+                    className={`staff-empty-box ${isDark ? "dark-mode-box" : ""}`}
                     style={{
                       padding: "18px 20px",
-                      background: "#F8FAFC",
+                      background: isDark ? "#131D31" : "var(--staff-sub-bg, #F8FAFC)",
                       borderRadius: "14px",
-                      border: "1px solid #E2E8F0",
+                      border: isDark ? "1px solid #27354E" : "1px solid var(--staff-sub-border, #E2E8F0)",
                       display: "flex",
                       alignItems: "center",
                       gap: "12px",
-                      color: "#64748B",
+                      color: isDark ? "#94A3B8" : "var(--staff-muted-text, #64748B)",
                       fontSize: "12.5px",
                     }}
                   >
@@ -1864,12 +2226,22 @@ export default function StaffPage({
               </div>
 
               {filteredQueue.length === 0 ? (
-                <div style={{ padding: "48px 24px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #E2E8F0", color: "#94A3B8" }}>
+                <div
+                  className={`staff-empty-box ${isDark ? "dark-mode-box" : ""}`}
+                  style={{
+                    padding: "48px 24px",
+                    textAlign: "center",
+                    background: isDark ? "#131D31" : "var(--staff-sub-bg, #F8FAFC)",
+                    borderRadius: "16px",
+                    border: isDark ? "1px solid #27354E" : "1px solid var(--staff-sub-border, #E2E8F0)",
+                    color: isDark ? "#94A3B8" : "var(--staff-muted-text, #94A3B8)",
+                  }}
+                >
                   <div style={{ fontSize: "36px", marginBottom: "10px" }}>📋</div>
-                  <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: "#0F172A" }}>
+                  <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: isDark ? "#F8FAFC" : "var(--staff-card-text, #0F172A)" }}>
                     {t("noWaitingInDept", language)}
                   </h4>
-                  <p style={{ margin: 0, fontSize: "12.5px", color: "#64748B" }}>
+                  <p style={{ margin: 0, fontSize: "12.5px", color: isDark ? "#94A3B8" : "var(--staff-muted-text, #64748B)" }}>
                     {language === "hi" ? "इस समय कोई प्रतीक्षारत मरीज़ नहीं है।" : "All patients have been served or no check-ins pending."}
                   </p>
                 </div>
@@ -1955,12 +2327,22 @@ export default function StaffPage({
               </div>
 
               {appointments.length === 0 ? (
-                <div style={{ padding: "48px 24px", textAlign: "center", background: "#F8FAFC", borderRadius: "16px", border: "1px solid #E2E8F0", color: "#94A3B8" }}>
+                <div
+                  className={`staff-empty-box ${isDark ? "dark-mode-box" : ""}`}
+                  style={{
+                    padding: "48px 24px",
+                    textAlign: "center",
+                    background: isDark ? "#131D31" : "var(--staff-sub-bg, #F8FAFC)",
+                    borderRadius: "16px",
+                    border: isDark ? "1px solid #27354E" : "1px solid var(--staff-sub-border, #E2E8F0)",
+                    color: isDark ? "#94A3B8" : "var(--staff-muted-text, #94A3B8)",
+                  }}
+                >
                   <div style={{ fontSize: "36px", marginBottom: "10px" }}>📅</div>
-                  <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: "#0F172A" }}>
+                  <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: isDark ? "#F8FAFC" : "var(--staff-card-text, #0F172A)" }}>
                     {t("noActiveAptsMsg", language)}
                   </h4>
-                  <p style={{ margin: 0, fontSize: "12.5px", color: "#64748B" }}>
+                  <p style={{ margin: 0, fontSize: "12.5px", color: isDark ? "#94A3B8" : "var(--staff-muted-text, #64748B)" }}>
                     {language === "hi" ? "आज के लिए कोई निर्धारित अपॉइंटमेंट लंबित नहीं है।" : "No pending pre-scheduled appointment bookings found."}
                   </p>
                 </div>
@@ -2172,19 +2554,19 @@ export default function StaffPage({
 
             {/* Live Stats Row */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div style={{ background: "#F8FAFC", padding: "10px 12px", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-                <span style={{ fontSize: "10.5px", color: "#64748B", display: "block" }}>
+              <div style={{ background: isDark ? "#1E293B" : "#F8FAFC", padding: "10px 12px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #E2E8F0" }}>
+                <span style={{ fontSize: "10.5px", color: isDark ? "#94A3B8" : "#64748B", display: "block" }}>
                   {language === "hi" ? "औसत प्रतीक्षा" : "Est. Avg Wait"}
                 </span>
-                <span style={{ fontSize: "16px", fontWeight: 800, color: "#0284C7" }}>
+                <span style={{ fontSize: "16px", fontWeight: 800, color: "#38BDF8" }}>
                   {analytics ? analytics.avg_wait_minutes : 12} {language === "hi" ? "मिनट" : "min"}
                 </span>
               </div>
-              <div style={{ background: "#F8FAFC", padding: "10px 12px", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-                <span style={{ fontSize: "10.5px", color: "#64748B", display: "block" }}>
+              <div style={{ background: isDark ? "#1E293B" : "#F8FAFC", padding: "10px 12px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #E2E8F0" }}>
+                <span style={{ fontSize: "10.5px", color: isDark ? "#94A3B8" : "#64748B", display: "block" }}>
                   {language === "hi" ? "कतार में" : "In Line"}
                 </span>
-                <span style={{ fontSize: "16px", fontWeight: 800, color: "#0F172A" }}>
+                <span style={{ fontSize: "16px", fontWeight: 800, color: isDark ? "#F8FAFC" : "#0F172A" }}>
                   {queueSnapshot.length} {language === "hi" ? "मरीज़" : "patients"}
                 </span>
               </div>
@@ -2193,21 +2575,21 @@ export default function StaffPage({
 
           {/* 2. Next Up in Queue Preview */}
           {queueSnapshot.length > 0 && (
-            <div className="telemetry-sidebar-card">
-              <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A", display: "flex", alignItems: "center", gap: "6px" }}>
+            <div className="telemetry-sidebar-card" style={isDark ? { background: "#0F172A", borderColor: "#334155" } : {}}>
+              <span style={{ fontSize: "12.5px", fontWeight: 800, color: isDark ? "#F8FAFC" : "#0F172A", display: "flex", alignItems: "center", gap: "6px" }}>
                 <span>📋</span> {language === "hi" ? "कतार में अगले टोकन" : "Next Up in Queue"}
               </span>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {queueSnapshot.slice(0, 3).map((item) => (
-                  <div key={item.ticket_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: "8px", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                  <div key={item.ticket_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: "8px", background: isDark ? "#1E293B" : "#F8FAFC", border: isDark ? "1px solid #334155" : "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "11px", fontWeight: 800, color: "#64748B" }}>#{item.position}</span>
+                      <span style={{ fontSize: "11px", fontWeight: 800, color: isDark ? "#94A3B8" : "#64748B" }}>#{item.position}</span>
                       <div>
-                        <strong style={{ fontSize: "12.5px", color: "#0F172A" }}>#{item.ticket_id}</strong>
-                        <span style={{ fontSize: "11px", color: "#64748B", display: "block" }}>{item.name}</span>
+                        <strong style={{ fontSize: "12.5px", color: isDark ? "#F8FAFC" : "#0F172A" }}>#{item.ticket_id}</strong>
+                        <span style={{ fontSize: "11px", color: isDark ? "#94A3B8" : "#64748B", display: "block" }}>{item.name}</span>
                       </div>
                     </div>
-                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#38BDF8" }}>
                       ~{item.estimated_wait_minutes}{language === "hi" ? "मि" : "m"}
                     </span>
                   </div>
@@ -2218,8 +2600,8 @@ export default function StaffPage({
 
           {/* 3. Quick Operations Launcher - Staff/Receptionist and Super Admin only (Doctors excluded) */}
           {canViewDbInspector && navigateTo && (
-            <div className="telemetry-sidebar-card">
-              <span style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A" }}>
+            <div className="telemetry-sidebar-card" style={isDark ? { background: "#0F172A", borderColor: "#334155" } : {}}>
+              <span style={{ fontSize: "12.5px", fontWeight: 800, color: isDark ? "#F8FAFC" : "#0F172A" }}>
                 ⚡ {language === "hi" ? "त्वरित संचालन शॉर्टकट" : "Operations Shortcuts"}
               </span>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -2230,9 +2612,9 @@ export default function StaffPage({
                     width: "100%",
                     padding: "9px 12px",
                     borderRadius: "10px",
-                    border: "1px solid #E2E8F0",
-                    background: "#F8FAFC",
-                    color: "#334155",
+                    border: isDark ? "1px solid #334155" : "1px solid #E2E8F0",
+                    background: isDark ? "#1E293B" : "#F8FAFC",
+                    color: isDark ? "#F8FAFC" : "#334155",
                     fontWeight: 700,
                     fontSize: "12px",
                     cursor: "pointer",
@@ -2348,7 +2730,7 @@ export default function StaffPage({
                 <button
                   type="button"
                   onClick={() => setShowTransferModal(false)}
-                  style={{ flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#64748B", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                  style={{ flex: 1, padding: "10px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #CBD5E1", background: isDark ? "#1E293B" : "#F8FAFC", color: isDark ? "#94A3B8" : "#64748B", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
                 >
                   {t("cancelBtn", language)}
                 </button>
@@ -2413,15 +2795,15 @@ export default function StaffPage({
             </div>
 
             {/* Doctor Attribution Info */}
-            <div style={{ background: "#F8FAFC", padding: "10px 14px", borderRadius: "10px", border: "1px solid #E2E8F0", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#334155" }}>
+            <div style={{ background: isDark ? "#1E293B" : "#F8FAFC", padding: "10px 14px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #E2E8F0", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: isDark ? "#F8FAFC" : "#334155" }}>
                 <span>👨‍⚕️</span>
                 <strong>{currentUser?.name || "Attending Consultant"}</strong>
-                <span style={{ color: "#64748B" }}>
+                <span style={{ color: isDark ? "#94A3B8" : "#64748B" }}>
                   ({currentUser?.department ? getCategoryLabel(currentUser.department, language) : getCategoryLabel(prescriptionTicket.service_category, language)})
                 </span>
               </div>
-              <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 600 }}>
+              <span style={{ fontSize: "11px", color: isDark ? "#94A3B8" : "#64748B", fontWeight: 600 }}>
                 📅 {new Date().toLocaleDateString()} • {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
@@ -2480,9 +2862,9 @@ export default function StaffPage({
                         gap: "8px",
                         alignItems: "center",
                         padding: "10px",
-                        background: "#F8FAFC",
+                        background: isDark ? "#1E293B" : "#F8FAFC",
                         borderRadius: "10px",
-                        border: "1px solid #E2E8F0",
+                        border: isDark ? "1px solid #334155" : "1px solid #E2E8F0",
                       }}
                     >
                       <div>
@@ -2614,7 +2996,7 @@ export default function StaffPage({
                 <button
                   type="button"
                   onClick={() => setShowPrescriptionModal(false)}
-                  style={{ flex: 1, padding: "11px 16px", borderRadius: "10px", border: "1px solid #CBD5E1", background: "#F8FAFC", color: "#64748B", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                  style={{ flex: 1, padding: "11px 16px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #CBD5E1", background: isDark ? "#1E293B" : "#F8FAFC", color: isDark ? "#94A3B8" : "#64748B", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
                 >
                   {t("cancelBtn", language)}
                 </button>
@@ -2685,19 +3067,21 @@ export default function StaffPage({
 
 // Styling definitions
 const standaloneCardStyle = {
-  background: "#FFFFFF",
+  background: "var(--staff-card-bg, #FFFFFF)",
   borderRadius: "20px",
-  border: "1.5px solid #E2E8F0",
+  border: "1.5px solid var(--staff-card-border, #E2E8F0)",
   padding: "24px 28px",
   boxShadow: "0 4px 20px -2px rgba(2, 132, 199, 0.04)",
+  color: "var(--staff-card-text, #0F172A)",
 };
 
 const staffStatCardStyle = {
-  background: "#FFFFFF",
+  background: "var(--staff-card-bg, #FFFFFF)",
   borderRadius: "16px",
-  border: "1px solid #E2E8F0",
+  border: "1px solid var(--staff-card-border, #E2E8F0)",
   padding: "16px 20px",
   boxShadow: "0 2px 10px rgba(0, 0, 0, 0.02)",
+  color: "var(--staff-card-text, #0F172A)",
 };
 
 const announceBtnStyle = {
@@ -2749,9 +3133,9 @@ const finishBtnStyle = {
 const refreshBtnStyle = {
   padding: "8px 14px",
   borderRadius: "10px",
-  border: "1px solid #CBD5E1",
-  background: "#F8FAFC",
-  color: "#334155",
+  border: "1px solid var(--staff-card-border, #CBD5E1)",
+  background: "var(--staff-btn-bg, #F8FAFC)",
+  color: "var(--staff-btn-text, #334155)",
   fontWeight: 700,
   fontSize: "12px",
   cursor: "pointer",
@@ -2769,8 +3153,9 @@ const staffTableStyle = {
 const staffThStyle = {
   textAlign: "left",
   padding: "12px 14px",
-  borderBottom: "1.5px solid #E2E8F0",
-  color: "#64748B",
+  borderBottom: "1.5px solid var(--staff-card-border, #E2E8F0)",
+  background: "var(--staff-th-bg, #F8FAFC)",
+  color: "var(--staff-muted-text, #64748B)",
   fontWeight: 800,
   fontSize: "11px",
   textTransform: "uppercase",
@@ -2779,7 +3164,8 @@ const staffThStyle = {
 
 const staffTdStyle = {
   padding: "12px 14px",
-  borderBottom: "1px solid #F1F5F9",
+  borderBottom: "1px solid var(--staff-td-border, #F1F5F9)",
+  color: "var(--staff-card-text, #0F172A)",
   verticalAlign: "middle",
 };
 
@@ -2816,19 +3202,19 @@ const aptStatusBadgeStyle = (status) => {
 };
 
 const dropzoneStyle = {
-  border: "2px dashed #BAE6FD",
+  border: "2px dashed var(--staff-dropzone-border, #BAE6FD)",
   borderRadius: "14px",
   padding: "24px",
   textAlign: "center",
-  background: "#F0F9FF",
+  background: "var(--staff-dropzone-bg, #F0F9FF)",
 };
 
 const secondaryBtnStyle = {
   padding: "9px 16px",
   borderRadius: "10px",
-  border: "1px solid #CBD5E1",
-  background: "#FFFFFF",
-  color: "#334155",
+  border: "1px solid var(--staff-card-border, #CBD5E1)",
+  background: "var(--staff-btn-bg, #FFFFFF)",
+  color: "var(--staff-btn-text, #334155)",
   fontWeight: 700,
   fontSize: "12.5px",
   cursor: "pointer",
@@ -2837,7 +3223,7 @@ const secondaryBtnStyle = {
 const modalOverlayStyle = {
   position: "fixed",
   inset: 0,
-  background: "rgba(15, 23, 42, 0.6)",
+  background: "rgba(15, 23, 42, 0.75)",
   backdropFilter: "blur(6px)",
   display: "flex",
   alignItems: "center",
@@ -2847,13 +3233,14 @@ const modalOverlayStyle = {
 };
 
 const modalContentStyle = {
-  background: "#FFFFFF",
+  background: "var(--staff-card-bg, #FFFFFF)",
+  color: "var(--staff-card-text, #0F172A)",
   borderRadius: "24px",
   maxWidth: "500px",
   width: "100%",
   padding: "28px",
-  boxShadow: "0 24px 48px -10px rgba(0, 0, 0, 0.25)",
-  border: "1px solid #E2E8F0",
+  boxShadow: "0 24px 48px -10px rgba(0, 0, 0, 0.35)",
+  border: "1px solid var(--staff-card-border, #E2E8F0)",
   maxHeight: "90vh",
   overflowY: "auto",
   boxSizing: "border-box",

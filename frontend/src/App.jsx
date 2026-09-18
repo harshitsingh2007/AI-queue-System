@@ -154,7 +154,7 @@ export default function App() {
     try {
       localStorage.setItem("ai_queue_theme", theme);
       document.documentElement.setAttribute("data-theme", theme);
-      if (theme === "dark" && (activePage === "patient" || activePage === "superadmin")) {
+      if (theme === "dark" && (activePage === "patient" || activePage === "superadmin" || activePage === "staff" || activePage === "admin")) {
         document.body.classList.add("theme-dark");
         document.body.style.backgroundColor = "#090D16";
         document.body.style.color = "#F1F5F9";
@@ -1133,7 +1133,7 @@ export default function App() {
   }
 
   return (
-    <div style={(activePage === "patient" || activePage === "superadmin") && theme === "dark" ? darkAppBgStyle : appBgStyle}>
+    <div style={(activePage === "patient" || activePage === "superadmin" || activePage === "staff" || activePage === "admin") && theme === "dark" ? darkAppBgStyle : appBgStyle}>
       <div style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}>
         {/* Top Navigation Header Bar */}
         <Header
@@ -1259,6 +1259,8 @@ export default function App() {
                   navigateTo={navigateTo}
                   hospitalBranding={hospitalBranding}
                   onUpdateHospitalBranding={setHospitalBranding}
+                  theme={theme}
+                  setTheme={setTheme}
                 />
               )
             )}

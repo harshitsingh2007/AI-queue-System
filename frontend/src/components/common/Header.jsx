@@ -92,7 +92,7 @@ export default function Header({
     if (onToggleTheme) onToggleTheme(nextTheme);
   };
 
-  const isDarkHeader = theme === "dark" && (activePage === "patient" || activePage === "superadmin");
+  const isDarkHeader = theme === "dark" && (activePage === "patient" || activePage === "superadmin" || activePage === "staff" || activePage === "admin");
 
   // Multi-Hospital Facility Active Display
   const [hospitalsList, setHospitalsList] = useState([]);
@@ -262,34 +262,34 @@ export default function Header({
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 18px;
-            margin-bottom: 20px;
-            background: rgba(255, 255, 255, 0.96);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
+            padding: 10px 20px;
+            margin-bottom: 22px;
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(226, 232, 240, 0.95);
-            border-radius: 18px;
-            box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.06), 0 1px 3px rgba(0, 0, 0, 0.02);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px -5px rgba(2, 132, 199, 0.07), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
             position: relative;
             z-index: 100;
             flex-wrap: nowrap;
-            gap: 10px;
-            transition: all 0.25s ease;
+            gap: 12px;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             white-space: nowrap;
           }
 
           /* Dark Mode Header Overrides */
           .user-dashboard-header.dark-theme-header {
-            background: rgba(15, 23, 42, 0.94) !important;
-            border: 1px solid rgba(51, 65, 85, 0.85) !important;
-            box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.12) !important;
+            background: rgba(15, 23, 42, 0.88) !important;
+            border: 1px solid rgba(51, 65, 85, 0.75) !important;
+            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.15) !important;
           }
 
           /* Small Theme Toggle Button (User Portal Only) */
           .header-theme-toggle-btn {
             position: relative;
-            width: 50px;
-            height: 26px;
+            width: 52px;
+            height: 28px;
             border-radius: 9999px;
             background: #E2E8F0;
             border: 1.5px solid #CBD5E1;
@@ -301,20 +301,20 @@ export default function Header({
             justify-content: space-between;
             box-sizing: border-box;
             flex-shrink: 0;
-            transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
             user-select: none;
           }
 
           .header-theme-toggle-btn:hover {
             border-color: #0284C7;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 8px rgba(2, 132, 199, 0.25);
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 10px rgba(2, 132, 199, 0.28);
           }
 
           .header-theme-toggle-btn.is-dark {
             background: #0B1120;
             border-color: #334155;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 8px rgba(56, 189, 248, 0.2);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5), 0 0 10px rgba(56, 189, 248, 0.25);
           }
 
           .header-theme-toggle-btn.is-dark:hover {
@@ -332,21 +332,21 @@ export default function Header({
           }
 
           .theme-sun-track {
-            margin-left: 3px;
+            margin-left: 4px;
             opacity: 0.9;
           }
 
           .theme-moon-track {
-            margin-right: 3px;
+            margin-right: 4px;
             opacity: 0.85;
           }
 
           .theme-toggle-knob {
             position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 19px;
-            height: 19px;
+            top: 2.5px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             background: #FFFFFF;
             display: flex;
@@ -364,39 +364,42 @@ export default function Header({
           }
 
           .user-dashboard-header.dark-theme-header .header-pill-btn {
-            background: #1E293B !important;
-            border-color: #334155 !important;
+            background: rgba(30, 41, 59, 0.8) !important;
+            border-color: rgba(51, 65, 85, 0.8) !important;
             color: #F8FAFC !important;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
           }
 
           .user-dashboard-header.dark-theme-header .header-pill-btn:hover {
-            background: #283548 !important;
+            background: rgba(40, 53, 72, 0.95) !important;
             border-color: #38BDF8 !important;
-            box-shadow: 0 3px 12px rgba(56, 189, 248, 0.15) !important;
+            box-shadow: 0 4px 16px rgba(56, 189, 248, 0.2) !important;
           }
 
           .user-dashboard-header.dark-theme-header .header-nav-btn {
             color: #94A3B8;
+            background: rgba(30, 41, 59, 0.5);
+            border-color: rgba(51, 65, 85, 0.6);
           }
 
           .user-dashboard-header.dark-theme-header .header-nav-btn:hover {
             color: #38BDF8;
-            background: #1E293B;
-            border-color: rgba(56, 189, 248, 0.3);
+            background: rgba(30, 41, 59, 0.95);
+            border-color: rgba(56, 189, 248, 0.4);
+            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.15);
           }
 
           .user-dashboard-header.dark-theme-header .header-nav-btn.active {
             color: #38BDF8;
-            background: rgba(2, 132, 199, 0.2);
+            background: rgba(2, 132, 199, 0.25);
             border-color: #0284C7;
           }
 
           .user-dashboard-header.dark-theme-header .header-dropdown-menu {
-            background: #1E293B !important;
+            background: #0F172A !important;
             border-color: #334155 !important;
             color: #F8FAFC !important;
-            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.65), 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+            box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.3) !important;
           }
 
           body.theme-dark .header-modal-content,
@@ -438,29 +441,32 @@ export default function Header({
           }
 
           .header-nav-btn {
-            padding: 6px 12px;
-            border-radius: 10px;
+            padding: 7px 14px;
+            border-radius: 12px;
             color: #334155;
-            font-size: 12px;
+            font-size: 12.5px;
             font-weight: 700;
             cursor: pointer;
-            border: 1px solid transparent;
-            background: transparent;
-            transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            background: rgba(248, 250, 252, 0.85);
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             text-decoration: none;
             outline: none;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
+            gap: 6px;
             user-select: none;
             white-space: nowrap;
             flex-shrink: 0;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
           }
 
           .header-nav-btn:hover {
             color: #0284C7;
             background: #F0F9FF;
             border-color: #BAE6FD;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12);
           }
 
           .header-nav-btn.active {
@@ -470,45 +476,92 @@ export default function Header({
             font-weight: 800;
           }
 
+          @keyframes emergencyBeacon {
+            0% {
+              box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+            70% {
+              box-shadow: 0 0 0 7px rgba(239, 68, 68, 0);
+            }
+            100% {
+              box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+          }
+
+          .emergency-beacon-ring {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(239, 68, 68, 0.15);
+            flex-shrink: 0;
+          }
+
+          .emergency-beacon-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #EF4444;
+            animation: emergencyBeacon 1.8s infinite cubic-bezier(0.4, 0, 0.6, 1);
+            flex-shrink: 0;
+          }
+
           .header-emergency-pill {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 5px 12px;
-            border-radius: 9999px;
-            background: #FEF2F2;
-            border: 1px solid #FECACA;
+            gap: 8px;
+            padding: 7px 14px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(254, 242, 242, 0.95) 0%, rgba(254, 226, 226, 0.8) 100%);
+            border: 1.5px solid rgba(239, 68, 68, 0.32);
             color: #DC2626;
-            font-size: 11.5px;
+            font-size: 12px;
             font-weight: 800;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
             outline: none;
             white-space: nowrap;
             flex-shrink: 0;
-            max-width: 240px;
+            max-width: 250px;
+            box-shadow: 0 2px 6px rgba(239, 68, 68, 0.1);
           }
 
           .header-emergency-pill:hover {
-            background: #FEE2E2;
-            border-color: #FCA5A5;
-            box-shadow: 0 3px 10px rgba(220, 38, 38, 0.15);
+            background: linear-gradient(135deg, #FEE2E2 0%, #FECACA 100%);
+            border-color: #EF4444;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25);
+          }
+
+          .user-dashboard-header.dark-theme-header .header-emergency-pill {
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.2) 0%, rgba(185, 28, 28, 0.1) 100%) !important;
+            border-color: rgba(239, 68, 68, 0.45) !important;
+            color: #FCA5A5 !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+          }
+
+          .user-dashboard-header.dark-theme-header .header-emergency-pill:hover {
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.35) 0%, rgba(185, 28, 28, 0.2) 100%) !important;
+            border-color: #EF4444 !important;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35) !important;
           }
 
           .header-pill-btn {
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            border-radius: 10px;
-            background: #FFFFFF;
-            border: 1px solid #CBD5E1;
+            gap: 7px;
+            padding: 6.5px 13px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid rgba(203, 213, 225, 0.85);
             color: #0F172A;
             font-size: 12px;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.18s ease;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
             outline: none;
             user-select: none;
             white-space: nowrap;
@@ -518,7 +571,8 @@ export default function Header({
           .header-pill-btn:hover {
             border-color: #0284C7;
             background: #F0F9FF;
-            box-shadow: 0 3px 10px rgba(2, 132, 199, 0.08);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.12);
           }
 
           .header-dropdown-menu {
@@ -740,16 +794,21 @@ export default function Header({
             </button>
           )}
 
-          {/* Emergency 24/7 Hotline Button (Hidden on Super Admin Portal) */}
-          {activePage !== "superadmin" && (
+          {/* Emergency 24/7 Hotline Button (Visible only on Patient Portal, hidden on Doctor/Staff & Admin Portals) */}
+          {activePage === "patient" && (
             <button
               type="button"
               onClick={() => setShowContactModal(true)}
               className="header-emergency-pill"
-              title="Emergency Care & Helpline"
+              title="Emergency Care & 24/7 Helpline"
             >
-              <span>🚨</span>
-              <span style={{ maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div className="emergency-beacon-ring">
+                <span className="emergency-beacon-dot" />
+              </div>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+              </svg>
+              <span style={{ maxWidth: "190px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {displayEmergencyText}
               </span>
             </button>
@@ -787,8 +846,8 @@ export default function Header({
 
         {/* 3. Right: Theme Toggle (User Portal Only), Language Selector & Patient Profile Dropdown */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", position: "relative", flexShrink: 0 }}>
-          {/* Theme Toggle Switch (Available for Patient & Super Admin Portals) */}
-          {(activePage === "patient" || activePage === "superadmin") && (
+          {/* Theme Toggle Switch (Available for Patient, Super Admin & Doctor/Staff Portals) */}
+          {(activePage === "patient" || activePage === "superadmin" || activePage === "staff" || activePage === "admin") && (
             <button
               type="button"
               onClick={handleToggleTheme}

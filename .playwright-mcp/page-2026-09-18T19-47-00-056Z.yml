@@ -1,0 +1,93 @@
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: City General Hospital
+        - generic [ref=e13]: PATIENT PORTAL
+      - generic [ref=e14]: AI Queue Orchestration & Care Access
+    - generic [ref=e15]:
+      - button "Help Center" [ref=e16] [cursor=pointer]
+      - button "Find a Provider" [ref=e17] [cursor=pointer]
+      - button "Support" [ref=e18] [cursor=pointer]
+      - button "English (EN)" [ref=e19] [cursor=pointer]
+      - button "Waiting Room TV →" [ref=e24] [cursor=pointer]:
+        - generic [ref=e25]: Waiting Room TV
+        - generic [ref=e26]: →
+  - main [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - heading "Your healthcare, in one secure place." [level=1] [ref=e30]:
+          - text: Your healthcare,
+          - generic [ref=e31]: in one secure place.
+        - paragraph [ref=e32]: Access appointments, manage your queue, and stay connected with your care — all in one secure patient portal.
+      - generic [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]:
+            - heading "Welcome back" [level=2] [ref=e36]
+            - paragraph [ref=e37]: Sign in to your patient account.
+          - generic [ref=e38]:
+            - button "Sign In" [ref=e39] [cursor=pointer]
+            - button "Register" [ref=e40] [cursor=pointer]
+        - generic [ref=e41]:
+          - generic [ref=e42]:
+            - generic [ref=e43]: EMAIL OR PATIENT ID
+            - textbox "Enter your email or patient ID" [ref=e46]: patient@hospital.com
+          - generic [ref=e47]:
+            - generic [ref=e48]:
+              - generic [ref=e49]: PASSWORD
+              - button "Forgot password?" [ref=e50] [cursor=pointer]
+            - generic [ref=e51]:
+              - textbox "Enter your password" [ref=e52]: pass123
+              - button "Show password" [ref=e53] [cursor=pointer]
+          - button "Sign in to my portal →" [ref=e57] [cursor=pointer]:
+            - generic [ref=e58]: Sign in to my portal
+            - generic [ref=e59]: →
+          - generic [ref=e60]:
+            - generic [ref=e61]: New to the patient portal?
+            - button "Create an account" [ref=e62] [cursor=pointer]
+          - generic [ref=e63]:
+            - generic [ref=e64]: "Quick Login:"
+            - button "👑 Super Admin" [ref=e65] [cursor=pointer]
+            - button "👤 Patient" [active] [ref=e66] [cursor=pointer]
+        - generic [ref=e67]: Protected with secure authentication
+    - generic [ref=e71]:
+      - generic [ref=e72]:
+        - generic [ref=e73]:
+          - generic [ref=e74]: ⚕
+          - generic [ref=e75]:
+            - generic [ref=e76]: Live Clinical Session
+            - generic [ref=e77]: Real-time Patient Queue & AI Sync
+        - generic [ref=e78]: ONLINE
+      - generic [ref=e81]:
+        - generic [ref=e82]:
+          - generic [ref=e83]: NEXT APPOINTMENT
+          - generic [ref=e84]: Tue · 9:40 AM
+        - generic [ref=e85]:
+          - generic [ref=e86]: SM
+          - generic [ref=e87]:
+            - generic [ref=e88]: Dr. Sarah Mitchell
+            - generic [ref=e89]: Cardiology Consultation • Room 204
+          - generic [ref=e90]: ✓ Confirmed
+      - generic [ref=e91]:
+        - generic [ref=e92]:
+          - generic [ref=e93]: QUEUE STATUS
+          - generic [ref=e94]: "Position #6"
+          - generic [ref=e95]: Estimated wait ~24 min
+          - generic [ref=e96]: Counter 3B (OPD Wing)
+        - generic [ref=e97]:
+          - generic [ref=e98]: AI WAIT ESTIMATE
+          - generic [ref=e99]: 24–30 min
+          - generic [ref=e100]: "Confidence: High"
+          - generic [ref=e103]: Clinical ML model v2.5
+      - generic [ref=e105]:
+        - generic [ref=e106]: 🔔
+        - generic [ref=e107]:
+          - generic [ref=e108]: QUEUE UPDATE
+          - generic [ref=e109]: You're getting closer. 4 patients ahead
+        - generic [ref=e110]: Just now
+  - contentinfo [ref=e111]:
+    - generic [ref=e112]: © 2026 City General Hospital. All rights reserved.
+    - generic [ref=e113]:
+      - button "Privacy Policy" [ref=e114] [cursor=pointer]
+      - button "Terms of Service" [ref=e115] [cursor=pointer]
+      - button "Accessibility" [ref=e116] [cursor=pointer]

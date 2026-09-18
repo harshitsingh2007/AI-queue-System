@@ -8,7 +8,8 @@
  * - Mobile: Gracefully stacked layout
  */
 
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { fetchDailyHealthQuote } from "../../utils/dailyHealthTips";
 
 export default function HeroBanner({
   language = "en",
@@ -27,6 +28,18 @@ export default function HeroBanner({
   const secondaryBrandColor = branding?.secondary_color || "#0C4A6E";
   const displayHospName = branding?.hospital_name || branding?.name || hospitalName;
 
+  const [dailyQuote, setDailyQuote] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchDailyHealthQuote(language).then((q) => {
+      if (isMounted && q) setDailyQuote(q);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [language]);
+
   return (
     <div style={heroContainerStyle} className="hero-banner-container">
       <style>{`
@@ -36,9 +49,9 @@ export default function HeroBanner({
           align-items: stretch;
           border-radius: 28px;
           overflow: hidden;
-          background: #0F172A;
-          box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(2, 132, 199, 0.05);
-          border: 1px solid rgba(2, 132, 199, 0.2);
+          background: radial-gradient(circle at 10% 15%, rgba(2, 132, 199, 0.25) 0%, transparent 45%), radial-gradient(circle at 90% 85%, rgba(56, 189, 248, 0.18) 0%, transparent 50%), linear-gradient(135deg, #090F1E 0%, #0F172A 60%, #162447 100%);
+          box-shadow: 0 20px 45px -12px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(56, 189, 248, 0.18);
+          border: 1px solid rgba(56, 189, 248, 0.25);
           margin-bottom: 24px;
           position: relative;
           min-height: 280px;
@@ -47,21 +60,21 @@ export default function HeroBanner({
 
         .hero-left-col {
           flex: 1.15;
-          padding: 38px 36px;
+          padding: 34px 34px;
           display: flex;
           flex-direction: column;
           justifyContent: space-between;
           z-index: 2;
-          background: linear-gradient(135deg, #0F172A 0%, #1E293B 70%, ${secondaryBrandColor} 100%);
+          background: transparent;
           position: relative;
         }
 
         /* Divider on wide screens */
         @media (min-width: 900px) {
           .hero-left-col {
-            padding-right: 40px;
+            padding-right: 36px;
             margin-right: 0;
-            border-right: 1px solid rgba(2, 132, 199, 0.2);
+            border-right: 1px solid rgba(56, 189, 248, 0.18);
           }
         }
 
@@ -70,14 +83,14 @@ export default function HeroBanner({
           background: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           position: relative;
           overflow: hidden;
           min-height: 260px;
         }
 
         .hero-title {
-          font-size: 32px;
+          font-size: 30px;
           font-weight: 800;
           line-height: 1.18;
           letter-spacing: -0.6px;
@@ -87,15 +100,18 @@ export default function HeroBanner({
 
         .hero-title-highlight {
           color: #38BDF8;
+          background: linear-gradient(135deg, #38BDF8 0%, #0284C7 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
         }
 
         .hero-subtitle {
           color: rgba(224, 242, 254, 0.88);
-          font-size: 13.5px;
+          font-size: 13px;
           line-height: 1.5;
-          margin-top: 12px;
-          margin-bottom: 24px;
-          max-width: 420px;
+          margin-top: 10px;
+          margin-bottom: 20px;
+          max-width: 440px;
           font-weight: 500;
         }
 
@@ -107,39 +123,43 @@ export default function HeroBanner({
         }
 
         .hero-stat-card {
-          background: rgba(255, 255, 255, 0.08);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 14px;
-          padding: 10px 12px;
+          background: rgba(255, 255, 255, 0.07);
+          backdrop-filter: blur(14px);
+          -webkit-backdrop-filter: blur(14px);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 16px;
+          padding: 10px 14px;
           display: flex;
           align-items: center;
           gap: 10px;
           min-width: 0;
           box-sizing: border-box;
-          transition: background 0.2s ease, border-color 0.2s ease;
+          transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
         .hero-stat-card:hover {
           background: rgba(255, 255, 255, 0.14);
-          border-color: rgba(56, 189, 248, 0.4);
+          border-color: rgba(56, 189, 248, 0.5);
+          transform: translateY(-2.5px);
+          box-shadow: 0 8px 24px -4px rgba(2, 132, 199, 0.25);
         }
 
         .hero-stat-icon-wrap {
-          width: 34px;
-          height: 34px;
-          border-radius: 10px;
+          width: 36px;
+          height: 36px;
+          border-radius: 11px;
           background: rgba(56, 189, 248, 0.18);
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
           color: #38BDF8;
+          box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.2);
         }
 
         .hero-stat-value {
-          font-size: 15px;
+          font-size: 15.5px;
           font-weight: 800;
           color: #FFFFFF;
           line-height: 1.15;
@@ -152,7 +172,7 @@ export default function HeroBanner({
         .hero-stat-label {
           font-size: 10px;
           font-weight: 600;
-          color: rgba(255, 255, 255, 0.78);
+          color: rgba(255, 255, 255, 0.75);
           line-height: 1.2;
           margin-top: 2px;
           white-space: nowrap;
@@ -238,11 +258,89 @@ export default function HeroBanner({
               </>
             )}
           </h1>
-          <p className="hero-subtitle">
-            {branding?.tagline || (isHi
-              ? "सहज अस्पताल विज़िट हेतु रीयल-टाइम कतार ट्रैकिंग एवं तत्काल टोकन सुविधा।"
-              : "Real-time queue tracking & instant token for a smooth hospital visit.")}
-          </p>
+          {/* Dynamic Daily Health Quote / Insight */}
+          <div
+            style={{
+              background: "rgba(255, 255, 255, 0.07)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(56, 189, 248, 0.22)",
+              borderRadius: "14px",
+              padding: "10px 14px",
+              marginTop: "12px",
+              marginBottom: "20px",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "10px",
+              maxWidth: "480px",
+              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)",
+              transition: "all 0.2s ease",
+            }}
+          >
+            <div
+              style={{
+                width: "28px",
+                height: "28px",
+                borderRadius: "8px",
+                background: "rgba(56, 189, 248, 0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                fontSize: "14px",
+              }}
+            >
+              💡
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                  marginBottom: "3px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    color: "#38BDF8",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  {isHi ? "दैनिक स्वास्थ्य युक्ति" : "Daily Health Insight"}{" "}
+                  {dailyQuote?.category ? `• ${dailyQuote.category}` : ""}
+                </span>
+              </div>
+              <p
+                style={{
+                  margin: 0,
+                  color: "#E0F2FE",
+                  fontSize: "12px",
+                  lineHeight: "1.45",
+                  fontWeight: 500,
+                  fontStyle: "italic",
+                }}
+              >
+                "{dailyQuote?.text || (isHi ? "पर्याप्त पानी पिएं और स्वस्थ रहें।" : "Stay hydrated and prioritize your wellbeing today.")}"
+              </p>
+              {dailyQuote?.author && (
+                <div
+                  style={{
+                    fontSize: "9.5px",
+                    color: "rgba(224, 242, 254, 0.6)",
+                    marginTop: "3px",
+                    textAlign: "right",
+                  }}
+                >
+                  — {dailyQuote.author}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* 3 Stats Badges */}
