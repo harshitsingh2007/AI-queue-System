@@ -26,7 +26,7 @@ import SuperAdminPage from "./pages/SuperAdminPage";
 import { announceTicketVoice } from "./utils/voiceSynthesizer";
 import { updateBrowserTabBrand } from "./utils/dynamicFavicon";
 
-function getInitialPage(user) {
+export function getInitialPage(user) {
   let effectiveUser = user;
   if (!effectiveUser && typeof window !== "undefined") {
     try {
@@ -35,7 +35,7 @@ function getInitialPage(user) {
     } catch (e) {}
   }
   const userRole = effectiveUser ? (effectiveUser.role || "").toLowerCase() : "";
-  const isSuperAdminUser = userRole === "super_admin" || userRole === "superadmin";
+  const isSuperAdminUser = userRole === "super_admin" || userRole === "superadmin" || effectiveUser?.email === "superadmin@hospital.com" || effectiveUser?.is_superadmin;
   const isStaffUser = ["admin", "doctor", "staff", "receptionist"].includes(userRole);
   const path = window.location.pathname.toLowerCase();
   if (path.startsWith("/kiosk") || path.includes("kiosk") || path.includes("tv")) return "kiosk";
@@ -45,6 +45,10 @@ function getInitialPage(user) {
   if (pageParam && pageParam.toLowerCase() !== "hub") {
     const p = pageParam.toLowerCase();
     if (p === "kiosk" || p === "tv") return "kiosk";
+    if (["superadmin", "super_admin", "super-admin", "owner"].includes(p)) return "superadmin";
+    if (["staff", "doctor", "desk"].includes(p)) return "staff";
+    if (["admin", "ml"].includes(p)) return "admin";
+    if (["db", "database"].includes(p)) return "db";
     // Tab aliases for the patient portal should route to patient page
     if (["patient", "history", "appointment_history", "past_appointments", "my_apts", "appointments", "my_appointments", "book", "family"].includes(p)) {
       if (isSuperAdminUser) return "superadmin";
@@ -54,7 +58,7 @@ function getInitialPage(user) {
     return p;
   }
 
-  if (path.includes("superadmin") || path.includes("super_admin")) return "superadmin";
+  if (path.includes("superadmin") || path.includes("super_admin") || path.includes("super-admin")) return "superadmin";
   if (path.includes("staff") || path.includes("doctor")) return "staff";
   if (path.includes("admin") || path.includes("ml")) return "admin";
   if (path.includes("db") || path.includes("database")) return "db";
@@ -273,9 +277,17 @@ export default function App() {
     let targetPage = page;
     let targetTab = tab;
 
-    // Gracefully handle alias pages so they resolve directly to patient tab
+    // Gracefully handle alias pages so they resolve directly
     const lower = (page || "").toLowerCase();
-    if (["history", "appointment_history", "past_appointments"].includes(lower)) {
+    if (["superadmin", "super_admin", "super-admin", "owner"].includes(lower)) {
+      targetPage = "superadmin";
+    } else if (["staff", "doctor", "desk"].includes(lower)) {
+      targetPage = "staff";
+    } else if (["admin", "ml"].includes(lower)) {
+      targetPage = "admin";
+    } else if (["db", "database"].includes(lower)) {
+      targetPage = "db";
+    } else if (["history", "appointment_history", "past_appointments"].includes(lower)) {
       targetPage = "patient";
       targetTab = targetTab || "history";
     } else if (["my_apts", "appointments", "my_appointments"].includes(lower)) {
@@ -634,10 +646,20 @@ export default function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const isSuperAdmin = currentUser && (currentUser.role === "super_admin" || currentUser.role === "superadmin");
-  const isStaffOrAdmin = currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role);
+  const isSuperAdmin = Boolean(
+    currentUser && (
+      currentUser.role === "super_admin" ||
+      currentUser.role === "superadmin" ||
+      (currentUser.role || "").toLowerCase() === "super_admin" ||
+      (currentUser.role || "").toLowerCase() === "superadmin" ||
+      currentUser.email === "superadmin@hospital.com" ||
+      currentUser.is_superadmin === true
+    )
+  );
+  const isStaffOrAdmin = currentUser && ["admin", "doctor", "staff", "receptionist"].includes((currentUser.role || "").toLowerCase());
   const isAdmin = isStaffOrAdmin;
   const userRole = (currentUser?.role || "").toLowerCase();
+  const isPatientOrGuest = !currentUser || userRole === "user" || userRole === "patient";
   const canAccessDbInspector =
     Boolean(currentUser) &&
     userRole !== "doctor" &&
@@ -1133,8 +1155,38 @@ export default function App() {
   }
 
   return (
-    <div style={(activePage === "patient" || activePage === "superadmin" || activePage === "staff" || activePage === "admin") && theme === "dark" ? darkAppBgStyle : appBgStyle}>
-      <div style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}>
+    <div
+      className={`app-main-layout-wrapper ${(activePage === "patient" || activePage === "superadmin" || activePage === "staff" || activePage === "admin") && theme === "dark" ? "dark-theme" : ""}`}
+      style={(activePage === "patient" || activePage === "superadmin" || activePage === "staff" || activePage === "admin") && theme === "dark" ? darkAppBgStyle : appBgStyle}
+    >
+      <style>{`
+        .app-main-layout-wrapper {
+          min-height: 100vh;
+          width: 100%;
+          max-width: 100vw;
+          overflow-x: hidden;
+          box-sizing: border-box;
+          padding: 18px 24px;
+          transition: background-color 0.25s ease, color 0.25s ease;
+        }
+        @media (max-width: 1024px) {
+          .app-main-layout-wrapper {
+            padding: 14px 16px;
+          }
+        }
+        @media (max-width: 640px) {
+          .app-main-layout-wrapper {
+            padding: 10px 8px;
+          }
+        }
+        .app-main-layout-inner {
+          max-width: 1440px;
+          margin: 0 auto;
+          width: 100%;
+          box-sizing: border-box;
+        }
+      `}</style>
+      <div className="app-main-layout-inner">
         {/* Top Navigation Header Bar */}
         <Header
           currentUser={currentUser}
@@ -1152,26 +1204,26 @@ export default function App() {
           onAddFamilyMember={handleAddFamilyMemberFromHeader}
           onManageFamilyMembers={handleManageFamilyMembers}
           currentHospitalTenant={currentHospitalTenant}
-          onSwitchHospital={handleSwitchHospital}
+          onSwitchHospital={setCurrentHospitalTenant}
           hospitalBranding={hospitalBranding}
           theme={theme}
           setTheme={setTheme}
         />
 
-        {/* Main Content Router */}
+        {/* Main Content View with Access Control Guard */}
         <main style={mainContentStyle}>
           <>
             {activePage === "patient" && (
-              (isAdmin || isSuperAdmin) ? (
+              !isPatientOrGuest ? (
                 <AccessDeniedGuard
-                  requiredRole="user"
-                  pageName="Patient Check-in Portal (Consumer)"
+                  requiredRole="patient"
+                  pageName="Patient Portal"
                   currentUser={currentUser}
                   onLoginSuccess={handleLoginSuccess}
                   navigateTo={navigateTo}
                 />
               ) : (
-                <ErrorBoundary fallbackTitle="Patient Portal Error">
+                <ErrorBoundary>
                   <PatientPage
                     tenantId={tenantId}
                     currentUser={currentUser}
@@ -1189,14 +1241,15 @@ export default function App() {
                     servingTickets={servingTickets}
                     kioskQrData={kioskQrData}
                     socketConnected={socketConnected}
+                    socketRef={socketRef}
                     familyMembers={familyMembers}
                     setFamilyMembers={setFamilyMembers}
                     activeFamilyMember={activeFamilyMember}
                     setActiveFamilyMember={setActiveFamilyMember}
                     onSwitchProfile={handleSwitchProfile}
-                    onFamilyMembersChange={fetchFamilyMembers}
+                    onFamilyMembersChange={setFamilyMembers}
                     currentHospitalTenant={currentHospitalTenant}
-                    onSwitchHospital={handleSwitchHospital}
+                    onSwitchHospital={setCurrentHospitalTenant}
                     hospitalBranding={hospitalBranding}
                     onUpdateHospitalBranding={setHospitalBranding}
                     theme={theme}
@@ -1209,24 +1262,25 @@ export default function App() {
               !isSuperAdmin ? (
                 <AccessDeniedGuard
                   requiredRole="super_admin"
-                  pageName="Super Admin / Hospital Owner Portal"
+                  pageName="Executive Super Admin Dashboard"
                   currentUser={currentUser}
                   onLoginSuccess={handleLoginSuccess}
                   navigateTo={navigateTo}
+                  language={language}
                 />
               ) : (
-                <SuperAdminPage
-                  currentUser={currentUser}
-                  language={language}
-                  onSelectHospitalTenant={(hCode) => {
-                    setCurrentHospitalTenant(hCode);
-                  }}
-                  navigateTo={navigateTo}
-                  hospitalBranding={hospitalBranding}
-                  onUpdateHospitalBranding={setHospitalBranding}
-                  theme={theme}
-                  setTheme={setTheme}
-                />
+                <ErrorBoundary fallbackTitle="Super Admin Dashboard Error">
+                  <SuperAdminPage
+                    currentUser={currentUser}
+                    language={language}
+                    onSelectHospitalTenant={setCurrentHospitalTenant}
+                    navigateTo={navigateTo}
+                    hospitalBranding={hospitalBranding}
+                    onUpdateHospitalBranding={setHospitalBranding}
+                    theme={theme}
+                    setTheme={setTheme}
+                  />
+                </ErrorBoundary>
               )
             )}
 
@@ -1315,19 +1369,15 @@ export default function App() {
 
 // Global Soft Medical Blue & Cyan Clinical Theme Styles
 const appBgStyle = {
-  minHeight: "100vh",
   background: "linear-gradient(135deg, #F8FAFC 0%, #F0F9FF 100%)",
   color: "#0F172A",
   fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-  padding: "20px 28px",
 };
 
 const darkAppBgStyle = {
-  minHeight: "100vh",
   background: "linear-gradient(135deg, #090D16 0%, #0F172A 100%)",
   color: "#F1F5F9",
   fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif",
-  padding: "20px 28px",
 };
 
 const mainContentStyle = { minHeight: "75vh" };

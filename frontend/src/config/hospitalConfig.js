@@ -17,6 +17,5 @@ export const HOSPITAL_CONFIG = {
     { id: "laboratory", label: "Pathology & Lab Test" },
     { id: "radiology", label: "Radiology & X-Ray" },
     { id: "emergency", label: "Emergency Triage" },
-    { id: "billing", label: "Central Billing" },
   ],
 };

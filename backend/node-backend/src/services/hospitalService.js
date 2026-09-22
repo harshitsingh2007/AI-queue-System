@@ -15,7 +15,6 @@ const STANDARD_DEPARTMENTS = [
   ["laboratory", "Pathology & Lab Test", "Diagnostic blood, urine and pathology assays"],
   ["radiology", "Radiology & X-Ray", "X-Ray, CT Scan, MRI and ultrasound imaging"],
   ["emergency", "Emergency Triage", "Critical emergency resuscitation and trauma"],
-  ["billing", "Central Billing & Cashier", "Hospital services billing, insurance and receipts"],
 ];
 
 const DEFAULT_BRANDING = {

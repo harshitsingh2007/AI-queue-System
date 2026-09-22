@@ -14,6 +14,8 @@ import QueueStepper from "../components/patient/QueueStepper";
 import HeroBanner from "../components/patient/HeroBanner";
 import Footer from "../components/common/Footer";
 import FamilyMemberSwitcher, { AddFamilyMemberModal, EditFamilyMemberModal, getRelationLabel } from "../components/patient/FamilyMemberSwitcher";
+import PatientHistoryTimeline from "../components/patient-history/PatientHistoryTimeline";
+import { usePatientHistory } from "../hooks/usePatientHistory";
 
 export default function PatientPage({
   tenantId,
@@ -32,6 +34,7 @@ export default function PatientPage({
   servingTickets = [],
   kioskQrData,
   socketConnected = true,
+  socketRef = null,
   // App-level family profile state (passed from App.jsx)
   familyMembers: familyMembersProp = null,
   setFamilyMembers: setFamilyMembersProp = null,
@@ -105,6 +108,26 @@ export default function PatientPage({
       setLocalFamilyMembers(newMembers);
     }
   };
+
+  // Live Patient Medical History & Follow-up records
+  const {
+    historyData: myMedicalHistoryData,
+    patient: myMedicalPatient,
+    summary: myMedicalSummary,
+    visits: myMedicalVisits,
+    prescriptions: myMedicalPrescriptions,
+    reports: myMedicalReports,
+    isReturningPatient: isMyReturningPatient,
+    totalVisits: myMedicalTotalVisits,
+    loading: myMedicalHistoryLoading,
+  } = usePatientHistory({
+    patientId: currentUser?.id,
+    phone: currentUser?.phone,
+    ticketId: activeTicket?.ticket_id,
+    hospitalId: tenantId,
+    socketRef,
+    autoFetch: true,
+  });
 
   const [selectedMemberId, setSelectedMemberId] = useState("self");
   const [editingMember, setEditingMember] = useState(null);
@@ -1350,7 +1373,13 @@ export default function PatientPage({
           align-items: center;
           justify-content: space-between;
           margin-bottom: 12px;
-          padding: 0 4px;
+          padding: 8px 14px;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.94) 100%);
+          border: 1px solid #E2E8F0;
+          border-radius: 14px;
+          box-shadow: 0 4px 18px -2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+          backdrop-filter: blur(12px);
+          gap: 12px;
         }
 
         .patient-nav-title {
@@ -1360,90 +1389,172 @@ export default function PatientPage({
           letter-spacing: -0.2px;
           display: flex;
           align-items: center;
+          gap: 10px;
+        }
+
+        .patient-nav-title-icon {
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          background: linear-gradient(135deg, #E0F2FE 0%, #BAE6FD 100%);
+          color: #0284C7;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          box-shadow: 0 2px 6px rgba(2, 132, 199, 0.15);
+        }
+
+        .patient-nav-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+
+        .hospital-switcher-btn {
+          display: inline-flex;
+          align-items: center;
           gap: 8px;
+          padding: 5px 12px;
+          border-radius: 9999px;
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+          color: #0F172A;
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .hospital-switcher-btn:hover {
+          border-color: #0284C7;
+          background: #F0F9FF;
+          box-shadow: 0 3px 10px rgba(2, 132, 199, 0.12);
+          transform: translateY(-1px);
+        }
+
+        .hospital-switcher-badge {
+          font-size: 11px;
+          color: #0284C7;
+          background: #EFF6FF;
+          padding: 2px 7px;
+          border-radius: 6px;
+          font-weight: 800;
+          border: 1px solid #DBEAFE;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
         }
 
         .patient-nav-status-badge {
           display: inline-flex;
           align-items: center;
-          gap: 5px;
-          font-size: 11px;
+          gap: 6px;
+          font-size: 11.5px;
           font-weight: 700;
-          color: #0284C7;
-          background: #F0F9FF;
-          padding: 3px 9px;
+          color: #047857;
+          background: rgba(16, 185, 129, 0.08);
+          padding: 5px 12px;
           border-radius: 9999px;
-          border: 1px solid #BAE6FD;
+          border: 1px solid rgba(16, 185, 129, 0.25);
+          box-shadow: 0 1px 3px rgba(16, 185, 129, 0.08);
         }
 
         .status-dot-pulse {
           width: 7px;
           height: 7px;
           border-radius: 50%;
-          background: #0284C7;
-          box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.25);
+          background: #10B981;
+          box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
           animation: pulseDot 2s infinite ease-in-out;
         }
 
         @keyframes pulseDot {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.25); opacity: 0.7; }
+          0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35); }
+          50% { transform: scale(1.25); opacity: 0.85; box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.08); }
         }
 
         .patient-tabs-bar {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
-          gap: 12px;
+          gap: 10px;
           background: #FFFFFF;
-          padding: 10px;
+          padding: 8px;
           border-radius: 18px;
           border: 1px solid #E2E8F0;
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+          box-sizing: border-box;
+          width: 100%;
         }
 
-        @media (max-width: 960px) {
+        @media (max-width: 1080px) {
           .patient-tabs-bar {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
           }
         }
 
-        @media (max-width: 500px) {
+        @media (max-width: 680px) {
+          .patient-tabs-bar {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+            padding: 6px;
+            border-radius: 14px;
+          }
+        }
+
+        @media (max-width: 380px) {
           .patient-tabs-bar {
             grid-template-columns: 1fr;
+            gap: 6px;
           }
         }
 
         .patient-portal-dashboard {
           display: grid;
           grid-template-columns: 1fr 340px;
-          gap: 24px;
+          gap: 20px;
           align-items: start;
+          box-sizing: border-box;
+          width: 100%;
         }
 
         @media (max-width: 1024px) {
           .patient-portal-dashboard {
             grid-template-columns: 1fr;
+            gap: 18px;
           }
         }
 
         .telemetry-sidebar-card {
           background: #FFFFFF;
-          border-radius: 20px;
+          border-radius: 18px;
           border: 1px solid #E2E8F0;
-          padding: 22px;
+          padding: 18px 20px;
           box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03);
           display: flex;
           flex-direction: column;
-          gap: 16px;
+          gap: 14px;
+          box-sizing: border-box;
+          width: 100%;
+        }
+
+        @media (max-width: 580px) {
+          .telemetry-sidebar-card {
+            padding: 14px 14px;
+            border-radius: 14px;
+          }
         }
 
         .tab-button-modern {
-          padding: 14px 16px;
-          border-radius: 14px;
+          padding: 11px 13px;
+          border-radius: 13px;
           border: 1px solid transparent;
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 10px;
           cursor: pointer;
           transition: all 0.2s ease;
           text-align: left;
@@ -1451,6 +1562,16 @@ export default function PatientPage({
           outline: none;
           user-select: none;
           position: relative;
+          box-sizing: border-box;
+          min-width: 0;
+        }
+
+        @media (max-width: 680px) {
+          .tab-button-modern {
+            padding: 9px 10px;
+            border-radius: 10px;
+            gap: 8px;
+          }
         }
 
         .tab-button-modern.active {
@@ -1473,14 +1594,26 @@ export default function PatientPage({
         }
 
         .tab-icon-wrapper {
-          width: 38px;
-          height: 38px;
-          border-radius: 10px;
+          width: 34px;
+          height: 34px;
+          border-radius: 9px;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
           transition: all 0.2s ease;
+        }
+
+        @media (max-width: 680px) {
+          .tab-icon-wrapper {
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+          }
+          .tab-icon-wrapper svg {
+            width: 16px;
+            height: 16px;
+          }
         }
 
         .tab-button-modern.active .tab-icon-wrapper {
@@ -1494,7 +1627,7 @@ export default function PatientPage({
         }
 
         .tab-title-text {
-          font-size: 13.5px;
+          font-size: 13px;
           font-weight: 700;
           line-height: 1.2;
           display: block;
@@ -1503,42 +1636,55 @@ export default function PatientPage({
           text-overflow: ellipsis;
         }
 
+        @media (max-width: 680px) {
+          .tab-title-text {
+            font-size: 12px;
+          }
+        }
+
         .tab-sub-text {
-          font-size: 11px;
+          font-size: 10.5px;
           display: block;
-          margin-top: 3px;
+          margin-top: 2px;
           font-weight: 500;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
         }
 
+        @media (max-width: 680px) {
+          .tab-sub-text {
+            font-size: 9.5px;
+          }
+        }
+
         .tab-count-badge {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          min-width: 20px;
-          height: 20px;
-          padding: 0 6px;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 5px;
           border-radius: 9999px;
-          font-size: 11px;
+          font-size: 10.5px;
           font-weight: 800;
           line-height: 1;
           flex-shrink: 0;
-          margin-left: 6px;
+          margin-left: 4px;
           transition: all 0.2s ease;
         }
 
         .form-grid-2col {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: 16px;
-          margin-bottom: 16px;
+          gap: 14px;
+          margin-bottom: 14px;
         }
 
         @media (max-width: 640px) {
           .form-grid-2col {
             grid-template-columns: 1fr;
+            gap: 10px;
           }
         }
 
@@ -1554,7 +1700,7 @@ export default function PatientPage({
 
         .modern-form-input {
           width: 100%;
-          padding: 12px 14px;
+          padding: 11px 13px;
           border-radius: 10px;
           border: 1px solid #E2E8F0;
           background: #FFFFFF;
@@ -1585,7 +1731,7 @@ export default function PatientPage({
         }
 
         .modern-triage-card {
-          padding: 16px 18px;
+          padding: 14px 16px;
           border-radius: 12px;
           display: flex;
           align-items: center;
@@ -1597,6 +1743,13 @@ export default function PatientPage({
           outline: none;
           user-select: none;
           box-sizing: border-box;
+        }
+
+        @media (max-width: 480px) {
+          .modern-triage-card {
+            padding: 10px 12px;
+            gap: 8px;
+          }
         }
 
         .modern-triage-card.active-routine {
@@ -1659,7 +1812,7 @@ export default function PatientPage({
 
         .modern-submit-btn {
           width: 100%;
-          padding: 16px 20px;
+          padding: 14px 18px;
           border-radius: 12px;
           border: none;
           background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
@@ -1670,6 +1823,7 @@ export default function PatientPage({
           outline: none;
           box-sizing: border-box;
           font-weight: 700;
+          min-height: 48px;
         }
 
         .modern-submit-btn:hover {
@@ -1679,6 +1833,18 @@ export default function PatientPage({
 
         .modern-submit-btn:active {
           transform: translateY(0);
+        }
+
+        .patient-rx-header-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+        }
+
+        @media (max-width: 580px) {
+          .patient-rx-header-grid {
+            grid-template-columns: 1fr !important;
+          }
         }
       `}</style>
 
@@ -1704,48 +1870,55 @@ export default function PatientPage({
 
       {/* 2. Unified Patient Service Navigation Hub */}
       <section className="patient-nav-section">
-        <div className="patient-nav-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+        <div className="patient-nav-header">
           <div className="patient-nav-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-              <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
-              <path d="M12 11h4" />
-              <path d="M12 16h4" />
-              <path d="M8 11h.01" />
-              <path d="M8 16h.01" />
-            </svg>
-            <span>Hospital Patient Services & Queue Desk</span>
+            <div className="patient-nav-title-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                <path d="M12 11h4" />
+                <path d="M12 16h4" />
+                <path d="M8 11h.01" />
+                <path d="M8 16h.01" />
+              </svg>
+            </div>
+            <span>
+              {language === "hi" ? "अस्पताल मरीज़ सेवाएँ एवं कतार डेस्क" : "Hospital Patient Services & Queue Desk"}
+            </span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+
+          <div className="patient-nav-actions">
             <button
               type="button"
               onClick={() => setShowHospitalModal(true)}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 14px",
-                borderRadius: "10px",
-                background: "var(--patient-tag-bg, #F0F9FF)",
-                border: "1.5px solid var(--patient-tag-border, #BAE6FD)",
-                color: "var(--patient-tag-color, #0369A1)",
-                fontSize: "12.5px",
-                fontWeight: 800,
-                cursor: "pointer",
-                boxShadow: "0 1px 3px rgba(2, 132, 199, 0.1)",
-                transition: "all 0.15s ease",
-              }}
+              className="hospital-switcher-btn"
               title={language === "hi" ? "अस्पताल बदलें" : "Switch Hospital Facility"}
             >
-              <span>🏥</span>
-              <span>{currentHospitalDisplayName}</span>
-              <span style={{ fontSize: "11px", color: "var(--patient-tag-color, #0284C7)", background: "var(--patient-sub-card, #E0F2FE)", padding: "2px 7px", borderRadius: "5px", marginLeft: "2px", fontWeight: 800 }}>
-                🔄 {language === "hi" ? "बदलें" : "Change"}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 21h18" />
+                <path d="M5 21V7l8-4v18" />
+                <path d="M19 21V11l-6-4" />
+                <path d="M9 9h1" />
+                <path d="M9 13h1" />
+                <path d="M9 17h1" />
+              </svg>
+              <span style={{ maxWidth: "200px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {currentHospitalDisplayName}
+              </span>
+              <span className="hospital-switcher-badge">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m16 3 4 4-4 4" />
+                  <path d="M20 7H4" />
+                  <path d="m8 21-4-4 4-4" />
+                  <path d="M4 17h16" />
+                </svg>
+                {language === "hi" ? "बदलें" : "Change"}
               </span>
             </button>
+
             <div className="patient-nav-status-badge">
               <span className="status-dot-pulse" />
-              <span>AI Orchestration Active</span>
+              <span>{language === "hi" ? "एआई स्मार्ट डिस्पैच सक्रिय" : "AI Orchestration Active"}</span>
             </div>
           </div>
         </div>
@@ -2673,12 +2846,29 @@ export default function PatientPage({
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div>
               <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800 }}>
-                {t("appointmentHistory", language)}
+                {language === "hi" ? "मेरा मेडिकल इतिहास एवं पूर्व पर्चियां" : "My Medical History & Past Consultations"}
               </h3>
               <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)" }}>
-                {t("historySubtitle", language)}
+                {language === "hi" ? "आपकी सभी पुरानी ओपीडी विज़िट्स, डिजिटल दवा पर्चियां और नैदानिक जांच रिपोर्ट।" : "Chronological archive of all your past clinical visits, e-prescriptions, and laboratory reports."}
               </span>
             </div>
+          </div>
+
+          {/* Master Patient Medical History Timeline */}
+          <div style={{ marginBottom: "20px" }}>
+            <PatientHistoryTimeline
+              patient={myMedicalPatient}
+              summary={myMedicalSummary}
+              visits={myMedicalVisits}
+              prescriptions={myMedicalPrescriptions}
+              reports={myMedicalReports}
+              isReturningPatient={isMyReturningPatient}
+              totalVisits={myMedicalTotalVisits}
+              loading={myMedicalHistoryLoading}
+              language={language}
+              collapsible={false}
+              defaultExpanded={true}
+            />
           </div>
 
           {/* Name lookup for guests / unmatched users */}
@@ -4022,11 +4212,13 @@ export default function PatientPage({
 // Styling definitions
 const standaloneCardStyle = {
   background: "var(--patient-card-bg, #FFFFFF)",
-  borderRadius: "20px",
+  borderRadius: "18px",
   border: "1px solid var(--patient-card-border, #E2E8F0)",
-  padding: "28px 32px",
+  padding: "clamp(14px, 3vw, 28px)",
   boxShadow: "0 4px 20px -2px rgba(0, 0, 0, 0.03)",
   color: "var(--patient-text-main, #0F172A)",
+  boxSizing: "border-box",
+  width: "100%",
 };
 
 const fieldLabelWithIconStyle = {
@@ -4050,6 +4242,7 @@ const fieldInputStyle = {
   outline: "none",
   transition: "border 0.2s ease, box-shadow 0.2s ease",
   boxShadow: "0 1px 2px rgba(0, 0, 0, 0.02)",
+  boxSizing: "border-box",
 };
 
 const patientSubmitBtnStyle = {
@@ -4062,6 +4255,8 @@ const patientSubmitBtnStyle = {
   cursor: "pointer",
   boxShadow: "0 4px 14px rgba(2, 132, 199, 0.25)",
   transition: "all 0.2s ease",
+  minHeight: "48px",
+  boxSizing: "border-box",
 };
 
 const aptConfirmationBoxStyle = {
@@ -4071,6 +4266,7 @@ const aptConfirmationBoxStyle = {
   background: "#F0F9FF",
   border: "2px solid #0284C7",
   textAlign: "center",
+  boxSizing: "border-box",
 };
 
 const checkInNowBtnStyle = {
@@ -4083,6 +4279,7 @@ const checkInNowBtnStyle = {
   fontSize: "12px",
   cursor: "pointer",
   boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
+  whiteSpace: "nowrap",
 };
 
 const quickCheckInBtnStyle = {
@@ -4094,41 +4291,41 @@ const quickCheckInBtnStyle = {
   fontWeight: 700,
   fontSize: "12px",
   cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 
 const aptCardRowStyle = (status) => {
   const s = (status || "").toLowerCase();
+  const base = {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "clamp(12px, 2.5vw, 16px)",
+    borderRadius: "12px",
+    flexWrap: "wrap",
+    gap: "12px",
+    boxSizing: "border-box",
+    width: "100%",
+  };
   if (s === "checked_in" || s === "serving") {
     return {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: "14px",
+      ...base,
       background: "var(--apt-active-bg, #F0F9FF)",
-      borderRadius: "12px",
       border: "1px solid var(--apt-active-border, #BAE6FD)",
       color: "var(--patient-text-main, #0F172A)",
     };
   }
   if (s === "completed" || s === "transferred") {
     return {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      padding: "14px",
+      ...base,
       background: "var(--patient-card-bg, #FFFFFF)",
-      borderRadius: "12px",
       border: "1px solid var(--patient-card-border, #E2E8F0)",
       color: "var(--patient-text-main, #0F172A)",
     };
   }
   return {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "14px",
+    ...base,
     background: "var(--patient-sub-card, #F8FAFC)",
-    borderRadius: "12px",
     border: "1px solid var(--patient-card-border, #CBD5E1)",
     color: "var(--patient-text-main, #0F172A)",
   };

@@ -687,6 +687,31 @@ async function completeTicket(tenantId, ticketId, department = null, prescriptio
     },
   });
 
+  // Record permanent visit history (Idempotent)
+  try {
+    const { recordCompletedVisit } = require("./patientHistoryService");
+    let rxData = {};
+    if (prescriptionNotes && typeof prescriptionNotes === "object") {
+      rxData = prescriptionNotes;
+    } else if (ticket.prescription_notes) {
+      try { rxData = JSON.parse(ticket.prescription_notes); } catch (e) {}
+    }
+    await recordCompletedVisit({
+      hospital_id: hid,
+      ticket_id: ticket.ticket_id,
+      patient_id: ticket.patient_id,
+      diagnosis: rxData.diagnosis || ticket.medical_condition,
+      doctor_name: rxData.doctor_name || "Dr. Staff Desk",
+      department_name: ticket.service_category,
+      medicines: rxData.medicines || [],
+      lab_tests: rxData.lab_tests || "",
+      advice: rxData.advice || (typeof prescriptionNotes === "string" ? prescriptionNotes : ""),
+      follow_up: rxData.follow_up || "",
+    });
+  } catch (err) {
+    console.error("Visit history recording error (non-fatal):", err.message);
+  }
+
   if (ticket.ticket_id) {
     await prisma.desks.updateMany({
       where: { current_ticket_id: ticket.ticket_id },

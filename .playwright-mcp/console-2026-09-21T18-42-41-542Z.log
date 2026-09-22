@@ -1,0 +1,136 @@
+[    2619ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:21550
+[    2727ms] ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+[    2744ms] ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+[    2749ms] [ERROR] The above error occurred in the <PatientPage> component:
+
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:29:3)
+    at ErrorBoundary (http://localhost:5173/src/components/common/ErrorBoundary.jsx:7:5)
+    at main
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1790015398434:75:41)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14031
+[    2749ms] [ERROR] ErrorBoundary caught an error: ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19753:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19116:15)
+    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:18736:28)
+    at performConcurrentWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:18684:30) {componentStack: 
+    at PatientPage (http://localhost:5173/src/pag…localhost:5173/src/App.jsx?t=1790015398434:75:41)} @ http://localhost:5173/src/components/common/ErrorBoundary.jsx:13
+[    2973ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:8000/socket.io/?EIO=4&transport=websocket' failed: WebSocket is closed before the connection is established. @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=3f4b1856:1499
+[    4977ms] ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+[    5009ms] ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+[    4964ms] [ERROR] The above error occurred in the <PatientPage> component:
+
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:29:3)
+    at ErrorBoundary (http://localhost:5173/src/components/common/ErrorBoundary.jsx:7:5)
+    at main
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1790015398434:75:41)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14031
+[    4964ms] [ERROR] ErrorBoundary caught an error: ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19753:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19116:15)
+    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:18736:28)
+    at performSyncWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:18879:28) {componentStack: 
+    at PatientPage (http://localhost:5173/src/pag…localhost:5173/src/App.jsx?t=1790015398434:75:41)} @ http://localhost:5173/src/components/common/ErrorBoundary.jsx:13
+[    5525ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:21550
+[    5829ms] ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+[    5918ms] ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at HTMLUnknownElement.callCallback2 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3674:22)
+    at Object.invokeGuardedCallbackDev (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3699:24)
+    at invokeGuardedCallback (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:3733:39)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19765:15)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+[    5573ms] [ERROR] The above error occurred in the <PatientPage> component:
+
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:29:3)
+    at ErrorBoundary (http://localhost:5173/src/components/common/ErrorBoundary.jsx:7:5)
+    at main
+    at div
+    at div
+    at App (http://localhost:5173/src/App.jsx?t=1790015398434:75:41)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary. @ http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14031
+[    5574ms] [ERROR] ErrorBoundary caught an error: ReferenceError: socketRef is not defined
+    at PatientPage (http://localhost:5173/src/pages/PatientPage.jsx?t=1790015398434:121:5)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:11548:26)
+    at mountIndeterminateComponent (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:14926:21)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:15914:22)
+    at beginWork$1 (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19753:22)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19198:20)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19137:13)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:19116:15)
+    at recoverFromConcurrentError (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:18736:28)
+    at performConcurrentWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/chunk-PJEEZAML.js?v=3f4b1856:18684:30) {componentStack: 
+    at PatientPage (http://localhost:5173/src/pag…localhost:5173/src/App.jsx?t=1790015398434:75:41)} @ http://localhost:5173/src/components/common/ErrorBoundary.jsx:13
+[    5624ms] [WARNING] WebSocket connection to 'ws://127.0.0.1:8000/socket.io/?EIO=4&transport=websocket' failed: WebSocket is closed before the connection is established. @ http://localhost:5173/node_modules/.vite/deps/socket__io-client.js?v=3f4b1856:1499

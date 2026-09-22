@@ -43,15 +43,17 @@ export default function Footer({ language = "en", hospitalName, currentUser }) {
     <footer style={footerWrapperStyle} className="user-dashboard-footer">
       <style>{`
         .user-dashboard-footer {
-          margin-top: 40px;
-          padding-top: 24px;
+          margin-top: 36px;
+          padding-top: 20px;
           padding-bottom: 20px;
           border-top: 1px solid var(--patient-card-border, #E2E8F0);
           display: flex;
           justify-content: space-between;
           align-items: center;
           flex-wrap: wrap;
-          gap: 16px;
+          gap: 14px;
+          box-sizing: border-box;
+          width: 100%;
         }
 
         body.theme-dark .user-dashboard-footer {
@@ -61,6 +63,7 @@ export default function Footer({ language = "en", hospitalName, currentUser }) {
         .footer-heartbeat-svg {
           filter: drop-shadow(0 2px 4px rgba(2, 132, 199, 0.25));
           transition: transform 0.3s ease;
+          max-width: 100%;
         }
 
         .footer-heartbeat-svg:hover {
@@ -72,7 +75,13 @@ export default function Footer({ language = "en", hospitalName, currentUser }) {
             flex-direction: column;
             text-align: center;
             justify-content: center;
-            gap: 14px;
+            gap: 12px;
+            margin-top: 24px;
+            padding-top: 16px;
+          }
+          .user-dashboard-footer > div {
+            justify-content: center !important;
+            text-align: center !important;
           }
         }
       `}</style>

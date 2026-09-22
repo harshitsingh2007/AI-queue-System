@@ -1,0 +1,29 @@
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - generic "Hospital System HQ" [ref=e6] [cursor=pointer]:
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]: Raja harish chandra
+          - generic [ref=e14]: NABH ACCREDITED
+        - generic [ref=e15]:
+          - generic [ref=e16]: Care you can trust • NABH Accredited
+          - generic [ref=e17]: •
+          - generic [ref=e18]: Connecting...
+    - navigation [ref=e20]:
+      - 'button "24/7 Helpline: 108" [ref=e21] [cursor=pointer]'
+      - button "About Us" [ref=e27] [cursor=pointer]
+      - button "Support" [ref=e31] [cursor=pointer]
+    - generic [ref=e35]:
+      - switch "Toggle dark and light theme" [ref=e36] [cursor=pointer]
+      - button "🇺🇸 English" [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]: 🇺🇸
+        - generic [ref=e45]: English
+      - button "H hariom" [ref=e49] [cursor=pointer]:
+        - generic [ref=e50]: H
+        - generic [ref=e51]: hariom
+  - main [ref=e54]:
+    - generic [ref=e55]:
+      - generic [ref=e56]: ⚠️
+      - heading "Something went wrong loading this section" [level=3] [ref=e57]
+      - paragraph [ref=e58]: socketRef is not defined
+      - button "Reload Section" [ref=e59] [cursor=pointer]

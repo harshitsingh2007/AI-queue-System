@@ -12,6 +12,8 @@ import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel, formatRiskLabel } from "../utils/i18n";
 import AdminHeroBanner from "../components/staff/AdminHeroBanner";
 import Footer from "../components/common/Footer";
+import PatientHistoryTimeline from "../components/patient-history/PatientHistoryTimeline";
+import { usePatientHistory } from "../hooks/usePatientHistory";
 
 export default function StaffPage({
   tenantId,
@@ -205,6 +207,46 @@ export default function StaffPage({
 
   const isDoctorBusy = Boolean(myServingTicket);
   const [serveFeedbackMsg, setServeFeedbackMsg] = useState("");
+
+  // Patient Medical History for currently consulted patient
+  const {
+    historyData: servingPatientHistory,
+    patient: servingPatient,
+    summary: servingPatientSummary,
+    visits: servingPatientVisits,
+    prescriptions: servingPatientPrescriptions,
+    reports: servingPatientReports,
+    isReturningPatient: isServingPatientReturning,
+    totalVisits: servingPatientTotalVisits,
+    loading: servingHistoryLoading,
+  } = usePatientHistory({
+    ticketId: myServingTicket?.ticket_id,
+    hospitalId: tenantId,
+    socketRef,
+    autoFetch: Boolean(myServingTicket),
+  });
+
+  const [rxPreFillWarning, setRxPreFillWarning] = useState("");
+
+  const handleUsePreviousPrescription = (prevRx) => {
+    if (!myServingTicket || !prevRx) return;
+    setPrescriptionTicket(myServingTicket);
+    setRxDiagnosis(prevRx.diagnosis || "");
+    setRxMedicines(
+      Array.isArray(prevRx.medicines) && prevRx.medicines.length > 0
+        ? prevRx.medicines
+        : [{ name: "", dosage: "500mg", frequency: "1-0-1", duration: "5 days", instructions: "After food" }]
+    );
+    setRxLabTests(prevRx.lab_tests || "");
+    setRxAdvice(prevRx.advice || "");
+    setRxFollowUp(prevRx.follow_up || "After 5 days or if needed");
+    setRxPreFillWarning(
+      language === "hi"
+        ? "⚠️ पूर्व प्रिस्क्रिप्शन संदर्भ हेतु लोड किया गया। कृपया सबमिट करने से पहले दवाइयों और खुराक की जांच करें।"
+        : "⚠️ Previous prescription loaded for reference. Please review medicines and dosage before submitting."
+    );
+    setShowPrescriptionModal(true);
+  };
 
   // Doctor Duty Status & Break Timer State
   const userStorageKey = currentUser?.id || currentUser?.email || "default_doc";
@@ -569,6 +611,7 @@ export default function StaffPage({
     setPrescriptionTicket(ticket);
     setRxStatusMsg("");
     setRxSaving(false);
+    setRxPreFillWarning("");
 
     let parsed = null;
     if (ticket.prescription_notes) {
@@ -1777,6 +1820,15 @@ export default function StaffPage({
                                   👨‍⚕️ {ticket.served_by_doctor_name}
                                 </span>
                               )}
+                              {isServingPatientReturning ? (
+                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#EFF6FF", color: "#0284C7", fontSize: "11px", fontWeight: 800, border: "1px solid #BFDBFE" }}>
+                                  🔄 {language === "hi" ? "फॉलो-अप मरीज़" : "Returning Patient"} ({servingPatientTotalVisits} {language === "hi" ? "विज़िट्स" : "Visits"})
+                                </span>
+                              ) : (
+                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#F8FAFC", color: "#64748B", fontSize: "11px", fontWeight: 700, border: "1px solid #E2E8F0" }}>
+                                  🆕 {language === "hi" ? "प्रथम विज़िट" : "1st Visit"}
+                                </span>
+                              )}
                             </div>
                             <span style={{ fontSize: "12.5px", color: "#64748B", marginTop: "3px", display: "block" }}>
                               {ticket.age || 30} {language === "hi" ? "वर्ष" : "yrs"} • {t(ticket.gender || "male", language)} • {language === "hi" ? "लक्षण:" : "Symptom:"} {formatSymptomLabel(ticket.medical_condition, language)}
@@ -1833,6 +1885,24 @@ export default function StaffPage({
                             <span>{language === "hi" ? "परामर्श जारी" : "In Consultation"}</span>
                           </span>
                         </div>
+                      </div>
+
+                      {/* Patient Medical History & Past Reports Timeline */}
+                      <div style={{ marginBottom: "14px" }}>
+                        <PatientHistoryTimeline
+                          patient={servingPatient}
+                          summary={servingPatientSummary}
+                          visits={servingPatientVisits}
+                          prescriptions={servingPatientPrescriptions}
+                          reports={servingPatientReports}
+                          isReturningPatient={isServingPatientReturning}
+                          totalVisits={servingPatientTotalVisits}
+                          loading={servingHistoryLoading}
+                          language={language}
+                          onUsePreviousPrescription={handleUsePreviousPrescription}
+                          collapsible={true}
+                          defaultExpanded={isServingPatientReturning}
+                        />
                       </div>
 
                       {/* Divider */}
@@ -2810,6 +2880,14 @@ export default function StaffPage({
 
             {/* Form Fields */}
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* Safety Warning Banner for Pre-filled Historical Rx */}
+              {rxPreFillWarning && (
+                <div style={{ background: "#FFFBEB", border: "1.5px solid #FCD34D", color: "#B45309", padding: "10px 14px", borderRadius: "10px", fontSize: "12px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 2px 6px rgba(245, 158, 11, 0.1)" }}>
+                  <span style={{ fontSize: "16px" }}>⚠️</span>
+                  <div style={{ flex: 1 }}>{rxPreFillWarning}</div>
+                </div>
+              )}
+
               {/* 1. Provisional Diagnosis */}
               <div>
                 <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>

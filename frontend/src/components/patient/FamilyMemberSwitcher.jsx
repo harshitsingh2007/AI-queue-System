@@ -494,7 +494,9 @@ const pillsScrollContainerStyle = {
   alignItems: "center",
   gap: "8px",
   overflowX: "auto",
-  paddingBottom: "4px",
+  paddingBottom: "6px",
+  WebkitOverflowScrolling: "touch",
+  scrollbarWidth: "none",
 };
 
 const getPillStyle = (isSelected) => ({
@@ -511,6 +513,7 @@ const getPillStyle = (isSelected) => ({
   whiteSpace: "nowrap",
   transition: "all 0.2s ease",
   boxShadow: isSelected ? "0 2px 8px rgba(2, 132, 199, 0.25)" : "none",
+  flexShrink: 0,
 });
 
 const getTagStyle = (isSelected, isSelf) => ({
@@ -560,9 +563,12 @@ const modalContentStyle = {
   border: "1px solid var(--patient-card-border, #E2E8F0)",
   color: "var(--patient-text-main, #0F172A)",
   width: "100%",
-  maxWidth: "420px",
-  padding: "24px",
+  maxWidth: "min(92vw, 440px)",
+  maxHeight: "88vh",
+  overflowY: "auto",
+  padding: "clamp(16px, 3.5vw, 24px)",
   boxShadow: "0 20px 40px rgba(0, 0, 0, 0.35)",
+  boxSizing: "border-box",
 };
 
 const modalHeaderStyle = {

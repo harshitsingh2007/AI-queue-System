@@ -206,7 +206,16 @@ export default function Header({
   const username = currentUser ? currentUser.username : "user";
 
   const userRole = (currentUser?.role || "").toLowerCase();
-  const isSuperAdmin = userRole === "super_admin" || userRole === "superadmin";
+  const isSuperAdmin = Boolean(
+    currentUser && (
+      userRole === "super_admin" ||
+      userRole === "superadmin" ||
+      currentUser.role === "super_admin" ||
+      currentUser.role === "superadmin" ||
+      currentUser.email === "superadmin@hospital.com" ||
+      currentUser.is_superadmin === true
+    )
+  );
   const isStaffOrDoctor = ["admin", "doctor", "staff", "receptionist"].includes(userRole);
   const isPatientOrGuest = !currentUser || userRole === "user" || userRole === "patient";
 
@@ -272,10 +281,10 @@ export default function Header({
             box-shadow: 0 10px 30px -5px rgba(2, 132, 199, 0.07), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
             position: relative;
             z-index: 100;
-            flex-wrap: nowrap;
             gap: 12px;
             transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-            white-space: nowrap;
+            box-sizing: border-box;
+            width: 100%;
           }
 
           /* Dark Mode Header Overrides */
@@ -285,10 +294,91 @@ export default function Header({
             box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(56, 189, 248, 0.15) !important;
           }
 
+          .header-brand-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            flex-shrink: 0;
+            min-width: 0;
+          }
+
+          .header-center-nav {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+            flex-shrink: 1;
+            min-width: 0;
+          }
+
+          .header-controls-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            flex-shrink: 0;
+          }
+
+          @media (max-width: 900px) {
+            .user-dashboard-header {
+              flex-wrap: wrap;
+              padding: 10px 14px;
+              gap: 10px;
+              margin-bottom: 16px;
+            }
+            .header-center-nav {
+              order: 3;
+              width: 100%;
+              justify-content: flex-start;
+              overflow-x: auto;
+              padding-top: 8px;
+              border-top: 1px solid rgba(226, 232, 240, 0.7);
+              gap: 6px;
+              scrollbar-width: none;
+            }
+            .header-center-nav::-webkit-scrollbar {
+              display: none;
+            }
+            .user-dashboard-header.dark-theme-header .header-center-nav {
+              border-top-color: rgba(51, 65, 85, 0.6);
+            }
+            .header-brand-left {
+              order: 1;
+            }
+            .header-controls-right {
+              order: 2;
+            }
+          }
+
+          @media (max-width: 520px) {
+            .user-dashboard-header {
+              padding: 8px 10px;
+              border-radius: 14px;
+              gap: 6px;
+            }
+            .header-hospital-tagline {
+              display: none !important;
+            }
+            .header-nabh-badge {
+              display: none !important;
+            }
+            .header-emergency-pill {
+              max-width: 145px !important;
+              padding: 6px 10px !important;
+              font-size: 11px !important;
+            }
+            .header-pill-btn {
+              padding: 6px 9px !important;
+              font-size: 11px !important;
+              gap: 4px !important;
+            }
+          }
+
           /* Small Theme Toggle Button (User Portal Only) */
           .header-theme-toggle-btn {
             position: relative;
-            width: 52px;
+            width: 50px;
             height: 28px;
             border-radius: 9999px;
             background: #E2E8F0;
@@ -358,7 +448,7 @@ export default function Header({
           }
 
           .header-theme-toggle-btn.is-dark .theme-toggle-knob {
-            transform: translateX(23px);
+            transform: translateX(21px);
             background: #1E293B;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(56, 189, 248, 0.3);
           }
@@ -583,10 +673,12 @@ export default function Header({
             border-radius: 16px;
             border: 1px solid #E2E8F0;
             box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.06);
-            min-width: 230px;
+            min-width: 220px;
+            max-width: 90vw;
             z-index: 9999;
             padding: 8px;
             animation: fadeInDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+            box-sizing: border-box;
           }
 
           @keyframes fadeInDown {
@@ -615,6 +707,7 @@ export default function Header({
             cursor: pointer;
             text-align: left;
             transition: all 0.15s ease;
+            box-sizing: border-box;
           }
 
           .header-dropdown-item:hover {
@@ -646,7 +739,7 @@ export default function Header({
             align-items: center;
             justify-content: center;
             z-index: 10000;
-            padding: 20px;
+            padding: 16px;
             animation: fadeIn 0.15s ease;
           }
 
@@ -660,11 +753,14 @@ export default function Header({
             border-radius: 24px;
             max-width: 480px;
             width: 100%;
-            padding: 30px;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 24px;
             box-shadow: 0 24px 48px -10px rgba(0, 0, 0, 0.22);
             border: 1px solid #E2E8F0;
             position: relative;
             animation: modalScaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            box-sizing: border-box;
           }
 
           @keyframes modalScaleUp {
@@ -679,8 +775,9 @@ export default function Header({
           }
         `}</style>
 
+        {/* 1. Left: Hospital Logo, Name, Tagline & Live AI Status */}
         <div
-          style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", flexShrink: 0 }}
+          className="header-brand-left"
           onClick={() => {
             if (currentUser?.role === "super_admin" || currentUser?.role === "superadmin") {
               navigateTo("superadmin");
@@ -718,18 +815,18 @@ export default function Header({
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "nowrap" }}>
-              <span style={{ fontWeight: 900, fontSize: "15.5px", color: isDarkHeader ? "#F8FAFC" : "#0F172A", letterSpacing: "-0.3px", lineHeight: "1.2", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span className="header-hospital-name-text" style={{ fontWeight: 900, fontSize: "15.5px", color: isDarkHeader ? "#F8FAFC" : "#0F172A", letterSpacing: "-0.3px", lineHeight: "1.2", maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {displayHospitalName}
               </span>
-              <span style={{ padding: "1.5px 6px", borderRadius: "12px", background: isDarkHeader ? "rgba(2, 132, 199, 0.2)" : "#F0F9FF", color: brandPrimary, fontSize: "9px", fontWeight: 800, border: `1px solid ${brandPrimary}40`, whiteSpace: "nowrap" }}>
+              <span className="header-nabh-badge" style={{ padding: "1.5px 6px", borderRadius: "12px", background: isDarkHeader ? "rgba(2, 132, 199, 0.2)" : "#F0F9FF", color: brandPrimary, fontSize: "9px", fontWeight: 800, border: `1px solid ${brandPrimary}40`, whiteSpace: "nowrap" }}>
                 NABH ACCREDITED
               </span>
             </div>
             <div style={{ fontSize: "11px", color: isDarkHeader ? "#94A3B8" : "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "5px", flexWrap: "nowrap" }}>
-              <span style={{ maxWidth: "130px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span className="header-hospital-tagline" style={{ maxWidth: "130px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {displayTagline}
               </span>
-              <span>•</span>
+              <span className="header-hospital-tagline">•</span>
               <span style={{ color: socketConnected ? brandPrimary : "#D97706", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700, whiteSpace: "nowrap" }}>
                 <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: socketConnected ? "#0EA5E9" : "#F59E0B", display: "inline-block" }} />
                 {socketConnected
@@ -741,10 +838,10 @@ export default function Header({
         </div>
 
         {/* 2. Center: Quick Hospital Support & Emergency Hotline */}
-        <nav style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "nowrap", flexShrink: 1, minWidth: 0 }}>
+        <nav className="header-center-nav">
 
           {/* Super Admin Navigation Button */}
-          {(currentUser?.role === "super_admin" || currentUser?.role === "superadmin") && (
+          {isSuperAdmin && (
             <button
               type="button"
               onClick={() => navigateTo("superadmin")}
@@ -1095,6 +1192,22 @@ export default function Header({
                   )}
 
                   <div style={{ height: "1px", background: isDarkHeader ? "#334155" : "#E2E8F0", margin: "6px 0" }} />
+
+                  {/* Super Admin Switcher / Quick Navigation Option */}
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileDropdownOpen(false);
+                        navigateTo("superadmin");
+                      }}
+                      className="header-dropdown-item"
+                      style={{ padding: "9px 12px", color: "#0284C7", fontWeight: 700 }}
+                    >
+                      <span>👑</span>
+                      <span>{language === "hi" ? "सुपर एडमिन पोर्टल" : "Super Admin Dashboard"}</span>
+                    </button>
+                  )}
 
                   {/* Sign Out Button */}
                   <button

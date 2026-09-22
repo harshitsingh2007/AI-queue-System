@@ -171,6 +171,9 @@ model hospitals {
   tenant_historical_data tenant_historical_data[]
   tenant_mapping         tenant_mapping?
   tickets                tickets[]
+  visit_history          visit_history[]
+  prescriptions          prescriptions[]
+  medical_reports        medical_reports[]
 
   @@index([hospital_code], map: "idx_hospitals_code")
 }
@@ -209,8 +212,73 @@ model patients {
   family_members family_members[]
   users          users?           @relation(fields: [user_id], references: [id], onUpdate: NoAction)
   tickets        tickets[]
+  visit_history  visit_history[]
+  prescriptions  prescriptions[]
+  medical_reports medical_reports[]
 
   @@index([user_id], map: "idx_patients_user")
+}
+
+model visit_history {
+  id              Int           @id @default(autoincrement())
+  patient_id      Int
+  hospital_id     Int
+  ticket_id       String?       @unique @db.VarChar(100)
+  appointment_id  String?       @db.VarChar(100)
+  doctor_id       Int?
+  doctor_name     String?       @default("") @db.VarChar(255)
+  department_id   Int?
+  department_name String?       @default("") @db.VarChar(255)
+  visit_date      DateTime      @default(now()) @db.Date
+  diagnosis       String?       @default("") @db.VarChar(255)
+  clinical_notes  String?       @default("")
+  advice          String?       @default("")
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  prescriptions   prescriptions[]
+  medical_reports medical_reports[]
+  patients        patients      @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  hospitals       hospitals     @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([patient_id, hospital_id], map: "idx_visit_history_patient_hospital")
+  @@index([hospital_id, visit_date], map: "idx_visit_history_hospital_date")
+}
+
+model prescriptions {
+  id              Int            @id @default(autoincrement())
+  patient_id      Int
+  visit_id        Int?
+  hospital_id     Int
+  ticket_id       String?        @db.VarChar(100)
+  doctor_id       Int?
+  doctor_name     String?        @default("") @db.VarChar(255)
+  diagnosis       String?        @default("") @db.VarChar(255)
+  medicines_json  Json?          @default("[]")
+  lab_tests_json  Json?          @default("[]")
+  advice          String?        @default("")
+  follow_up       String?        @default("")
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  visit_history   visit_history? @relation(fields: [visit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  patients        patients       @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  hospitals       hospitals      @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([patient_id, hospital_id], map: "idx_prescriptions_patient_hospital")
+}
+
+model medical_reports {
+  id            Int            @id @default(autoincrement())
+  patient_id    Int
+  visit_id      Int?
+  hospital_id   Int
+  report_type   String         @default("Lab Report") @db.VarChar(100)
+  report_name   String         @db.VarChar(255)
+  report_url    String?        @default("")
+  report_date   DateTime       @default(now()) @db.Date
+  created_at    DateTime       @default(now()) @db.Timestamptz(6)
+  visit_history visit_history? @relation(fields: [visit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  patients      patients       @relation(fields: [patient_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  hospitals     hospitals      @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([patient_id, hospital_id], map: "idx_medical_reports_patient_hospital")
 }
 
 model queue_events {

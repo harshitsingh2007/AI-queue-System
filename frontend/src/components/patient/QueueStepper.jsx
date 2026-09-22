@@ -69,12 +69,89 @@ export default function QueueStepper({ ticket, language = "en" }) {
   ];
 
   return (
-    <div style={stepperContainerStyle}>
+    <div style={stepperContainerStyle} className="queue-stepper-container">
+      <style>{`
+        .queue-stepper-container {
+          background: var(--patient-sub-card, #F8FAFC);
+          border-radius: 14px;
+          border: 1px solid var(--patient-card-border, #E2E8F0);
+          padding: 16px 20px;
+          margin-bottom: 20px;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+          box-sizing: border-box;
+          width: 100%;
+        }
+
+        .stepper-header-box {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 14px;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .step-node-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          width: 25%;
+          text-align: center;
+          padding: 0 4px;
+          box-sizing: border-box;
+          min-width: 0;
+        }
+
+        .step-title-text {
+          font-size: 12px;
+          margin-bottom: 2px;
+          line-height: 1.2;
+          word-break: break-word;
+          max-width: 100%;
+        }
+
+        .step-subtext-span {
+          font-size: 11px;
+          word-break: break-word;
+          max-width: 100%;
+        }
+
+        @media (max-width: 600px) {
+          .queue-stepper-container {
+            padding: 12px 10px;
+            margin-bottom: 16px;
+          }
+          .step-node-item {
+            padding: 0 2px;
+          }
+          .step-circle-badge {
+            width: 26px !important;
+            height: 26px !important;
+            margin-bottom: 4px !important;
+          }
+          .step-title-text {
+            font-size: 10.5px !important;
+          }
+          .step-subtext-span {
+            font-size: 9.5px !important;
+          }
+        }
+
+        @media (max-width: 420px) {
+          .step-subtext-span {
+            display: none !important;
+          }
+          .step-title-text {
+            font-size: 9.5px !important;
+          }
+        }
+      `}</style>
+
       {/* Stepper Header Bar */}
-      <div style={stepperHeaderStyle}>
+      <div className="stepper-header-box">
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={journeyDotStyle} />
-          <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", letterSpacing: "0.5px", textTransform: "uppercase" }}>
+          <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--patient-tag-color, #0369A1)", letterSpacing: "0.5px", textTransform: "uppercase" }}>
             {t("stepQueueTracker", language)}
           </span>
         </div>
@@ -85,7 +162,7 @@ export default function QueueStepper({ ticket, language = "en" }) {
       </div>
 
       {/* Progress Track & Nodes */}
-      <div style={{ position: "relative", margin: "16px 8px 10px 8px" }}>
+      <div style={{ position: "relative", margin: "14px 4px 8px 4px" }}>
         {/* Background track line */}
         <div style={trackBgStyle} />
 
@@ -104,27 +181,27 @@ export default function QueueStepper({ ticket, language = "en" }) {
             const isCurrent = step.id === currentStep && currentStep < 4;
 
             return (
-              <div key={step.id} style={stepNodeStyle}>
+              <div key={step.id} className="step-node-item">
                 {/* Circle Badge */}
-                <div style={getCircleStyle(isCompleted, isCurrent)}>
+                <div className="step-circle-badge" style={getCircleStyle(isCompleted, isCurrent)}>
                   {isCompleted ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                   ) : isCurrent ? (
                     <span style={pulseInnerDotStyle} />
                   ) : (
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#94A3B8" }}>{step.id}</span>
+                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#94A3B8" }}>{step.id}</span>
                   )}
                 </div>
 
                 {/* Step Title */}
-                <span style={getStepTitleStyle(isCompleted, isCurrent)}>
+                <span className="step-title-text" style={getStepTitleStyle(isCompleted, isCurrent)}>
                   {step.title}
                 </span>
 
                 {/* Dynamic Subtext */}
-                <span style={getStepSubtextStyle(isCurrent)}>
+                <span className="step-subtext-span" style={getStepSubtextStyle(isCurrent)}>
                   {step.subtext}
                 </span>
               </div>

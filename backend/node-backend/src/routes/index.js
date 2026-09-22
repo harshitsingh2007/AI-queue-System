@@ -16,6 +16,7 @@ const qrRoutes = require("./qr.routes");
 const healthRoutes = require("./health.routes");
 const doctorRoutes = require("./doctor.routes");
 const kioskRoutes = require("./kiosk.routes");
+const patientHistoryRoutes = require("./patientHistory.routes");
 const { getUserHistory } = require("../controllers/auth.controller");
 const { optionalAuth } = require("../middleware/auth");
 
@@ -26,6 +27,9 @@ router.use("/", healthRoutes);
 
 // Auth routes (/api/v1/auth/*)
 router.use("/api/v1/auth", authRoutes);
+
+// Patient Medical History routes (/api/v1/patients/*, /api/v1/tickets/:ticketId/patient-history)
+router.use("/api/v1", patientHistoryRoutes);
 
 // Queue, Counter & Analytics routes (/api/v1/plugin/*)
 router.use("/api/v1/plugin", queueRoutes);

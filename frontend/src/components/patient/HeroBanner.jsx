@@ -47,32 +47,35 @@ export default function HeroBanner({
           display: flex;
           flex-direction: row;
           align-items: stretch;
-          border-radius: 28px;
+          border-radius: 24px;
           overflow: hidden;
           background: radial-gradient(circle at 10% 15%, rgba(2, 132, 199, 0.25) 0%, transparent 45%), radial-gradient(circle at 90% 85%, rgba(56, 189, 248, 0.18) 0%, transparent 50%), linear-gradient(135deg, #090F1E 0%, #0F172A 60%, #162447 100%);
           box-shadow: 0 20px 45px -12px rgba(15, 23, 42, 0.2), 0 0 0 1px rgba(56, 189, 248, 0.18);
           border: 1px solid rgba(56, 189, 248, 0.25);
-          margin-bottom: 24px;
+          margin-bottom: 22px;
           position: relative;
-          min-height: 280px;
+          min-height: 260px;
           width: 100%;
+          box-sizing: border-box;
         }
 
         .hero-left-col {
           flex: 1.15;
-          padding: 34px 34px;
+          padding: 28px 30px;
           display: flex;
           flex-direction: column;
           justifyContent: space-between;
           z-index: 2;
           background: transparent;
           position: relative;
+          box-sizing: border-box;
+          min-width: 0;
         }
 
         /* Divider on wide screens */
         @media (min-width: 900px) {
           .hero-left-col {
-            padding-right: 36px;
+            padding-right: 32px;
             margin-right: 0;
             border-right: 1px solid rgba(56, 189, 248, 0.18);
           }
@@ -86,14 +89,15 @@ export default function HeroBanner({
           justify-content: center;
           position: relative;
           overflow: hidden;
-          min-height: 260px;
+          min-height: 240px;
+          box-sizing: border-box;
         }
 
         .hero-title {
-          font-size: 30px;
+          font-size: clamp(20px, 3.2vw, 30px);
           font-weight: 800;
-          line-height: 1.18;
-          letter-spacing: -0.6px;
+          line-height: 1.2;
+          letter-spacing: -0.5px;
           color: #FFFFFF;
           margin: 0;
         }
@@ -107,10 +111,10 @@ export default function HeroBanner({
 
         .hero-subtitle {
           color: rgba(224, 242, 254, 0.88);
-          font-size: 13px;
-          line-height: 1.5;
-          margin-top: 10px;
-          margin-bottom: 20px;
+          font-size: clamp(11.5px, 1.8vw, 13px);
+          line-height: 1.45;
+          margin-top: 8px;
+          margin-bottom: 16px;
           max-width: 440px;
           font-weight: 500;
         }
@@ -118,8 +122,9 @@ export default function HeroBanner({
         .hero-stats-row {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 12px;
+          gap: 10px;
           width: 100%;
+          box-sizing: border-box;
         }
 
         .hero-stat-card {
@@ -127,11 +132,11 @@ export default function HeroBanner({
           backdrop-filter: blur(14px);
           -webkit-backdrop-filter: blur(14px);
           border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 16px;
-          padding: 10px 14px;
+          border-radius: 14px;
+          padding: 8px 12px;
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           min-width: 0;
           box-sizing: border-box;
           transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
@@ -141,14 +146,14 @@ export default function HeroBanner({
         .hero-stat-card:hover {
           background: rgba(255, 255, 255, 0.14);
           border-color: rgba(56, 189, 248, 0.5);
-          transform: translateY(-2.5px);
+          transform: translateY(-2px);
           box-shadow: 0 8px 24px -4px rgba(2, 132, 199, 0.25);
         }
 
         .hero-stat-icon-wrap {
-          width: 36px;
-          height: 36px;
-          border-radius: 11px;
+          width: 32px;
+          height: 32px;
+          border-radius: 10px;
           background: rgba(56, 189, 248, 0.18);
           display: flex;
           align-items: center;
@@ -159,7 +164,7 @@ export default function HeroBanner({
         }
 
         .hero-stat-value {
-          font-size: 15.5px;
+          font-size: 14.5px;
           font-weight: 800;
           color: #FFFFFF;
           line-height: 1.15;
@@ -170,7 +175,7 @@ export default function HeroBanner({
         }
 
         .hero-stat-label {
-          font-size: 10px;
+          font-size: 9.5px;
           font-weight: 600;
           color: rgba(255, 255, 255, 0.75);
           line-height: 1.2;
@@ -180,39 +185,54 @@ export default function HeroBanner({
           text-overflow: ellipsis;
         }
 
-        @media (max-width: 1024px) {
-          .hero-stats-row {
-            grid-template-columns: repeat(3, 1fr);
-          }
-        }
-
         @media (max-width: 900px) {
           .hero-banner-container {
             flex-direction: column;
+            border-radius: 18px;
+            min-height: auto;
           }
           .hero-left-col {
             clip-path: none !important;
-            padding: 30px 24px;
+            padding: 22px 18px;
             margin-right: 0;
             border-right: none !important;
-            border-bottom: 1px solid rgba(16, 185, 129, 0.25);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.2);
           }
           .hero-right-col {
-            min-height: 220px;
+            min-height: 180px;
+            max-height: 240px;
             width: 100%;
+          }
+          .hero-stats-row {
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
           }
         }
 
-        @media (max-width: 640px) {
-          .hero-title {
-            font-size: 26px;
+        @media (max-width: 580px) {
+          .hero-banner-container {
+            border-radius: 16px;
+            margin-bottom: 16px;
+          }
+          .hero-left-col {
+            padding: 18px 14px;
           }
           .hero-stats-row {
-            grid-template-columns: 1fr;
-            gap: 8px;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
           }
           .hero-stat-card {
-            padding: 8px 10px;
+            padding: 6px 8px;
+          }
+          .hero-right-col {
+            min-height: 140px;
+            max-height: 180px;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .hero-stats-row {
+            grid-template-columns: 1fr;
           }
         }
       `}</style>
