@@ -28,6 +28,12 @@ BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(BACKEND_DIR, ".env"))
+except ImportError:
+    pass
+
 from schema_validator import detect_column_mappings, validate_and_transform_dataframe
 from train_model import (
     train_model_for_tenant,
@@ -101,7 +107,7 @@ async def health_check():
     return {
         "status": "ok",
         "service": "ai-queue-python-ml",
-        "port": 8001,
+        "port": int(os.getenv("AI_SERVICE_PORT", "8001")),
         "models_cached": list(_models_cache.keys())
     }
 
@@ -307,4 +313,5 @@ async def validate_historical_data(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    port = int(os.getenv("AI_SERVICE_PORT", "8001"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

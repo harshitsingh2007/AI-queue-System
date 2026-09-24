@@ -4,12 +4,12 @@
   "description": "Enterprise Multi-Hospital AI Queue System Backend in Node.js & Express with Prisma ORM and Socket.IO",
   "main": "src/server.js",
   "scripts": {
-    "start": "node --watch src/server.js",
-    "dev": "node --watch src/server.js",
-    "prisma:pull": "prisma db pull",
-    "prisma:generate": "prisma generate",
-    "test": "node tests/run_all_tests.js",
-    "db:clean-dummy": "node src/utils/cleanDummyData.js"
+    "start": "node --watch -r ./loadEnv.js src/server.js",
+    "dev": "node --watch -r ./loadEnv.js src/server.js",
+    "prisma:pull": "node scripts/run-prisma.js db pull",
+    "prisma:generate": "node scripts/run-prisma.js generate",
+    "test": "node -r ./loadEnv.js tests/run_all_tests.js",
+    "db:clean-dummy": "node -r ./loadEnv.js src/utils/cleanDummyData.js"
   },
   "keywords": [
     "express",

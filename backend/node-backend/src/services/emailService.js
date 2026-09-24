@@ -5,8 +5,6 @@
  * Supports SMTP (Gmail, Brevo, SendGrid, custom SMTP) and graceful development fallback.
  */
 
-const path = require("path");
-const dotenv = require("dotenv");
 const nodemailer = require("nodemailer");
 const env = require("../config/env");
 
@@ -14,13 +12,10 @@ const env = require("../config/env");
 let transporter = null;
 
 function getTransporter() {
-  // Reload latest .env from backend root so any updates are live immediately
-  dotenv.config({ path: path.join(__dirname, "../../../.env"), override: true });
-
-  const host = process.env.SMTP_HOST || "smtp.gmail.com";
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  const user = (process.env.SMTP_USER || "").trim();
-  const pass = (process.env.SMTP_PASS || "").replace(/\s+/g, "").trim();
+  const host = env.SMTP_HOST || "smtp.gmail.com";
+  const port = env.SMTP_PORT || 587;
+  const user = (env.SMTP_USER || "").trim();
+  const pass = (env.SMTP_PASS || "").replace(/\s+/g, "").trim();
 
   if (host && user && pass) {
     if (!transporter || transporter._cachedUser !== user || transporter._cachedPass !== pass) {
@@ -30,7 +25,7 @@ function getTransporter() {
         secure: port === 465,
         auth: { user, pass },
         tls: {
-          rejectUnauthorized: process.env.NODE_ENV === "production",
+          rejectUnauthorized: env.NODE_ENV === "production",
         },
       });
       transporter._cachedUser = user;
@@ -189,8 +184,8 @@ async function sendPasswordResetEmail({ email, otp, username = "User", hospitalN
 async function dispatchEmail({ to, subject, html, text, otp, type, hospitalName }) {
   const brandName = (hospitalName && hospitalName.trim()) ? hospitalName.trim() : "Hospital Portal";
   const t = getTransporter();
-  const smtpUser = (process.env.SMTP_USER || "").trim();
-  let from = process.env.SMTP_FROM || `"${brandName}" <${smtpUser || "noreply@hospitalportal.com"}>`;
+  const smtpUser = (env.SMTP_USER || "").trim();
+  let from = env.SMTP_FROM || `"${brandName}" <${smtpUser || "noreply@hospitalportal.com"}>`;
   if (smtpUser && smtpUser.includes("@gmail.com")) {
     from = `"${brandName}" <${smtpUser}>`;
   }
