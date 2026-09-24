@@ -7,7 +7,7 @@
  * Theme: Soft Green Clinical (Clean Healthcare Palette 4)
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel, formatRiskLabel } from "../utils/i18n";
 import AdminHeroBanner from "../components/staff/AdminHeroBanner";
@@ -399,6 +399,71 @@ export default function StaffPage({
       s.off("doctor_duty_status_changed", handleDutyChange);
     };
   }, [socketRef, currentUser]);
+
+  const [showDutyMenu, setShowDutyMenu] = useState(false);
+  const dutyMenuRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dutyMenuRef.current && !dutyMenuRef.current.contains(event.target)) {
+        setShowDutyMenu(false);
+      }
+    }
+    if (showDutyMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showDutyMenu]);
+
+  const isHi = language === "hi";
+  const dutyOptions = [
+    {
+      id: "ACTIVE",
+      label: isHi ? "सक्रिय (ड्यूटी पर)" : "Active (Ready to Call)",
+      badgeLabel: isHi ? "सक्रिय" : "Active",
+      icon: <IconActivity size={13} color="#10B981" />,
+      color: "#10B981",
+      bg: isDark ? "rgba(16, 185, 129, 0.2)" : "#ECFDF5",
+      border: isDark ? "rgba(16, 185, 129, 0.45)" : "#A7F3D0",
+      desc: isHi ? "मरीज़ों को बुलाने एवं परामर्श हेतु तैयार" : "Available to receive & call patients",
+    },
+    {
+      id: "ON_BREAK",
+      label: isHi ? "चाय / अल्पाहार अवकाश" : "On Tea / Lunch Break",
+      badgeLabel: isHi ? "अवकाश पर" : "On Break",
+      icon: <IconCoffee size={13} color="#D97706" />,
+      color: "#D97706",
+      bg: isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7",
+      border: isDark ? "rgba(245, 158, 11, 0.5)" : "#FDE68A",
+      desc: isHi ? "कतार कॉलिंग रुकी है, टाइमर सक्रिय" : "Pauses patient routing & starts timer",
+    },
+    {
+      id: "EMERGENCY_ROUND",
+      label: isHi ? "आपातकालीन / वार्ड राउंड" : "Emergency / ICU Round",
+      badgeLabel: isHi ? "इमरजेंसी राउंड" : "ICU Round",
+      icon: <IconSiren size={13} color="#E11D48" />,
+      color: "#E11D48",
+      bg: isDark ? "rgba(244, 63, 94, 0.2)" : "#FFE4E6",
+      border: isDark ? "rgba(244, 63, 94, 0.5)" : "#FECDD3",
+      desc: isHi ? "आपातकालीन वार्ड या आईसीयू में उपस्थित" : "Doctor attending emergency patients",
+    },
+    {
+      id: "OFF_DUTY",
+      label: isHi ? "ड्यूटी समाप्त (ऑफ ड्यूटी)" : "Shift Ended (Off Duty)",
+      badgeLabel: isHi ? "ड्यूटी समाप्त" : "Off Duty",
+      icon: <IconShield size={13} color={isDark ? "#94A3B8" : "#64748B"} />,
+      color: isDark ? "#94A3B8" : "#64748B",
+      bg: isDark ? "rgba(148, 163, 184, 0.2)" : "#F1F5F9",
+      border: isDark ? "rgba(148, 163, 184, 0.4)" : "#CBD5E1",
+      desc: isHi ? "आज का परामर्श समाप्त, डेस्क बंद" : "Desk consultation closed for today",
+    },
+  ];
+
+  const currentDuty = dutyOptions.find((d) => d.id === doctorDutyStatus) || dutyOptions[0];
+  const isOnBreakOrEmergency = doctorDutyStatus === "ON_BREAK" || doctorDutyStatus === "EMERGENCY_ROUND";
+
 
   useEffect(() => {
     const handleServeErr = (e) => {
@@ -977,6 +1042,8 @@ export default function StaffPage({
 
         /* Top Quick Theme Toggle Bar */
         .staff-theme-toolbar {
+          position: relative;
+          z-index: 50;
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -1009,6 +1076,82 @@ export default function StaffPage({
           border-color: #0284C7;
           background: #F0F9FF;
           box-shadow: 0 2px 8px rgba(2, 132, 199, 0.15);
+        }
+
+        /* Doctor Duty Status Interactive Badge Button & Timer */
+        .duty-status-badge-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 3px 10px;
+          border-radius: 9999px;
+          font-size: 11.5px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          outline: none;
+          user-select: none;
+        }
+
+        .duty-status-badge-btn:hover {
+          transform: translateY(-1px);
+          filter: brightness(1.1);
+        }
+
+        .duty-timer-live-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 3px 10px;
+          border-radius: 9999px;
+          font-size: 11.5px;
+          font-weight: 800;
+          letter-spacing: 0.2px;
+          user-select: none;
+        }
+
+        .duty-resume-action-btn {
+          background: #10B981;
+          color: #FFFFFF;
+          border: none;
+          border-radius: 6px;
+          padding: 2px 7px;
+          font-size: 10px;
+          font-weight: 800;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+        }
+
+        .duty-resume-action-btn:hover {
+          background: #059669;
+          transform: scale(1.06);
+        }
+
+        @keyframes pulseTimerGlow {
+          0% {
+            box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+          }
+          70% {
+            box-shadow: 0 0 0 7px rgba(245, 158, 11, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+          }
+        }
+
+        @keyframes pulseEmergencyGlow {
+          0% {
+            box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.7);
+          }
+          70% {
+            box-shadow: 0 0 0 7px rgba(244, 63, 94, 0);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(244, 63, 94, 0);
+          }
         }
 
         /* ---------------------------------------------------- */
@@ -1231,6 +1374,7 @@ export default function StaffPage({
         branding={localBranding}
         currentUser={currentUser}
         analytics={analytics}
+        isDark={isDark}
         waitingCount={queueSnapshot.length}
         servingCount={servingTickets.length}
         heldCount={heldTickets.length}
@@ -1251,95 +1395,232 @@ export default function StaffPage({
       {/* 2. UNIFIED ADMIN NAVIGATION HUB (3 TABS) + QUICK THEME SWITCHER */}
       <section style={{ marginBottom: "24px" }}>
         {/* Doctor & Department Telemetry Status Bar */}
-        <div className="staff-theme-toolbar">
-          {/* Doctor Name & Department Identity Badge (LEFT) */}
-          <div style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "10px",
-            padding: "5px 14px",
-            borderRadius: "12px",
-            background: isDark ? "#1E293B" : "#F0F9FF",
-            border: `1.5px solid ${isDark ? "#334155" : "#BAE6FD"}`,
-            boxShadow: isDark ? "0 2px 6px rgba(0, 0, 0, 0.3)" : "0 1px 3px rgba(2, 132, 199, 0.08)",
-          }}>
+        <div className="staff-theme-toolbar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", position: "relative", zIndex: 50 }}>
+          {/* LEFT: Doctor Identity Badge + Duty Status Interactive Selector side-by-side */}
+          <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+            {/* 1. Doctor Name & Department Identity Badge */}
             <div style={{
-              width: "32px",
-              height: "32px",
-              borderRadius: "8px",
-              background: isDark ? "rgba(2,132,199,0.2)" : "#E0F2FE",
-              color: "#0284C7",
-              display: "flex",
+              display: "inline-flex",
               alignItems: "center",
-              justifyContent: "center",
-              fontSize: "16px",
-              flexShrink: 0,
+              gap: "10px",
+              padding: "6px 14px",
+              borderRadius: "12px",
+              background: isDark ? "#1E293B" : "#F0F9FF",
+              border: `1.5px solid ${isDark ? "#334155" : "#BAE6FD"}`,
+              boxShadow: isDark ? "0 2px 6px rgba(0, 0, 0, 0.3)" : "0 1px 3px rgba(2, 132, 199, 0.08)",
             }}>
-              <IconDoctor size={18} color="#0284C7" />
-            </div>
-            <div style={{ textAlign: "left", lineHeight: 1.25 }}>
               <div style={{
-                fontSize: "13px",
-                fontWeight: 800,
-                color: isDark ? "#F8FAFC" : "#0F172A",
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}>
-                <span>{currentUser?.name || currentUser?.username || "Dr. Staff Desk"}</span>
-                {currentUser?.employee_code && (
-                  <span style={{
-                    fontSize: "10px",
-                    fontWeight: 700,
-                    padding: "1px 5px",
-                    borderRadius: "4px",
-                    background: isDark ? "#334155" : "#E2E8F0",
-                    color: isDark ? "#94A3B8" : "#64748B",
-                  }}>
-                    {currentUser.employee_code}
-                  </span>
-                )}
-              </div>
-              <div style={{
-                fontSize: "11px",
-                fontWeight: 600,
+                width: "32px",
+                height: "32px",
+                borderRadius: "8px",
+                background: isDark ? "rgba(2,132,199,0.2)" : "#E0F2FE",
                 color: "#0284C7",
                 display: "flex",
                 alignItems: "center",
-                gap: "5px",
-                marginTop: "2px",
+                justifyContent: "center",
+                fontSize: "16px",
+                flexShrink: 0,
               }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                  <IconHospital size={12} color="#0284C7" />
-                  {getCategoryLabel(adminDept, language)}
-                </span>
-                {currentUser?.specialization && (
-                  <span style={{ color: isDark ? "#94A3B8" : "#64748B" }}>• {currentUser.specialization}</span>
-                )}
+                <IconDoctor size={18} color="#0284C7" />
+              </div>
+              <div style={{ textAlign: "left", lineHeight: 1.25 }}>
+                <div style={{
+                  fontSize: "13.5px",
+                  fontWeight: 800,
+                  color: isDark ? "#F8FAFC" : "#0F172A",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}>
+                  <span>{currentUser?.name || currentUser?.username || "Dr. Staff Desk"}</span>
+                  {currentUser?.employee_code && (
+                    <span style={{
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      padding: "1px 5px",
+                      borderRadius: "4px",
+                      background: isDark ? "#334155" : "#E2E8F0",
+                      color: isDark ? "#94A3B8" : "#64748B",
+                    }}>
+                      {currentUser.employee_code}
+                    </span>
+                  )}
+                </div>
+                <div style={{
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  color: "#0284C7",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "5px",
+                  marginTop: "2px",
+                }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <IconHospital size={12} color="#0284C7" />
+                    {getCategoryLabel(adminDept, language)}
+                  </span>
+                  {currentUser?.specialization && (
+                    <span style={{ color: isDark ? "#94A3B8" : "#64748B" }}>• {currentUser.specialization}</span>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* 2. DOCTOR DUTY STATUS INTERACTIVE SELECTOR (Side of Doctor Name in the open space) */}
+            <div style={{ position: "relative", zIndex: 60 }} ref={dutyMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowDutyMenu(!showDutyMenu)}
+                className="duty-status-badge-btn"
+                style={{
+                  background: currentDuty.bg,
+                  border: `1.5px solid ${currentDuty.border}`,
+                  color: currentDuty.color,
+                  padding: "6px 14px",
+                  borderRadius: "12px",
+                  fontSize: "12.5px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  boxShadow: isDark ? "0 2px 6px rgba(0, 0, 0, 0.3)" : "0 1px 3px rgba(0, 0, 0, 0.05)",
+                  transition: "all 0.15s ease",
+                }}
+                title={isHi ? "ड्यूटी स्थिति बदलें (सक्रिय, ब्रेक, इमरजेंसी, ऑफ ड्यूटी)" : "Toggle Doctor Duty Status (Active, Break, Emergency, Off Duty)"}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center" }}>{currentDuty.icon}</span>
+                <span>{currentDuty.badgeLabel}</span>
+                <span style={{ fontSize: "9px", opacity: 0.8, marginLeft: "2px" }}>▼</span>
+              </button>
+
+              {/* Duty Status Options Dropdown Menu */}
+              {showDutyMenu && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    marginTop: "8px",
+                    background: isDark ? "#0F172A" : "#FFFFFF",
+                    border: isDark ? "1px solid rgba(255, 255, 255, 0.18)" : "1px solid #CBD5E1",
+                    borderRadius: "14px",
+                    padding: "6px",
+                    boxShadow: isDark
+                      ? "0 20px 40px -4px rgba(0, 0, 0, 0.7), 0 8px 16px rgba(2, 132, 199, 0.2)"
+                      : "0 20px 40px -4px rgba(0, 0, 0, 0.2), 0 8px 16px rgba(2, 132, 199, 0.12)",
+                    zIndex: 9999,
+                    minWidth: "260px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "4px",
+                    backdropFilter: "blur(12px)",
+                  }}
+                >
+                  <div style={{ padding: "6px 10px 4px 10px", fontSize: "10.5px", fontWeight: 800, color: isDark ? "#94A3B8" : "#64748B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    {isHi ? "डॉक्टर ड्यूटी स्थिति चुनें" : "Select Doctor Duty Status"}
+                  </div>
+
+                  {dutyOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        handleUpdateDutyStatus(opt.id);
+                        setShowDutyMenu(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "8px 12px",
+                        borderRadius: "10px",
+                        border: doctorDutyStatus === opt.id ? `1px solid ${opt.border}` : "1px solid transparent",
+                        background: doctorDutyStatus === opt.id ? opt.bg : "transparent",
+                        color: isDark ? "#FFFFFF" : "#0F172A",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        transition: "all 0.15s ease",
+                        width: "100%",
+                      }}
+                    >
+                      <span style={{ fontSize: "14px" }}>{opt.icon}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "12px", fontWeight: 800, color: opt.color }}>
+                          {opt.label}
+                        </div>
+                        <div style={{ fontSize: "10px", color: isDark ? "#94A3B8" : "#64748B", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {opt.desc}
+                        </div>
+                      </div>
+                      {doctorDutyStatus === opt.id && (
+                        <span style={{ color: opt.color, fontSize: "12px", fontWeight: 900 }}>✓</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 3. LIVE BREAK / EMERGENCY ROUND TIMER BADGE */}
+            {isOnBreakOrEmergency && (
+              <div
+                className="duty-timer-live-badge"
+                style={{
+                  background: doctorDutyStatus === "ON_BREAK" ? (isDark ? "rgba(245, 158, 11, 0.22)" : "#FEF3C7") : (isDark ? "rgba(244, 63, 94, 0.22)" : "#FFE4E6"),
+                  border: doctorDutyStatus === "ON_BREAK" ? (isDark ? "1px solid rgba(245, 158, 11, 0.55)" : "1px solid #FDE68A") : (isDark ? "1px solid rgba(244, 63, 94, 0.55)" : "1px solid #FECDD3"),
+                  color: doctorDutyStatus === "ON_BREAK" ? (isDark ? "#FDE68A" : "#B45309") : (isDark ? "#FECDD3" : "#BE123C"),
+                  animation: doctorDutyStatus === "ON_BREAK" ? "pulseTimerGlow 2s infinite" : "pulseEmergencyGlow 1.5s infinite",
+                  padding: "6px 12px",
+                  borderRadius: "12px",
+                  fontSize: "12px",
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center" }}>
+                  {doctorDutyStatus === "ON_BREAK" ? (
+                    <IconCoffee size={13} color={isDark ? "#FDE68A" : "#B45309"} />
+                  ) : (
+                    <IconSiren size={13} color={isDark ? "#FECDD3" : "#BE123C"} />
+                  )}
+                </span>
+                <span>
+                  {doctorDutyStatus === "ON_BREAK"
+                    ? (isHi ? "अवकाश:" : "On Break:")
+                    : (isHi ? "आईसीयू राउंड:" : "Round:")}{" "}
+                  {dutyTimerText || "00m 01s"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateDutyStatus("ACTIVE")}
+                  className="duty-resume-action-btn"
+                  title={isHi ? "ड्यूटी पुनः प्रारंभ करें" : "Resume Active Duty"}
+                >
+                  <span>✓</span>
+                  <span>{isHi ? "प्रारंभ" : "Resume"}</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Duty Status & Telemetry Indicators (RIGHT) */}
           <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px", color: isDark ? "#94A3B8" : "#64748B", flexWrap: "wrap" }}>
-            <span style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "6px",
-              fontWeight: 700,
-              color: isDoctorBusy ? "#D97706" : "#059669",
-              background: isDoctorBusy ? (isDark ? "rgba(245,158,11,0.15)" : "#FEF3C7") : (isDark ? "rgba(16,185,129,0.15)" : "#ECFDF5"),
-              padding: "4px 10px",
-              borderRadius: "20px",
-              border: `1px solid ${isDoctorBusy ? (isDark ? "rgba(245,158,11,0.3)" : "#FDE68A") : (isDark ? "rgba(16,185,129,0.3)" : "#A7F3D0")}`,
-              fontSize: "11px",
-            }}>
-              <span style={{ display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", background: isDoctorBusy ? "#F59E0B" : "#10B981" }} />
-              {isDoctorBusy
-                ? (language === "hi" ? "मरीज़ परामर्श जारी" : "In Consultation")
-                : (language === "hi" ? "ड्यूटी पर सक्रिय" : "Active on Duty")}
-            </span>
-            <span>•</span>
+            {isDoctorBusy && (
+              <span style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                fontWeight: 700,
+                color: "#D97706",
+                background: isDark ? "rgba(245,158,11,0.15)" : "#FEF3C7",
+                padding: "4px 10px",
+                borderRadius: "20px",
+                border: `1px solid ${isDark ? "rgba(245,158,11,0.3)" : "#FDE68A"}`,
+                fontSize: "11px",
+              }}>
+                <span style={{ display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", background: "#F59E0B" }} />
+                {language === "hi" ? "मरीज़ परामर्श जारी" : "In Consultation"}
+              </span>
+            )}
             <span style={{ color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
               <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "#0284C7" }} />
               {language === "hi" ? "AI कतार सक्रिय" : "Live AI Telemetry"}

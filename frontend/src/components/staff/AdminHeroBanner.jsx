@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { getCategoryLabel } from "../../utils/i18n";
+import { fetchDailyHealthQuote } from "../../utils/dailyHealthTips";
 import {
   IconDoctor,
   IconHospital,
@@ -42,12 +43,26 @@ export default function AdminHeroBanner({
   onUpdateDutyStatus = null,
   dutyTimerText = "",
   onEndBreak = null,
+  isDark = false,
 }) {
   const isHi = language === "hi";
+  const isDarkMode = isDark || (typeof document !== "undefined" && (document.body.classList.contains("theme-dark") || document.documentElement.getAttribute("data-theme") === "dark"));
   const deptLabel = getCategoryLabel(adminDept, language);
   const primaryBrandColor = branding?.primary_color || "#38BDF8";
   const secondaryBrandColor = branding?.secondary_color || "#0C4A6E";
   const displayHospName = branding?.hospital_name || branding?.name || hospitalName;
+
+  const [dailyQuote, setDailyQuote] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchDailyHealthQuote(language).then((q) => {
+      if (isMounted && q) setDailyQuote(q);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [language]);
 
   const activeServing = myServingTicket || servingTicket;
   const displayServing = activeServing
@@ -73,68 +88,6 @@ export default function AdminHeroBanner({
   const isStaffOrDoctor = ["doctor", "staff", "nurse", "receptionist"].includes(userRole);
   const canModifyDesks = !isStaffOrDoctor && (userRole === "super_admin" || userRole === "superadmin");
 
-  const [showDutyMenu, setShowDutyMenu] = useState(false);
-  const dutyMenuRef = useRef(null);
-
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dutyMenuRef.current && !dutyMenuRef.current.contains(event.target)) {
-        setShowDutyMenu(false);
-      }
-    }
-    if (showDutyMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showDutyMenu]);
-
-  const dutyOptions = [
-    {
-      id: "ACTIVE",
-      label: isHi ? "सक्रिय (ड्यूटी पर)" : "Active (Ready to Call)",
-      badgeLabel: isHi ? "सक्रिय" : "Active",
-      icon: <IconActivity size={13} color="#10B981" />,
-      color: "#10B981",
-      bg: "rgba(16, 185, 129, 0.18)",
-      border: "rgba(16, 185, 129, 0.4)",
-      desc: isHi ? "मरीज़ों को बुलाने एवं परामर्श हेतु तैयार" : "Available to receive & call patients",
-    },
-    {
-      id: "ON_BREAK",
-      label: isHi ? "चाय / अल्पाहार अवकाश" : "On Tea / Lunch Break",
-      badgeLabel: isHi ? "अवकाश पर" : "On Break",
-      icon: <IconCoffee size={13} color="#F59E0B" />,
-      color: "#F59E0B",
-      bg: "rgba(245, 158, 11, 0.2)",
-      border: "rgba(245, 158, 11, 0.5)",
-      desc: isHi ? "कतार कॉलिंग रुकी है, टाइमर सक्रिय" : "Pauses patient routing & starts timer",
-    },
-    {
-      id: "EMERGENCY_ROUND",
-      label: isHi ? "आपातकालीन / वार्ड राउंड" : "Emergency / ICU Round",
-      badgeLabel: isHi ? "इमरजेंसी राउंड" : "ICU Round",
-      icon: <IconSiren size={13} color="#F43F5E" />,
-      color: "#F43F5E",
-      bg: "rgba(244, 63, 94, 0.2)",
-      border: "rgba(244, 63, 94, 0.5)",
-      desc: isHi ? "आपातकालीन वार्ड या आईसीयू में उपस्थित" : "Doctor attending emergency patients",
-    },
-    {
-      id: "OFF_DUTY",
-      label: isHi ? "ड्यूटी समाप्त (ऑफ ड्यूटी)" : "Shift Ended (Off Duty)",
-      badgeLabel: isHi ? "ड्यूटी समाप्त" : "Off Duty",
-      icon: <IconShield size={13} color="#94A3B8" />,
-      color: "#94A3B8",
-      bg: "rgba(148, 163, 184, 0.18)",
-      border: "rgba(148, 163, 184, 0.4)",
-      desc: isHi ? "आज का परामर्श समाप्त, डेस्क बंद" : "Desk consultation closed for today",
-    },
-  ];
-
-  const currentDuty = dutyOptions.find((d) => d.id === doctorDutyStatus) || dutyOptions[0];
-  const isOnBreakOrEmergency = doctorDutyStatus === "ON_BREAK" || doctorDutyStatus === "EMERGENCY_ROUND";
 
   return (
     <div style={heroContainerStyle} className="hero-banner-container">
@@ -152,6 +105,31 @@ export default function AdminHeroBanner({
           position: relative;
           min-height: 280px;
           width: 100%;
+        }
+
+        /* Hospital Branding Card Dark/Light Modes */
+        .hero-branding-pill {
+          background: rgba(255, 255, 255, 0.95) !important;
+          border: 1.5px solid rgba(2, 132, 199, 0.25) !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+        }
+
+        .hero-branding-pill .hero-hospital-title {
+          color: #0F172A !important;
+        }
+
+        body.theme-dark .hero-branding-pill,
+        [data-theme="dark"] .hero-branding-pill,
+        .dark-theme-staff .hero-branding-pill {
+          background: #0F172A !important;
+          border: 1.5px solid rgba(56, 189, 248, 0.35) !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        body.theme-dark .hero-branding-pill .hero-hospital-title,
+        [data-theme="dark"] .hero-branding-pill .hero-hospital-title,
+        .dark-theme-staff .hero-branding-pill .hero-hospital-title {
+          color: #F8FAFC !important;
         }
 
         .hero-left-col {
@@ -450,167 +428,7 @@ export default function AdminHeroBanner({
       {/* LEFT COLUMN: Header Pills, Typography & 4 Stats Cards */}
       <div className="hero-left-col">
         <div>
-          {/* Top Row Pills: Hospital + Department + Doctor */}
-          <div className="hero-pills-row">
-            <div
-              className="hero-pill-item"
-              style={{
-                background: "rgba(56, 189, 248, 0.15)",
-                border: "1px solid rgba(56, 189, 248, 0.35)",
-                color: "#38BDF8",
-              }}
-            >
-              <IconHospital size={14} color="#38BDF8" />
-              <span>{displayHospName}</span>
-            </div>
 
-            <div
-              className="hero-pill-item"
-              style={{
-                background: "rgba(52, 211, 153, 0.15)",
-                border: "1px solid rgba(52, 211, 153, 0.35)",
-                color: "#34D399",
-              }}
-            >
-              <IconTag size={13} color="#34D399" />
-              <span>{deptLabel} Desk</span>
-            </div>
-
-            <div
-              className="hero-pill-item"
-              style={{
-                background: "rgba(255, 255, 255, 0.08)",
-                border: "1px solid rgba(255, 255, 255, 0.15)",
-                color: "#E2E8F0",
-              }}
-            >
-              <IconDoctor size={14} color="#E2E8F0" />
-              <span>{doctorName}</span>
-            </div>
-
-            {/* DOCTOR DUTY STATUS INTERACTIVE SELECTOR */}
-            <div style={{ position: "relative" }} ref={dutyMenuRef}>
-              <button
-                type="button"
-                onClick={() => setShowDutyMenu(!showDutyMenu)}
-                className="duty-status-badge-btn"
-                style={{
-                  background: currentDuty.bg,
-                  border: `1px solid ${currentDuty.border}`,
-                  color: currentDuty.color,
-                }}
-                title={isHi ? "ड्यूटी स्थिति बदलें (सक्रिय, ब्रेक, इमरजेंसी, ऑफ ड्यूटी)" : "Toggle Doctor Duty Status (Active, Break, Emergency, Off Duty)"}
-              >
-                <span>{currentDuty.icon}</span>
-                <span>{currentDuty.badgeLabel}</span>
-                <span style={{ fontSize: "9px", opacity: 0.8, marginLeft: "2px" }}>▼</span>
-              </button>
-
-              {/* Duty Status Options Dropdown Menu */}
-              {showDutyMenu && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "100%",
-                    left: 0,
-                    marginTop: "8px",
-                    background: "#0F172A",
-                    border: "1px solid rgba(255, 255, 255, 0.18)",
-                    borderRadius: "14px",
-                    padding: "6px",
-                    boxShadow: "0 16px 36px -4px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(2, 132, 199, 0.15)",
-                    zIndex: 60,
-                    minWidth: "260px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
-                    backdropFilter: "blur(12px)",
-                  }}
-                >
-                  <div style={{ padding: "6px 10px 4px 10px", fontSize: "10.5px", fontWeight: 800, color: "#94A3B8", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                    {isHi ? "डॉक्टर ड्यूटी स्थिति चुनें" : "Select Doctor Duty Status"}
-                  </div>
-
-                  {dutyOptions.map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => {
-                        if (onUpdateDutyStatus) onUpdateDutyStatus(opt.id);
-                        setShowDutyMenu(false);
-                      }}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                        padding: "8px 12px",
-                        borderRadius: "10px",
-                        border: doctorDutyStatus === opt.id ? `1px solid ${opt.border}` : "1px solid transparent",
-                        background: doctorDutyStatus === opt.id ? opt.bg : "transparent",
-                        color: "#FFFFFF",
-                        cursor: "pointer",
-                        textAlign: "left",
-                        transition: "all 0.15s ease",
-                        width: "100%",
-                      }}
-                    >
-                      <span style={{ fontSize: "14px" }}>{opt.icon}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: "12px", fontWeight: 800, color: opt.color }}>
-                          {opt.label}
-                        </div>
-                        <div style={{ fontSize: "10px", color: "#94A3B8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {opt.desc}
-                        </div>
-                      </div>
-                      {doctorDutyStatus === opt.id && (
-                        <span style={{ color: "#38BDF8", fontSize: "12px", fontWeight: 900 }}>✓</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* LIVE BREAK / EMERGENCY ROUND TIMER BADGE */}
-            {isOnBreakOrEmergency && (
-              <div
-                className="duty-timer-live-badge"
-                style={{
-                  background: doctorDutyStatus === "ON_BREAK" ? "rgba(245, 158, 11, 0.22)" : "rgba(244, 63, 94, 0.22)",
-                  border: doctorDutyStatus === "ON_BREAK" ? "1px solid rgba(245, 158, 11, 0.55)" : "1px solid rgba(244, 63, 94, 0.55)",
-                  color: doctorDutyStatus === "ON_BREAK" ? "#FDE68A" : "#FECDD3",
-                  animation: doctorDutyStatus === "ON_BREAK" ? "pulseTimerGlow 2s infinite" : "pulseEmergencyGlow 1.5s infinite",
-                }}
-              >
-                <span style={{ display: "inline-flex", alignItems: "center" }}>
-                  {doctorDutyStatus === "ON_BREAK" ? (
-                    <IconCoffee size={13} color="#FDE68A" />
-                  ) : (
-                    <IconSiren size={13} color="#FECDD3" />
-                  )}
-                </span>
-                <span>
-                  {doctorDutyStatus === "ON_BREAK"
-                    ? (isHi ? "अवकाश:" : "On Break:")
-                    : (isHi ? "आईसीयू राउंड:" : "Round:")}{" "}
-                  {dutyTimerText || "00m 01s"}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onEndBreak) onEndBreak();
-                    else if (onUpdateDutyStatus) onUpdateDutyStatus("ACTIVE");
-                  }}
-                  className="duty-resume-action-btn"
-                  title={isHi ? "ड्यूटी पुनः प्रारंभ करें" : "Resume Active Duty"}
-                >
-                  <span>✓</span>
-                  <span>{isHi ? "प्रारंभ" : "Resume"}</span>
-                </button>
-              </div>
-            )}
-          </div>
 
           <h1 className="hero-title">
             {isHi ? (
@@ -632,6 +450,99 @@ export default function AdminHeroBanner({
               ? "रीयल-टाइम मरीज़ कॉलिंग, सक्रिय डेस्क नियंत्रण एवं त्वरित कतार प्रबंधन सुविधा।"
               : "Real-time patient calling, counter management & smart queue routing.")}
           </p>
+
+          {/* Dynamic Daily Health Quote / Clinical Insight (matching Patient Portal) */}
+          <div
+            style={{
+              background: "rgba(255, 255, 255, 0.07)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(56, 189, 248, 0.22)",
+              borderRadius: "14px",
+              padding: "10px 14px",
+              marginTop: "12px",
+              marginBottom: "20px",
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "10px",
+              maxWidth: "500px",
+              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.15)",
+              transition: "all 0.2s ease",
+            }}
+          >
+            <div
+              style={{
+                width: "28px",
+                height: "28px",
+                borderRadius: "8px",
+                background: "rgba(56, 189, 248, 0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "8px",
+                  marginBottom: "3px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "10px",
+                    fontWeight: 800,
+                    color: "#38BDF8",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  {isHi ? "दैनिक स्वास्थ्य एवं क्लिनिकल युक्ति" : "Daily Clinical & Health Insight"}{" "}
+                  {dailyQuote?.category ? `• ${dailyQuote.category}` : ""}
+                </span>
+              </div>
+              <p
+                style={{
+                  margin: 0,
+                  color: "#E0F2FE",
+                  fontSize: "12px",
+                  lineHeight: "1.45",
+                  fontWeight: 500,
+                  fontStyle: "italic",
+                }}
+              >
+                "{dailyQuote?.text || (isHi ? "पर्याप्त पानी पिएं और स्वस्थ रहें।" : "Stay hydrated and prioritize patient wellbeing today.")}"
+              </p>
+              {dailyQuote?.author && (
+                <div
+                  style={{
+                    fontSize: "9.5px",
+                    color: "rgba(224, 242, 254, 0.6)",
+                    marginTop: "3px",
+                    textAlign: "right",
+                  }}
+                >
+                  — {dailyQuote.author}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* 4 Stats Badges matching HeroBanner */}
@@ -823,33 +734,56 @@ export default function AdminHeroBanner({
 
         <HospitalAmbulanceIllustration />
         {branding?.logo_url && (
-          <div style={{
-            position: "absolute",
-            top: "16px",
-            right: "16px",
-            background: "rgba(255, 255, 255, 0.94)",
-            backdropFilter: "blur(10px)",
-            borderRadius: "14px",
-            padding: "8px 14px",
-            display: "flex",
-            alignItems: "center",
-            gap: "10px",
-            boxShadow: "0 4px 16px rgba(0, 0, 0, 0.12)",
-            border: `1.5px solid ${branding.primary_color || "#0284C7"}40`,
-            maxWidth: "240px",
-            zIndex: 4,
-          }}>
-            <img
-              src={branding.logo_url}
-              alt="Hospital Logo"
-              style={{ width: "32px", height: "32px", objectFit: "contain", borderRadius: "8px" }}
-              onError={(e) => { e.currentTarget.style.display = "none"; }}
-            />
+          <div
+            className="hero-branding-pill"
+            style={{
+              position: "absolute",
+              top: "16px",
+              right: "16px",
+              borderRadius: "14px",
+              padding: "8px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              maxWidth: "240px",
+              zIndex: 4,
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+            }}
+          >
+            <div style={{
+              width: "32px",
+              height: "32px",
+              borderRadius: "8px",
+              background: "#FFFFFF",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "2px",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+              flexShrink: 0,
+            }}>
+              <img
+                src={branding.logo_url}
+                alt="Hospital Logo"
+                style={{ width: "100%", height: "100%", objectFit: "contain", borderRadius: "6px" }}
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: "12px", fontWeight: 900, color: "#0F172A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div
+                className="hero-hospital-title"
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 900,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {displayHospName}
               </div>
-              <div style={{ fontSize: "9.5px", fontWeight: 800, color: branding.primary_color || "#0284C7", textTransform: "uppercase", letterSpacing: "0.4px" }}>
+              <div style={{ fontSize: "9.5px", fontWeight: 800, color: isDarkMode ? "#38BDF8" : (branding.primary_color || "#0284C7"), textTransform: "uppercase", letterSpacing: "0.4px" }}>
                 Clinical Desk
               </div>
             </div>
