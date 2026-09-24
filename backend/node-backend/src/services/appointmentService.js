@@ -10,6 +10,7 @@ const engine = require("./queueEngine");
 const { joinQueue } = require("./ticketService");
 const { getCurrentQueueDate, parseQueueDate, queueDateToPrismaDate, dtToEpoch } = require("../utils/timezone");
 const { PRIORITY_ROUTINE } = require("../utils/clinicalComplexity");
+const { getHospitalBranding } = require("./hospitalService");
 
 /**
  * Books a clinical appointment for a patient or dependent family member.
@@ -73,6 +74,8 @@ async function bookAppointment({
     patient_name: patientName,
     user_email: userEmail,
     service_category: deptCode,
+    department_name: appointment.departments?.name || deptCode,
+    department: appointment.departments?.name || deptCode,
     appointment_date: qDateStr,
     time_slot: timeSlot,
     status: "scheduled",
@@ -162,6 +165,40 @@ async function checkInAppointment(appointmentId) {
     const err = new Error(`Cannot check in: Your appointment date (${aptDate}) has expired.`);
     err.status = 400;
     throw err;
+  }
+
+  // OPD operating hours check: Check-in & joining live line only works when OPD is open
+  const tenantId = apt.hospitals?.hospital_code || "city-hospital-01";
+  try {
+    const brand = await getHospitalBranding(tenantId);
+    if (brand) {
+      const start = brand.opd_start_time || brand.registration_open_time || "08:00";
+      const end = brand.opd_end_time || brand.registration_close_time || "20:00";
+      const now = new Date();
+      const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+      const todayName = days[now.getDay()];
+
+      // Check operating days if configured
+      if (Array.isArray(brand.operating_days) && brand.operating_days.length > 0 && !brand.operating_days.includes(todayName)) {
+        const notice = brand.closed_notice || `Cannot check in: OPD is closed today (${todayName}). Check-in and joining the live line is only available when the OPD is open.`;
+        const err = new Error(notice);
+        err.status = 403;
+        err.is_registration_closed = true;
+        throw err;
+      }
+
+      const curTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      if (curTime < start || curTime > end) {
+        const notice = brand.closed_notice || `Cannot check in: OPD registration is currently closed (${start} - ${end}). Check-in and joining the live line is only available when the OPD is open.`;
+        const err = new Error(notice);
+        err.status = 403;
+        err.is_registration_closed = true;
+        throw err;
+      }
+    }
+  } catch (brandErr) {
+    if (brandErr.is_registration_closed) throw brandErr;
+    console.warn("Could not check OPD operating hours for check-in:", brandErr.message);
   }
 
   // If already checked in and has an active ticket, return the existing ticket pass directly
@@ -256,12 +293,12 @@ async function getUserAppointments(identifier) {
               { patients: { family_members: { some: { user_id: uid } } } },
             ]
           : []),
-        { patients: { users: { email: { equals: cleanId, mode: "insensitive" } } } },
-        { patients: { users: { username: { equals: cleanId, mode: "insensitive" } } } },
-        { patients: { name: { equals: cleanId, mode: "insensitive" } } },
-        { appointment_id: { equals: cleanId, mode: "insensitive" } },
-        { ticket_id: { equals: cleanId, mode: "insensitive" } },
-        { patients: { phone: { equals: cleanId, mode: "insensitive" } } },
+        { patients: { users: { email: { contains: cleanId, mode: "insensitive" } } } },
+        { patients: { users: { username: { contains: cleanId, mode: "insensitive" } } } },
+        { patients: { name: { contains: cleanId, mode: "insensitive" } } },
+        { appointment_id: { contains: cleanId, mode: "insensitive" } },
+        { ticket_id: { contains: cleanId, mode: "insensitive" } },
+        { patients: { phone: { contains: cleanId, mode: "insensitive" } } },
       ],
     },
     include: {
@@ -277,8 +314,33 @@ async function getUserAppointments(identifier) {
     orderBy: { created_at: "desc" },
   });
 
+  const ticketIds = appointments.map((a) => a.ticket_id).filter(Boolean);
+  const ticketsByTicketId = new Map();
+  if (ticketIds.length > 0) {
+    try {
+      const extraTickets = await prisma.tickets.findMany({
+        where: { ticket_id: { in: ticketIds } },
+      });
+      extraTickets.forEach((t) => ticketsByTicketId.set(t.ticket_id, t));
+    } catch (e) {}
+  }
+
   return appointments.map((a) => {
-    const linkedTkt = a.tickets[0];
+    const linkedTkt = a.tickets[0] || (a.ticket_id ? ticketsByTicketId.get(a.ticket_id) : null);
+    let effectiveStatus = a.status;
+    if (linkedTkt) {
+      const tktStatus = String(linkedTkt.status || "").toLowerCase();
+      if (["cancelled", "completed", "expired", "no_show"].includes(tktStatus)) {
+        effectiveStatus = tktStatus;
+        if (a.status !== effectiveStatus) {
+          prisma.appointments.update({
+            where: { appointment_id: a.appointment_id },
+            data: { status: effectiveStatus, updated_at: new Date() },
+          }).catch(() => {});
+        }
+      }
+    }
+
     const transfers = [];
     if (linkedTkt) {
       if (linkedTkt.transferred_from_dept) {
@@ -308,18 +370,84 @@ async function getUserAppointments(identifier) {
       hospital_name: a.hospitals?.name || "City General Hospital",
       consumer_type: a.consumer_type,
       service_category: a.service_category,
+      department_name: a.departments?.name || a.service_category,
+      department: a.departments?.name || a.service_category,
       patient_name: a.patients?.name || "Patient",
       user_email: a.patients?.users?.email || "",
       appointment_date: parseQueueDate(a.appointment_date),
       time_slot: a.time_slot,
-      status: a.status,
-      ticket_id: a.ticket_id || "",
+      status: effectiveStatus,
+      ticket_id: a.ticket_id || (linkedTkt ? linkedTkt.ticket_id : ""),
+      ticket_status: linkedTkt ? linkedTkt.status : null,
       created_at: a.created_at ? a.created_at.toISOString() : null,
       prescription_notes: linkedTkt?.prescription_notes || "",
       transfer_count: transfers.length,
       transfers: transfers,
     };
   });
+}
+
+/**
+ * Cancel an appointment and any linked active ticket.
+ */
+async function cancelAppointment(appointmentId, reason = "Patient requested cancellation", requesterEmail = null) {
+  const cleanId = String(appointmentId || "").trim();
+  const apt = await prisma.appointments.findUnique({
+    where: { appointment_id: cleanId },
+    include: { hospitals: true, tickets: true, patients: { include: { users: true } } },
+  });
+
+  if (!apt) {
+    const err = new Error(`Appointment '${cleanId}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const updatedApt = await prisma.appointments.update({
+    where: { appointment_id: cleanId },
+    data: {
+      status: "cancelled",
+      updated_at: new Date(),
+    },
+    include: {
+      hospitals: true,
+      patients: true,
+      departments: true,
+    },
+  });
+
+  await prisma.appointment_status_history.create({
+    data: {
+      appointment_id: cleanId,
+      old_status: apt.status,
+      new_status: "cancelled",
+      reason: reason || "Cancelled by patient",
+    },
+  }).catch(() => {});
+
+  // If there is an active linked ticket, cancel it as well
+  let cancelledTicket = null;
+  const tktId = apt.ticket_id || apt.tickets?.[0]?.ticket_id;
+  if (tktId) {
+    try {
+      const { cancelTicket } = require("./ticketService");
+      cancelledTicket = await cancelTicket(
+        apt.hospitals?.hospital_code || "city-hospital-01",
+        tktId,
+        reason,
+        requesterEmail
+      );
+    } catch (e) {
+      console.log(`[cancelAppointment] Note: linked ticket cancel:`, e.message);
+    }
+  }
+
+  return {
+    ...updatedApt,
+    department_name: updatedApt.departments?.name || updatedApt.service_category,
+    department: updatedApt.departments?.name || updatedApt.service_category,
+    cancelled_ticket: cancelledTicket,
+  };
 }
 
 /**
@@ -345,6 +473,7 @@ async function getTenantAppointments(tenantId, department = null, activeOnly = f
       patients: {
         include: { users: true },
       },
+      departments: true,
     },
     orderBy: [{ appointment_date: "asc" }, { time_slot: "asc" }],
   });
@@ -354,6 +483,8 @@ async function getTenantAppointments(tenantId, department = null, activeOnly = f
     tenant_id: a.hospitals?.hospital_code || tenantId,
     consumer_type: a.consumer_type,
     service_category: a.service_category,
+    department_name: a.departments?.name || a.service_category,
+    department: a.departments?.name || a.service_category,
     patient_name: a.patients?.name || "Patient",
     user_email: a.patients?.users?.email || "",
     appointment_date: parseQueueDate(a.appointment_date),
@@ -369,4 +500,5 @@ module.exports = {
   checkInAppointment,
   getUserAppointments,
   getTenantAppointments,
+  cancelAppointment,
 };

@@ -9,7 +9,7 @@ export const WS_URL = "http://127.0.0.1:8000";
 
 export const HOSPITAL_CONFIG = {
   tenantId: "city-hospital-01",
-  name: "City General Hospital",
+  name: "Hex Visionaries",
   consumerType: "hospital",
   categories: [
     { id: "consultation", label: "General Consultation (OPD)" },

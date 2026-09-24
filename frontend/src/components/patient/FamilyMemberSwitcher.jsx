@@ -69,10 +69,10 @@ export function AddFamilyMemberModal({
       <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
         <div style={modalHeaderStyle}>
           <div>
-            <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "#0F172A", fontWeight: 800 }}>
+            <h3 style={{ margin: "0 0 4px 0", fontSize: "19px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, letterSpacing: "-0.4px" }}>
               {t("addMemberTitle", language)}
             </h3>
-            <span style={{ fontSize: "12px", color: "#64748B" }}>
+            <span style={{ fontSize: "13px", color: "var(--patient-text-sub, #64748B)", fontWeight: 500 }}>
               {t("addMemberDesc", language)}
             </span>
           </div>
@@ -354,13 +354,15 @@ export default function FamilyMemberSwitcher({
   onAddMember,
   onDeleteMember,
   language = "en",
+  familyTickets = {},
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const activeTicketCount = Object.keys(familyTickets || {}).length;
 
   return (
     <div style={containerStyle}>
       <div style={headerRowStyle}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0369A1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
             <circle cx="9" cy="7" r="4" />
@@ -370,6 +372,25 @@ export default function FamilyMemberSwitcher({
           <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", letterSpacing: "0.5px", textTransform: "uppercase" }}>
             {t("bookingFor", language)}
           </span>
+          {activeTicketCount > 0 && (
+            <span
+              style={{
+                fontSize: "10.5px",
+                fontWeight: 800,
+                background: "#FEF3C7",
+                color: "#92400E",
+                border: "1px solid #FDE68A",
+                padding: "1px 7px",
+                borderRadius: "12px",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <span>🎟️</span>
+              <span>{activeTicketCount} {language === "hi" ? "सक्रिय टोकन" : activeTicketCount === 1 ? "Active Token" : "Active Tokens"}</span>
+            </span>
+          )}
         </div>
 
         <button
@@ -391,6 +412,7 @@ export default function FamilyMemberSwitcher({
         {(members || []).map((member) => {
           const isSelected = member.id === selectedMemberId;
           const isSelf = member.relation === "self";
+          const memTicket = familyTickets && familyTickets[member.id];
 
           return (
             <div
@@ -419,6 +441,25 @@ export default function FamilyMemberSwitcher({
                 <span style={getTagStyle(isSelected, isSelf)}>
                   {getRelationLabel(member.relation, language)}
                 </span>
+                {memTicket ? (
+                  <span
+                    style={{
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      padding: "1px 6px",
+                      borderRadius: "6px",
+                      background: isSelected ? "rgba(255, 255, 255, 0.28)" : "#FEF3C7",
+                      color: isSelected ? "#FFFFFF" : "#92400E",
+                      border: isSelected ? "1px solid rgba(255, 255, 255, 0.45)" : "1px solid #FDE68A",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "3px",
+                    }}
+                  >
+                    <span>🎟️</span>
+                    <span>#{memTicket.ticket_id}</span>
+                  </span>
+                ) : null}
               </div>
 
               {/* Delete Button for dependents */}
@@ -591,42 +632,52 @@ const closeBtnStyle = {
 
 const fieldLabelStyle = {
   display: "block",
-  fontSize: "12px",
+  fontSize: "11px",
   fontWeight: 700,
-  color: "var(--patient-text-sub, #334155)",
+  textTransform: "uppercase",
+  letterSpacing: "0.8px",
+  color: "var(--patient-text-sub, #475569)",
   marginBottom: "6px",
+  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
 };
 
 const inputStyle = {
   width: "100%",
-  padding: "9px 12px",
-  borderRadius: "8px",
-  border: "1px solid var(--patient-card-border, #CBD5E1)",
+  height: "44px",
+  padding: "0 14px",
+  borderRadius: "10px",
+  border: "1.5px solid var(--patient-card-border, #CBD5E1)",
   background: "var(--patient-sub-card, #F8FAFC)",
   color: "var(--patient-text-main, #0F172A)",
-  fontSize: "13px",
+  fontSize: "14px",
+  fontWeight: 500,
   outline: "none",
   boxSizing: "border-box",
+  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
 };
 
 const cancelBtnStyle = {
-  padding: "8px 16px",
-  borderRadius: "8px",
+  padding: "9px 18px",
+  borderRadius: "10px",
   border: "1px solid var(--patient-card-border, #CBD5E1)",
   background: "var(--patient-sub-card, #FFFFFF)",
   color: "var(--patient-text-sub, #475569)",
-  fontSize: "12px",
+  fontSize: "13px",
   fontWeight: 700,
   cursor: "pointer",
+  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
 };
 
 const submitBtnStyle = {
-  padding: "8px 18px",
-  borderRadius: "8px",
+  padding: "9px 20px",
+  borderRadius: "10px",
   border: "none",
   background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
   color: "#FFFFFF",
-  fontSize: "12px",
-  fontWeight: 800,
+  fontSize: "13.5px",
+  fontWeight: 700,
+  letterSpacing: "-0.1px",
+  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
   cursor: "pointer",
+  fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
 };

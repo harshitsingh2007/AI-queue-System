@@ -58,19 +58,41 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
     return false;
   });
   const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [hospitalsLoading, setHospitalsLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/v1/hospitals/public`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.status === "success" && Array.isArray(d.hospitals)) {
-          setHospitalsList(d.hospitals);
-          if (!selectedHospitalCode && d.hospitals.length > 0) {
-            setSelectedHospitalCode(d.hospitals[0].hospital_code);
+    let cancelled = false;
+    const loadHospitals = (attempt = 1) => {
+      setHospitalsLoading(true);
+      fetch(`${API_BASE}/api/v1/hospitals/public`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          if (d.status === "success" && Array.isArray(d.hospitals) && d.hospitals.length > 0) {
+            setHospitalsList(d.hospitals);
+            const currentIsValid = d.hospitals.some((h) => h.hospital_code === selectedHospitalCode);
+            if (!currentIsValid) {
+              setSelectedHospitalCode(d.hospitals[0].hospital_code);
+            }
+          } else if (attempt < 3) {
+            setTimeout(() => loadHospitals(attempt + 1), 1000 * attempt);
+            return;
           }
-        }
-      })
-      .catch((e) => console.log("Hospitals fetch error in AuthModal:", e));
+          if (!cancelled) setHospitalsLoading(false);
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          console.error("Hospitals fetch error in AuthModal:", e);
+          if (attempt < 3) {
+            setTimeout(() => loadHospitals(attempt + 1), 1000 * attempt);
+          } else {
+            setHospitalsLoading(false);
+          }
+        });
+    };
+    loadHospitals();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedHospitalObj = hospitalsList.find(
@@ -514,7 +536,10 @@ export default function AuthModal({ authMode = "login", setAuthMode, onClose, on
                     color: "#0F172A",
                   }}
                 >
-                  {hospitalsList.length === 0 && (
+                  {hospitalsLoading && hospitalsList.length === 0 && (
+                    <option value="" disabled>Loading hospitals…</option>
+                  )}
+                  {!hospitalsLoading && hospitalsList.length === 0 && (
                     <option value="city-hospital-01">City General Hospital (Default)</option>
                   )}
                   {hospitalsList.map((h) => (

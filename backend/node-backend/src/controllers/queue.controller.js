@@ -14,7 +14,7 @@ const {
   recallTicket,
   recordAnnouncement,
 } = require("../services/ticketService");
-const { verifyFamilyMemberOwnership } = require("../services/familyService");
+const { verifyFamilyMemberOwnership, resolveOrCreateFamilyMember } = require("../services/familyService");
 const { closeAndExpirePreviousDayQueues } = require("../services/dailyClosureService");
 const { getIo, broadcastQueueUpdate } = require("../socket");
 const { PRIORITY_EMERGENCY, PRIORITY_ROUTINE, PRIORITY_STANDARD } = require("../utils/clinicalComplexity");
@@ -95,8 +95,16 @@ async function joinQueueEndpoint(req, res, next) {
     let patientId = null;
     if (family_member_id && (user_email || req.user?.email)) {
       const emailToCheck = user_email || req.user?.email;
-      const fm = await verifyFamilyMemberOwnership(emailToCheck, family_member_id);
-      patientId = fm.patient_id;
+      const fm = await resolveOrCreateFamilyMember({
+        userEmailOrId: emailToCheck,
+        memberId: family_member_id,
+        name,
+        age,
+        gender,
+      });
+      if (fm) {
+        patientId = fm.patient_id;
+      }
     }
 
     const ticket = await joinQueue({

@@ -64,7 +64,14 @@ export default function PatientHistoryTimeline({
   }, [reports, searchQuery]);
 
   return (
-    <div style={containerStyle}>
+    <div style={{
+      background: "var(--patient-card-bg, #FFFFFF)",
+      border: "1px solid var(--patient-card-border, #E2E8F0)",
+      borderRadius: "16px",
+      boxShadow: "0 4px 16px -2px rgba(15, 23, 42, 0.06)",
+      overflow: "hidden",
+      marginBottom: "16px",
+    }}>
       {/* Top Accordion / Header Bar */}
       <div
         onClick={() => collapsible && setIsOpen(!isOpen)}
@@ -74,14 +81,23 @@ export default function PatientHistoryTimeline({
           alignItems: "center",
           cursor: collapsible ? "pointer" : "default",
           padding: "12px 16px",
-          background: "linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%)",
-          borderBottom: isOpen ? "1px solid #E2E8F0" : "none",
+          background: "var(--patient-sub-card, #F8FAFC)",
+          borderBottom: isOpen ? "1px solid var(--patient-card-border, #E2E8F0)" : "none",
           borderRadius: isOpen ? "14px 14px 0 0" : "14px",
           userSelect: "none",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={headerIconStyle}>
+          <div style={{
+            width: "32px",
+            height: "32px",
+            borderRadius: "8px",
+            background: "var(--patient-tag-bg, #E0F2FE)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
               <polyline points="14 2 14 8 20 8" />
@@ -92,16 +108,24 @@ export default function PatientHistoryTimeline({
           </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontWeight: 800, fontSize: "14px", color: "#0F172A" }}>
+              <span style={{ fontWeight: 800, fontSize: "14px", color: "var(--patient-text-main, #0F172A)" }}>
                 {isHi ? "📋 मरीज़ मेडिकल इतिहास एवं पूर्व रिपोर्ट" : "📋 Patient Medical History & Past Reports"}
               </span>
               {totalVisits > 1 && (
-                <span style={returningChipStyle}>
+                <span style={{
+                  background: "var(--patient-tag-bg, #E0F2FE)",
+                  color: "var(--patient-tag-color, #0284C7)",
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  padding: "2px 8px",
+                  borderRadius: "9999px",
+                  border: "1px solid var(--patient-tag-border, #BAE6FD)",
+                }}>
                   {isHi ? `🔄 ${totalVisits} विज़िट्स` : `🔄 ${totalVisits} Past Visits`}
                 </span>
               )}
             </div>
-            <div style={{ fontSize: "11px", color: "#64748B" }}>
+            <div style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)" }}>
               {isHi
                 ? "पूर्व परामर्श, दवाइयां, नैदानिक जांच और फॉलो-अप रिकॉर्ड"
                 : "Chronological clinical encounters, diagnoses, e-prescriptions & test reports"}
@@ -114,7 +138,7 @@ export default function PatientHistoryTimeline({
             <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700 }}>
               {isOpen ? (isHi ? "छिपाएं" : "Collapse") : (isHi ? "देखें" : "Expand")}
             </span>
-            <span style={{ fontSize: "12px", color: "#64748B" }}>{isOpen ? "▲" : "▼"}</span>
+            <span style={{ fontSize: "12px", color: "var(--patient-text-sub, #64748B)" }}>{isOpen ? "▲" : "▼"}</span>
           </div>
         )}
       </div>
@@ -137,25 +161,64 @@ export default function PatientHistoryTimeline({
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
                 {/* Tabs */}
-                <div style={tabGroupStyle}>
+                <div style={{
+                  display: "inline-flex",
+                  background: "var(--patient-sub-card, #F1F5F9)",
+                  padding: "3px",
+                  borderRadius: "10px",
+                  gap: "3px",
+                }}>
                   <button
                     type="button"
                     onClick={() => setActiveTab("visits")}
-                    style={tabBtnStyle(activeTab === "visits")}
+                    style={{
+                      background: activeTab === "visits" ? "var(--patient-card-bg, #FFFFFF)" : "transparent",
+                      border: "none",
+                      color: activeTab === "visits" ? "var(--patient-text-main, #0F172A)" : "var(--patient-text-sub, #64748B)",
+                      fontSize: "12px",
+                      fontWeight: activeTab === "visits" ? 800 : 600,
+                      padding: "5px 12px",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      boxShadow: activeTab === "visits" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
                   >
                     📅 {isHi ? "विज़िट इतिहास" : "Visits"} ({visits.length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab("prescriptions")}
-                    style={tabBtnStyle(activeTab === "prescriptions")}
+                    style={{
+                      background: activeTab === "prescriptions" ? "var(--patient-card-bg, #FFFFFF)" : "transparent",
+                      border: "none",
+                      color: activeTab === "prescriptions" ? "var(--patient-text-main, #0F172A)" : "var(--patient-text-sub, #64748B)",
+                      fontSize: "12px",
+                      fontWeight: activeTab === "prescriptions" ? 800 : 600,
+                      padding: "5px 12px",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      boxShadow: activeTab === "prescriptions" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
                   >
                     💊 {isHi ? "प्रिस्क्रिप्शन" : "Prescriptions"} ({prescriptions.length})
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab("reports")}
-                    style={tabBtnStyle(activeTab === "reports")}
+                    style={{
+                      background: activeTab === "reports" ? "var(--patient-card-bg, #FFFFFF)" : "transparent",
+                      border: "none",
+                      color: activeTab === "reports" ? "var(--patient-text-main, #0F172A)" : "var(--patient-text-sub, #64748B)",
+                      fontSize: "12px",
+                      fontWeight: activeTab === "reports" ? 800 : 600,
+                      padding: "5px 12px",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      boxShadow: activeTab === "reports" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
                   >
                     🧪 {isHi ? "जांच रिपोर्ट" : "Reports"} ({reports.length})
                   </button>
@@ -168,13 +231,23 @@ export default function PatientHistoryTimeline({
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={isHi ? "निदान, दवा, डॉक्टर खोजें..." : "Filter diagnosis, meds, doc..."}
-                    style={searchInputStyle}
+                    style={{
+                      width: "100%",
+                      padding: "6px 28px 6px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--patient-card-border, #CBD5E1)",
+                      fontSize: "12px",
+                      outline: "none",
+                      boxSizing: "border-box",
+                      background: "var(--patient-card-bg, #FFFFFF)",
+                      color: "var(--patient-text-main, #0F172A)",
+                    }}
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery("")}
-                      style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94A3B8" }}
+                      style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--patient-text-sub, #94A3B8)" }}
                     >
                       ✕
                     </button>
@@ -184,7 +257,7 @@ export default function PatientHistoryTimeline({
 
               {/* Tab Content */}
               {loading ? (
-                <div style={{ padding: "20px", textAlign: "center", color: "#64748B", fontSize: "13px" }}>
+                <div style={{ padding: "20px", textAlign: "center", color: "var(--patient-text-sub, #64748B)", fontSize: "13px" }}>
                   ⏳ {isHi ? "मेडिकल इतिहास लोड हो रहा है..." : "Loading patient medical history..."}
                 </div>
               ) : (
@@ -201,7 +274,15 @@ export default function PatientHistoryTimeline({
                           />
                         ))
                       ) : (
-                        <div style={noResultsBoxStyle}>
+                        <div style={{
+                          background: "var(--patient-sub-card, #F8FAFC)",
+                          borderRadius: "10px",
+                          padding: "16px",
+                          textAlign: "center",
+                          color: "var(--patient-text-sub, #64748B)",
+                          fontSize: "12px",
+                          border: "1px dashed var(--patient-card-border, #CBD5E1)",
+                        }}>
                           {isHi ? "कोई मेल खाने वाली विज़िट नहीं मिली।" : "No matching visits found."}
                         </div>
                       )}
@@ -231,74 +312,3 @@ export default function PatientHistoryTimeline({
     </div>
   );
 }
-
-const containerStyle = {
-  background: "#FFFFFF",
-  border: "1px solid #E2E8F0",
-  borderRadius: "16px",
-  boxShadow: "0 4px 16px -2px rgba(15, 23, 42, 0.04)",
-  overflow: "hidden",
-  marginBottom: "16px",
-};
-
-const headerIconStyle = {
-  width: "32px",
-  height: "32px",
-  borderRadius: "8px",
-  background: "#E0F2FE",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-};
-
-const returningChipStyle = {
-  background: "#E0F2FE",
-  color: "#0284C7",
-  fontSize: "11px",
-  fontWeight: 800,
-  padding: "2px 8px",
-  borderRadius: "9999px",
-  border: "1px solid #BAE6FD",
-};
-
-const tabGroupStyle = {
-  display: "inline-flex",
-  background: "#F1F5F9",
-  padding: "3px",
-  borderRadius: "10px",
-  gap: "3px",
-};
-
-const tabBtnStyle = (active) => ({
-  background: active ? "#FFFFFF" : "transparent",
-  border: "none",
-  color: active ? "#0F172A" : "#64748B",
-  fontSize: "12px",
-  fontWeight: active ? 800 : 600,
-  padding: "5px 12px",
-  borderRadius: "8px",
-  cursor: "pointer",
-  boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-  transition: "all 0.15s ease",
-});
-
-const searchInputStyle = {
-  width: "100%",
-  padding: "6px 28px 6px 12px",
-  borderRadius: "8px",
-  border: "1px solid #CBD5E1",
-  fontSize: "12px",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const noResultsBoxStyle = {
-  background: "#F8FAFC",
-  borderRadius: "10px",
-  padding: "16px",
-  textAlign: "center",
-  color: "#64748B",
-  fontSize: "12px",
-  border: "1px dashed #CBD5E1",
-};

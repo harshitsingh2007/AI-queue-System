@@ -1,16 +1,3 @@
-/**
- * MandatoryAuthScreen.jsx
- * -----------------------
- * Premium Healthcare SaaS Patient Portal Landing & Authentication Screen.
- * 
- * Design Language:
- * - Soft Medical Blue / Cyan Palette (#0F172A Navy, #0284C7 / #06B6D4 Cyan Accent, #F0F9FF Light Background)
- * - Subtle Low-Contrast Grid Texture & Ambient Glowing Gradients
- * - Two-Column Desktop Layout (Hero + Login Card Left, Healthcare Dashboard Preview Right)
- * - Interactive Floating Preview Cards (Appointments, Live Queue Status, AI Prediction, Progress Updates)
- * - Clean Header with Navigation (Help Center, Find a Provider, Support, Language Toggle)
- * - Seamless Support for Unified Login, Patient & Super Admin Signups, Forgot Password, and Demo Quick-Fill
- */
 
 import React, { useState, useEffect } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../../config/hospitalConfig";
@@ -20,9 +7,26 @@ export default function MandatoryAuthScreen({
   language = "en",
   setLanguage,
   navigateTo,
+  initialMode,
 }) {
   // Views: "login" | "signup-patient" | "signup-superadmin"
-  const [authMode, setAuthMode] = useState("login");
+  const [authMode, setAuthMode] = useState(() => {
+    if (initialMode) return initialMode;
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      const m = p.get("mode") || p.get("auth") || p.get("view") || p.get("page") || p.get("tab");
+      if (m) {
+        const ml = m.toLowerCase();
+        if (ml.includes("super") || ml.includes("admin")) return "signup-superadmin";
+        if (ml.includes("reg") || ml.includes("sign") || ml.includes("join") || ml.includes("create")) return "signup-patient";
+      }
+      const hash = (window.location.hash || "").toLowerCase();
+      if (hash.includes("reg") || hash.includes("sign")) return "signup-patient";
+      const path = (window.location.pathname || "").toLowerCase();
+      if (path.includes("reg") || path.includes("sign")) return "signup-patient";
+    }
+    return "login";
+  });
 
   // Login Form States
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -47,7 +51,7 @@ export default function MandatoryAuthScreen({
       try {
         const saved = localStorage.getItem("ai_queue_current_hospital");
         if (saved) return saved;
-      } catch (e) {}
+      } catch (e) { }
     }
     return "city-hospital-01";
   });
@@ -59,38 +63,129 @@ export default function MandatoryAuthScreen({
     return false;
   });
   const [showCustomHospitalPicker, setShowCustomHospitalPicker] = useState(false);
+  const [hospitalsLoading, setHospitalsLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/v1/hospitals/public`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.status === "success" && Array.isArray(d.hospitals)) {
-          setHospitalsList(d.hospitals);
-          if (!selectedHospitalCode && d.hospitals.length > 0) {
-            setSelectedHospitalCode(d.hospitals[0].hospital_code);
+    let cancelled = false;
+    const loadHospitals = (attempt = 1) => {
+      setHospitalsLoading(true);
+      fetch(`${API_BASE}/api/v1/hospitals/public`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (cancelled) return;
+          if (d.status === "success" && Array.isArray(d.hospitals) && d.hospitals.length > 0) {
+            setHospitalsList(d.hospitals);
+            // Always update the selected code to the first hospital if the current
+            // selection isn't in the returned list (e.g. the default fallback code)
+            const currentIsValid = d.hospitals.some((h) => h.hospital_code === selectedHospitalCode);
+            if (!currentIsValid) {
+              setSelectedHospitalCode(d.hospitals[0].hospital_code);
+            }
+          } else if (attempt < 3) {
+            // Retry up to 3 times on empty/bad response
+            setTimeout(() => loadHospitals(attempt + 1), 1000 * attempt);
+            return;
           }
-        }
-      })
-      .catch((e) => console.log("Hospitals fetch error:", e));
+          if (!cancelled) setHospitalsLoading(false);
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          console.error("Hospitals fetch error:", e);
+          if (attempt < 3) {
+            setTimeout(() => loadHospitals(attempt + 1), 1000 * attempt);
+          } else {
+            setHospitalsLoading(false);
+          }
+        });
+    };
+    loadHospitals();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedHospitalObj = hospitalsList.find(
     (h) => h.hospital_code === selectedHospitalCode
-  ) || hospitalsList[0] || { name: "City General Hospital", hospital_code: "city-hospital-01" };
+  ) || hospitalsList[0] || { name: "Hex Visionaries", hospital_code: "city-hospital-01" };
+
+  useEffect(() => {
+    document.title = authMode.startsWith("signup") ? "Signup" : "Login";
+  }, [authMode]);
 
   // Modal Dialog States
   const [showHelpModal, setShowHelpModal] = useState(false);
-  const [showProviderModal, setShowProviderModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
+
+  // Forgot Password Multi-Step State
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotStep, setForgotStep] = useState(1); // 1: Email, 2: OTP & New Pwd, 3: Success
   const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [showForgotPwd, setShowForgotPwd] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState(null);
+  const [forgotDevNotice, setForgotDevNotice] = useState(null);
+
+  // Real-Time Registration States (Email check, OTP verification step, Password strength)
+  const [regStep, setRegStep] = useState("form"); // "form" | "otp"
+  const [regOtp, setRegOtp] = useState("");
+  const [emailCheckStatus, setEmailCheckStatus] = useState("idle"); // "idle" | "checking" | "available" | "taken"
+  const [resendCountdown, setResendCountdown] = useState(0);
+  const [devOtpNotice, setDevOtpNotice] = useState(null);
 
   const [errorMsg, setErrorMsg] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const isHindi = language === "hi";
 
+  // Debounced real-time email availability checker
+  useEffect(() => {
+    const clean = regEmail.trim().toLowerCase();
+    if (!clean || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) {
+      setEmailCheckStatus("idle");
+      return;
+    }
+    setEmailCheckStatus("checking");
+    const timer = setTimeout(() => {
+      fetch(`${API_BASE}/api/v1/auth/check-email?email=${encodeURIComponent(clean)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.status === "success") {
+            setEmailCheckStatus(d.exists ? "taken" : "available");
+          } else {
+            setEmailCheckStatus("idle");
+          }
+        })
+        .catch(() => setEmailCheckStatus("idle"));
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [regEmail]);
+
+  // Resend Countdown Timer for OTP
+  useEffect(() => {
+    if (resendCountdown <= 0) return;
+    const interval = setInterval(() => {
+      setResendCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCountdown]);
+
+  // Calculate password strength
+  const getPasswordStrength = (pwd) => {
+    if (!pwd) return { score: 0, label: "", color: "#E2E8F0" };
+    let score = 0;
+    if (pwd.length >= 6) score += 1;
+    if (pwd.length >= 8) score += 1;
+    if (/[0-9]/.test(pwd)) score += 1;
+    if (/[A-Z]/.test(pwd) || /[^A-Za-z0-9]/.test(pwd)) score += 1;
+
+    if (score <= 1) return { score: 1, label: isHindi ? "कमज़ोर" : "Weak", color: "#EF4444" };
+    if (score <= 2) return { score: 2, label: isHindi ? "मध्यम" : "Fair", color: "#F59E0B" };
+    if (score === 3) return { score: 3, label: isHindi ? "अच्छा" : "Good", color: "#3B82F6" };
+    return { score: 4, label: isHindi ? "मजबूत" : "Strong", color: "#10B981" };
+  };
 
   // Submit Unified Login
   const handleLoginSubmit = async (e) => {
@@ -115,20 +210,21 @@ export default function MandatoryAuthScreen({
         if (data.token) {
           try {
             localStorage.setItem("ai_queue_token", data.token);
-          } catch (e) {}
+          } catch (e) { }
         }
         if (data.user?.hospital_code) {
           try {
             localStorage.setItem("ai_queue_current_hospital", data.user.hospital_code);
-          } catch (e) {}
+          } catch (e) { }
         }
         if (onLoginSuccess) onLoginSuccess(data.user);
       } else {
         setErrorMsg(
           data.detail ||
-            (isHindi
-              ? "प्रमाणीकरण विफल रहा। कृपया अपने क्रेडेंशियल्स जांचें।"
-              : "Unable to sign in. The email or password you entered is incorrect.")
+          data.message ||
+          (isHindi
+            ? "प्रमाणीकरण विफल रहा। कृपया अपने क्रेडेंशियल्स जांचें।"
+            : "Unable to sign in. The email or password you entered is incorrect.")
         );
       }
     } catch (err) {
@@ -141,29 +237,111 @@ export default function MandatoryAuthScreen({
     }
   };
 
-  // Submit Registration
-  const handleRegisterSubmit = async (e) => {
+  // Request Sign-Up Email OTP Verification
+  const handleRequestSignupOtp = async (e) => {
     e.preventDefault();
     setErrorMsg(null);
+    setDevOtpNotice(null);
+
+    if (!fullName.trim()) {
+      setErrorMsg(isHindi ? "कृपया अपना पूरा नाम दर्ज करें।" : "Please enter your full name.");
+      return;
+    }
+
+    if (!regEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail.trim())) {
+      setErrorMsg(isHindi ? "कृपया एक मान्य ईमेल पता दर्ज करें।" : "Please enter a valid email address.");
+      return;
+    }
+
+    if (emailCheckStatus === "taken") {
+      setErrorMsg(isHindi ? "यह ईमेल पहले से पंजीकृत है।" : "This email address is already registered. Please sign in.");
+      return;
+    }
 
     if (regPassword !== regConfirmPassword) {
-      setErrorMsg(
-        isHindi
-          ? "पासवर्ड मेल नहीं खाते। कृपया पुनः दर्ज करें।"
-          : "Passwords do not match. Please re-enter."
-      );
+      setErrorMsg(isHindi ? "पासवर्ड मेल नहीं खाते। कृपया पुनः दर्ज करें।" : "Passwords do not match. Please re-enter.");
       return;
     }
     if (regPassword.length < 6) {
-      setErrorMsg(
-        isHindi
-          ? "पासवर्ड कम से कम 6 वर्णों का होना चाहिए।"
-          : "Password must be at least 6 characters long."
-      );
+      setErrorMsg(isHindi ? "पासवर्ड कम से कम 6 वर्णों का होना चाहिए।" : "Password must be at least 6 characters long.");
       return;
     }
 
+    // For SuperAdmin, proceed directly without email OTP
+    if (authMode === "signup-superadmin") {
+      handleFinalRegister();
+      return;
+    }
+
+    // For Patient, dispatch email verification OTP
     setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/send-verification-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: regEmail.trim(),
+          username: fullName.trim(),
+          hospital_code: selectedHospitalObj?.hospital_code || selectedHospitalCode,
+          hospital_name: selectedHospitalObj?.name,
+        }),
+      });
+      const data = await res.json();
+      setLoading(false);
+
+      if (res.ok && data.status === "success") {
+        setRegStep("otp");
+        setResendCountdown(60);
+        if (data.dev_otp) {
+          setDevOtpNotice(`[Dev Mode] Verification code: ${data.dev_otp}`);
+        }
+      } else {
+        setErrorMsg(data.message || (isHindi ? "सत्यापन कोड भेजने में विफल।" : "Failed to send verification code."));
+      }
+    } catch (err) {
+      setLoading(false);
+      setErrorMsg(isHindi ? `सर्वर त्रुटि: ${err.message}` : `Server error: ${err.message}`);
+    }
+  };
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    if (resendCountdown > 0) return;
+    setErrorMsg(null);
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/send-verification-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: regEmail.trim(),
+          username: fullName.trim(),
+          hospital_code: selectedHospitalObj?.hospital_code || selectedHospitalCode,
+          hospital_name: selectedHospitalObj?.name,
+        }),
+      });
+      const data = await res.json();
+      setLoading(false);
+      if (res.ok && data.status === "success") {
+        setResendCountdown(60);
+        if (data.dev_otp) {
+          setDevOtpNotice(`[Dev Mode] New verification code: ${data.dev_otp}`);
+        }
+      } else {
+        setErrorMsg(data.message || "Failed to resend code.");
+      }
+    } catch (err) {
+      setLoading(false);
+      setErrorMsg(err.message);
+    }
+  };
+
+  // Submit Final Registration (With verified OTP)
+  const handleFinalRegister = async (e) => {
+    if (e) e.preventDefault();
+    setErrorMsg(null);
+    setLoading(true);
+
     let endpoint = "/api/v1/auth/signup/patient";
     let payload = {
       username: fullName.trim(),
@@ -174,10 +352,12 @@ export default function MandatoryAuthScreen({
 
     if (authMode === "signup-superadmin") {
       endpoint = "/api/v1/auth/signup/superadmin";
-      payload.hospital_name =
-        hospitalName.trim() || `${fullName.trim()}'s Medical Center`;
+      payload.hospital_name = hospitalName.trim() || `${fullName.trim()}'s Medical Center`;
     } else {
       payload.hospital_code = selectedHospitalCode || "city-hospital-01";
+      if (regOtp) {
+        payload.otp = regOtp.trim();
+      }
     }
 
     try {
@@ -194,35 +374,108 @@ export default function MandatoryAuthScreen({
         if (data.token) {
           try {
             localStorage.setItem("ai_queue_token", data.token);
-          } catch (e) {}
+          } catch (e) { }
         }
         if (payload.hospital_code) {
           try {
             localStorage.setItem("ai_queue_current_hospital", payload.hospital_code);
-          } catch (e) {}
+          } catch (e) { }
         }
         if (onLoginSuccess) onLoginSuccess(data.user);
       } else {
         setErrorMsg(
+          data.message ||
           data.detail ||
-            (isHindi
-              ? "पंजीकरण विफल रहा। कृपया पुनः प्रयास करें।"
-              : "Registration failed. Please try again.")
+          (isHindi ? "पंजीकरण विफल रहा। कृपया पुनः प्रयास करें।" : "Registration failed. Please try again.")
         );
       }
     } catch (err) {
       setLoading(false);
-      setErrorMsg(
-        isHindi
-          ? `सर्वर कनेक्शन त्रुटि: ${err.message}`
-          : `Server connection error: ${err.message}`
-      );
+      setErrorMsg(isHindi ? `सर्वर कनेक्शन त्रुटि: ${err.message}` : `Server connection error: ${err.message}`);
     }
   };
 
-  const handleForgotSubmit = (e) => {
+  // Form submission dispatcher for registration
+  const handleRegisterSubmit = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (regStep === "otp") {
+      handleFinalRegister(e);
+    } else {
+      handleRequestSignupOtp(e);
+    }
+  };
+
+  // Forgot Password: Step 1 - Send Reset Code
+  const handleForgotRequestOtp = async (e) => {
     e.preventDefault();
-    setForgotSuccess(true);
+    setForgotError(null);
+    setForgotDevNotice(null);
+    setForgotLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: forgotEmail.trim(),
+          hospital_code: selectedHospitalObj?.hospital_code || selectedHospitalCode,
+          hospital_name: selectedHospitalObj?.name,
+        }),
+      });
+      const data = await res.json();
+      setForgotLoading(false);
+
+      if (res.ok && data.status === "success") {
+        setForgotStep(2);
+        if (data.dev_otp) {
+          setForgotDevNotice(`[Dev Mode] Reset code: ${data.dev_otp}`);
+        }
+      } else {
+        setForgotError(data.message || "Failed to send reset instructions.");
+      }
+    } catch (err) {
+      setForgotLoading(false);
+      setForgotError(err.message);
+    }
+  };
+
+  // Forgot Password: Step 2 - Verify Code & Save New Password
+  const handleForgotResetPassword = async (e) => {
+    e.preventDefault();
+    setForgotError(null);
+
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError(isHindi ? "पासवर्ड मेल नहीं खाते।" : "Passwords do not match.");
+      return;
+    }
+    if (forgotNewPassword.length < 6) {
+      setForgotError(isHindi ? "पासवर्ड कम से कम 6 वर्णों का होना चाहिए।" : "Password must be at least 6 characters.");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: forgotEmail.trim(),
+          otp: forgotOtp.trim(),
+          new_password: forgotNewPassword,
+        }),
+      });
+      const data = await res.json();
+      setForgotLoading(false);
+
+      if (res.ok && data.status === "success") {
+        setForgotStep(3);
+      } else {
+        setForgotError(data.message || (isHindi ? "पासवर्ड रीसेट विफल रहा।" : "Password reset failed. Invalid or expired code."));
+      }
+    } catch (err) {
+      setForgotLoading(false);
+      setForgotError(err.message);
+    }
   };
 
   return (
@@ -319,28 +572,18 @@ export default function MandatoryAuthScreen({
           z-index: 10;
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          padding: 20px 48px;
+          justify-content: flex-end;
+          padding: 12px 48px 0 48px;
           max-width: 1440px;
           margin: 0 auto;
           width: 100%;
           box-sizing: border-box;
         }
         .pl-header-brand {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          text-decoration: none;
+          display: none;
         }
         .pl-brand-icon {
-          width: 42px;
-          height: 42px;
-          border-radius: 12px;
-          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 14px -2px rgba(2, 132, 199, 0.35);
+          display: none;
         }
         .pl-nav-links {
           display: flex;
@@ -374,7 +617,7 @@ export default function MandatoryAuthScreen({
           max-width: 1440px;
           margin: 0 auto;
           width: 100%;
-          padding: 24px 48px 48px 48px;
+          padding: 12px 48px 36px 48px;
           box-sizing: border-box;
           align-items: center;
         }
@@ -383,7 +626,7 @@ export default function MandatoryAuthScreen({
         .pl-left-column {
           display: flex;
           flex-direction: column;
-          gap: 28px;
+          gap: 20px;
           max-width: 540px;
         }
 
@@ -761,35 +1004,13 @@ export default function MandatoryAuthScreen({
       {/* 1. MINIMAL PROFESSIONAL HEADER                                    */}
       {/* ================================================================= */}
       <header className="pl-header">
-        <div className="pl-header-brand">
-          <div className="pl-brand-icon">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-              <path d="M12 8v8"/>
-              <path d="M8 12h8"/>
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: "16px", color: "#0F172A", letterSpacing: "-0.3px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span>{HOSPITAL_CONFIG.name || "City General Hospital"}</span>
-              <span style={{ fontSize: "10px", fontWeight: 800, padding: "2px 7px", borderRadius: "6px", background: "#E0F2FE", color: "#0369A1", letterSpacing: "0.8px" }}>
-                PATIENT PORTAL
-              </span>
-            </div>
-            <div style={{ fontSize: "11.5px", color: "#64748B", fontWeight: 500 }}>
-              {isHindi ? "स्मार्ट कतार एवं डिजिटल अपॉइंटमेंट" : "AI Queue Orchestration & Care Access"}
-            </div>
-          </div>
-        </div>
-
         {/* Right Nav Links */}
         <div className="pl-nav-links">
+
           <button type="button" onClick={() => setShowHelpModal(true)} className="pl-nav-link">
             {isHindi ? "सहायता केंद्र" : "Help Center"}
           </button>
-          <button type="button" onClick={() => setShowProviderModal(true)} className="pl-nav-link">
-            {isHindi ? "चिकित्सक खोजें" : "Find a Provider"}
-          </button>
+
           <button type="button" onClick={() => setShowSupportModal(true)} className="pl-nav-link">
             {isHindi ? "सहायता" : "Support"}
           </button>
@@ -815,38 +1036,15 @@ export default function MandatoryAuthScreen({
               }}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="2" y1="12" x2="22" y2="12"/>
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
               </svg>
               <span>{isHindi ? "हिंदी (HI)" : "English (EN)"}</span>
             </button>
           )}
 
-          {/* Kiosk Mode Shortcut */}
-          {navigateTo && (
-            <button
-              type="button"
-              onClick={() => navigateTo("kiosk")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "6px 14px",
-                borderRadius: "10px",
-                background: "#F0F9FF",
-                border: "1px solid #BAE6FD",
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "#0369A1",
-                cursor: "pointer",
-              }}
-              title="Open Public Waiting Room Kiosk TV"
-            >
-              <span>{isHindi ? "प्रतीक्षा कक्ष टीवी" : "Waiting Room TV"}</span>
-              <span>→</span>
-            </button>
-          )}
+
         </div>
       </header>
 
@@ -854,7 +1052,7 @@ export default function MandatoryAuthScreen({
       {/* 2. MAIN TWO-COLUMN HERO + LOGIN INTERFACE                          */}
       {/* ================================================================= */}
       <main className="pl-main-container">
-        
+
         {/* LEFT COLUMN: HERO HEADLINE + LOGIN CARD */}
         <div className="pl-left-column">
           <div>
@@ -880,10 +1078,10 @@ export default function MandatoryAuthScreen({
 
           {/* LOGIN CARD */}
           <div className="pl-login-card">
-            
+
             {/* Top Card Title & Mode Indicator */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <h2 className="pl-card-title">
                   {authMode === "login"
                     ? (isHindi ? "पुनः स्वागत है" : "Welcome back")
@@ -896,38 +1094,62 @@ export default function MandatoryAuthScreen({
                 </p>
               </div>
 
-              {/* Mode Switcher Pill */}
-              <div style={{ display: "inline-flex", background: "#F1F5F9", padding: "3px", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+              {/* Primary Mode Switcher Control */}
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  background: "#F1F5F9",
+                  padding: "4px",
+                  borderRadius: "12px",
+                  border: "1.5px solid #E2E8F0",
+                  gap: "4px",
+                  flexShrink: 0,
+                  whiteSpace: "nowrap",
+                }}
+              >
                 <button
                   type="button"
-                  onClick={() => { setAuthMode("login"); setErrorMsg(null); }}
+                  id="tab-signin-btn"
+                  onClick={() => { setAuthMode("login"); setRegStep("form"); setErrorMsg(null); }}
                   style={{
-                    padding: "4px 10px",
-                    borderRadius: "7px",
+                    padding: "7px 16px",
+                    borderRadius: "8px",
                     border: "none",
                     background: authMode === "login" ? "#FFFFFF" : "transparent",
                     color: authMode === "login" ? "#0F172A" : "#64748B",
                     fontWeight: 700,
-                    fontSize: "11px",
+                    fontSize: "12px",
                     cursor: "pointer",
-                    boxShadow: authMode === "login" ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
+                    boxShadow: authMode === "login" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    display: "inline-block",
+                    lineHeight: "1.2",
+                    transition: "all 0.15s ease",
                   }}
                 >
                   {isHindi ? "साइन इन" : "Sign In"}
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setAuthMode("signup-patient"); setErrorMsg(null); }}
+                  id="tab-register-btn"
+                  onClick={() => { setAuthMode("signup-patient"); setRegStep("form"); setErrorMsg(null); }}
                   style={{
-                    padding: "4px 10px",
-                    borderRadius: "7px",
+                    padding: "7px 16px",
+                    borderRadius: "8px",
                     border: "none",
-                    background: authMode.startsWith("signup") ? "#FFFFFF" : "transparent",
-                    color: authMode.startsWith("signup") ? "#0F172A" : "#64748B",
+                    background: "#0284C7",
+                    color: "#FFFFFF",
                     fontWeight: 700,
-                    fontSize: "11px",
+                    fontSize: "12px",
                     cursor: "pointer",
-                    boxShadow: authMode.startsWith("signup") ? "0 1px 3px rgba(0,0,0,0.06)" : "none",
+                    boxShadow: "0 2px 6px rgba(2, 132, 199, 0.35)",
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                    display: "inline-block",
+                    lineHeight: "1.2",
+                    transition: "all 0.15s ease",
                   }}
                 >
                   {isHindi ? "पंजीकरण" : "Register"}
@@ -951,9 +1173,9 @@ export default function MandatoryAuthScreen({
                 fontWeight: 600
               }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.2" style={{ flexShrink: 0 }}>
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="8" x2="12" y2="12"/>
-                  <line x1="12" y1="16" x2="12.01" y2="16"/>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 <span style={{ flex: 1 }}>{errorMsg}</span>
               </div>
@@ -972,8 +1194,8 @@ export default function MandatoryAuthScreen({
                   <div className="pl-input-wrapper">
                     <span className="pl-input-icon">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                        <circle cx="12" cy="7" r="4"/>
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
                       </svg>
                     </span>
                     <input
@@ -1005,8 +1227,8 @@ export default function MandatoryAuthScreen({
                   <div className="pl-input-wrapper">
                     <span className="pl-input-icon">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                       </svg>
                     </span>
                     <input
@@ -1027,13 +1249,13 @@ export default function MandatoryAuthScreen({
                     >
                       {showPassword ? (
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                          <circle cx="12" cy="12" r="3"/>
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
                         </svg>
                       ) : (
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                          <line x1="1" y1="1" x2="23" y2="23"/>
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
                         </svg>
                       )}
                     </button>
@@ -1057,42 +1279,13 @@ export default function MandatoryAuthScreen({
                   <span>{isHindi ? "रोगी पोर्टल पर नए हैं?" : "New to the patient portal?"}</span>
                   <button
                     type="button"
-                    onClick={() => { setAuthMode("signup-patient"); setErrorMsg(null); }}
+                    onClick={() => { setAuthMode("signup-patient"); setRegStep("form"); setErrorMsg(null); }}
                     className="pl-register-link"
                   >
                     {isHindi ? "खाता बनाएं" : "Create an account"}
                   </button>
                 </div>
 
-                {/* Quick Demo Fill Bar */}
-                <div className="pl-demo-bar">
-                  <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>
-                    {isHindi ? "त्वरित लॉगिन:" : "Quick Login:"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginIdentifier("superadmin@hospital.com");
-                      setLoginPassword("admin123");
-                    }}
-                    className="pl-demo-pill"
-                    style={{ background: "#F0F9FF", borderColor: "#BAE6FD", color: "#0369A1" }}
-                    title="Super Admin / Hospital Network Owner"
-                  >
-                    👑 Super Admin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginIdentifier("patient@hospital.com");
-                      setLoginPassword("pass123");
-                    }}
-                    className="pl-demo-pill"
-                    title="Patient Self-Service Account"
-                  >
-                    👤 Patient
-                  </button>
-                </div>
               </form>
             )}
 
@@ -1116,7 +1309,13 @@ export default function MandatoryAuthScreen({
                       textAlign: "left"
                     }}
                   >
-                    <div>{isHindi ? "👤 रोगी खाता" : "👤 Patient"}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                        <circle cx="12" cy="7" r="4" />
+                      </svg>
+                      <span>{isHindi ? "रोगी खाता" : "Patient"}</span>
+                    </div>
                     <div style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 500, marginTop: "2px" }}>
                       {isHindi ? "अपॉइंटमेंट और कतार" : "Queue & Appointments"}
                     </div>
@@ -1136,7 +1335,12 @@ export default function MandatoryAuthScreen({
                       textAlign: "left"
                     }}
                   >
-                    <div>{isHindi ? "🏥 अस्पताल मालिक" : "🏥 Hospital Owner"}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 21h18" /><path d="M5 21V7l8-4v18" /><path d="M19 21V11l-6-4" /><path d="M9 9h1" /><path d="M9 13h1" /><path d="M9 17h1" />
+                      </svg>
+                      <span>{isHindi ? "अस्पताल मालिक" : "Hospital Owner"}</span>
+                    </div>
                     <div style={{ fontSize: "10.5px", color: "#64748B", fontWeight: 500, marginTop: "2px" }}>
                       {isHindi ? "सुपर एडमिन टेनेंट" : "Super Admin Tenant"}
                     </div>
@@ -1171,11 +1375,12 @@ export default function MandatoryAuthScreen({
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              fontSize: "18px",
                               flexShrink: 0,
                             }}
                           >
-                            🏥
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M3 21h18" /><path d="M5 21V7l8-4v18" /><path d="M19 21V11l-6-4" /><path d="M9 9h1" /><path d="M9 13h1" /><path d="M9 17h1" />
+                            </svg>
                           </div>
                           <div style={{ minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
@@ -1214,9 +1419,15 @@ export default function MandatoryAuthScreen({
                                   whiteSpace: "nowrap",
                                   overflow: "hidden",
                                   textOverflow: "ellipsis",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
                                 }}
                               >
-                                📍 {selectedHospitalObj.address}
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
+                                </svg>
+                                <span>{selectedHospitalObj.address}</span>
                               </div>
                             )}
                           </div>
@@ -1274,7 +1485,7 @@ export default function MandatoryAuthScreen({
                               setSelectedHospitalCode(e.target.value);
                               try {
                                 localStorage.setItem("ai_queue_current_hospital", e.target.value);
-                              } catch (err) {}
+                              } catch (err) { }
                             }}
                             required
                             style={{
@@ -1288,7 +1499,10 @@ export default function MandatoryAuthScreen({
                               fontWeight: 600,
                             }}
                           >
-                            {hospitalsList.length === 0 && (
+                            {hospitalsLoading && hospitalsList.length === 0 && (
+                              <option value="" disabled>Loading hospitals…</option>
+                            )}
+                            {!hospitalsLoading && hospitalsList.length === 0 && (
                               <option value="city-hospital-01">City General Hospital (Default)</option>
                             )}
                             {hospitalsList.map((h) => (
@@ -1303,11 +1517,15 @@ export default function MandatoryAuthScreen({
                               left: "12px",
                               top: "50%",
                               transform: "translateY(-50%)",
-                              fontSize: "15px",
                               pointerEvents: "none",
+                              display: "flex",
+                              alignItems: "center",
+                              color: "#0284C7",
                             }}
                           >
-                            🏥
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M3 21h18" /><path d="M5 21V7l8-4v18" /><path d="M19 21V11l-6-4" /><path d="M9 9h1" /><path d="M9 13h1" /><path d="M9 17h1" />
+                            </svg>
                           </span>
                           <span
                             style={{
@@ -1371,94 +1589,257 @@ export default function MandatoryAuthScreen({
                   </div>
                 )}
 
-                {/* Email & Phone 2-Col */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div className="pl-input-group">
-                    <div className="pl-input-label-row">
-                      <label className="pl-input-label">{isHindi ? "ईमेल *" : "EMAIL *"}</label>
+                {regStep === "otp" ? (
+                  /* ================= EMAIL OTP VERIFICATION STEP ================= */
+                  <div style={{ marginTop: "8px" }}>
+                    <div style={{ textAlign: "center", marginBottom: "18px" }}>
+                      <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "#E0F2FE", color: "#0284C7", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: "10px" }}>
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="4" width="20" height="16" rx="2" />
+                          <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                        </svg>
+                      </div>
+                      <h3 style={{ margin: "0 0 6px 0", fontSize: "17px", fontWeight: 800, color: "#0F172A" }}>
+                        {isHindi ? "ईमेल सत्यापन कोड दर्ज करें" : "Verify Your Email"}
+                      </h3>
+                      <p style={{ margin: 0, fontSize: "13px", color: "#64748B" }}>
+                        {isHindi ? "हमने एक 6-अंकीय कोड भेजा है:" : "We've sent a 6-digit security code to:"}<br />
+                        <strong style={{ color: "#0284C7" }}>{regEmail}</strong>
+                        <button
+                          type="button"
+                          onClick={() => setRegStep("form")}
+                          style={{ marginLeft: "6px", background: "none", border: "none", color: "#64748B", cursor: "pointer", fontSize: "11.5px", textDecoration: "underline" }}
+                        >
+                          ({isHindi ? "बदलें" : "Change"})
+                        </button>
+                      </p>
                     </div>
-                    <div className="pl-input-wrapper">
-                      <input
-                        type="email"
-                        className="pl-text-input"
-                        placeholder="name@example.com"
-                        value={regEmail}
-                        onChange={(e) => setRegEmail(e.target.value)}
-                        required
-                        style={{ paddingLeft: "16px" }}
-                      />
-                    </div>
-                  </div>
-                  <div className="pl-input-group">
-                    <div className="pl-input-label-row">
-                      <label className="pl-input-label">{isHindi ? "फोन नंबर" : "PHONE"}</label>
-                    </div>
-                    <div className="pl-input-wrapper">
-                      <input
-                        type="tel"
-                        className="pl-text-input"
-                        placeholder="9876543210"
-                        value={regPhone}
-                        onChange={(e) => setRegPhone(e.target.value)}
-                        style={{ paddingLeft: "16px" }}
-                      />
-                    </div>
-                  </div>
-                </div>
 
-                {/* Password & Confirm Password */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div className="pl-input-group">
-                    <div className="pl-input-label-row">
-                      <label className="pl-input-label">{isHindi ? "पासवर्ड *" : "PASSWORD *"}</label>
-                    </div>
-                    <div className="pl-input-wrapper">
-                      <input
-                        type="password"
-                        className="pl-text-input"
-                        placeholder="••••••••"
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                        required
-                        style={{ paddingLeft: "16px" }}
-                      />
-                    </div>
-                  </div>
-                  <div className="pl-input-group">
-                    <div className="pl-input-label-row">
-                      <label className="pl-input-label">{isHindi ? "पासवर्ड की पुष्टि *" : "CONFIRM *"}</label>
-                    </div>
-                    <div className="pl-input-wrapper">
-                      <input
-                        type="password"
-                        className="pl-text-input"
-                        placeholder="••••••••"
-                        value={regConfirmPassword}
-                        onChange={(e) => setRegConfirmPassword(e.target.value)}
-                        required
-                        style={{ paddingLeft: "16px" }}
-                      />
-                    </div>
-                  </div>
-                </div>
+                    {devOtpNotice && (
+                      <div style={{ padding: "8px 12px", background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: "8px", fontSize: "12px", color: "#92400E", marginBottom: "14px", textAlign: "center", fontWeight: 700 }}>
+                        {devOtpNotice}
+                      </div>
+                    )}
 
-                {/* Register Submit Button */}
-                <button type="submit" disabled={loading} className="pl-primary-btn">
-                  {loading ? (
-                    <span>{isHindi ? "पंजीकरण हो रहा है..." : "Creating Account..."}</span>
-                  ) : (
-                    <>
-                      <span>{isHindi ? "खाता बनाएं और प्रवेश करें" : "Create Account & Enter"}</span>
-                      <span>→</span>
-                    </>
-                  )}
-                </button>
+                    <div className="pl-input-group">
+                      <div className="pl-input-label-row">
+                        <label className="pl-input-label">{isHindi ? "6-अंकीय सुरक्षा कोड *" : "6-DIGIT SECURITY CODE *"}</label>
+                      </div>
+                      <div className="pl-input-wrapper">
+                        <input
+                          type="text"
+                          maxLength={6}
+                          className="pl-text-input"
+                          placeholder="123456"
+                          value={regOtp}
+                          onChange={(e) => setRegOtp(e.target.value.replace(/\D/g, ""))}
+                          autoFocus
+                          required
+                          style={{
+                            paddingLeft: "16px",
+                            textAlign: "center",
+                            fontSize: "22px",
+                            fontWeight: 800,
+                            letterSpacing: "6px",
+                            fontFamily: "monospace",
+                            background: "#FAFCFF",
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "14px 0", fontSize: "12.5px" }}>
+                      <span style={{ color: "#64748B" }}>
+                        {isHindi ? "कोड नहीं मिला?" : "Didn't receive the code?"}
+                      </span>
+                      {resendCountdown > 0 ? (
+                        <span style={{ color: "#94A3B8", fontWeight: 600 }}>
+                          {isHindi ? `पुनः भेजें (${resendCountdown}s)` : `Resend in ${resendCountdown}s`}
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleResendOtp}
+                          disabled={loading}
+                          style={{ background: "none", border: "none", color: "#0284C7", fontWeight: 700, cursor: "pointer", padding: 0 }}
+                        >
+                          {isHindi ? "कोड पुनः भेजें" : "Resend Code"}
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleFinalRegister}
+                      disabled={loading || regOtp.length !== 6}
+                      className="pl-primary-btn"
+                    >
+                      {loading ? (
+                        <span>{isHindi ? "सत्यापित हो रहा है..." : "Verifying & Creating..."}</span>
+                      ) : (
+                        <>
+                          <span>{isHindi ? "सत्यापित करें और खाता बनाएं" : "Verify & Complete Registration"}</span>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRegStep("form")}
+                      style={{ width: "100%", marginTop: "10px", padding: "8px", background: "none", border: "none", color: "#64748B", fontSize: "12.5px", cursor: "pointer" }}
+                    >
+                      ← {isHindi ? "वापस जाएं" : "Back to details"}
+                    </button>
+                  </div>
+                ) : (
+                  /* ================= REGISTRATION FIELDS ================= */
+                  <>
+                    {/* Email & Phone 2-Col */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <div className="pl-input-group">
+                        <div className="pl-input-label-row">
+                          <label className="pl-input-label">{isHindi ? "ईमेल *" : "EMAIL *"}</label>
+                          {emailCheckStatus === "checking" && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "#64748B", fontWeight: 600 }}>
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                              {isHindi ? "जांच..." : "Checking..."}
+                            </span>
+                          )}
+                          {emailCheckStatus === "available" && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "10px", color: "#10B981", fontWeight: 700 }}>
+                              <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10B981" }} />
+                              {isHindi ? "उपलब्ध" : "Available"}
+                            </span>
+                          )}
+                          {emailCheckStatus === "taken" && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "10px", color: "#EF4444", fontWeight: 700 }}>
+                              <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#EF4444" }} />
+                              {isHindi ? "पंजीकृत" : "Taken"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="pl-input-wrapper">
+                          <input
+                            type="email"
+                            className="pl-text-input"
+                            placeholder="name@example.com"
+                            value={regEmail}
+                            onChange={(e) => setRegEmail(e.target.value)}
+                            required
+                            style={{
+                              paddingLeft: "16px",
+                              borderColor: emailCheckStatus === "taken" ? "#FCA5A5" : (emailCheckStatus === "available" ? "#86EFAC" : "#E2E8F0"),
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="pl-input-group">
+                        <div className="pl-input-label-row">
+                          <label className="pl-input-label">{isHindi ? "फोन नंबर" : "PHONE"}</label>
+                        </div>
+                        <div className="pl-input-wrapper">
+                          <input
+                            type="tel"
+                            className="pl-text-input"
+                            placeholder="9876543210"
+                            value={regPhone}
+                            onChange={(e) => setRegPhone(e.target.value)}
+                            style={{ paddingLeft: "16px" }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Password & Confirm Password */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <div className="pl-input-group">
+                        <div className="pl-input-label-row">
+                          <label className="pl-input-label">{isHindi ? "पासवर्ड *" : "PASSWORD *"}</label>
+                          {regPassword && (
+                            <span style={{ fontSize: "10px", fontWeight: 700, color: getPasswordStrength(regPassword).color }}>
+                              {getPasswordStrength(regPassword).label}
+                            </span>
+                          )}
+                        </div>
+                        <div className="pl-input-wrapper">
+                          <input
+                            type="password"
+                            className="pl-text-input"
+                            placeholder="••••••••"
+                            value={regPassword}
+                            onChange={(e) => setRegPassword(e.target.value)}
+                            required
+                            style={{ paddingLeft: "16px" }}
+                          />
+                        </div>
+                        {/* Real-Time Password Strength Progress Bar */}
+                        {regPassword && (
+                          <div style={{ height: "3px", width: "100%", background: "#E2E8F0", borderRadius: "2px", marginTop: "5px", overflow: "hidden" }}>
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${(getPasswordStrength(regPassword).score / 4) * 100}%`,
+                                background: getPasswordStrength(regPassword).color,
+                                transition: "all 0.25s ease",
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="pl-input-group">
+                        <div className="pl-input-label-row">
+                          <label className="pl-input-label">{isHindi ? "पासवर्ड की पुष्टि *" : "CONFIRM *"}</label>
+                          {regConfirmPassword && regPassword === regConfirmPassword && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "10px", color: "#10B981", fontWeight: 700 }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                              {isHindi ? "मेल खाता है" : "Matches"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="pl-input-wrapper">
+                          <input
+                            type="password"
+                            className="pl-text-input"
+                            placeholder="••••••••"
+                            value={regConfirmPassword}
+                            onChange={(e) => setRegConfirmPassword(e.target.value)}
+                            required
+                            style={{
+                              paddingLeft: "16px",
+                              borderColor: regConfirmPassword && regPassword !== regConfirmPassword ? "#FCA5A5" : "#E2E8F0",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Register Submit Button */}
+                    <button
+                      type="button"
+                      onClick={handleRequestSignupOtp}
+                      disabled={loading || emailCheckStatus === "taken"}
+                      className="pl-primary-btn"
+                    >
+                      {loading ? (
+                        <span>{isHindi ? "सत्यापन कोड भेजा जा रहा है..." : "Sending Verification Code..."}</span>
+                      ) : (
+                        <>
+                          <span>{authMode === "signup-superadmin" ? (isHindi ? "सुपर एडमिन खाता बनाएं" : "Create Super Admin Account") : (isHindi ? "ईमेल सत्यापित करें और आगे बढ़ें" : "Verify Email & Continue")}</span>
+                          <span>→</span>
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
 
                 <div className="pl-register-row">
                   <span>{isHindi ? "पहले से खाता है?" : "Already have an account?"}</span>
                   <button
                     type="button"
-                    onClick={() => { setAuthMode("login"); setErrorMsg(null); }}
+                    onClick={() => { setAuthMode("login"); setRegStep("form"); setErrorMsg(null); }}
                     className="pl-register-link"
                   >
                     {isHindi ? "साइन इन करें" : "Sign in"}
@@ -1479,12 +1860,14 @@ export default function MandatoryAuthScreen({
         {/* RIGHT COLUMN: HEALTHCARE DASHBOARD VISUAL SHOWCASE */}
         <div className="pl-right-visual">
           <div className="pl-dashboard-backing">
-            
+
             {/* Top Backing Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #E2E8F0", paddingBottom: "14px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#E0F2FE", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>
-                  ⚕
+                <div style={{ width: "32px", height: "32px", borderRadius: "8px", background: "#E0F2FE", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 5v14" /><path d="M5 12h14" />
+                  </svg>
                 </div>
                 <div>
                   <div style={{ fontWeight: 800, fontSize: "13.5px", color: "#0F172A" }}>Live Clinical Session</div>
@@ -1513,15 +1896,16 @@ export default function MandatoryAuthScreen({
                   <div style={{ fontWeight: 800, fontSize: "13.5px", color: "#0F172A" }}>Dr. Sarah Mitchell</div>
                   <div style={{ fontSize: "11.5px", color: "#64748B" }}>Cardiology Consultation • Room 204</div>
                 </div>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#059669", background: "#ECFDF5", padding: "3px 8px", borderRadius: "6px" }}>
-                  ✓ Confirmed
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "#059669", background: "#ECFDF5", padding: "3px 8px", borderRadius: "6px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                  <span>Confirmed</span>
                 </span>
               </div>
             </div>
 
             {/* 2-Column Floating Grid: Queue Status + AI Wait Estimate */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-              
+
               {/* Queue Status Card */}
               <div className="pl-preview-card pl-card-floating-2">
                 <span style={{ fontSize: "10px", fontWeight: 800, letterSpacing: "0.8px", color: "#475569", display: "block", marginBottom: "6px" }}>
@@ -1560,7 +1944,9 @@ export default function MandatoryAuthScreen({
             <div className="pl-preview-card pl-card-floating-2">
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#ECFDF5", color: "#059669", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  🔔
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+                  </svg>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: "10px", fontWeight: 800, letterSpacing: "0.6px", color: "#059669" }}>
@@ -1584,7 +1970,7 @@ export default function MandatoryAuthScreen({
       {/* ================================================================= */}
       <footer className="pl-footer">
         <div>
-          © 2026 {HOSPITAL_CONFIG.name || "City General Hospital"}. {isHindi ? "सर्वाधिकार सुरक्षित।" : "All rights reserved."}
+          © 2026 Hex Visionaries. {isHindi ? "सर्वाधिकार सुरक्षित।" : "All rights reserved."}
         </div>
         <div className="pl-footer-links">
           <button type="button" onClick={() => setShowHelpModal(true)} className="pl-footer-link">
@@ -1602,62 +1988,137 @@ export default function MandatoryAuthScreen({
       {/* ================================================================= */}
       {/* 4. INTERACTIVE MODALS (HELP, PROVIDERS, SUPPORT, FORGOT PASSWORD) */}
       {/* ================================================================= */}
-      
+
       {/* Help Center Modal */}
       {showHelpModal && (
         <div style={modalOverlayStyle} onClick={() => setShowHelpModal(false)}>
-          <div style={modalBoxStyle} onClick={(e) => e.stopPropagation()}>
+          <div style={{ ...modalBoxStyle, maxWidth: "560px", maxHeight: "85vh", overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeaderStyle}>
               <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
                 {isHindi ? "सहायता केंद्र एवं अक्सर पूछे जाने वाले प्रश्न" : "Patient Portal Help Center"}
               </h3>
-              <button type="button" onClick={() => setShowHelpModal(false)} style={modalCloseBtnStyle}>✕</button>
+              <button type="button" onClick={() => setShowHelpModal(false)} style={modalCloseBtnStyle}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
             </div>
-            <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "14px", fontSize: "13.5px", color: "#475569" }}>
-              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>How do I join the live queue?</div>
-                <div>Sign in to your patient account and select "Instant Walk-In Ticket" on the dashboard. Choose your department and submit symptoms.</div>
+            <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px", fontSize: "13.5px", color: "#475569", overflowY: "auto", paddingRight: "4px" }}>
+
+              {/* Getting Started */}
+              <div style={{ padding: "10px 14px", background: "#EFF6FF", borderRadius: "10px", border: "1px solid #BFDBFE" }}>
+                <div style={{ fontWeight: 800, color: "#1E40AF", fontSize: "13px", marginBottom: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+                  </svg>
+                  <span>{isHindi ? "शुरुआत कैसे करें" : "Getting Started"}</span>
+                </div>
               </div>
+
               <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>Can I book for my family members?</div>
-                <div>Yes. After logging in, switch or add family member profiles from the top-right profile avatar.</div>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "मैं लाइव कतार में कैसे शामिल होऊं?" : "How do I join the live queue?"}</div>
+                <div>{isHindi ? "अपने रोगी खाते में साइन इन करें और डैशबोर्ड पर 'तत्काल वॉक-इन टिकट' चुनें। अपना विभाग चुनें और लक्षण दर्ज करें।" : "Sign in to your patient account and select 'Instant Walk-In Ticket' on the dashboard. Choose your department and submit symptoms for triage."}</div>
               </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "क्या मैं परिवार के सदस्यों के लिए बुकिंग कर सकता हूं?" : "Can I book for my family members?"}</div>
+                <div>{isHindi ? "हां। लॉगिन करने के बाद, ऊपर दाएं प्रोफाइल अवतार से परिवार के सदस्यों की प्रोफाइल जोड़ें या बदलें।" : "Yes. After logging in, switch or add family member profiles from the top-right profile avatar. Each member gets their own queue slot."}</div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "अपॉइंटमेंट कैसे शेड्यूल करें?" : "How do I schedule an appointment?"}</div>
+                <div>{isHindi ? "डैशबोर्ड से 'अपॉइंटमेंट बुक करें' पर क्लिक करें, विभाग और डॉक्टर चुनें, उपलब्ध समय स्लॉट चुनें और पुष्टि करें।" : "Click 'Book Appointment' from your dashboard, select a department and doctor, pick an available time slot, and confirm. You'll receive a confirmation notification."}</div>
+              </div>
+
+              {/* AI & Queue */}
+              <div style={{ padding: "10px 14px", background: "#F0FDF4", borderRadius: "10px", border: "1px solid #BBF7D0" }}>
+                <div style={{ fontWeight: 800, color: "#166534", fontSize: "13px", marginBottom: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><line x1="9" y1="1" x2="9" y2="4" /><line x1="15" y1="1" x2="15" y2="4" /><line x1="9" y1="20" x2="9" y2="23" /><line x1="15" y1="20" x2="15" y2="23" /><line x1="20" y1="9" x2="23" y2="9" /><line x1="20" y1="14" x2="23" y2="14" /><line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
+                  </svg>
+                  <span>{isHindi ? "एआई और कतार प्रणाली" : "AI & Queue System"}</span>
+                </div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "एआई प्रतीक्षा समय पूर्वानुमान कितना सटीक है?" : "How accurate is the AI wait-time prediction?"}</div>
+                <div>{isHindi ? "हमारा एआई मॉडल ऐतिहासिक डेटा, वर्तमान कतार लंबाई और डॉक्टर की उपलब्धता का विश्लेषण करता है। सटीकता आमतौर पर ±5 मिनट के भीतर होती है।" : "Our AI model analyzes historical data, current queue length, and doctor availability patterns. Accuracy is typically within ±5 minutes for standard consultations."}</div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "क्या मैं कतार में अपनी स्थिति लाइव ट्रैक कर सकता हूं?" : "Can I track my position in the queue live?"}</div>
+                <div>{isHindi ? "बिल्कुल! डैशबोर्ड पर लाइव कतार स्टेटस कार्ड रियल-टाइम में आपकी स्थिति, अनुमानित प्रतीक्षा समय और आपसे आगे के मरीज दिखाता है।" : "Absolutely! The live queue status card on your dashboard shows your real-time position, estimated wait time, and patients ahead of you — updated every few seconds."}</div>
+              </div>
+
+              {/* Medical Records */}
+              <div style={{ padding: "10px 14px", background: "#FFF7ED", borderRadius: "10px", border: "1px solid #FED7AA" }}>
+                <div style={{ fontWeight: 800, color: "#9A3412", fontSize: "13px", marginBottom: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><polyline points="10 9 9 9 8 9" />
+                  </svg>
+                  <span>{isHindi ? "मेडिकल रिकॉर्ड" : "Medical Records"}</span>
+                </div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "मैं अपने नुस्खे और रिपोर्ट कहां देख सकता हूं?" : "Where can I view my prescriptions and reports?"}</div>
+                <div>{isHindi ? "'मेडिकल रिकॉर्ड' सेक्शन में जाएं जहां सभी पिछले नुस्खे, लैब रिपोर्ट और डॉक्टर के नोट्स तिथि के अनुसार व्यवस्थित हैं।" : "Navigate to the 'Medical Records' section where all past prescriptions, lab reports, and doctor notes are organized by date. You can download or share them as needed."}</div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "क्या मैं अपना विज़िट इतिहास देख सकता हूं?" : "Can I see my past visit history?"}</div>
+                <div>{isHindi ? "हां, 'रोगी इतिहास' टैब सभी पिछली विज़िट दिखाता है जिसमें निदान, उपचार और फॉलो-अप विवरण शामिल हैं।" : "Yes, the 'Patient History' tab displays all previous visits including diagnosis, treatment details, and follow-up recommendations from your doctors."}</div>
+              </div>
+
+              {/* Account & Security */}
+              <div style={{ padding: "10px 14px", background: "#FAF5FF", borderRadius: "10px", border: "1px solid #E9D5FF" }}>
+                <div style={{ fontWeight: 800, color: "#6B21A8", fontSize: "13px", marginBottom: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <span>{isHindi ? "खाता और सुरक्षा" : "Account & Security"}</span>
+                </div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "क्या मेरा डेटा सुरक्षित है?" : "Is my data secure?"}</div>
+                <div>{isHindi ? "बिल्कुल। सभी रोगी डेटा एंड-टू-एंड एन्क्रिप्टेड है और HIPAA-अनुरूप बुनियादी ढांचे पर संग्रहीत है। हम आपकी गोपनीयता को गंभीरता से लेते हैं।" : "Absolutely. All patient data is encrypted end-to-end and stored on HIPAA-compliant infrastructure. We use industry-standard security protocols to protect your privacy."}</div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "मैं अपना पासवर्ड कैसे रीसेट करूं?" : "How do I reset my password?"}</div>
+                <div>{isHindi ? "लॉगिन स्क्रीन पर 'पासवर्ड भूल गए?' लिंक पर क्लिक करें। अपना पंजीकृत ईमेल दर्ज करें और हम आपको एक सुरक्षित रीसेट लिंक भेजेंगे।" : "Click the 'Forgot password?' link on the login screen. Enter your registered email and we'll send you a secure reset link within seconds."}</div>
+              </div>
+
+              {/* General */}
+              <div style={{ padding: "10px 14px", background: "#FEF2F2", borderRadius: "10px", border: "1px solid #FECACA" }}>
+                <div style={{ fontWeight: 800, color: "#991B1B", fontSize: "13px", marginBottom: "2px", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                  <span>{isHindi ? "सामान्य प्रश्न" : "General"}</span>
+                </div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "पोर्टल किन भाषाओं का समर्थन करता है?" : "What languages does the portal support?"}</div>
+                <div>{isHindi ? "वर्तमान में हम अंग्रेजी और हिंदी का समर्थन करते हैं। शीर्ष मेनू में भाषा टॉगल बटन से आप किसी भी समय भाषा बदल सकते हैं।" : "Currently we support English and Hindi. You can switch languages anytime using the language toggle button in the top navigation bar."}</div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "मुझे तकनीकी समस्या हो रही है। मैं क्या करूं?" : "I'm experiencing a technical issue. What should I do?"}</div>
+                <div>{isHindi ? "ब्राउज़र कैश साफ करें और पेज रीलोड करें। यदि समस्या बनी रहती है, तो नेविगेशन बार में 'सहायता' बटन से हमारी सपोर्ट टीम से संपर्क करें।" : "Try clearing your browser cache and reloading the page. If the issue persists, contact our support team via the 'Support' button in the navigation bar with a description of the problem."}</div>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
+                <div style={{ fontWeight: 700, color: "#0F172A", marginBottom: "4px" }}>{isHindi ? "क्या मैं मोबाइल पर पोर्टल का उपयोग कर सकता हूं?" : "Can I use the portal on my mobile phone?"}</div>
+                <div>{isHindi ? "हां, पोर्टल पूरी तरह से मोबाइल-रेस्पॉन्सिव है। किसी भी ब्राउज़र से अपने फोन पर लॉगिन करें और सभी सुविधाओं का आनंद लें।" : "Yes! The portal is fully mobile-responsive. Simply log in from any browser on your phone and enjoy all features including queue tracking, appointments, and notifications."}</div>
+              </div>
+
             </div>
           </div>
         </div>
       )}
 
-      {/* Find a Provider Modal */}
-      {showProviderModal && (
-        <div style={modalOverlayStyle} onClick={() => setShowProviderModal(false)}>
-          <div style={modalBoxStyle} onClick={(e) => e.stopPropagation()}>
-            <div style={modalHeaderStyle}>
-              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
-                {isHindi ? "चिकित्सक एवं विशेषज्ञ खोजें" : "Find a Medical Provider"}
-              </h3>
-              <button type="button" onClick={() => setShowProviderModal(false)} style={modalCloseBtnStyle}>✕</button>
-            </div>
-            <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              {[
-                { name: "Dr. Sarah Mitchell", dept: "Cardiology", room: "Desk #2 (OPD Floor 2)", status: "Available" },
-                { name: "Dr. Rajesh Gupta", dept: "General Medicine", room: "Desk #1 (Ground Floor)", status: "On Duty" },
-                { name: "Dr. Elena Rostova", dept: "Pediatrics & Child Care", room: "Desk #4 (Wing B)", status: "Available" },
-                { name: "Dr. Alok Verma", dept: "Orthopedics & Trauma", room: "Desk #3 (Emergency)", status: "Available" },
-              ].map((doc, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-                  <div>
-                    <div style={{ fontWeight: 800, fontSize: "13.5px", color: "#0F172A" }}>{doc.name}</div>
-                    <div style={{ fontSize: "12px", color: "#64748B" }}>{doc.dept} • {doc.room}</div>
-                  </div>
-                  <span style={{ fontSize: "11px", fontWeight: 700, padding: "3px 8px", background: "#DCFCE7", color: "#166534", borderRadius: "6px" }}>
-                    {doc.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Support Modal */}
       {showSupportModal && (
@@ -1667,15 +2128,27 @@ export default function MandatoryAuthScreen({
               <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
                 {isHindi ? "अस्पताल सहायता एवं आपातकालीन हेल्पलाइन" : "Hospital Help & Desk Support"}
               </h3>
-              <button type="button" onClick={() => setShowSupportModal(false)} style={modalCloseBtnStyle}>✕</button>
+              <button type="button" onClick={() => setShowSupportModal(false)} style={modalCloseBtnStyle}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
             </div>
             <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px", fontSize: "13.5px", color: "#475569" }}>
               <div style={{ padding: "14px", background: "#EFF6FF", borderRadius: "12px", border: "1px solid #BFDBFE" }}>
-                <div style={{ fontWeight: 800, color: "#1E40AF", fontSize: "14px", marginBottom: "4px" }}>📞 24/7 Patient Care Helpline</div>
+                <div style={{ fontWeight: 800, color: "#1E40AF", fontSize: "14px", marginBottom: "4px", display: "flex", alignItems: "center", gap: "7px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                  </svg>
+                  <span>24/7 Patient Care Helpline</span>
+                </div>
                 <div style={{ fontSize: "13px", color: "#1E3A8A" }}>+91 (011) 2658-8500 / Toll Free: 1800-11-2345</div>
               </div>
               <div style={{ padding: "14px", background: "#FEF2F2", borderRadius: "12px", border: "1px solid #FECACA" }}>
-                <div style={{ fontWeight: 800, color: "#991B1B", fontSize: "14px", marginBottom: "4px" }}>🚨 Emergency & Trauma Hotline</div>
+                <div style={{ fontWeight: 800, color: "#991B1B", fontSize: "14px", marginBottom: "4px", display: "flex", alignItems: "center", gap: "7px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  </svg>
+                  <span>Emergency & Trauma Hotline</span>
+                </div>
                 <div style={{ fontSize: "13px", color: "#7F1D1D" }}>Call 108 or direct line: +91 (011) 2659-6666</div>
               </div>
             </div>
@@ -1683,39 +2156,53 @@ export default function MandatoryAuthScreen({
         </div>
       )}
 
-      {/* Forgot Password Modal */}
+      {/* Forgot Password Modal (3-Step Real-Time OTP Flow) */}
       {showForgotModal && (
         <div style={modalOverlayStyle} onClick={() => setShowForgotModal(false)}>
           <div style={modalBoxStyle} onClick={(e) => e.stopPropagation()}>
             <div style={modalHeaderStyle}>
               <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "#0F172A" }}>
-                {isHindi ? "पासवर्ड रीसेट करें" : "Reset Portal Password"}
+                {forgotStep === 3
+                  ? (isHindi ? "पासवर्ड सफलतापूर्वक रीसेट हो गया" : "Password Reset Successfully")
+                  : (isHindi ? "पासवर्ड रीसेट करें" : "Reset Portal Password")}
               </h3>
-              <button type="button" onClick={() => setShowForgotModal(false)} style={modalCloseBtnStyle}>✕</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotModal(false);
+                  setForgotStep(1);
+                  setForgotError(null);
+                  setForgotDevNotice(null);
+                }}
+                style={modalCloseBtnStyle}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
             </div>
-            {forgotSuccess ? (
-              <div style={{ marginTop: "16px", padding: "16px", background: "#ECFDF5", borderRadius: "12px", border: "1px solid #A7F3D0", textAlign: "center" }}>
-                <div style={{ fontSize: "28px", marginBottom: "6px" }}>✉️</div>
-                <div style={{ fontWeight: 800, color: "#065F46", fontSize: "14px" }}>Password reset instructions sent!</div>
-                <div style={{ fontSize: "12.5px", color: "#047857", marginTop: "4px" }}>
-                  Please check your inbox at <b>{forgotEmail || "your email"}</b> to set a new password.
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowForgotModal(false)}
-                  className="pl-primary-btn"
-                  style={{ marginTop: "16px", height: "40px" }}
-                >
-                  Return to Sign In
-                </button>
+
+            {forgotError && (
+              <div style={{ marginTop: "14px", padding: "10px 14px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: "10px", color: "#DC2626", fontSize: "12.5px", fontWeight: 600, display: "flex", alignItems: "center", gap: "7px" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                <span>{forgotError}</span>
               </div>
-            ) : (
-              <form onSubmit={handleForgotSubmit} style={{ marginTop: "16px" }}>
-                <p style={{ fontSize: "13px", color: "#64748B", margin: "0 0 14px 0" }}>
-                  Enter your registered email address and we'll send a secure password reset link.
+            )}
+
+            {forgotDevNotice && (
+              <div style={{ marginTop: "14px", padding: "10px 14px", background: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: "10px", color: "#92400E", fontSize: "12.5px", fontWeight: 700, textAlign: "center" }}>
+                {forgotDevNotice}
+              </div>
+            )}
+
+            {/* STEP 1: Enter Email */}
+            {forgotStep === 1 && (
+              <form onSubmit={handleForgotRequestOtp} style={{ marginTop: "16px" }}>
+                <p style={{ fontSize: "13.5px", color: "#64748B", margin: "0 0 16px 0", lineHeight: 1.5 }}>
+                  {isHindi
+                    ? "अपना पंजीकृत ईमेल पता दर्ज करें। हम आपको 6-अंकीय पासवर्ड रीसेट सुरक्षा कोड भेजेंगे।"
+                    : "Enter your registered email address below. We'll send a 6-digit security code to verify your identity."}
                 </p>
                 <div className="pl-input-group">
-                  <label className="pl-input-label">EMAIL ADDRESS</label>
+                  <label className="pl-input-label">{isHindi ? "ईमेल पता *" : "EMAIL ADDRESS *"}</label>
                   <div className="pl-input-wrapper" style={{ marginTop: "6px" }}>
                     <input
                       type="email"
@@ -1724,14 +2211,183 @@ export default function MandatoryAuthScreen({
                       value={forgotEmail}
                       onChange={(e) => setForgotEmail(e.target.value)}
                       required
+                      autoFocus
                       style={{ paddingLeft: "14px" }}
                     />
                   </div>
                 </div>
-                <button type="submit" className="pl-primary-btn" style={{ marginTop: "12px" }}>
-                  Send Reset Link →
+                <button
+                  type="submit"
+                  disabled={forgotLoading || !forgotEmail}
+                  className="pl-primary-btn"
+                  style={{ marginTop: "14px" }}
+                >
+                  {forgotLoading ? (
+                    <span>{isHindi ? "कोड भेजा जा रहा है..." : "Sending Security Code..."}</span>
+                  ) : (
+                    <span>{isHindi ? "सुरक्षा कोड भेजें →" : "Send 6-Digit Code →"}</span>
+                  )}
                 </button>
               </form>
+            )}
+
+            {/* STEP 2: Enter 6-digit OTP & New Password */}
+            {forgotStep === 2 && (
+              <form onSubmit={handleForgotResetPassword} style={{ marginTop: "16px" }}>
+                <div style={{ padding: "10px 12px", background: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: "10px", fontSize: "12.5px", color: "#0369A1", marginBottom: "16px", display: "flex", alignItems: "center", gap: "7px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+                  </svg>
+                  <span>{isHindi ? "कोड भेजा गया:" : "Security code sent to:"} <strong>{forgotEmail}</strong></span>
+                </div>
+
+                <div className="pl-input-group">
+                  <label className="pl-input-label">{isHindi ? "6-अंकीय सुरक्षा कोड *" : "6-DIGIT SECURITY CODE *"}</label>
+                  <div className="pl-input-wrapper" style={{ marginTop: "6px" }}>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      className="pl-text-input"
+                      placeholder="123456"
+                      value={forgotOtp}
+                      onChange={(e) => setForgotOtp(e.target.value.replace(/\D/g, ""))}
+                      required
+                      autoFocus
+                      style={{
+                        paddingLeft: "14px",
+                        textAlign: "center",
+                        fontSize: "20px",
+                        fontWeight: 800,
+                        letterSpacing: "6px",
+                        fontFamily: "monospace",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="pl-input-group" style={{ marginTop: "12px" }}>
+                  <label className="pl-input-label">{isHindi ? "नया पासवर्ड *" : "NEW PASSWORD *"}</label>
+                  <div className="pl-input-wrapper" style={{ marginTop: "6px", position: "relative" }}>
+                    <input
+                      type={showForgotPwd ? "text" : "password"}
+                      className="pl-text-input"
+                      placeholder="••••••••"
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      required
+                      style={{ paddingLeft: "14px", paddingRight: "38px" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPwd(!showForgotPwd)}
+                      style={{
+                        position: "absolute",
+                        right: "10px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "none",
+                        border: "none",
+                        color: "#94A3B8",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "4px",
+                      }}
+                    >
+                      {showForgotPwd ? (
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      ) : (
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pl-input-group" style={{ marginTop: "12px" }}>
+                  <label className="pl-input-label">{isHindi ? "नए पासवर्ड की पुष्टि *" : "CONFIRM NEW PASSWORD *"}</label>
+                  <div className="pl-input-wrapper" style={{ marginTop: "6px" }}>
+                    <input
+                      type={showForgotPwd ? "text" : "password"}
+                      className="pl-text-input"
+                      placeholder="••••••••"
+                      value={forgotConfirmPassword}
+                      onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                      required
+                      style={{ paddingLeft: "14px" }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={forgotLoading || forgotOtp.length !== 6 || !forgotNewPassword}
+                  className="pl-primary-btn"
+                  style={{ marginTop: "16px" }}
+                >
+                  {forgotLoading ? (
+                    <span>{isHindi ? "सत्यापित हो रहा है..." : "Resetting Password..."}</span>
+                  ) : (
+                    <span>{isHindi ? "पासवर्ड रीसेट करें और सहेजें" : "Save New Password & Continue"}</span>
+                  )}
+                </button>
+
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: "12px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setForgotStep(1)}
+                    style={{ background: "none", border: "none", color: "#64748B", fontSize: "12px", cursor: "pointer", padding: 0 }}
+                  >
+                    ← {isHindi ? "ईमेल बदलें" : "Change email"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleForgotRequestOtp}
+                    disabled={forgotLoading}
+                    style={{ background: "none", border: "none", color: "#0284C7", fontSize: "12px", fontWeight: 700, cursor: "pointer", padding: 0 }}
+                  >
+                    {isHindi ? "कोड पुनः भेजें" : "Resend code"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* STEP 3: Success Confirmation */}
+            {forgotStep === 3 && (
+              <div style={{ marginTop: "16px", padding: "20px 16px", background: "#ECFDF5", borderRadius: "14px", border: "1px solid #A7F3D0", textAlign: "center" }}>
+                <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "#10B981", color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", marginBottom: "10px" }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+                <div style={{ fontWeight: 800, color: "#065F46", fontSize: "15px" }}>
+                  {isHindi ? "पासवर्ड सफलतापूर्वक अपडेट हुआ!" : "Password Reset Complete!"}
+                </div>
+                <div style={{ fontSize: "13px", color: "#047857", marginTop: "6px", lineHeight: 1.5 }}>
+                  {isHindi
+                    ? "आपका पासवर्ड सफलतापूर्वक बदल दिया गया है। अब आप अपने नए क्रेडेंशियल्स के साथ साइन इन कर सकते हैं।"
+                    : "Your password has been securely updated. You can now sign in to your Hex Visionaries account."}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginIdentifier(forgotEmail);
+                    setShowForgotModal(false);
+                    setForgotStep(1);
+                    setForgotError(null);
+                    setAuthMode("login");
+                  }}
+                  className="pl-primary-btn"
+                  style={{ marginTop: "18px", height: "42px" }}
+                >
+                  {isHindi ? "साइन इन करें →" : "Sign In with New Password →"}
+                </button>
+              </div>
             )}
           </div>
         </div>

@@ -9,8 +9,9 @@ const {
   checkInAppointment,
   getUserAppointments,
   getTenantAppointments,
+  cancelAppointment,
 } = require("../services/appointmentService");
-const { verifyFamilyMemberOwnership } = require("../services/familyService");
+const { verifyFamilyMemberOwnership, resolveOrCreateFamilyMember } = require("../services/familyService");
 const { getIo, broadcastQueueUpdate } = require("../socket");
 
 async function bookAppointmentEndpoint(req, res, next) {
@@ -29,8 +30,14 @@ async function bookAppointmentEndpoint(req, res, next) {
     let patientId = null;
     if (family_member_id && (user_email || req.user?.email)) {
       const emailToCheck = user_email || req.user?.email;
-      const fm = await verifyFamilyMemberOwnership(emailToCheck, family_member_id);
-      patientId = fm.patient_id;
+      const fm = await resolveOrCreateFamilyMember({
+        userEmailOrId: emailToCheck,
+        memberId: family_member_id,
+        name: patient_name,
+      });
+      if (fm) {
+        patientId = fm.patient_id;
+      }
     }
 
     const appointment = await bookAppointment({
@@ -109,9 +116,41 @@ async function getTenantAppointmentsEndpoint(req, res, next) {
   }
 }
 
+async function cancelAppointmentEndpoint(req, res, next) {
+  try {
+    const aptId = req.params.appointment_id || req.body?.appointment_id;
+    const reason = req.body?.reason || "Patient requested cancellation";
+    const requesterEmail = req.user?.email || req.headers["x-user-email"] || null;
+
+    if (!aptId) {
+      return res.status(400).json({ status: "error", message: "Appointment ID is required." });
+    }
+
+    const result = await cancelAppointment(aptId, reason, requesterEmail);
+
+    const io = getIo();
+    if (io) {
+      io.emit("appointment_updated", { appointment_id: aptId, status: "cancelled", reason });
+      if (result.ticket_id) {
+        io.emit("ticket_cancelled", { ticket_id: result.ticket_id });
+      }
+      io.emit("queue_updated", { timestamp: new Date().toISOString() });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: `Appointment ${aptId} cancelled successfully.`,
+      appointment: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   bookAppointmentEndpoint,
   checkInAppointmentEndpoint,
   getUserAppointmentsEndpoint,
   getTenantAppointmentsEndpoint,
+  cancelAppointmentEndpoint,
 };

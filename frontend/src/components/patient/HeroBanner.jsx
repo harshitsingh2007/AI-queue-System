@@ -93,30 +93,35 @@ export default function HeroBanner({
           box-sizing: border-box;
         }
 
+        .hero-banner-container * {
+          font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
         .hero-title {
-          font-size: clamp(20px, 3.2vw, 30px);
+          font-size: clamp(22px, 3.4vw, 34px);
           font-weight: 800;
-          line-height: 1.2;
-          letter-spacing: -0.5px;
+          line-height: 1.16;
+          letter-spacing: -1px;
           color: #FFFFFF;
           margin: 0;
         }
 
         .hero-title-highlight {
-          color: #38BDF8;
-          background: linear-gradient(135deg, #38BDF8 0%, #0284C7 100%);
+          background: linear-gradient(135deg, #0284C7 0%, #06B6D4 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
+          display: inline-block;
         }
 
         .hero-subtitle {
-          color: rgba(224, 242, 254, 0.88);
-          font-size: clamp(11.5px, 1.8vw, 13px);
-          line-height: 1.45;
-          margin-top: 8px;
-          margin-bottom: 16px;
-          max-width: 440px;
+          color: rgba(224, 242, 254, 0.9);
+          font-size: 14px;
+          line-height: 1.55;
+          margin-top: 10px;
+          margin-bottom: 18px;
+          max-width: 480px;
           font-weight: 500;
+          letter-spacing: -0.1px;
         }
 
         .hero-stats-row {
@@ -164,7 +169,7 @@ export default function HeroBanner({
         }
 
         .hero-stat-value {
-          font-size: 14.5px;
+          font-size: 15px;
           font-weight: 800;
           color: #FFFFFF;
           line-height: 1.15;
@@ -175,11 +180,13 @@ export default function HeroBanner({
         }
 
         .hero-stat-label {
-          font-size: 9.5px;
-          font-weight: 600;
-          color: rgba(255, 255, 255, 0.75);
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.6px;
+          color: rgba(224, 242, 254, 0.75);
           line-height: 1.2;
-          margin-top: 2px;
+          margin-top: 3px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -247,9 +254,9 @@ export default function HeroBanner({
             style={{
               display: "inline-flex",
               alignItems: "center",
-              gap: "6px",
-              padding: "3px 10px",
-              borderRadius: "9999px",
+              gap: "7px",
+              padding: "4px 10px",
+              borderRadius: "8px",
               background: "rgba(56, 189, 248, 0.15)",
               border: "1px solid rgba(56, 189, 248, 0.35)",
               color: "#38BDF8",
@@ -259,7 +266,9 @@ export default function HeroBanner({
               cursor: onOpenHospitalModal ? "pointer" : "default",
             }}
           >
-            <span>🏥</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9h1"/><path d="M9 13h1"/><path d="M9 17h1"/>
+            </svg>
             <span>{displayHospName}</span>
             {onOpenHospitalModal && <span style={{ opacity: 0.7, fontSize: "10px", marginLeft: "2px" }}>▼</span>}
           </div>
@@ -307,10 +316,19 @@ export default function HeroBanner({
                 alignItems: "center",
                 justifyContent: "center",
                 flexShrink: 0,
-                fontSize: "14px",
               }}
             >
-              💡
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5"/>
+                <line x1="12" y1="1" x2="12" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/>
+                <line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div

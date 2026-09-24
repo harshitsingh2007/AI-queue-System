@@ -78,6 +78,11 @@ export default function App() {
   // User Authentication State
   const [currentUser, setCurrentUser] = useState(() => {
     try {
+      if (typeof window !== "undefined") {
+        const p = new URLSearchParams(window.location.search);
+        const m = p.get("mode") || p.get("auth") || p.get("page") || p.get("view");
+        if (m && (m.includes("reg") || m.includes("signup"))) return null;
+      }
       const saved = localStorage.getItem("ai_queue_user");
       return saved ? JSON.parse(saved) : null;
     } catch (e) {
@@ -237,7 +242,8 @@ export default function App() {
     );
 
     const isPatientAffiliate = Boolean(
-      (activePage === "patient" || activePage === "kiosk" || role === "user" || role === "patient" || !currentUser) &&
+      currentUser &&
+      (activePage === "patient" || activePage === "kiosk" || role === "user" || role === "patient") &&
       activePage !== "superadmin"
     );
 
@@ -451,8 +457,12 @@ export default function App() {
   const fetchFamilyMembers = useCallback((user) => {
     const u = user || currentUser;
     if (!u || !u.email || !(["user", "patient"].includes(u.role))) return;
+    const token = u.token || localStorage.getItem("ai_queue_token");
     fetch(`${API_BASE}/api/v1/family-members`, {
-      headers: { "X-User-Email": u.email }
+      headers: {
+        "X-User-Email": u.email,
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
     })
       .then((r) => r.json())
       .then((data) => {
@@ -462,6 +472,25 @@ export default function App() {
       })
       .catch((e) => console.log("Family members fetch error:", e));
   }, [currentUser]);
+
+  // Real-time synchronization when family members are updated anywhere in the app
+  useEffect(() => {
+    const handleFamilySync = (e) => {
+      if (e?.detail && Array.isArray(e.detail) && e.detail.length > 0) {
+        setFamilyMembers((prev) => {
+          const map = new Map((Array.isArray(prev) ? prev : []).map((m) => [m.id, m]));
+          e.detail.forEach((m) => {
+            if (m && m.id && m.id !== "self") map.set(m.id, m);
+          });
+          return Array.from(map.values());
+        });
+      } else {
+        fetchFamilyMembers();
+      }
+    };
+    window.addEventListener("family_members_updated", handleFamilySync);
+    return () => window.removeEventListener("family_members_updated", handleFamilySync);
+  }, [fetchFamilyMembers]);
 
   // Load family members when user is available
   useEffect(() => {
@@ -1132,9 +1161,17 @@ export default function App() {
 
   // Dedicated full-viewport view for unauthenticated login screen (no outer wrapper padding / scrolling)
   if (!currentUser) {
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const urlMode = params ? (params.get("mode") || params.get("auth") || params.get("page") || params.get("view")) : null;
+    const isRegMode = urlMode && (urlMode.includes("reg") || urlMode.includes("signup"));
+    const initialAuthMode = isRegMode
+      ? (urlMode.includes("super") || urlMode.includes("admin") ? "signup-superadmin" : "signup-patient")
+      : "login";
+
     return (
       <div style={{ minHeight: "100vh", width: "100vw", overflowX: "hidden", margin: 0, padding: 0 }}>
         <MandatoryAuthScreen
+          initialMode={initialAuthMode}
           onLoginSuccess={(user) => {
             handleLoginSuccess(user);
           }}
@@ -1247,7 +1284,7 @@ export default function App() {
                     activeFamilyMember={activeFamilyMember}
                     setActiveFamilyMember={setActiveFamilyMember}
                     onSwitchProfile={handleSwitchProfile}
-                    onFamilyMembersChange={setFamilyMembers}
+                    onFamilyMembersChange={fetchFamilyMembers}
                     currentHospitalTenant={currentHospitalTenant}
                     onSwitchHospital={setCurrentHospitalTenant}
                     hospitalBranding={hospitalBranding}

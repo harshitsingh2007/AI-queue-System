@@ -193,10 +193,72 @@ async function deleteFamilyMember(userEmailOrId, memberId) {
   return true;
 }
 
+/**
+ * Resolves or creates a family member gracefully without blocking ticket issuance.
+ */
+async function resolveOrCreateFamilyMember({
+  userEmailOrId,
+  memberId,
+  name = "Dependent",
+  relation = "dependent",
+  age = 25,
+  gender = "male",
+  phone = "",
+}) {
+  try {
+    if (memberId) {
+      const existing = await verifyFamilyMemberOwnership(userEmailOrId, memberId);
+      if (existing) return existing;
+    }
+  } catch (err) {
+    // If not found by memberId, try graceful match or creation
+  }
+
+  let user = null;
+  if (typeof userEmailOrId === "number") {
+    user = await prisma.users.findUnique({ where: { id: userEmailOrId } });
+  } else {
+    const email = String(userEmailOrId || "").trim().toLowerCase();
+    user = await prisma.users.findFirst({
+      where: {
+        OR: [{ email: { equals: email, mode: "insensitive" } }, { username: { equals: email, mode: "insensitive" } }],
+      },
+    });
+  }
+
+  if (!user) return null;
+
+  const memId = memberId || `dep_${Date.now()}`;
+  const pid = await engine.resolvePatientId(user.email, name, phone, gender, age);
+
+  const member = await prisma.family_members.upsert({
+    where: { id: memId },
+    create: {
+      id: memId,
+      user_id: user.id,
+      patient_id: pid,
+      name: name || "Dependent",
+      relation: relation || "dependent",
+      age: parseInt(age, 10) || 25,
+      gender: gender || "male",
+      phone: phone || "",
+    },
+    update: {
+      name: name || "Dependent",
+      patient_id: pid,
+      updated_at: new Date(),
+    },
+  });
+
+  return member;
+}
+
 module.exports = {
   verifyFamilyMemberOwnership,
   listFamilyMembers,
   addFamilyMember,
   updateFamilyMember,
   deleteFamilyMember,
+  resolveOrCreateFamilyMember,
 };
+

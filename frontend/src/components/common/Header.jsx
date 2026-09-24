@@ -45,6 +45,41 @@ export default function Header({
   const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
   const [familySwitcherExpanded, setFamilySwitcherExpanded] = useState(false);
 
+  // Live Family Tickets dictionary for badge rendering
+  const [familyTickets, setFamilyTickets] = useState(() => {
+    try {
+      const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+      const saved = localStorage.getItem(ticketStorageKey);
+      const parsed = saved ? JSON.parse(saved) : {};
+      const activeSaved = localStorage.getItem("ai_queue_active_ticket");
+      if (activeSaved && !parsed["self"]) {
+        try {
+          const act = JSON.parse(activeSaved);
+          if (act && act.ticket_id) parsed["self"] = act;
+        } catch (e) {}
+      }
+      return parsed;
+    } catch (e) {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    const handleSyncTickets = (e) => {
+      if (e?.detail) setFamilyTickets(e.detail);
+    };
+    window.addEventListener("family_tickets_updated", handleSyncTickets);
+    return () => window.removeEventListener("family_tickets_updated", handleSyncTickets);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+      const saved = localStorage.getItem(ticketStorageKey);
+      if (saved) setFamilyTickets(JSON.parse(saved));
+    } catch (e) {}
+  }, [currentUser]);
+
   // Theme state synchronized with props and localStorage
   const [theme, setTheme] = useState(() => {
     if (themeProp) return themeProp;
@@ -1135,33 +1170,46 @@ export default function Header({
                       </div>
 
                       {/* Self */}
-                      <button
-                        type="button"
-                        className={`header-dropdown-item ${!activeFamilyMember ? "active" : ""}`}
-                        onClick={() => {
-                          const selfObj = { id: "self", name: username, relation: "self" };
-                          if (onSwitchProfile) onSwitchProfile(selfObj);
-                          setProfileDropdownOpen(false);
-                        }}
-                        style={{ justifyContent: "space-between" }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: !activeFamilyMember ? "#0284C7" : "#F0F9FF", color: !activeFamilyMember ? "#fff" : "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 800, border: !activeFamilyMember ? "2px solid #0284C7" : "1px solid #BAE6FD", flexShrink: 0 }}>
-                            {username.charAt(0).toUpperCase()}
-                          </div>
-                          <div style={{ textAlign: "left" }}>
-                            <div style={{ fontSize: "12.5px", fontWeight: 700, lineHeight: 1.2 }}>{username}</div>
-                            <div style={{ fontSize: "10px", color: !activeFamilyMember ? "#0284C7" : "#64748B", fontWeight: 600 }}>{language === "hi" ? "मेरी प्रोफ़ाइल" : "My Profile"}</div>
-                          </div>
-                        </div>
-                        {!activeFamilyMember && (
-                          <span style={{ color: "#0284C7", fontSize: "14px", fontWeight: 900 }}>✓</span>
-                        )}
-                      </button>
+                      {(() => {
+                        const selfTicket = familyTickets["self"];
+                        return (
+                          <button
+                            type="button"
+                            className={`header-dropdown-item ${!activeFamilyMember ? "active" : ""}`}
+                            onClick={() => {
+                              const selfObj = { id: "self", name: username, relation: "self" };
+                              if (onSwitchProfile) onSwitchProfile(selfObj);
+                              setProfileDropdownOpen(false);
+                            }}
+                            style={{ justifyContent: "space-between" }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: !activeFamilyMember ? "#0284C7" : "#F0F9FF", color: !activeFamilyMember ? "#fff" : "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 800, border: !activeFamilyMember ? "2px solid #0284C7" : "1px solid #BAE6FD", flexShrink: 0 }}>
+                                {username.charAt(0).toUpperCase()}
+                              </div>
+                              <div style={{ textAlign: "left" }}>
+                                <div style={{ fontSize: "12.5px", fontWeight: 700, lineHeight: 1.2 }}>{username}</div>
+                                <div style={{ fontSize: "10px", color: !activeFamilyMember ? "#0284C7" : "#64748B", fontWeight: 600 }}>{language === "hi" ? "मेरी प्रोफ़ाइल" : "My Profile"}</div>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              {selfTicket && (
+                                <span style={{ fontSize: "10.5px", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", borderRadius: "12px", padding: "1px 6px", fontWeight: 800, whiteSpace: "nowrap" }}>
+                                  🎟️ #{selfTicket.ticket_id}
+                                </span>
+                              )}
+                              {!activeFamilyMember && (
+                                <span style={{ color: "#0284C7", fontSize: "14px", fontWeight: 900 }}>✓</span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })()}
 
                       {/* Family Members */}
                       {(familySwitcherExpanded ? familyMembers : familyMembers.slice(0, 3)).map((member) => {
                         const isActive = activeFamilyMember && activeFamilyMember.id === member.id;
+                        const memTicket = familyTickets[member.id] || familyTickets[String(member.id)];
                         return (
                           <button
                             key={member.id}
@@ -1182,9 +1230,16 @@ export default function Header({
                                 <div style={{ fontSize: "10px", color: isActive ? "#0284C7" : "#64748B", fontWeight: 600 }}>{getRelationLabel(member.relation, language)}</div>
                               </div>
                             </div>
-                            {isActive && (
-                              <span style={{ color: "#0284C7", fontSize: "14px", fontWeight: 900 }}>✓</span>
-                            )}
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              {memTicket && (
+                                <span style={{ fontSize: "10.5px", background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE", borderRadius: "12px", padding: "1px 6px", fontWeight: 800, whiteSpace: "nowrap" }}>
+                                  🎟️ #{memTicket.ticket_id}
+                                </span>
+                              )}
+                              {isActive && (
+                                <span style={{ color: "#0284C7", fontSize: "14px", fontWeight: 900 }}>✓</span>
+                              )}
+                            </div>
                           </button>
                         );
                       })}
@@ -1268,76 +1323,237 @@ export default function Header({
               background: isDarkHeader ? "#0F172A" : "#FFFFFF",
               border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0",
               color: isDarkHeader ? "#F8FAFC" : "#0F172A",
-              boxShadow: isDarkHeader ? "0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15)" : undefined,
+              boxShadow: isDarkHeader ? "0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15)" : "0 20px 60px -10px rgba(15,23,42,0.12)",
+              maxWidth: "580px",
+              width: "100%",
+              maxHeight: "88vh",
+              overflowY: "auto",
+              padding: "24px",
+              borderRadius: "20px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
-              <div style={{ ...modalLogoShieldStyle, background: displayLogoUrl ? (isDarkHeader ? "#1E293B" : "#FFFFFF") : brandPrimary, border: displayLogoUrl ? `1.5px solid ${brandPrimary}` : "none" }}>
+            {/* Header: Logo + Title + Close */}
+            <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "18px" }}>
+              <div style={{ ...modalLogoShieldStyle, background: displayLogoUrl ? (isDarkHeader ? "#1E293B" : "#FFFFFF") : brandPrimary, border: displayLogoUrl ? `1.5px solid ${brandPrimary}` : "none", width: "52px", height: "52px", borderRadius: "14px" }}>
                 {displayLogoUrl ? (
-                  <img
-                    src={displayLogoUrl}
-                    alt="Logo"
-                    style={{ width: "24px", height: "24px", objectFit: "contain", borderRadius: "6px" }}
-                  />
+                  <img src={displayLogoUrl} alt="Logo" style={{ width: "32px", height: "32px", objectFit: "contain", borderRadius: "6px" }} />
                 ) : (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z"
-                      fill={brandPrimary}
-                    />
-                    <path
-                      d="M12 7.5v9M7.5 12h9"
-                      stroke="#FFFFFF"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z" fill={brandPrimary} />
+                    <path d="M12 7.5v9M7.5 12h9" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
               </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: "18px", color: isDarkHeader ? "#F8FAFC" : "#0F172A", fontWeight: 800 }}>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: "0 0 2px 0", fontSize: "20px", color: isDarkHeader ? "#F8FAFC" : "#0F172A", fontWeight: 900, letterSpacing: "-0.3px" }}>
                   {displayAboutTitle}
                 </h3>
-                <span style={{ fontSize: "12px", color: isDarkHeader ? "#94A3B8" : "#64748B" }}>
+                <span style={{ fontSize: "12px", color: isDarkHeader ? "#94A3B8" : "#64748B", fontWeight: 500 }}>
                   {displayAboutSubtitle}
                 </span>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowAboutModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: isDarkHeader ? "#64748B" : "#94A3B8", fontSize: "22px", lineHeight: 1, padding: "4px 8px", borderRadius: "6px" }}
+              >✕</button>
             </div>
 
-            <p style={{ fontSize: "13.5px", color: isDarkHeader ? "#CBD5E1" : "#334155", lineHeight: "1.6", margin: "0 0 16px 0", whiteSpace: "pre-line" }}>
-              {displayAboutBody}
-            </p>
+            {/* Live Stats Row */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "18px" }}>
+              {[
+                { value: "15,000+", label: language === "hi" ? "मासिक मरीज़" : "Monthly Patients", icon: "👥" },
+                { value: "98%", label: language === "hi" ? "संतुष्टि दर" : "Satisfaction Rate", icon: "⭐" },
+                { value: "< 8 min", label: language === "hi" ? "औसत प्रतीक्षा" : "Avg. Wait Time", icon: "⚡" },
+                { value: "24 / 7", label: language === "hi" ? "हमेशा उपलब्ध" : "Always Available", icon: "🕐" },
+              ].map((stat, i) => (
+                <div key={i} style={{
+                  background: isDarkHeader ? "#1E293B" : "#F8FAFC",
+                  border: `1px solid ${isDarkHeader ? "#334155" : "#E2E8F0"}`,
+                  borderRadius: "12px",
+                  padding: "12px 8px",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: "18px", marginBottom: "4px" }}>{stat.icon}</div>
+                  <div style={{ fontSize: "15px", fontWeight: 900, color: brandPrimary, letterSpacing: "-0.5px" }}>{stat.value}</div>
+                  <div style={{ fontSize: "10px", color: isDarkHeader ? "#94A3B8" : "#64748B", fontWeight: 600, marginTop: "2px" }}>{stat.label}</div>
+                </div>
+              ))}
+            </div>
 
-            <div style={{ background: isDarkHeader ? "#1E293B" : "#F8FAFC", borderRadius: "12px", padding: "14px", border: isDarkHeader ? "1px solid #334155" : "1px solid #E2E8F0", marginBottom: "20px" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", fontSize: "12px" }}>
-                <div>
-                  <strong style={{ color: brandPrimary }}>✓ {displayService1.split("•")[0] || displayService1}</strong>
-                  {displayService1.includes("•") && (
-                    <div style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{displayService1.split("•").slice(1).join("•").trim()}</div>
-                  )}
-                </div>
-                <div>
-                  <strong style={{ color: brandPrimary }}>✓ {displayService2.split("•")[0] || displayService2}</strong>
-                  {displayService2.includes("•") && (
-                    <div style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{displayService2.split("•").slice(1).join("•").trim()}</div>
-                  )}
-                </div>
-                <div>
-                  <strong style={{ color: brandPrimary }}>✓ {displayService3.split("•")[0] || displayService3}</strong>
-                  {displayService3.includes("•") && (
-                    <div style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{displayService3.split("•").slice(1).join("•").trim()}</div>
-                  )}
-                </div>
-                <div>
-                  <strong style={{ color: brandPrimary }}>✓ {displayService4.split("•")[0] || displayService4}</strong>
-                  {displayService4.includes("•") && (
-                    <div style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{displayService4.split("•").slice(1).join("•").trim()}</div>
-                  )}
-                </div>
+            {/* Mission Statement */}
+            <div style={{
+              background: isDarkHeader ? "rgba(2,132,199,0.1)" : "#F0F9FF",
+              border: `1px solid ${isDarkHeader ? "rgba(56,189,248,0.2)" : "#BAE6FD"}`,
+              borderRadius: "14px",
+              padding: "14px 16px",
+              marginBottom: "18px",
+              borderLeft: `4px solid ${brandPrimary}`,
+            }}>
+              <div style={{ fontSize: "11px", fontWeight: 800, color: brandPrimary, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: "6px" }}>
+                🎯 {language === "hi" ? "हमारा मिशन" : "Our Mission"}
+              </div>
+              <p style={{ fontSize: "13px", color: isDarkHeader ? "#CBD5E1" : "#334155", lineHeight: "1.65", margin: 0, whiteSpace: "pre-line" }}>
+                {displayAboutBody}
+              </p>
+            </div>
+
+            {/* Services Grid */}
+            <div style={{ marginBottom: "18px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 800, color: isDarkHeader ? "#94A3B8" : "#64748B", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: "10px" }}>
+                🏥 {language === "hi" ? "हमारी सेवाएँ" : "Our Services"}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", fontSize: "12px" }}>
+                {[
+                  { text: displayService1, icon: "🚑" },
+                  { text: displayService2, icon: "🤖" },
+                  { text: displayService3, icon: "🏨" },
+                  { text: displayService4, icon: "💊" },
+                  { text: language === "hi" ? "डिजिटल टोकन सिस्टम • ज़ीरो प्रतीक्षा पर्ची" : "Smart Token System • Zero paper queue passes", icon: "🎫" },
+                  { text: language === "hi" ? "पारिवारिक स्वास्थ्य प्रोफाइल • आश्रित बुकिंग" : "Family Health Profiles • Dependents booking", icon: "👨‍👩‍👧" },
+                ].map((svc, i) => (
+                  <div key={i} style={{
+                    background: isDarkHeader ? "#1E293B" : "#FAFAFA",
+                    border: `1px solid ${isDarkHeader ? "#334155" : "#E2E8F0"}`,
+                    borderRadius: "10px",
+                    padding: "10px 12px",
+                    display: "flex",
+                    gap: "8px",
+                    alignItems: "flex-start",
+                  }}>
+                    <span style={{ fontSize: "16px", flexShrink: 0, marginTop: "1px" }}>{svc.icon}</span>
+                    <div>
+                      <strong style={{ color: brandPrimary, display: "block", marginBottom: "2px" }}>{svc.text.split("•")[0].trim()}</strong>
+                      {svc.text.includes("•") && (
+                        <span style={{ color: isDarkHeader ? "#94A3B8" : "#64748B", fontSize: "11px" }}>{svc.text.split("•").slice(1).join("•").trim()}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
+            {/* Technology Highlights */}
+            <div style={{
+              background: isDarkHeader ? "#1E293B" : "#F8FAFC",
+              border: `1px solid ${isDarkHeader ? "#334155" : "#E2E8F0"}`,
+              borderRadius: "14px",
+              padding: "14px 16px",
+              marginBottom: "18px",
+            }}>
+              <div style={{ fontSize: "11px", fontWeight: 800, color: isDarkHeader ? "#94A3B8" : "#64748B", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: "10px" }}>
+                ⚙️ {language === "hi" ? "प्रौद्योगिकी एवं नवाचार" : "Technology & Innovation"}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {[
+                  "AI Queue Orchestration", "Real-Time Socket Sync", "Digital Prescriptions",
+                  "QR Check-In", "Priority Escalation", "Multi-Language", "Family Profiles", "Live Analytics",
+                ].map((tech, i) => (
+                  <span key={i} style={{
+                    background: isDarkHeader ? "rgba(2,132,199,0.15)" : "#EFF6FF",
+                    color: brandPrimary,
+                    border: `1px solid ${isDarkHeader ? "rgba(56,189,248,0.25)" : "#DBEAFE"}`,
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "4px 10px",
+                    borderRadius: "20px",
+                  }}>{tech}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* Accreditations */}
+            <div style={{ display: "flex", gap: "10px", marginBottom: "18px", flexWrap: "wrap" }}>
+              {[
+                { icon: "🏅", label: language === "hi" ? "NABH मान्यता" : "NABH Accredited", sub: language === "hi" ? "राष्ट्रीय मानक" : "National Standards" },
+                { icon: "🛡️", label: language === "hi" ? "ISO 27001" : "ISO 27001 Certified", sub: language === "hi" ? "डेटा सुरक्षा" : "Data Security" },
+                { icon: "🤝", label: language === "hi" ? "आयुष्मान भारत" : "Ayushman Bharat", sub: language === "hi" ? "सरकारी योजना" : "Govt. Empanelled" },
+              ].map((award, i) => (
+                <div key={i} style={{
+                  flex: "1 1 140px",
+                  background: isDarkHeader ? "#1E293B" : "#FAFAFA",
+                  border: `1px solid ${isDarkHeader ? "#334155" : "#E2E8F0"}`,
+                  borderRadius: "12px",
+                  padding: "12px",
+                  textAlign: "center",
+                }}>
+                  <div style={{ fontSize: "22px", marginBottom: "4px" }}>{award.icon}</div>
+                  <div style={{ fontSize: "11.5px", fontWeight: 800, color: isDarkHeader ? "#F1F5F9" : "#0F172A" }}>{award.label}</div>
+                  <div style={{ fontSize: "10px", color: isDarkHeader ? "#94A3B8" : "#64748B", marginTop: "2px" }}>{award.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Why Choose Us */}
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 800, color: isDarkHeader ? "#94A3B8" : "#64748B", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: "10px" }}>
+                💡 {language === "hi" ? "हमें क्यों चुनें?" : "Why Choose Us?"}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
+                {(language === "hi" ? [
+                  "टोकन सिस्टम से लाइन में खड़े होने की ज़रूरत नहीं",
+                  "AI द्वारा गंभीर मरीज़ों को स्वचालित प्राथमिकता",
+                  "परिवार के सभी सदस्यों के लिए एक ही खाते से बुकिंग",
+                  "मोबाइल पर लाइव कतार स्थिति, SMS अलर्ट",
+                  "डिजिटल ई-पर्ची — कागज़ की ज़रूरत नहीं",
+                ] : [
+                  "No physical queue — get your token digitally from anywhere",
+                  "AI auto-escalates critical/emergency cases instantly",
+                  "Book for all family members from a single account",
+                  "Live queue status on mobile + real-time alerts",
+                  "Digital e-prescriptions — zero paperwork needed",
+                ]).map((reason, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12.5px", color: isDarkHeader ? "#CBD5E1" : "#334155" }}>
+                    <span style={{ color: "#10B981", fontWeight: 800, flexShrink: 0 }}>✓</span>
+                    <span>{reason}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Emergency Footer CTA */}
+            <div style={{
+              background: isDarkHeader ? "rgba(220,38,38,0.1)" : "#FEF2F2",
+              border: `1px solid ${isDarkHeader ? "rgba(220,38,38,0.3)" : "#FECACA"}`,
+              borderRadius: "12px",
+              padding: "12px 16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: "10px",
+              marginBottom: "16px",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "22px" }}>🚨</span>
+                <div>
+                  <div style={{ fontSize: "12px", fontWeight: 800, color: "#DC2626" }}>
+                    {language === "hi" ? "आपातकालीन हेल्पलाइन" : "Emergency Helpline"}
+                  </div>
+                  <div style={{ fontSize: "11px", color: isDarkHeader ? "#94A3B8" : "#64748B" }}>
+                    {language === "hi" ? "24/7 उपलब्ध — तुरंत सहायता" : "24/7 Available — Immediate Assistance"}
+                  </div>
+                </div>
+              </div>
+              <a
+                href="tel:108"
+                style={{
+                  background: "#DC2626",
+                  color: "#FFFFFF",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                  padding: "7px 18px",
+                  borderRadius: "10px",
+                  textDecoration: "none",
+                  letterSpacing: "0.3px",
+                  boxShadow: "0 2px 8px rgba(220,38,38,0.35)",
+                }}
+              >
+                📞 108
+              </a>
+            </div>
+
+            {/* Close Button */}
             <button
               type="button"
               onClick={() => setShowAboutModal(false)}
@@ -1349,7 +1565,7 @@ export default function Header({
         </div>
       )}
 
-      {/* 5. CONTACT US MODAL */}
+            {/* 5. CONTACT US MODAL */}
       {showContactModal && (
         <div className="header-modal-overlay" onClick={() => setShowContactModal(false)}>
           <div

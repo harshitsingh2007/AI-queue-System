@@ -1,0 +1,189 @@
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - generic "Hospital System HQ" [ref=e6] [cursor=pointer]:
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]: Raja harish chandra
+          - generic [ref=e14]: NABH ACCREDITED
+        - generic [ref=e15]:
+          - generic [ref=e16]: Care you can trust • NABH Accredited
+          - generic [ref=e17]: •
+          - generic [ref=e18]: Connecting...
+    - navigation [ref=e20]:
+      - 'button "24/7 Helpline: 108" [ref=e21] [cursor=pointer]'
+      - button "About Us" [ref=e27] [cursor=pointer]
+      - button "Support" [ref=e31] [cursor=pointer]
+    - generic [ref=e35]:
+      - switch "Toggle dark and light theme" [ref=e36] [cursor=pointer]
+      - button "🇺🇸 English" [ref=e43] [cursor=pointer]:
+        - generic [ref=e44]: 🇺🇸
+        - generic [ref=e45]: English
+      - button "H hariom" [ref=e49] [cursor=pointer]:
+        - generic [ref=e50]: H
+        - generic [ref=e51]: hariom
+  - main [ref=e54]:
+    - generic [ref=e55]:
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - generic [ref=e58]:
+            - button "🏥 Raja harish chandra ▼" [ref=e59] [cursor=pointer]:
+              - generic [ref=e60]: 🏥
+              - generic [ref=e61]: Raja harish chandra
+              - generic [ref=e62]: ▼
+            - heading "Walk-In. Get Seen. We’re Here for You." [level=1] [ref=e63]:
+              - text: Walk-In. Get Seen.
+              - generic [ref=e64]: We’re
+              - text: Here for You.
+            - generic [ref=e65]:
+              - generic [ref=e66]: 💡
+              - generic [ref=e67]:
+                - generic [ref=e68]: Daily Health Insight
+                - paragraph [ref=e70]: "\"Stay hydrated and prioritize your wellbeing today.\""
+          - generic [ref=e71]:
+            - generic [ref=e76]:
+              - generic [ref=e77]: 0 Active Desks
+              - generic [ref=e78]: Active Desks
+            - generic [ref=e84]:
+              - generic [ref=e85]: 0 min
+              - generic [ref=e86]: Avg. Wait
+            - generic [ref=e94]:
+              - generic [ref=e95]: 0 Waiting
+              - generic [ref=e96]: Live in Queue
+        - img [ref=e98]:
+          - generic [ref=e114]: HOSPITAL
+      - generic [ref=e182]:
+        - generic [ref=e183]:
+          - generic [ref=e184]: Hospital Patient Services & Queue Desk
+          - generic [ref=e190]:
+            - button "Raja harish chandra Change" [ref=e191] [cursor=pointer]:
+              - generic [ref=e195]: Raja harish chandra
+              - generic [ref=e196]: Change
+            - generic [ref=e200]: AI Orchestration Active
+        - generic [ref=e203]:
+          - button "Instant Walk-In Ticket Get Token Now" [ref=e204] [cursor=pointer]:
+            - generic [ref=e209]:
+              - generic [ref=e210]: Instant Walk-In Ticket
+              - generic [ref=e211]: Get Token Now
+          - button "Book Time Slot Schedule Visit" [ref=e212] [cursor=pointer]:
+            - generic [ref=e217]:
+              - generic [ref=e218]: Book Time Slot
+              - generic [ref=e219]: Schedule Visit
+          - button "My Appointments 0 View & Manage" [ref=e220] [cursor=pointer]:
+            - generic [ref=e225]:
+              - generic [ref=e226]:
+                - generic [ref=e227]: My Appointments
+                - generic [ref=e228]: "0"
+              - generic [ref=e229]: View & Manage
+          - button "Appointment History 0 Past Records" [ref=e230] [cursor=pointer]:
+            - generic [ref=e236]:
+              - generic [ref=e237]:
+                - generic [ref=e238]: Appointment History
+                - generic [ref=e239]: "0"
+              - generic [ref=e240]: Past Records
+          - button "👨‍👩‍👧‍👦 Family 1 Manage Profiles" [ref=e241] [cursor=pointer]:
+            - generic [ref=e242]: 👨‍👩‍👧‍👦
+            - generic [ref=e244]:
+              - generic [ref=e245]:
+                - generic [ref=e246]: Family
+                - generic [ref=e247]: "1"
+              - generic [ref=e248]: Manage Profiles
+      - generic [ref=e249]:
+        - generic [ref=e252]:
+          - generic [ref=e253]:
+            - generic [ref=e254]:
+              - heading "Instant Walk-In Ticket" [level=2] [ref=e255]
+              - paragraph [ref=e256]: Hex Visionaries — Instant Token & Real-Time Wait Tracker
+            - generic [ref=e257]: Walk-In
+          - generic [ref=e258]:
+            - generic [ref=e259]:
+              - generic [ref=e260]:
+                - generic [ref=e261]: Patient Full Name
+                - textbox "user" [ref=e265]: hariom
+              - generic [ref=e266]:
+                - generic [ref=e267]:
+                  - generic [ref=e268]: ageLabel
+                  - spinbutton [ref=e272]: "30"
+                - generic [ref=e273]:
+                  - generic [ref=e274]: genderLabel
+                  - combobox [ref=e278] [cursor=pointer]:
+                    - option "Male"
+                    - option "Female"
+                    - option "Other" [selected]
+            - generic [ref=e279]:
+              - generic [ref=e280]:
+                - generic [ref=e281]: Service Department
+                - combobox [ref=e285] [cursor=pointer]:
+                  - option "General Consultation (OPD)" [selected]
+                  - option "Pharmacy & Medicine"
+                  - option "Pathology & Lab Test"
+                  - option "Radiology & X-Ray"
+                  - option "Emergency Triage"
+              - generic [ref=e286]:
+                - generic [ref=e287]: Primary Symptom / Medical Reason
+                - combobox [ref=e290] [cursor=pointer]:
+                  - option "General Checkup & Consultation" [selected]
+                  - option "High Fever, Viral Flu & Chills"
+                  - option "Cough, Cold & Sore Throat"
+                  - option "Severe Chest Pain / Heart Discomfort"
+                  - option "Shortness of Breath / Asthma Attack"
+                  - option "Severe Headache & Migraine"
+                  - option "Abdominal Pain, Acidity & Vomiting"
+                  - option "Fracture, Sprain & Physical Trauma"
+                  - option "Skin Rash, Allergy & Itching"
+                  - option "Pediatric & Child Health Care"
+                  - option "Back Pain & Joint Stiffness"
+                  - option "Eye Infection, Redness & Vision Issue"
+                  - option "Ear, Nose & Throat (ENT) Pain"
+                  - option "Dental Pain & Toothache"
+                  - option "Diabetes & Blood Sugar Checkup"
+                  - option "High Blood Pressure & Dizziness"
+                  - option "Urinary Infection & Kidney Discomfort"
+                  - option "Women's Health & Gynecology"
+                  - option "Prescription Refill & Follow-up Visit"
+                  - option "Pathology Blood & Diagnostic Tests"
+                  - option "✏️ Other Symptom (Type Your Own)"
+            - generic [ref=e291]:
+              - generic [ref=e292]: Pre-Existing Chronic Conditions / Risk Factors
+              - combobox [ref=e295] [cursor=pointer]:
+                - option "None / Healthy Baseline" [selected]
+                - option "Diabetes Mellitus"
+                - option "High Blood Pressure / Hypertension"
+                - option "Heart Disease / Cardiac History"
+                - option "Asthma / Chronic Lung Disease"
+                - option "Chronic Kidney Disease"
+                - option "Senior Citizen (65+ years)"
+                - option "Pregnancy / Maternity"
+            - generic [ref=e296]:
+              - generic [ref=e297]: Priority & Triage Level
+              - generic [ref=e300]:
+                - button "Routine Consultation Standard Queue Order" [ref=e301] [cursor=pointer]:
+                  - generic [ref=e305]:
+                    - generic [ref=e306]: Routine Consultation
+                    - generic [ref=e307]: Standard Queue Order
+                - button "Emergency Case Priority Queue Jump" [ref=e308] [cursor=pointer]:
+                  - generic [ref=e312]:
+                    - generic [ref=e313]: Emergency Case
+                    - generic [ref=e314]: Priority Queue Jump
+            - button "Get Digital Walk-In Ticket Generate Token & Join Queue" [ref=e315] [cursor=pointer]:
+              - generic [ref=e320]:
+                - generic [ref=e321]: Get Digital Walk-In Ticket
+                - generic [ref=e322]: Generate Token & Join Queue
+        - generic [ref=e324]:
+          - generic [ref=e325]:
+            - generic [ref=e326]: Live Queue Monitor
+            - generic [ref=e329]: 2 Desks Active
+          - generic [ref=e330]:
+            - generic [ref=e331]: NOW SERVING AT DESKS
+            - generic [ref=e332]: All desks ready for next patient
+          - generic [ref=e333]:
+            - generic [ref=e334]:
+              - generic [ref=e335]: Est. Avg Wait
+              - generic [ref=e336]: 12 min
+            - generic [ref=e337]:
+              - generic [ref=e338]: In Line
+              - generic [ref=e339]: 0 patients
+      - generic [ref=e340]:
+        - generic [ref=e346]:
+          - generic [ref=e347]: Raja harish chandra
+          - generic [ref=e348]: Care you can trust
+        - generic [ref=e349]: © 2026 Raja harish chandra. All rights reserved.

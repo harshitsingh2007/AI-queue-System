@@ -975,6 +975,24 @@ async function cancelTicket(tenantId = "city-hospital-01", ticketId, reason = "N
       },
     });
 
+    // Synchronize any linked appointment so it immediately reflects cancelled status
+    try {
+      await tx.appointments.updateMany({
+        where: {
+          OR: [
+            { ticket_id: ticketId },
+            ...(ticketRow.appointment_id ? [{ appointment_id: ticketRow.appointment_id }] : []),
+          ],
+        },
+        data: {
+          status: "cancelled",
+          updated_at: new Date(),
+        },
+      });
+    } catch (aptErr) {
+      console.log(`[cancelTicket] Note: appointment sync:`, aptErr.message);
+    }
+
     return updatedTicket;
   });
 

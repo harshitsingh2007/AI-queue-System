@@ -16,11 +16,27 @@ const {
   updateUserPrimaryHospital,
   getAllUsers,
   getUserHistory,
+  checkEmail,
+  sendVerificationOtp,
+  forgotPassword,
+  verifyResetOtp,
+  resetPassword,
 } = require("../controllers/auth.controller");
 const { authenticate, optionalAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
+// Real-Time Validation & Email Verification
+router.get("/check-email", checkEmail);
+router.post("/check-email", checkEmail);
+router.post("/send-verification-otp", sendVerificationOtp);
+
+// Password Reset Flow
+router.post("/forgot-password", forgotPassword);
+router.post("/verify-reset-otp", verifyResetOtp);
+router.post("/reset-password", resetPassword);
+
+// Core Authentication
 router.post("/signup/superadmin", signupSuperAdmin);
 router.post("/signup/admin", signupAdmin);
 router.post("/signup/patient", signupPatient);

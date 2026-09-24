@@ -80,7 +80,7 @@ export function updateBrowserTabBrand({
   try {
     if (isSuperAdmin) {
       document.title = "AI-Queue | Super Admin Portal";
-    } else if (isAffiliate && hospitalName && hospitalName.trim().length > 0) {
+    } else if (isAffiliate && hospitalName && hospitalName.trim().length > 0 && role) {
       const cleanName = hospitalName.trim();
       const roleStr = String(role || "").toLowerCase();
       let portalSuffix = "Patient Portal";
@@ -93,7 +93,15 @@ export function updateBrowserTabBrand({
 
       document.title = `${cleanName} | ${portalSuffix}`;
     } else {
-      document.title = "AI-Powered Smart Queue Management System";
+      const isSignup = typeof window !== "undefined" && (
+        window.location.search.toLowerCase().includes("reg") ||
+        window.location.search.toLowerCase().includes("signup") ||
+        window.location.hash.toLowerCase().includes("reg") ||
+        window.location.hash.toLowerCase().includes("signup") ||
+        window.location.pathname.toLowerCase().includes("reg") ||
+        window.location.pathname.toLowerCase().includes("signup")
+      );
+      document.title = isSignup ? "Signup" : "Login";
     }
   } catch (err) {
     console.log("Document title update error:", err);

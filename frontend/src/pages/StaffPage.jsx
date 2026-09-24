@@ -14,6 +14,34 @@ import AdminHeroBanner from "../components/staff/AdminHeroBanner";
 import Footer from "../components/common/Footer";
 import PatientHistoryTimeline from "../components/patient-history/PatientHistoryTimeline";
 import { usePatientHistory } from "../hooks/usePatientHistory";
+import {
+  IconDoctor,
+  IconHospital,
+  IconDesk,
+  IconPill,
+  IconLab,
+  IconClipboard,
+  IconPrescription,
+  IconCalendar,
+  IconClock,
+  IconSpeaker,
+  IconPause,
+  IconCoffee,
+  IconAlertTriangle,
+  IconCheckCircle,
+  IconRepeat,
+  IconDatabase,
+  IconZap,
+  IconUserX,
+  IconSave,
+  IconStethoscope,
+  IconHeartPulse,
+  IconEdit,
+  IconActivity,
+  IconSiren,
+  IconPlay,
+  IconShield,
+} from "../components/common/MedicalIcons";
 
 export default function StaffPage({
   tenantId,
@@ -97,7 +125,7 @@ export default function StaffPage({
 
   const isDark = currentTheme === "dark";
 
-  const [activeTab, setActiveTab] = useState("ops"); // "ops" | "queue" | "apts" | "ml"
+  const [activeTab, setActiveTab] = useState("ops"); // "ops" | "queue" | "apts"
   const [appointments, setAppointments] = useState([]);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -173,16 +201,7 @@ export default function StaffPage({
     };
   }, [effectiveHospitalCode]);
 
-  // ML Studio State (Embedded)
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewData, setPreviewData] = useState(null);
-  const [columnMapping, setColumnMapping] = useState({});
-  const [ingestStatus, setIngestStatus] = useState(null);
-  const [trainStatus, setTrainStatus] = useState(null);
-  const [modelStatus, setModelStatus] = useState(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-  const [loadingIngest, setLoadingIngest] = useState(false);
-  const [loadingTrain, setLoadingTrain] = useState(false);
+
 
   const adminDept = currentUser && currentUser.department ? currentUser.department.toLowerCase() : "all";
   const userRole = (currentUser?.role || "").toLowerCase();
@@ -242,8 +261,8 @@ export default function StaffPage({
     setRxFollowUp(prevRx.follow_up || "After 5 days or if needed");
     setRxPreFillWarning(
       language === "hi"
-        ? "⚠️ पूर्व प्रिस्क्रिप्शन संदर्भ हेतु लोड किया गया। कृपया सबमिट करने से पहले दवाइयों और खुराक की जांच करें।"
-        : "⚠️ Previous prescription loaded for reference. Please review medicines and dosage before submitting."
+        ? "पूर्व प्रिस्क्रिप्शन संदर्भ हेतु लोड किया गया। कृपया सबमिट करने से पहले दवाइयों और खुराक की जांच करें।"
+        : "Previous prescription loaded for reference. Please review medicines and dosage before submitting."
     );
     setShowPrescriptionModal(true);
   };
@@ -402,8 +421,8 @@ export default function StaffPage({
       };
       setServeFeedbackMsg(
         language === "hi"
-          ? `☕ आप वर्तमान में '${statusNames[doctorDutyStatus] || doctorDutyStatus}' पर हैं। कतार से मरीज़ों को बुलाने हेतु कृपया अपनी स्थिति 'सक्रिय (Active)' करें।`
-          : `☕ You are currently on ${statusNames[doctorDutyStatus] || doctorDutyStatus}. Automatic patient routing is paused. Switch your status to 'Active' to call the next patient.`
+          ? `आप वर्तमान में '${statusNames[doctorDutyStatus] || doctorDutyStatus}' पर हैं। कतार से मरीज़ों को बुलाने हेतु कृपया अपनी स्थिति 'सक्रिय (Active)' करें।`
+          : `You are currently on ${statusNames[doctorDutyStatus] || doctorDutyStatus}. Automatic patient routing is paused. Switch your status to 'Active' to call the next patient.`
       );
       setTimeout(() => setServeFeedbackMsg(""), 7000);
       return;
@@ -413,8 +432,8 @@ export default function StaffPage({
     if (isDoctorBusy && myServingTicket) {
       setServeFeedbackMsg(
         language === "hi"
-          ? `⚠️ डॉक्टर एक समय में केवल 1 मरीज़ को देख सकते हैं। आप वर्तमान में #${myServingTicket.ticket_id} (${myServingTicket.name}) का परामर्श कर रहे हैं। अगला टोकन बुलाने से पहले यह परामर्श पूर्ण (Complete) करें।`
-          : `⚠️ A doctor can only serve one patient at a time. You are currently consulting with Patient #${myServingTicket.ticket_id} (${myServingTicket.name}). Please complete or transfer this consultation before calling the next patient.`
+          ? `डॉक्टर एक समय में केवल 1 मरीज़ को देख सकते हैं। आप वर्तमान में #${myServingTicket.ticket_id} (${myServingTicket.name}) का परामर्श कर रहे हैं। अगला टोकन बुलाने से पहले यह परामर्श पूर्ण (Complete) करें।`
+          : `A doctor can only serve one patient at a time. You are currently consulting with Patient #${myServingTicket.ticket_id} (${myServingTicket.name}). Please complete or transfer this consultation before calling the next patient.`
       );
       setTimeout(() => setServeFeedbackMsg(""), 6000);
       return;
@@ -441,8 +460,8 @@ export default function StaffPage({
 
       setAnnounceFeedbackMsg(
         language === "hi"
-          ? `📢 टोकन #${tid} (${ticket.name}) की कॉल संख्या ${currentCnt} प्रसारित की गई!`
-          : `📢 Broadcasted Announcement #${currentCnt} for Token #${tid} (${ticket.name})!`
+          ? `टोकन #${tid} (${ticket.name}) की कॉल संख्या ${currentCnt} प्रसारित की गई!`
+          : `Broadcasted Announcement #${currentCnt} for Token #${tid} (${ticket.name})!`
       );
       setTimeout(() => setAnnounceFeedbackMsg(""), 3500);
     } catch (e) {
@@ -496,8 +515,8 @@ export default function StaffPage({
       }
       setAnnounceFeedbackMsg(
         language === "hi"
-          ? `🟢 टोकन #${ticket.ticket_id} (${ticket.name}) को पुनः सक्रिय किया गया!`
-          : `🟢 Recalled #${ticket.ticket_id} (${ticket.name}) back to active queue!`
+          ? `टोकन #${ticket.ticket_id} (${ticket.name}) को पुनः सक्रिय किया गया!`
+          : `Recalled #${ticket.ticket_id} (${ticket.name}) back to active queue!`
       );
       setTimeout(() => setAnnounceFeedbackMsg(""), 4500);
     } catch (e) {
@@ -530,8 +549,8 @@ export default function StaffPage({
       }
       setAnnounceFeedbackMsg(
         language === "hi"
-          ? `🛑 टोकन #${ticket.ticket_id} को 'अनुपस्थित (No-Show)' दर्ज किया गया।`
-          : `🛑 Token #${ticket.ticket_id} marked as No-Show.`
+          ? `टोकन #${ticket.ticket_id} को 'अनुपस्थित (No-Show)' दर्ज किया गया।`
+          : `Token #${ticket.ticket_id} marked as No-Show.`
       );
       setTimeout(() => setAnnounceFeedbackMsg(""), 4000);
     } catch (e) {
@@ -768,115 +787,15 @@ export default function StaffPage({
       .catch((e) => console.log("Fetch tenant appointments error:", e));
   }, [tenantId, adminDept]);
 
-  const fetchModelStatus = useCallback(() => {
-    fetch(`${API_BASE}/api/v1/plugin/model-status/${tenantId}`)
-      .then((r) => r.json())
-      .then((d) => setModelStatus(d))
-      .catch((e) => console.log("Model status fetch error:", e));
-  }, [tenantId]);
-
   useEffect(() => {
     fetchTenantAppointments();
-    fetchModelStatus();
     if (refreshData) refreshData();
     const interval = setInterval(() => {
       fetchTenantAppointments();
       if (refreshData) refreshData();
     }, 4000);
     return () => clearInterval(interval);
-  }, [fetchTenantAppointments, fetchModelStatus, refreshData]);
-
-  // ML Handlers
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
-      setPreviewData(null);
-      setIngestStatus(null);
-    }
-  };
-
-  const handlePreview = async () => {
-    if (!selectedFile) return;
-    setLoadingPreview(true);
-    setIngestStatus(null);
-
-    const formData = new FormData();
-    formData.append("tenant_id", tenantId);
-    formData.append("file", selectedFile);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/plugin/historical-data/preview`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      setLoadingPreview(false);
-
-      if (res.ok) {
-        setPreviewData(data);
-        setColumnMapping(data.suggested_mapping || {});
-      } else {
-        setIngestStatus({ error: true, message: data.detail || "Preview failed" });
-      }
-    } catch (e) {
-      setLoadingPreview(false);
-      setIngestStatus({ error: true, message: e.message });
-    }
-  };
-
-  const handleIngest = async () => {
-    if (!selectedFile) return;
-    setLoadingIngest(true);
-
-    const formData = new FormData();
-    formData.append("tenant_id", tenantId);
-    formData.append("file", selectedFile);
-    formData.append("column_mapping_json", JSON.stringify(columnMapping));
-
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/plugin/historical-data/upload`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      setLoadingIngest(false);
-
-      if (res.ok) {
-        setIngestStatus({ error: false, message: data.message, ingested: data.rows_ingested });
-      } else {
-        setIngestStatus({ error: true, message: data.detail || "Upload failed" });
-      }
-    } catch (e) {
-      setLoadingIngest(false);
-      setIngestStatus({ error: true, message: e.message });
-    }
-  };
-
-  const handleTrainModel = async () => {
-    setLoadingTrain(true);
-    setTrainStatus(null);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/plugin/train-model`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tenant_id: tenantId }),
-      });
-      const data = await res.json();
-      setLoadingTrain(false);
-
-      if (res.ok && (data.status === "success" || data.mae !== undefined)) {
-        setTrainStatus(data);
-        fetchModelStatus();
-      } else {
-        setTrainStatus({ error: true, message: data.detail || data.message || "Training failed" });
-      }
-    } catch (e) {
-      setLoadingTrain(false);
-      setTrainStatus({ error: true, message: e.message });
-    }
-  };
+  }, [fetchTenantAppointments, refreshData]);
 
   // Filtered queue items based on search input
   const filteredQueue = queueSnapshot.filter((item) => {
@@ -913,7 +832,7 @@ export default function StaffPage({
 
         .admin-tabs-bar {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(3, 1fr);
           gap: 12px;
           margin-bottom: 24px;
         }
@@ -1329,36 +1248,112 @@ export default function StaffPage({
         onEndBreak={() => handleUpdateDutyStatus("ACTIVE")}
       />
 
-      {/* 2. UNIFIED ADMIN NAVIGATION HUB (4 TABS) + QUICK THEME SWITCHER */}
+      {/* 2. UNIFIED ADMIN NAVIGATION HUB (3 TABS) + QUICK THEME SWITCHER */}
       <section style={{ marginBottom: "24px" }}>
-        {/* Quick Duty & Dark Mode Status Bar */}
+        {/* Doctor & Department Telemetry Status Bar */}
         <div className="staff-theme-toolbar">
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: isDark ? "#94A3B8" : "#64748B" }}>
-            <span style={{ display: "inline-block", width: "8px", height: "8px", borderRadius: "50%", background: isDoctorBusy ? "#F59E0B" : "#10B981" }} />
-            <strong style={{ color: isDark ? "#F8FAFC" : "#0F172A" }}>
-              {currentUser?.name || "Dr. Staff Desk"}
-            </strong>
-            <span>•</span>
-            <span>{getCategoryLabel(adminDept, language)}</span>
-            <span>•</span>
-            <span style={{ color: "#38BDF8", fontWeight: 700 }}>
-              {language === "hi" ? "AI कतार सक्रिय" : "Live AI Telemetry"}
-            </span>
+          {/* Doctor Name & Department Identity Badge (LEFT) */}
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "5px 14px",
+            borderRadius: "12px",
+            background: isDark ? "#1E293B" : "#F0F9FF",
+            border: `1.5px solid ${isDark ? "#334155" : "#BAE6FD"}`,
+            boxShadow: isDark ? "0 2px 6px rgba(0, 0, 0, 0.3)" : "0 1px 3px rgba(2, 132, 199, 0.08)",
+          }}>
+            <div style={{
+              width: "32px",
+              height: "32px",
+              borderRadius: "8px",
+              background: isDark ? "rgba(2,132,199,0.2)" : "#E0F2FE",
+              color: "#0284C7",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "16px",
+              flexShrink: 0,
+            }}>
+              <IconDoctor size={18} color="#0284C7" />
+            </div>
+            <div style={{ textAlign: "left", lineHeight: 1.25 }}>
+              <div style={{
+                fontSize: "13px",
+                fontWeight: 800,
+                color: isDark ? "#F8FAFC" : "#0F172A",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}>
+                <span>{currentUser?.name || currentUser?.username || "Dr. Staff Desk"}</span>
+                {currentUser?.employee_code && (
+                  <span style={{
+                    fontSize: "10px",
+                    fontWeight: 700,
+                    padding: "1px 5px",
+                    borderRadius: "4px",
+                    background: isDark ? "#334155" : "#E2E8F0",
+                    color: isDark ? "#94A3B8" : "#64748B",
+                  }}>
+                    {currentUser.employee_code}
+                  </span>
+                )}
+              </div>
+              <div style={{
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "#0284C7",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                marginTop: "2px",
+              }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <IconHospital size={12} color="#0284C7" />
+                  {getCategoryLabel(adminDept, language)}
+                </span>
+                {currentUser?.specialization && (
+                  <span style={{ color: isDark ? "#94A3B8" : "#64748B" }}>• {currentUser.specialization}</span>
+                )}
+              </div>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleToggleTheme}
-            className="staff-quick-theme-btn"
-            title={isDark ? (language === "hi" ? "लाइट मोड पर स्विच करें" : "Switch to Light Theme") : (language === "hi" ? "डार्क मोड पर स्विच करें" : "Switch to Dark Theme")}
-          >
-            <span>{isDark ? "☀️" : "🌙"}</span>
-            <span>
-              {isDark
-                ? (language === "hi" ? "लाइट मोड (दिन)" : "Light Mode")
-                : (language === "hi" ? "डार्क मोड (रात)" : "Dark Mode")}
+          {/* Duty Status & Telemetry Indicators (RIGHT) */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px", color: isDark ? "#94A3B8" : "#64748B", flexWrap: "wrap" }}>
+            <span style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              fontWeight: 700,
+              color: isDoctorBusy ? "#D97706" : "#059669",
+              background: isDoctorBusy ? (isDark ? "rgba(245,158,11,0.15)" : "#FEF3C7") : (isDark ? "rgba(16,185,129,0.15)" : "#ECFDF5"),
+              padding: "4px 10px",
+              borderRadius: "20px",
+              border: `1px solid ${isDoctorBusy ? (isDark ? "rgba(245,158,11,0.3)" : "#FDE68A") : (isDark ? "rgba(16,185,129,0.3)" : "#A7F3D0")}`,
+              fontSize: "11px",
+            }}>
+              <span style={{ display: "inline-block", width: "7px", height: "7px", borderRadius: "50%", background: isDoctorBusy ? "#F59E0B" : "#10B981" }} />
+              {isDoctorBusy
+                ? (language === "hi" ? "मरीज़ परामर्श जारी" : "In Consultation")
+                : (language === "hi" ? "ड्यूटी पर सक्रिय" : "Active on Duty")}
             </span>
-          </button>
+            <span>•</span>
+            <span style={{ color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+              <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "#0284C7" }} />
+              {language === "hi" ? "AI कतार सक्रिय" : "Live AI Telemetry"}
+            </span>
+            {(currentUser?.counter || currentUser?.counter_number || currentUser?.desk) && (
+              <>
+                <span>•</span>
+                <span style={{ fontWeight: 600, color: isDark ? "#CBD5E1" : "#475569", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <IconDesk size={12} color={isDark ? "#94A3B8" : "#64748B"} />
+                  Desk {currentUser.counter || currentUser.counter_number || currentUser.desk}
+                </span>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="admin-tabs-bar">
@@ -1395,10 +1390,13 @@ export default function StaffPage({
                       style={{
                         background: activeTab === "ops" ? "#FCD34D" : "#FEF3C7",
                         color: activeTab === "ops" ? "#78350F" : "#92400E",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "3px",
                       }}
                       title={`${heldTickets.length} Patients on Hold / Grace`}
                     >
-                      {heldTickets.length} ⏸️
+                      {heldTickets.length} <IconPause size={9} color={activeTab === "ops" ? "#78350F" : "#92400E"} />
                     </span>
                   )}
                 </div>
@@ -1479,37 +1477,7 @@ export default function StaffPage({
             </div>
           </button>
 
-          {/* Tab 4: Hospital ML Studio & Training */}
-          <button
-            type="button"
-            onClick={() => setActiveTab("ml")}
-            className={`tab-button-modern ${activeTab === "ml" ? "active" : "inactive"}`}
-          >
-            <div className="tab-icon-wrapper">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-              </svg>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span className="tab-title-text">
-                  {language === "hi" ? "एमएल स्टूडियो" : "ML Studio"}
-                </span>
-                <span
-                  className="tab-count-badge"
-                  style={{
-                    background: activeTab === "ml" ? "#38BDF8" : "#E0F2FE",
-                    color: activeTab === "ml" ? "#0F172A" : "#0284C7",
-                  }}
-                >
-                  AI
-                </span>
-              </div>
-              <span className="tab-sub-text" style={{ color: activeTab === "ml" ? "#BAE6FD" : "#64748B" }}>
-                {language === "hi" ? "मॉडल ट्रेनिंग एवं सटीकता" : "Training & Accuracy"}
-              </span>
-            </div>
-          </button>
+
         </div>
       </section>
 
@@ -1563,7 +1531,7 @@ export default function StaffPage({
                 >
                   {isDoctorBusy ? (
                     <>
-                      <span style={{ fontSize: "14px" }}>🔒</span>
+                      <IconStethoscope size={14} color="#D97706" />
                       <span>
                         {language === "hi"
                           ? `परामर्श जारी (#${myServingTicket.ticket_id})`
@@ -1572,7 +1540,7 @@ export default function StaffPage({
                     </>
                   ) : doctorDutyStatus === "ON_BREAK" ? (
                     <>
-                      <span style={{ fontSize: "14px" }}>☕</span>
+                      <IconCoffee size={14} color="#92400E" />
                       <span>
                         {language === "hi"
                           ? `अवकाश पर (${dutyTimerText || "रुकी है"})`
@@ -1581,7 +1549,7 @@ export default function StaffPage({
                     </>
                   ) : doctorDutyStatus === "EMERGENCY_ROUND" ? (
                     <>
-                      <span style={{ fontSize: "14px" }}>🚨</span>
+                      <IconSiren size={14} color="#9F1239" />
                       <span>
                         {language === "hi"
                           ? `इमरजेंसी राउंड (${dutyTimerText || "रुकी है"})`
@@ -1590,7 +1558,7 @@ export default function StaffPage({
                     </>
                   ) : doctorDutyStatus === "OFF_DUTY" ? (
                     <>
-                      <span style={{ fontSize: "14px" }}>🛑</span>
+                      <IconShield size={14} color="#475569" />
                       <span>
                         {language === "hi" ? "ड्यूटी समाप्त" : "Off Duty (Closed)"}
                       </span>
@@ -1640,9 +1608,25 @@ export default function StaffPage({
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: "260px" }}>
-                    <span style={{ fontSize: "24px" }}>
-                      {doctorDutyStatus === "ON_BREAK" ? "☕" : doctorDutyStatus === "EMERGENCY_ROUND" ? "🚨" : "🛑"}
-                    </span>
+                    <div style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "10px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: "rgba(255,255,255,0.75)",
+                      border: "1px solid rgba(0,0,0,0.06)",
+                      flexShrink: 0,
+                    }}>
+                      {doctorDutyStatus === "ON_BREAK" ? (
+                        <IconCoffee size={18} color="#92400E" />
+                      ) : doctorDutyStatus === "EMERGENCY_ROUND" ? (
+                        <IconSiren size={18} color="#9F1239" />
+                      ) : (
+                        <IconShield size={18} color="#475569" />
+                      )}
+                    </div>
                     <div>
                       <div style={{ fontSize: "13.5px", fontWeight: 800 }}>
                         {doctorDutyStatus === "ON_BREAK"
@@ -1706,7 +1690,7 @@ export default function StaffPage({
                     boxShadow: "0 2px 8px rgba(245, 158, 11, 0.08)",
                   }}
                 >
-                  <span style={{ fontSize: "18px" }}>⚠️</span>
+                  <IconAlertTriangle size={18} color="#D97706" />
                   <div style={{ flex: 1 }}>{serveFeedbackMsg}</div>
                   <button
                     type="button"
@@ -1816,17 +1800,20 @@ export default function StaffPage({
                                 {getCategoryLabel(ticket.service_category, language)}
                               </span>
                               {ticket.served_by_doctor_name && (
-                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#F1F5F9", color: "#475569", fontSize: "11px", fontWeight: 700 }}>
-                                  👨‍⚕️ {ticket.served_by_doctor_name}
+                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#F1F5F9", color: "#475569", fontSize: "11px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <IconDoctor size={12} color="#475569" />
+                                  {ticket.served_by_doctor_name}
                                 </span>
                               )}
                               {isServingPatientReturning ? (
-                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#EFF6FF", color: "#0284C7", fontSize: "11px", fontWeight: 800, border: "1px solid #BFDBFE" }}>
-                                  🔄 {language === "hi" ? "फॉलो-अप मरीज़" : "Returning Patient"} ({servingPatientTotalVisits} {language === "hi" ? "विज़िट्स" : "Visits"})
+                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#EFF6FF", color: "#0284C7", fontSize: "11px", fontWeight: 800, border: "1px solid #BFDBFE", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <IconRepeat size={12} color="#0284C7" />
+                                  {language === "hi" ? "फॉलो-अप मरीज़" : "Returning Patient"} ({servingPatientTotalVisits} {language === "hi" ? "विज़िट्स" : "Visits"})
                                 </span>
                               ) : (
-                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#F8FAFC", color: "#64748B", fontSize: "11px", fontWeight: 700, border: "1px solid #E2E8F0" }}>
-                                  🆕 {language === "hi" ? "प्रथम विज़िट" : "1st Visit"}
+                                <span style={{ padding: "3px 9px", borderRadius: "6px", background: "#F8FAFC", color: "#64748B", fontSize: "11px", fontWeight: 700, border: "1px solid #E2E8F0", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                  <IconActivity size={12} color="#64748B" />
+                                  {language === "hi" ? "प्रथम विज़िट" : "1st Visit"}
                                 </span>
                               )}
                             </div>
@@ -1857,7 +1844,13 @@ export default function StaffPage({
                                 }}
                                 title={isMaxCalls ? "3 announcements broadcasted. Patient absent - recommended to Skip/Hold." : `Announcement ${callCnt} of 3`}
                               >
-                                <span>{isMaxCalls ? "⚠️" : "📢"}</span>
+                                <span style={{ display: "inline-flex", alignItems: "center" }}>
+                                  {isMaxCalls ? (
+                                    <IconAlertTriangle size={12} color="#DC2626" />
+                                  ) : (
+                                    <IconSpeaker size={12} color={callCnt > 1 ? "#D97706" : "#0284C7"} />
+                                  )}
+                                </span>
                                 <span>
                                   {isMaxCalls
                                     ? (language === "hi" ? "3 कॉल प्रसारित (अनुपस्थित)" : "3 Calls Sent (Absent)")
@@ -1945,7 +1938,7 @@ export default function StaffPage({
                             }}
                             title="Patient absent after announcements: Put on 10-minute hold grace period and free desk for next patient"
                           >
-                            <span style={{ fontSize: "13px" }}>⏸️</span>
+                            <IconPause size={13} color="#D97706" />
                             <span>{language === "hi" ? "स्किप / होल्ड (10 मि. ग्रेस)" : "Skip / Hold (10m)"}</span>
                           </button>
 
@@ -1986,7 +1979,7 @@ export default function StaffPage({
                             }}
                             title="Write Full Doctor E-Prescription (Rx)"
                           >
-                            <span style={{ fontSize: "14px" }}>📝</span>
+                            <IconPrescription size={14} color="#0369A1" />
                             <span>
                               {ticket.prescription_notes
                                 ? (language === "hi" ? "पर्ची संपादित करें (Rx)" : "Edit Rx")
@@ -2061,7 +2054,10 @@ export default function StaffPage({
                               onClick={() => handleOpenPrescriptionModal(ticket)}
                               style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid #86EFAC", background: "#FFFFFF", color: "#15803D", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}
                             >
-                              ✏️ {language === "hi" ? "पर्ची संपादित करें" : "Edit Prescription"}
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                                <IconEdit size={12} color="#15803D" />
+                                {language === "hi" ? "पर्ची संपादित करें" : "Edit Prescription"}
+                              </span>
                             </button>
                           </div>
                         );
@@ -2081,8 +2077,8 @@ export default function StaffPage({
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#FEF3C7", color: "#B45309", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px" }}>
-                      ⏸️
+                    <div style={{ width: "32px", height: "32px", borderRadius: "10px", background: "#FEF3C7", color: "#B45309", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <IconPause size={16} color="#B45309" />
                     </div>
                     <div>
                       <h3 style={{ margin: 0, fontSize: "16px", color: "#0F172A", fontWeight: 800 }}>
@@ -2125,7 +2121,7 @@ export default function StaffPage({
                       fontSize: "12.5px",
                     }}
                   >
-                    <span style={{ fontSize: "18px" }}>✅</span>
+                    <IconCheckCircle size={18} color="#16A34A" />
                     <span>
                       {language === "hi"
                         ? "वर्तमान में कोई मरीज़ होल्ड पर नहीं है। सभी परामर्श सुचारु रूप से चल रहे हैं।"
@@ -2204,7 +2200,9 @@ export default function StaffPage({
                                     color: isExpired ? "#DC2626" : "#B45309",
                                   }}
                                 >
-                                  <span>{isExpired ? "⚠️" : "⏱️"}</span>
+                                  <span style={{ display: "inline-flex", alignItems: "center" }}>
+                                    {isExpired ? <IconAlertTriangle size={12} color="#DC2626" /> : <IconClock size={12} color="#B45309" />}
+                                  </span>
                                   <span>
                                     {isExpired
                                       ? (language === "hi" ? "10 मिनट ग्रेस समाप्त (No-Show)" : "10-Min Grace Expired")
@@ -2236,7 +2234,7 @@ export default function StaffPage({
                               }}
                               title="Patient has arrived: Restore into active consultation or top of queue"
                             >
-                              <span>🟢</span>
+                              <IconPlay size={12} color="#FFFFFF" />
                               <span>{language === "hi" ? "मरीज़ पुनः बुलाएं (Recall)" : "Recall Patient"}</span>
                             </button>
 
@@ -2259,7 +2257,7 @@ export default function StaffPage({
                               }}
                               title="Finalize as No-Show if patient did not appear"
                             >
-                              <span>🛑</span>
+                              <IconUserX size={12} color="#DC2626" />
                               <span>{language === "hi" ? "अनुपस्थित (No-Show)" : "Mark No-Show"}</span>
                             </button>
                           </div>
@@ -2307,7 +2305,9 @@ export default function StaffPage({
                     color: isDark ? "#94A3B8" : "var(--staff-muted-text, #94A3B8)",
                   }}
                 >
-                  <div style={{ fontSize: "36px", marginBottom: "10px" }}>📋</div>
+                  <div style={{ width: "56px", height: "56px", borderRadius: "16px", background: isDark ? "#1E293B" : "#F0F9FF", border: `1px solid ${isDark ? "#334155" : "#BAE6FD"}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                    <IconClipboard size={26} color="#0284C7" />
+                  </div>
                   <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: isDark ? "#F8FAFC" : "var(--staff-card-text, #0F172A)" }}>
                     {t("noWaitingInDept", language)}
                   </h4>
@@ -2408,7 +2408,9 @@ export default function StaffPage({
                     color: isDark ? "#94A3B8" : "var(--staff-muted-text, #94A3B8)",
                   }}
                 >
-                  <div style={{ fontSize: "36px", marginBottom: "10px" }}>📅</div>
+                  <div style={{ width: "56px", height: "56px", borderRadius: "16px", background: isDark ? "#1E293B" : "#F0F9FF", border: `1px solid ${isDark ? "#334155" : "#BAE6FD"}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                    <IconCalendar size={26} color="#0284C7" />
+                  </div>
                   <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: isDark ? "#F8FAFC" : "var(--staff-card-text, #0F172A)" }}>
                     {t("noActiveAptsMsg", language)}
                   </h4>
@@ -2474,112 +2476,7 @@ export default function StaffPage({
             </div>
           )}
 
-          {/* TAB 4: HOSPITAL ML STUDIO & TRAINING */}
-          {activeTab === "ml" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              {/* ML Header Card */}
-              <div style={standaloneCardStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px" }}>
-                  <div>
-                    <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                      Machine Learning Engine
-                    </span>
-                    <h2 style={{ margin: "4px 0 0 0", color: "#0F172A", fontSize: "22px", fontWeight: 800 }}>
-                      {language === "hi" ? "अस्पताल एमएल स्टूडियो एवं ट्रेनिंग पाइपलाइन" : "Hospital ML Studio & Model Pipeline"}
-                    </h2>
-                    <p style={{ margin: "4px 0 0 0", color: "#64748B", fontSize: "13px" }}>
-                      Tenant ID: <strong>{tenantId}</strong> — {language === "hi" ? "ऐतिहासिक डेटासेट अपलोड करें एवं ग्रेडिएंट बूस्टिंग मॉडल ट्रेन करें।" : "Ingest historical dataset and train gradient boosting models."}
-                    </p>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={handleTrainModel}
-                    disabled={loadingTrain}
-                    className="admin-action-btn-primary"
-                  >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                    </svg>
-                    <span>{loadingTrain ? (language === "hi" ? "ट्रेनिंग जारी..." : "Training Model...") : (language === "hi" ? "मॉडल ट्रेन करें" : "Train Hospital Model")}</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Model Status Metrics */}
-              {modelStatus && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "14px" }}>
-                  <div style={staffStatCardStyle}>
-                    <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>Active Model</span>
-                    <h3 style={{ fontSize: "17px", fontWeight: 800, color: "#0284C7", margin: "4px 0" }}>
-                      {modelStatus.is_tenant_specific ? "Tenant Specialized" : "Global Baseline"}
-                    </h3>
-                    <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>{modelStatus.model_name || "GradientBoosting"}</span>
-                  </div>
-                  <div style={staffStatCardStyle}>
-                    <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>Dataset Size</span>
-                    <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#0284C7", margin: "4px 0" }}>
-                      {(modelStatus.training_rows || 1420).toLocaleString()} rows
-                    </h3>
-                    <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>Historical Service Logs</span>
-                  </div>
-                  <div style={staffStatCardStyle}>
-                    <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>MAE Accuracy</span>
-                    <h3 style={{ fontSize: "20px", fontWeight: 800, color: "#16A34A", margin: "4px 0" }}>
-                      ±{modelStatus.mae || "1.47"} min
-                    </h3>
-                    <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>Mean Absolute Error</span>
-                  </div>
-                  <div style={staffStatCardStyle}>
-                    <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>Last Trained</span>
-                    <h3 style={{ fontSize: "13px", fontWeight: 700, color: "#D97706", margin: "6px 0" }}>
-                      {modelStatus.trained_at ? modelStatus.trained_at.substring(0, 16) : "Active Pipeline"}
-                    </h3>
-                    <span style={{ fontSize: "10.5px", color: "#94A3B8" }}>Synced Real-Time</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Dataset Ingestion Dropzone Card */}
-              <div style={standaloneCardStyle}>
-                <h3 style={{ margin: "0 0 14px 0", fontSize: "17px", color: "#0F172A", fontWeight: 800 }}>
-                  {language === "hi" ? "ऐतिहासिक अस्पताल डेटासेट अपलोड करें" : "Ingest Historical Hospital Dataset"}
-                </h3>
-
-                <div style={dropzoneStyle}>
-                  <input type="file" accept=".csv, .xlsx, .xls" onChange={handleFileChange} style={{ marginBottom: "10px" }} />
-                  <p style={{ margin: 0, color: "#64748B", fontSize: "12px" }}>
-                    Upload CSV or Excel files containing historical patient wait times, service durations, and triage levels.
-                  </p>
-                </div>
-
-                {selectedFile && (
-                  <div style={{ marginTop: "14px", display: "flex", gap: "10px" }}>
-                    <button type="button" onClick={handlePreview} disabled={loadingPreview} style={secondaryBtnStyle}>
-                      {loadingPreview ? "Parsing..." : "Preview Dataset & Map Columns"}
-                    </button>
-                    {previewData && (
-                      <button type="button" onClick={handleIngest} disabled={loadingIngest} className="admin-action-btn-primary" style={{ padding: "8px 16px", fontSize: "12.5px" }}>
-                        {loadingIngest ? "Ingesting..." : "Ingest Clean Dataset"}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {ingestStatus && (
-                  <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "10px", background: ingestStatus.error ? "#FEF2F2" : "#F0F9FF", border: `1px solid ${ingestStatus.error ? "#FECACA" : "#BAE6FD"}`, color: ingestStatus.error ? "#DC2626" : "#0369A1", fontSize: "12px", fontWeight: 700 }}>
-                    {ingestStatus.message}
-                  </div>
-                )}
-
-                {trainStatus && (
-                  <div style={{ marginTop: "12px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD", color: "#0369A1", fontSize: "12px", fontWeight: 700 }}>
-                    ✓ Training Successful! Model MAE: ±{trainStatus.mae || "1.24"} min
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Right Column: Admin Telemetry Sidebar */}
@@ -2647,7 +2544,8 @@ export default function StaffPage({
           {queueSnapshot.length > 0 && (
             <div className="telemetry-sidebar-card" style={isDark ? { background: "#0F172A", borderColor: "#334155" } : {}}>
               <span style={{ fontSize: "12.5px", fontWeight: 800, color: isDark ? "#F8FAFC" : "#0F172A", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span>📋</span> {language === "hi" ? "कतार में अगले टोकन" : "Next Up in Queue"}
+                <IconClipboard size={14} color="#0284C7" />
+                {language === "hi" ? "कतार में अगले टोकन" : "Next Up in Queue"}
               </span>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {queueSnapshot.slice(0, 3).map((item) => (
@@ -2671,8 +2569,9 @@ export default function StaffPage({
           {/* 3. Quick Operations Launcher - Staff/Receptionist and Super Admin only (Doctors excluded) */}
           {canViewDbInspector && navigateTo && (
             <div className="telemetry-sidebar-card" style={isDark ? { background: "#0F172A", borderColor: "#334155" } : {}}>
-              <span style={{ fontSize: "12.5px", fontWeight: 800, color: isDark ? "#F8FAFC" : "#0F172A" }}>
-                ⚡ {language === "hi" ? "त्वरित संचालन शॉर्टकट" : "Operations Shortcuts"}
+              <span style={{ fontSize: "12.5px", fontWeight: 800, color: isDark ? "#F8FAFC" : "#0F172A", display: "flex", alignItems: "center", gap: "6px" }}>
+                <IconZap size={14} color="#D97706" />
+                {language === "hi" ? "त्वरित संचालन शॉर्टकट" : "Operations Shortcuts"}
               </span>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 <button
@@ -2695,27 +2594,14 @@ export default function StaffPage({
                     transition: "all 0.15s ease",
                   }}
                 >
-                  <span>🗄️</span>
+                  <IconDatabase size={14} color={isDark ? "#38BDF8" : "#0284C7"} />
                   <span>{language === "hi" ? "डेटाबेस निरीक्षक खोलें" : "Open Database Inspector"}</span>
                 </button>
               </div>
             </div>
           )}
 
-          {/* 4. Emergency & Security Triage Pill */}
-          <div className="telemetry-sidebar-card" style={{ background: "#FEF2F2", borderColor: "#FECACA" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "16px" }}>🚨</span>
-              <div>
-                <div style={{ fontSize: "12.5px", fontWeight: 800, color: "#991B1B" }}>
-                  {language === "hi" ? "24/7 आपातकालीन ट्राइएज" : "24/7 Emergency Triage"}
-                </div>
-                <div style={{ fontSize: "11px", color: "#DC2626" }}>
-                  {language === "hi" ? "हेल्पलाइन: 108 / 1800-456-CARE" : "Helpline: 108 / +1 (800) 456-CARE"}
-                </div>
-              </div>
-            </div>
-          </div>
+
         </div>
       </div>
 
@@ -2725,8 +2611,8 @@ export default function StaffPage({
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#F0F9FF", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
-                  💊
+                <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "#F0F9FF", color: "#0284C7", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <IconPill size={18} color="#0284C7" />
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800 }}>
@@ -2759,18 +2645,18 @@ export default function StaffPage({
                   {hospitalDepartments && hospitalDepartments.length > 0 ? (
                     hospitalDepartments.map((d) => (
                       <option key={d.dept_code} value={d.dept_code}>
-                        🏢 {d.name || getCategoryLabel(d.dept_code, language)}
+                        {d.name || getCategoryLabel(d.dept_code, language)}
                       </option>
                     ))
                   ) : (
                     <>
-                      <option value="pharmacy">💊 Pharmacy (Medication Dispensing)</option>
-                      <option value="pathology">🧪 Pathology (Blood & Specimen Lab)</option>
-                      <option value="radiology">🩻 Radiology (X-Ray & MRI Imaging)</option>
-                      <option value="cardiology">❤️ Cardiology OPD</option>
-                      <option value="orthopedics">🦴 Orthopedics / Fracture Clinic</option>
-                      <option value="pulmonology">🫁 Pulmonology & Respiratory</option>
-                      <option value="consultation">🏥 General OPD Follow-Up</option>
+                      <option value="pharmacy">Pharmacy (Medication Dispensing)</option>
+                      <option value="pathology">Pathology (Blood & Specimen Lab)</option>
+                      <option value="radiology">Radiology (X-Ray & MRI Imaging)</option>
+                      <option value="cardiology">Cardiology OPD</option>
+                      <option value="orthopedics">Orthopedics / Fracture Clinic</option>
+                      <option value="pulmonology">Pulmonology & Respiratory</option>
+                      <option value="consultation">General OPD Follow-Up</option>
                     </>
                   )}
                 </select>
@@ -2867,14 +2753,14 @@ export default function StaffPage({
             {/* Doctor Attribution Info */}
             <div style={{ background: isDark ? "#1E293B" : "#F8FAFC", padding: "10px 14px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #E2E8F0", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: isDark ? "#F8FAFC" : "#334155" }}>
-                <span>👨‍⚕️</span>
+                <IconDoctor size={14} color="#0284C7" />
                 <strong>{currentUser?.name || "Attending Consultant"}</strong>
                 <span style={{ color: isDark ? "#94A3B8" : "#64748B" }}>
                   ({currentUser?.department ? getCategoryLabel(currentUser.department, language) : getCategoryLabel(prescriptionTicket.service_category, language)})
                 </span>
               </div>
-              <span style={{ fontSize: "11px", color: isDark ? "#94A3B8" : "#64748B", fontWeight: 600 }}>
-                📅 {new Date().toLocaleDateString()} • {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              <span style={{ fontSize: "11px", color: isDark ? "#94A3B8" : "#64748B", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <IconCalendar size={12} color="#94A3B8" /> {new Date().toLocaleDateString()} • {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
 
@@ -2883,7 +2769,7 @@ export default function StaffPage({
               {/* Safety Warning Banner for Pre-filled Historical Rx */}
               {rxPreFillWarning && (
                 <div style={{ background: "#FFFBEB", border: "1.5px solid #FCD34D", color: "#B45309", padding: "10px 14px", borderRadius: "10px", fontSize: "12px", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px", boxShadow: "0 2px 6px rgba(245, 158, 11, 0.1)" }}>
-                  <span style={{ fontSize: "16px" }}>⚠️</span>
+                  <IconAlertTriangle size={16} color="#B45309" />
                   <div style={{ flex: 1 }}>{rxPreFillWarning}</div>
                 </div>
               )}
@@ -2891,7 +2777,10 @@ export default function StaffPage({
               {/* 1. Provisional Diagnosis */}
               <div>
                 <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>
-                  🩺 {language === "hi" ? "रोग निदान / मुख्य लक्षण (Provisional Diagnosis)" : "Clinical Diagnosis & Findings"}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <IconStethoscope size={15} color="#0284C7" />
+                    {language === "hi" ? "रोग निदान / मुख्य लक्षण (Provisional Diagnosis)" : "Clinical Diagnosis & Findings"}
+                  </span>
                 </label>
                 <input
                   type="text"
@@ -2918,8 +2807,9 @@ export default function StaffPage({
               {/* 2. Prescribed Medications Table */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <label style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A" }}>
-                    💊 {language === "hi" ? "दवाएं एवं खुराक (Prescribed Medications)" : "Prescribed Medicines & Dosage"}
+                  <label style={{ fontSize: "12.5px", fontWeight: 800, color: "#0F172A", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <IconPill size={15} color="#0284C7" />
+                    {language === "hi" ? "दवाएं एवं खुराक (Prescribed Medications)" : "Prescribed Medicines & Dosage"}
                   </label>
                   <button
                     type="button"
@@ -3023,7 +2913,10 @@ export default function StaffPage({
               {/* 3. Lab Tests & Diagnostics */}
               <div>
                 <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>
-                  🧪 {language === "hi" ? "जांच निर्देश / टेस्ट (Lab Investigations)" : "Diagnostic Tests & Lab Orders (Optional)"}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <IconLab size={15} color="#0284C7" />
+                    {language === "hi" ? "जांच निर्देश / टेस्ट (Lab Investigations)" : "Diagnostic Tests & Lab Orders (Optional)"}
+                  </span>
                 </label>
                 <input
                   type="text"
@@ -3037,7 +2930,10 @@ export default function StaffPage({
               {/* 4. Clinical Advice / Instructions */}
               <div>
                 <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>
-                  📋 {language === "hi" ? "चिकित्सकीय सलाह एवं परहेज (Diet & Lifestyle Advice)" : "Doctor Advice & Dietary Guidelines"}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <IconClipboard size={15} color="#0284C7" />
+                    {language === "hi" ? "चिकित्सकीय सलाह एवं परहेज (Diet & Lifestyle Advice)" : "Doctor Advice & Dietary Guidelines"}
+                  </span>
                 </label>
                 <textarea
                   rows={2}
@@ -3051,7 +2947,10 @@ export default function StaffPage({
               {/* 5. Follow-Up Schedule */}
               <div>
                 <label style={{ display: "block", fontSize: "12.5px", fontWeight: 800, color: "#0F172A", marginBottom: "6px" }}>
-                  🗓️ {language === "hi" ? "पुनः परामर्श / फॉलो-अप (Follow-Up Advice)" : "Follow-Up Consultation"}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <IconCalendar size={15} color="#0284C7" />
+                    {language === "hi" ? "पुनः परामर्श / फॉलो-अप (Follow-Up Advice)" : "Follow-Up Consultation"}
+                  </span>
                 </label>
                 <input
                   type="text"
@@ -3099,7 +2998,7 @@ export default function StaffPage({
                     gap: "6px",
                   }}
                 >
-                  <span>💾</span>
+                  <IconSave size={15} color="#0369A1" />
                   <span>{language === "hi" ? "पर्ची सहेजें (परामर्श जारी)" : "Save Rx (Keep Serving)"}</span>
                 </button>
 
@@ -3153,14 +3052,7 @@ const standaloneCardStyle = {
   color: "var(--staff-card-text, #0F172A)",
 };
 
-const staffStatCardStyle = {
-  background: "var(--staff-card-bg, #FFFFFF)",
-  borderRadius: "16px",
-  border: "1px solid var(--staff-card-border, #E2E8F0)",
-  padding: "16px 20px",
-  boxShadow: "0 2px 10px rgba(0, 0, 0, 0.02)",
-  color: "var(--staff-card-text, #0F172A)",
-};
+
 
 const announceBtnStyle = {
   padding: "8px 12px",
@@ -3279,24 +3171,7 @@ const aptStatusBadgeStyle = (status) => {
   return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
 };
 
-const dropzoneStyle = {
-  border: "2px dashed var(--staff-dropzone-border, #BAE6FD)",
-  borderRadius: "14px",
-  padding: "24px",
-  textAlign: "center",
-  background: "var(--staff-dropzone-bg, #F0F9FF)",
-};
 
-const secondaryBtnStyle = {
-  padding: "9px 16px",
-  borderRadius: "10px",
-  border: "1px solid var(--staff-card-border, #CBD5E1)",
-  background: "var(--staff-btn-bg, #FFFFFF)",
-  color: "var(--staff-btn-text, #334155)",
-  fontWeight: 700,
-  fontSize: "12.5px",
-  cursor: "pointer",
-};
 
 const modalOverlayStyle = {
   position: "fixed",

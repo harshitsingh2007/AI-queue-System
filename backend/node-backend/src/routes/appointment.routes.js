@@ -10,6 +10,7 @@ const {
   checkInAppointmentEndpoint,
   getUserAppointmentsEndpoint,
   getTenantAppointmentsEndpoint,
+  cancelAppointmentEndpoint,
 } = require("../controllers/appointment.controller");
 const { optionalAuth } = require("../middleware/auth");
 
@@ -17,6 +18,8 @@ const router = express.Router();
 
 router.post("/plugin/appointments/book", optionalAuth, bookAppointmentEndpoint);
 router.post("/plugin/appointments/check-in", optionalAuth, checkInAppointmentEndpoint);
+router.post("/plugin/appointments/:appointment_id/cancel", optionalAuth, cancelAppointmentEndpoint);
+router.post("/plugin/appointments/cancel", optionalAuth, cancelAppointmentEndpoint);
 router.get("/plugin/appointments/user/:email", optionalAuth, getUserAppointmentsEndpoint);
 router.get("/plugin/appointments/tenant/:tenant_id", optionalAuth, getTenantAppointmentsEndpoint);
 

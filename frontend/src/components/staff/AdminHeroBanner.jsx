@@ -10,6 +10,15 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { getCategoryLabel } from "../../utils/i18n";
+import {
+  IconDoctor,
+  IconHospital,
+  IconTag,
+  IconCoffee,
+  IconSiren,
+  IconShield,
+  IconActivity,
+} from "../common/MedicalIcons";
 
 export default function AdminHeroBanner({
   language = "en",
@@ -86,7 +95,7 @@ export default function AdminHeroBanner({
       id: "ACTIVE",
       label: isHi ? "सक्रिय (ड्यूटी पर)" : "Active (Ready to Call)",
       badgeLabel: isHi ? "सक्रिय" : "Active",
-      icon: "🟢",
+      icon: <IconActivity size={13} color="#10B981" />,
       color: "#10B981",
       bg: "rgba(16, 185, 129, 0.18)",
       border: "rgba(16, 185, 129, 0.4)",
@@ -96,7 +105,7 @@ export default function AdminHeroBanner({
       id: "ON_BREAK",
       label: isHi ? "चाय / अल्पाहार अवकाश" : "On Tea / Lunch Break",
       badgeLabel: isHi ? "अवकाश पर" : "On Break",
-      icon: "☕",
+      icon: <IconCoffee size={13} color="#F59E0B" />,
       color: "#F59E0B",
       bg: "rgba(245, 158, 11, 0.2)",
       border: "rgba(245, 158, 11, 0.5)",
@@ -106,7 +115,7 @@ export default function AdminHeroBanner({
       id: "EMERGENCY_ROUND",
       label: isHi ? "आपातकालीन / वार्ड राउंड" : "Emergency / ICU Round",
       badgeLabel: isHi ? "इमरजेंसी राउंड" : "ICU Round",
-      icon: "🚨",
+      icon: <IconSiren size={13} color="#F43F5E" />,
       color: "#F43F5E",
       bg: "rgba(244, 63, 94, 0.2)",
       border: "rgba(244, 63, 94, 0.5)",
@@ -116,7 +125,7 @@ export default function AdminHeroBanner({
       id: "OFF_DUTY",
       label: isHi ? "ड्यूटी समाप्त (ऑफ ड्यूटी)" : "Shift Ended (Off Duty)",
       badgeLabel: isHi ? "ड्यूटी समाप्त" : "Off Duty",
-      icon: "🛑",
+      icon: <IconShield size={13} color="#94A3B8" />,
       color: "#94A3B8",
       bg: "rgba(148, 163, 184, 0.18)",
       border: "rgba(148, 163, 184, 0.4)",
@@ -451,7 +460,7 @@ export default function AdminHeroBanner({
                 color: "#38BDF8",
               }}
             >
-              <span>🏥</span>
+              <IconHospital size={14} color="#38BDF8" />
               <span>{displayHospName}</span>
             </div>
 
@@ -463,7 +472,7 @@ export default function AdminHeroBanner({
                 color: "#34D399",
               }}
             >
-              <span>🏷️</span>
+              <IconTag size={13} color="#34D399" />
               <span>{deptLabel} Desk</span>
             </div>
 
@@ -475,7 +484,7 @@ export default function AdminHeroBanner({
                 color: "#E2E8F0",
               }}
             >
-              <span>👨‍⚕️</span>
+              <IconDoctor size={14} color="#E2E8F0" />
               <span>{doctorName}</span>
             </div>
 
@@ -574,7 +583,13 @@ export default function AdminHeroBanner({
                   animation: doctorDutyStatus === "ON_BREAK" ? "pulseTimerGlow 2s infinite" : "pulseEmergencyGlow 1.5s infinite",
                 }}
               >
-                <span>{doctorDutyStatus === "ON_BREAK" ? "☕" : "🚨"}</span>
+                <span style={{ display: "inline-flex", alignItems: "center" }}>
+                  {doctorDutyStatus === "ON_BREAK" ? (
+                    <IconCoffee size={13} color="#FDE68A" />
+                  ) : (
+                    <IconSiren size={13} color="#FECDD3" />
+                  )}
+                </span>
                 <span>
                   {doctorDutyStatus === "ON_BREAK"
                     ? (isHi ? "अवकाश:" : "On Break:")

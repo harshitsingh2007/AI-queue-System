@@ -16,9 +16,15 @@ export default function PrescriptionHistory({
 
   if (!prescriptions || prescriptions.length === 0) {
     return (
-      <div style={emptyBoxStyle}>
+      <div style={{
+        background: "var(--patient-sub-card, #F8FAFC)",
+        borderRadius: "12px",
+        border: "1px dashed var(--patient-card-border, #CBD5E1)",
+        padding: "20px",
+        textAlign: "center",
+      }}>
         <span style={{ fontSize: "24px" }}>💊</span>
-        <div style={{ fontWeight: 700, fontSize: "13px", color: "#64748B", marginTop: "6px" }}>
+        <div style={{ fontWeight: 700, fontSize: "13px", color: "var(--patient-text-sub, #64748B)", marginTop: "6px" }}>
           {isHi ? "कोई पूर्व प्रिस्क्रिप्शन उपलब्ध नहीं है।" : "No previous e-prescriptions on file."}
         </div>
       </div>
@@ -38,19 +44,41 @@ export default function PrescriptionHistory({
           : "Previous Visit";
 
         return (
-          <div key={rx.id || rx.ticket_id || idx} style={rxCardStyle}>
+          <div key={rx.id || rx.ticket_id || idx} style={{
+            background: "var(--patient-card-bg, #FFFFFF)",
+            border: "1px solid var(--patient-card-border, #E2E8F0)",
+            borderRadius: "12px",
+            padding: "12px 14px",
+            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.02)",
+          }}>
             {/* Card Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid #E2E8F0", paddingBottom: "8px", marginBottom: "10px" }}>
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              flexWrap: "wrap",
+              gap: "8px",
+              borderBottom: "1px solid var(--patient-card-border, #E2E8F0)",
+              paddingBottom: "8px",
+              marginBottom: "10px",
+            }}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "13px", fontWeight: 800, color: "#0F172A" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
                     📅 {dateStr}
                   </span>
-                  <span style={deptBadgeStyle}>
+                  <span style={{
+                    background: "var(--patient-sub-card, #F1F5F9)",
+                    color: "var(--patient-text-sub, #475569)",
+                    fontSize: "10.5px",
+                    fontWeight: 800,
+                    padding: "2px 7px",
+                    borderRadius: "5px",
+                  }}>
                     {rx.department || "OPD"}
                   </span>
                 </div>
-                <div style={{ fontSize: "11.5px", color: "#64748B", marginTop: "2px" }}>
+                <div style={{ fontSize: "11.5px", color: "var(--patient-text-sub, #64748B)", marginTop: "2px" }}>
                   {rx.doctor_name && <span>👨‍⚕️ {rx.doctor_name}</span>}
                   {rx.ticket_id && <span style={{ marginLeft: "8px" }}>#{rx.ticket_id}</span>}
                 </div>
@@ -60,7 +88,21 @@ export default function PrescriptionHistory({
                 <button
                   type="button"
                   onClick={() => onUsePreviousPrescription(rx)}
-                  style={useRxBtnStyle}
+                  style={{
+                    background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                    border: "none",
+                    color: "#FFFFFF",
+                    fontSize: "11.5px",
+                    fontWeight: 700,
+                    padding: "4px 10px",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    boxShadow: "0 2px 6px rgba(2, 132, 199, 0.25)",
+                    transition: "all 0.15s ease",
+                  }}
                   title={isHi ? "इस पर्ची की दवाइयाँ वर्तमान फॉर्म में लोड करें" : "Pre-fill current consultation form with these medicines"}
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -75,7 +117,7 @@ export default function PrescriptionHistory({
             {/* Diagnosis */}
             {rx.diagnosis && (
               <div style={{ marginBottom: "8px" }}>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>
+                <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--patient-text-sub, #64748B)", textTransform: "uppercase" }}>
                   {isHi ? "निदान (Diagnosis):" : "Diagnosis:"}
                 </span>{" "}
                 <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#0284C7" }}>
@@ -86,21 +128,54 @@ export default function PrescriptionHistory({
 
             {/* Medicines List */}
             {meds.length > 0 ? (
-              <div style={{ background: "#F8FAFC", borderRadius: "10px", padding: "8px 12px", border: "1px solid #E2E8F0" }}>
-                <div style={{ fontSize: "11px", fontWeight: 800, color: "#475569", marginBottom: "6px" }}>
+              <div style={{
+                background: "var(--patient-sub-card, #F8FAFC)",
+                borderRadius: "10px",
+                padding: "8px 12px",
+                border: "1px solid var(--patient-card-border, #E2E8F0)",
+              }}>
+                <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--patient-text-sub, #475569)", marginBottom: "6px" }}>
                   💊 {isHi ? "निर्धारित औषधियां (Prescribed Medicines):" : "Prescribed Medicines:"}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                   {meds.map((m, mIdx) => (
-                    <div key={mIdx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12px", borderBottom: mIdx < meds.length - 1 ? "1px dashed #E2E8F0" : "none", paddingBottom: "4px" }}>
-                      <span style={{ fontWeight: 700, color: "#0F172A" }}>
+                    <div key={mIdx} style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontSize: "12px",
+                      borderBottom: mIdx < meds.length - 1 ? "1px dashed var(--patient-card-border, #E2E8F0)" : "none",
+                      paddingBottom: "4px",
+                    }}>
+                      <span style={{ fontWeight: 700, color: "var(--patient-text-main, #0F172A)" }}>
                         • {m.name || "Medicine"}
                       </span>
                       <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                        {m.dosage && <span style={metaChipStyle}>{m.dosage}</span>}
-                        {m.frequency && <span style={metaChipStyle}>{m.frequency}</span>}
-                        {m.duration && <span style={metaChipStyle}>{m.duration}</span>}
-                        {m.instructions && <span style={{ fontSize: "11px", color: "#64748B", fontStyle: "italic" }}>({m.instructions})</span>}
+                        {m.dosage && <span style={{
+                          background: "var(--patient-sub-card, #E2E8F0)",
+                          color: "var(--patient-text-main, #1E293B)",
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: "4px",
+                        }}>{m.dosage}</span>}
+                        {m.frequency && <span style={{
+                          background: "var(--patient-sub-card, #E2E8F0)",
+                          color: "var(--patient-text-main, #1E293B)",
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: "4px",
+                        }}>{m.frequency}</span>}
+                        {m.duration && <span style={{
+                          background: "var(--patient-sub-card, #E2E8F0)",
+                          color: "var(--patient-text-main, #1E293B)",
+                          fontSize: "10.5px",
+                          fontWeight: 700,
+                          padding: "1px 6px",
+                          borderRadius: "4px",
+                        }}>{m.duration}</span>}
+                        {m.instructions && <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", fontStyle: "italic" }}>({m.instructions})</span>}
                       </div>
                     </div>
                   ))}
@@ -108,7 +183,14 @@ export default function PrescriptionHistory({
               </div>
             ) : (
               rx.advice && (
-                <div style={{ fontSize: "12px", color: "#475569", fontStyle: "italic", background: "#F8FAFC", padding: "8px 12px", borderRadius: "8px" }}>
+                <div style={{
+                  fontSize: "12px",
+                  color: "var(--patient-text-sub, #475569)",
+                  fontStyle: "italic",
+                  background: "var(--patient-sub-card, #F8FAFC)",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                }}>
                   &ldquo;{rx.advice}&rdquo;
                 </div>
               )
@@ -116,7 +198,7 @@ export default function PrescriptionHistory({
 
             {/* Lab tests or advice if present */}
             {(rx.lab_tests || rx.advice) && meds.length > 0 && (
-              <div style={{ marginTop: "8px", fontSize: "11.5px", color: "#475569", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+              <div style={{ marginTop: "8px", fontSize: "11.5px", color: "var(--patient-text-sub, #475569)", display: "flex", gap: "12px", flexWrap: "wrap" }}>
                 {rx.lab_tests && (
                   <span>
                     <strong>🧪 {isHi ? "जांच:" : "Tests:"}</strong> {rx.lab_tests}
@@ -135,54 +217,3 @@ export default function PrescriptionHistory({
     </div>
   );
 }
-
-// Styling definitions
-const emptyBoxStyle = {
-  background: "#F8FAFC",
-  borderRadius: "12px",
-  border: "1px dashed #CBD5E1",
-  padding: "20px",
-  textAlign: "center",
-};
-
-const rxCardStyle = {
-  background: "#FFFFFF",
-  border: "1px solid #E2E8F0",
-  borderRadius: "12px",
-  padding: "12px 14px",
-  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.02)",
-};
-
-const deptBadgeStyle = {
-  background: "#F1F5F9",
-  color: "#475569",
-  fontSize: "10.5px",
-  fontWeight: 800,
-  padding: "2px 7px",
-  borderRadius: "5px",
-};
-
-const useRxBtnStyle = {
-  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
-  border: "none",
-  color: "#FFFFFF",
-  fontSize: "11.5px",
-  fontWeight: 700,
-  padding: "4px 10px",
-  borderRadius: "8px",
-  cursor: "pointer",
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "5px",
-  boxShadow: "0 2px 6px rgba(2, 132, 199, 0.25)",
-  transition: "all 0.15s ease",
-};
-
-const metaChipStyle = {
-  background: "#E2E8F0",
-  color: "#1E293B",
-  fontSize: "10.5px",
-  fontWeight: 700,
-  padding: "1px 6px",
-  borderRadius: "4px",
-};

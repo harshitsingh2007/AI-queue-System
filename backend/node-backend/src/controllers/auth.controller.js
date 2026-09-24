@@ -9,6 +9,8 @@ const { hashPassword, verifyPassword } = require("../utils/password");
 const { generateToken } = require("../utils/jwt");
 const { createHospital } = require("../services/hospitalService");
 const engine = require("../services/queueEngine");
+const { createVerificationOtp, verifyOtp } = require("../services/tokenService");
+const { sendVerificationEmail, sendPasswordResetEmail } = require("../services/emailService");
 
 async function signupSuperAdmin(req, res, next) {
   try {
@@ -128,7 +130,7 @@ async function signupAdmin(req, res, next) {
 
 async function signupPatient(req, res, next) {
   try {
-    const { email, username, password, phone = "", hospital_code } = req.body;
+    const { email, username, password, phone = "", hospital_code, otp } = req.body;
     const cleanEmail = String(email || "").trim().toLowerCase();
 
     if (!cleanEmail || !username || !password) {
@@ -138,6 +140,17 @@ async function signupPatient(req, res, next) {
     const existing = await prisma.users.findUnique({ where: { email: cleanEmail } });
     if (existing) {
       return res.status(400).json({ status: "error", message: "An account with this email address already exists." });
+    }
+
+    // Verify OTP if provided
+    if (otp) {
+      const isValidOtp = await verifyOtp(cleanEmail, otp, "email_verification", true);
+      if (!isValidOtp) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid or expired email verification code. Please enter the correct 6-digit code or request a new one.",
+        });
+      }
     }
 
     // Resolve hospital from provided code, or fallback to first active or default
@@ -547,14 +560,14 @@ async function getUserHistory(req, res, next) {
                 { patients: { family_members: { some: { user_id: uid } } } },
               ]
             : []),
-          { patients: { users: { email: { equals: cleanId, mode: "insensitive" } } } },
-          { patients: { users: { username: { equals: cleanId, mode: "insensitive" } } } },
-          { ticket_id: { equals: cleanId, mode: "insensitive" } },
-          { patients: { phone: { equals: cleanId, mode: "insensitive" } } },
-          { patients: { users: { phone: { equals: cleanId, mode: "insensitive" } } } },
-          { name: { equals: cleanId, mode: "insensitive" } },
-          { patients: { name: { equals: cleanId, mode: "insensitive" } } },
-          ...(nameQuery ? [{ name: { equals: String(nameQuery).trim(), mode: "insensitive" } }] : []),
+          { patients: { users: { email: { contains: cleanId, mode: "insensitive" } } } },
+          { patients: { users: { username: { contains: cleanId, mode: "insensitive" } } } },
+          { ticket_id: { contains: cleanId, mode: "insensitive" } },
+          { patients: { phone: { contains: cleanId, mode: "insensitive" } } },
+          { patients: { users: { phone: { contains: cleanId, mode: "insensitive" } } } },
+          { name: { contains: cleanId, mode: "insensitive" } },
+          { patients: { name: { contains: cleanId, mode: "insensitive" } } },
+          ...(nameQuery ? [{ name: { contains: String(nameQuery).trim(), mode: "insensitive" } }] : []),
         ],
       },
       include: {
@@ -690,6 +703,203 @@ async function logout(req, res, next) {
   }
 }
 
+/**
+ * Real-time check if an email already exists in the system.
+ */
+async function checkEmail(req, res, next) {
+  try {
+    const email = String(req.query.email || req.body?.email || "").trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ status: "error", message: "Email query parameter is required." });
+    }
+
+    const existing = await prisma.users.findUnique({ where: { email } });
+    return res.status(200).json({
+      status: "success",
+      exists: Boolean(existing),
+      email,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Sends a 6-digit email verification code for new patient registration.
+ */
+async function sendVerificationOtp(req, res, next) {
+  try {
+    const { email, username, hospital_code, hospital_name } = req.body;
+    const cleanEmail = String(email || "").trim().toLowerCase();
+
+    if (!cleanEmail) {
+      return res.status(400).json({ status: "error", message: "Valid email address is required." });
+    }
+
+    const existing = await prisma.users.findUnique({ where: { email: cleanEmail } });
+    if (existing) {
+      return res.status(400).json({ status: "error", message: "An account with this email is already registered." });
+    }
+
+    // Resolve hospital name from passed name, code, or active hospital
+    let resolvedHospitalName = (hospital_name || "").trim();
+    const targetCode = String(hospital_code || "").trim();
+    if (!resolvedHospitalName && targetCode) {
+      const hosp = await prisma.hospitals.findFirst({
+        where: { hospital_code: { equals: targetCode, mode: "insensitive" } },
+      });
+      if (hosp && hosp.name) resolvedHospitalName = hosp.name;
+    }
+
+    const { otp, expiresAt } = await createVerificationOtp(cleanEmail, "email_verification", 15);
+    const dispatchResult = await sendVerificationEmail({
+      email: cleanEmail,
+      otp,
+      username: username || "Patient",
+      hospitalName: resolvedHospitalName,
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Verification code sent to your email address.",
+      expires_at: expiresAt,
+      simulated: dispatchResult.simulated || false,
+      ...(dispatchResult.simulated ? { dev_otp: otp } : {}),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Initiates the forgot password process by emailing a 6-digit reset code.
+ */
+async function forgotPassword(req, res, next) {
+  try {
+    const { email, hospital_code, hospital_name } = req.body;
+    const cleanEmail = String(email || "").trim().toLowerCase();
+
+    if (!cleanEmail) {
+      return res.status(400).json({ status: "error", message: "Email address is required." });
+    }
+
+    const user = await prisma.users.findUnique({ where: { email: cleanEmail } });
+    if (!user) {
+      // Do not leak user non-existence, but confirm request received
+      return res.status(200).json({
+        status: "success",
+        message: "If an account exists with this email, a password reset code has been sent.",
+      });
+    }
+
+    // Resolve hospital name from body, user's primary_hospital_code, or hospital_id
+    let resolvedHospitalName = (hospital_name || "").trim();
+    const targetCode = String(hospital_code || user.primary_hospital_code || "").trim();
+    if (!resolvedHospitalName && (targetCode || user.hospital_id)) {
+      const hosp = await prisma.hospitals.findFirst({
+        where: {
+          OR: [
+            ...(targetCode ? [{ hospital_code: { equals: targetCode, mode: "insensitive" } }] : []),
+            ...(user.hospital_id ? [{ id: user.hospital_id }] : []),
+          ],
+        },
+      });
+      if (hosp && hosp.name) resolvedHospitalName = hosp.name;
+    }
+
+    const { otp, expiresAt } = await createVerificationOtp(cleanEmail, "password_reset", 15);
+    const dispatchResult = await sendPasswordResetEmail({
+      email: cleanEmail,
+      otp,
+      username: user.username,
+      hospitalName: resolvedHospitalName,
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Password reset instructions sent to your email.",
+      expires_at: expiresAt,
+      simulated: dispatchResult.simulated || false,
+      ...(dispatchResult.simulated ? { dev_otp: otp } : {}),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Validates a reset code before allowing the user to type a new password.
+ */
+async function verifyResetOtp(req, res, next) {
+  try {
+    const { email, otp } = req.body;
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanOtp = String(otp || "").trim();
+
+    if (!cleanEmail || !cleanOtp) {
+      return res.status(400).json({ status: "error", message: "Email and 6-digit security code are required." });
+    }
+
+    const isValid = await verifyOtp(cleanEmail, cleanOtp, "password_reset", false);
+    if (!isValid) {
+      return res.status(400).json({ status: "error", message: "Invalid or expired security code. Please request a new one." });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Security code verified successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Resets user password after verifying the 6-digit OTP code.
+ */
+async function resetPassword(req, res, next) {
+  try {
+    const { email, otp, new_password, newPassword } = req.body;
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanOtp = String(otp || "").trim();
+    const pwd = new_password || newPassword;
+
+    if (!cleanEmail || !cleanOtp || !pwd) {
+      return res.status(400).json({ status: "error", message: "Email, security code, and new password are required." });
+    }
+
+    if (String(pwd).length < 6) {
+      return res.status(400).json({ status: "error", message: "New password must be at least 6 characters long." });
+    }
+
+    const isValid = await verifyOtp(cleanEmail, cleanOtp, "password_reset", true);
+    if (!isValid) {
+      return res.status(400).json({ status: "error", message: "Invalid or expired security code. Please request a new code." });
+    }
+
+    const user = await prisma.users.findUnique({ where: { email: cleanEmail } });
+    if (!user) {
+      return res.status(404).json({ status: "error", message: "Account not found." });
+    }
+
+    const newHash = await hashPassword(pwd);
+    await prisma.users.update({
+      where: { id: user.id },
+      data: {
+        password_hash: newHash,
+        updated_at: new Date(),
+      },
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: "Your password has been successfully reset. You can now sign in with your new password.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   signupSuperAdmin,
   signupAdmin,
@@ -701,4 +911,9 @@ module.exports = {
   updateUserPrimaryHospital,
   getAllUsers,
   getUserHistory,
+  checkEmail,
+  sendVerificationOtp,
+  forgotPassword,
+  verifyResetOtp,
+  resetPassword,
 };
