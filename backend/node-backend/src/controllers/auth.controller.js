@@ -571,11 +571,13 @@ async function getUserHistory(req, res, next) {
         ],
       },
       include: {
-        departments: true,
+        departments: {
+          include: { employees: true },
+        },
         hospitals: true,
         queue_events: {
           where: {
-            event_type: { in: ["TRANSFERRED", "QUEUE_JOINED"] },
+            event_type: { in: ["TRANSFERRED", "QUEUE_JOINED", "STATUS_CHANGE", "VISIT_COMPLETED", "SERVE_START"] },
           },
           orderBy: { created_at: "asc" },
         },
@@ -583,6 +585,27 @@ async function getUserHistory(req, res, next) {
       orderBy: { join_timestamp: "desc" },
       take: 100,
     });
+
+    const allTicketIds = tickets.map((t) => t.ticket_id).filter(Boolean);
+    const prescriptionsByTicketId = new Map();
+    const visitsByTicketId = new Map();
+
+    if (allTicketIds.length > 0) {
+      try {
+        const [prescriptions, visits] = await Promise.all([
+          prisma.prescriptions.findMany({
+            where: { ticket_id: { in: allTicketIds } },
+            select: { ticket_id: true, doctor_name: true },
+          }),
+          prisma.visit_history.findMany({
+            where: { ticket_id: { in: allTicketIds } },
+            select: { ticket_id: true, doctor_name: true },
+          }),
+        ]);
+        prescriptions.forEach((p) => { if (p.ticket_id) prescriptionsByTicketId.set(p.ticket_id, p); });
+        visits.forEach((v) => { if (v.ticket_id) visitsByTicketId.set(v.ticket_id, v); });
+      } catch (e) {}
+    }
 
     // Build lookup map to connect transfer chains
     const ticketMap = new Map();
@@ -623,6 +646,53 @@ async function getUserHistory(req, res, next) {
         });
       }
 
+      // Resolve attending doctor name
+      let docName = "";
+      // 1. in-memory queue
+      const inMem = engine._getTenant(t.hospitals?.hospital_code || "city-hospital-01")?.tickets?.get(t.ticket_id);
+      if (inMem?.served_by_doctor_name) {
+        docName = inMem.served_by_doctor_name;
+      }
+      // 2. prescriptions table
+      if (!docName && prescriptionsByTicketId.get(t.ticket_id)?.doctor_name) {
+        docName = prescriptionsByTicketId.get(t.ticket_id).doctor_name;
+      }
+      // 3. visit_history table
+      if (!docName && visitsByTicketId.get(t.ticket_id)?.doctor_name) {
+        docName = visitsByTicketId.get(t.ticket_id).doctor_name;
+      }
+      // 4. prescription_notes JSON
+      if (!docName && t.prescription_notes) {
+        try {
+          const rx = typeof t.prescription_notes === "object"
+            ? t.prescription_notes
+            : JSON.parse(t.prescription_notes);
+          if (rx?.doctor_name && rx.doctor_name !== "Dr. Staff Desk") {
+            docName = rx.doctor_name;
+          }
+        } catch (e) {}
+      }
+      // 5. queue_events metadata
+      if (!docName && Array.isArray(t.queue_events)) {
+        for (const ev of t.queue_events) {
+          if (ev.metadata?.doctor_name && ev.metadata.doctor_name !== "Dr. Staff Desk") {
+            docName = ev.metadata.doctor_name;
+            break;
+          }
+        }
+      }
+      // 6. Department assigned doctor fallback
+      if (!docName && t.departments?.employees && t.departments.employees.length > 0) {
+        const activeDoc = t.departments.employees.find((e) => (e.status || "").toLowerCase() === "active") || t.departments.employees[0];
+        if (activeDoc?.name) {
+          docName = activeDoc.name;
+        }
+      }
+
+      if (docName && !docName.startsWith("Dr.") && !docName.startsWith("Dr ")) {
+        docName = `Dr. ${docName}`;
+      }
+
       const transferCount = transfers.length;
 
       return {
@@ -647,6 +717,8 @@ async function getUserHistory(req, res, next) {
         hospital_code: t.hospitals?.hospital_code || "city-hospital-01",
         hospital_name: t.hospitals?.name || "City General Hospital",
         department_name: t.departments?.name || t.service_category,
+        doctor_name: docName || null,
+        served_by_doctor_name: docName || null,
         parent_ticket_id: t.parent_ticket_id || "",
         transferred_from_dept: t.transferred_from_dept || "",
         transfer_count: transferCount,

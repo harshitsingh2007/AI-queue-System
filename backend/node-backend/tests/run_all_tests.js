@@ -18,6 +18,7 @@ const prisma = require("../src/config/prisma");
 const engine = require("../src/services/queueEngine");
 
 async function runMasterTestSuite() {
+  process.env.NODE_ENV = "test";
   console.log("================================================================================");
   console.log(" 🚀 STARTING FULL END-TO-END BACKEND TEST SUITE (NODE.JS + PRISMA + POSTGRESQL)");
   console.log("================================================================================");

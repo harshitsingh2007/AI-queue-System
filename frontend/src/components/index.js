@@ -20,6 +20,7 @@ export { default as QueuePluginWidget } from "./patient/QueuePluginWidget";
 
 // Staff / Doctor
 export { default as AdminHeroBanner } from "./staff/AdminHeroBanner";
+export { default as DoctorShiftSummaryModal } from "./staff/DoctorShiftSummaryModal";
 
 // Kiosk
 export { default as KioskHeader } from "./kiosk/KioskHeader";

@@ -535,8 +535,11 @@ export default function PatientPage({
     }
 
     if (parsed && typeof parsed === "object") {
+      const resolvedDoctor = (parsed.doctor_name && parsed.doctor_name !== "Dr. Staff Desk")
+        ? parsed.doctor_name
+        : (fallbackTicket?.doctor_name || fallbackTicket?.served_by_doctor_name || (parsed.doctor_name !== "Dr. Staff Desk" ? parsed.doctor_name : "") || "Consultant Physician");
       return {
-        doctor_name: parsed.doctor_name || "Consultant Physician",
+        doctor_name: resolvedDoctor,
         doctor_department: parsed.doctor_department || fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD",
         doctor_employee_id: parsed.doctor_employee_id || "",
         diagnosis: parsed.diagnosis || fallbackTicket?.medical_condition || "Clinical Consultation",
@@ -559,8 +562,10 @@ export default function PatientPage({
       rawStr = "Clinical prescription available upon request.";
     }
 
+    const fallbackDoctor = fallbackTicket?.doctor_name || fallbackTicket?.served_by_doctor_name || "Consultant Physician";
+
     return {
-      doctor_name: "Consultant Physician",
+      doctor_name: fallbackDoctor,
       doctor_department: fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD",
       diagnosis: fallbackTicket?.medical_condition || "Clinical Consultation",
       medicines: [],
@@ -3482,6 +3487,23 @@ export default function PatientPage({
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/><path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4"/><line x1="10" y1="9" x2="14" y2="9"/><line x1="12" y1="7" x2="12" y2="11"/></svg>
                         <span>{getHospitalNameForRecord(apt)}</span>
                       </span>
+                      {(apt.doctor_name || apt.served_by_doctor_name) && (
+                        <span style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#1E40AF",
+                          background: "var(--patient-tag-bg, #EFF6FF)",
+                          border: "1px solid var(--patient-tag-border, #BFDBFE)",
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+                          <span>{apt.doctor_name || apt.served_by_doctor_name}</span>
+                        </span>
+                      )}
                     </div>
                     <p style={{ margin: "6px 0 0 0", color: "var(--patient-text-main, #0F172A)", fontWeight: 700, fontSize: "15px" }}>
                       {apt.patient_name} — {getDeptDisplayName(apt)}
@@ -3499,6 +3521,15 @@ export default function PatientPage({
                       <span style={{ color: "#0284C7", fontWeight: 700 }}>
                         Dept: {getDeptDisplayName(apt)}
                       </span>
+                      {(apt.doctor_name || apt.served_by_doctor_name) && (
+                        <>
+                          <span>•</span>
+                          <span style={{ color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+                            <span>{language === "hi" ? "चिकित्सक" : "Doctor"}: {apt.doctor_name || apt.served_by_doctor_name}</span>
+                          </span>
+                        </>
+                      )}
                     </span>
 
                     {/* Digital Rx Slip preview if notes present or completed */}
@@ -3800,6 +3831,23 @@ export default function PatientPage({
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/><path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4"/><line x1="10" y1="9" x2="14" y2="9"/><line x1="12" y1="7" x2="12" y2="11"/></svg>
                             <span>{getHospitalNameForRecord(tk)}</span>
                           </span>
+                          {(tk.doctor_name || tk.served_by_doctor_name) && (
+                            <span style={{
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              color: "#1E40AF",
+                              background: "var(--patient-tag-bg, #EFF6FF)",
+                              border: "1px solid var(--patient-tag-border, #BFDBFE)",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                            }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+                              <span>{tk.doctor_name || tk.served_by_doctor_name}</span>
+                            </span>
+                          )}
                         </div>
                         <p style={{ margin: "4px 0 0 0", color: "var(--patient-text-main, #0F172A)", fontWeight: 700, fontSize: "14.5px" }}>
                           {tk.name} — {getCategoryLabel(tk.service_category || "consultation", language)}
@@ -3815,6 +3863,15 @@ export default function PatientPage({
                             <>
                               <span>•</span>
                               <span>Dept: {tk.department_name}</span>
+                            </>
+                          )}
+                          {(tk.doctor_name || tk.served_by_doctor_name) && (
+                            <>
+                              <span>•</span>
+                              <span style={{ color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+                                <span>{language === "hi" ? "चिकित्सक" : "Doctor"}: {tk.doctor_name || tk.served_by_doctor_name}</span>
+                              </span>
                             </>
                           )}
                         </span>
@@ -3983,6 +4040,23 @@ export default function PatientPage({
                               ({t("tokenLabel", language)} #{apt.ticket_id})
                             </span>
                           )}
+                          {(apt.doctor_name || apt.served_by_doctor_name) && (
+                            <span style={{
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              color: "#1E40AF",
+                              background: "var(--patient-tag-bg, #EFF6FF)",
+                              border: "1px solid var(--patient-tag-border, #BFDBFE)",
+                              padding: "2px 8px",
+                              borderRadius: "6px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                            }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+                              <span>{apt.doctor_name || apt.served_by_doctor_name}</span>
+                            </span>
+                          )}
                         </div>
                         <p style={{ margin: "4px 0 0 0", color: "var(--patient-text-main, #0F172A)", fontWeight: 700, fontSize: "14.5px" }}>
                           {apt.patient_name} — {getDeptDisplayName(apt)}
@@ -4000,6 +4074,15 @@ export default function PatientPage({
                           <span style={{ color: "#0284C7", fontWeight: 700 }}>
                             Dept: {getDeptDisplayName(apt)}
                           </span>
+                          {(apt.doctor_name || apt.served_by_doctor_name) && (
+                            <>
+                              <span>•</span>
+                              <span style={{ color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+                                <span>{language === "hi" ? "चिकित्सक" : "Doctor"}: {apt.doctor_name || apt.served_by_doctor_name}</span>
+                              </span>
+                            </>
+                          )}
                         </span>
 
                         {/* Digital Rx Slip section if notes present or appointment completed */}

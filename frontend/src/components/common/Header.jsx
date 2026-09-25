@@ -893,39 +893,6 @@ export default function Header({
               <span>{language === "hi" ? "सुपर एडमिन" : "Super Admin"}</span>
             </button>
           )}
-
-          {/* Doctor / Staff Desk Navigation Button (Only for Staff / Doctors, NOT for Super Admin) */}
-          {currentUser && ["admin", "doctor", "staff", "receptionist"].includes(currentUser.role) && activePage !== "superadmin" && (
-            <button
-              type="button"
-              onClick={() => navigateTo("staff")}
-              className={`header-nav-btn ${activePage === "staff" ? "active" : ""}`}
-              style={{
-                background: activePage === "staff" ? "#0F172A" : "#F0F9FF",
-                color: activePage === "staff" ? "#FFFFFF" : "#0284C7",
-                fontWeight: 800,
-                border: "1px solid #BAE6FD",
-              }}
-              title="Doctor & Staff Desk"
-            >
-              <span>🩺</span>
-              <span>{language === "hi" ? "स्टाफ डेस्क" : "Staff Desk"}</span>
-            </button>
-          )}
-
-          {/* TV Kiosk Waiting Room Display (Visible for Staff Desk, Hidden from Patient Portal & Super Admin) */}
-          {activePage === "staff" && (!currentUser || currentUser.role !== "super_admin") && (
-            <button
-              type="button"
-              onClick={() => navigateTo("kiosk")}
-              className={`header-nav-btn ${activePage === "kiosk" ? "active" : ""}`}
-              title="Public Waiting Room TV Kiosk"
-            >
-              <span>📺</span>
-              <span>{language === "hi" ? "टीवी कियोस्क" : "TV Kiosk"}</span>
-            </button>
-          )}
-
           {/* Emergency 24/7 Hotline Button (Visible only on Patient Portal, hidden on Doctor/Staff & Admin Portals) */}
           {activePage === "patient" && (
             <button

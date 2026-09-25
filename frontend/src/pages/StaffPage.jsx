@@ -11,6 +11,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel, formatRiskLabel } from "../utils/i18n";
 import AdminHeroBanner from "../components/staff/AdminHeroBanner";
+import DoctorShiftSummaryModal from "../components/staff/DoctorShiftSummaryModal";
 import Footer from "../components/common/Footer";
 import PatientHistoryTimeline from "../components/patient-history/PatientHistoryTimeline";
 import { usePatientHistory } from "../hooks/usePatientHistory";
@@ -287,6 +288,7 @@ export default function StaffPage({
   });
 
   const [dutyTimerText, setDutyTimerText] = useState("");
+  const [showShiftSummaryModal, setShowShiftSummaryModal] = useState(false);
 
   // Live timer interval for break or emergency round
   useEffect(() => {
@@ -313,6 +315,10 @@ export default function StaffPage({
     async (newStatus) => {
       const finalStatus = (newStatus || "ACTIVE").toUpperCase();
       setDoctorDutyStatus(finalStatus);
+
+      if (finalStatus === "OFF_DUTY") {
+        setShowShiftSummaryModal(true);
+      }
 
       let timestamp = dutyStatusChangedAt;
       if (finalStatus === "ON_BREAK" || finalStatus === "EMERGENCY_ROUND") {
@@ -767,8 +773,12 @@ export default function StaffPage({
   };
 
   const buildPrescriptionPayload = () => {
+    let resolvedDocName = currentUser?.name || currentUser?.username || "Attending Doctor";
+    if (resolvedDocName && !resolvedDocName.startsWith("Dr.") && !resolvedDocName.startsWith("Dr ")) {
+      resolvedDocName = `Dr. ${resolvedDocName}`;
+    }
     return {
-      doctor_name: currentUser?.name || "Dr. Staff Desk",
+      doctor_name: resolvedDocName,
       doctor_department: prescriptionTicket?.service_category || currentUser?.department || "General Consultation",
       doctor_employee_id: currentUser?.employee_id || "",
       diagnosis: rxDiagnosis || "Consultation & Clinical Assessment",
@@ -1527,6 +1537,9 @@ export default function StaffPage({
                       type="button"
                       onClick={() => {
                         handleUpdateDutyStatus(opt.id);
+                        if (opt.id === "OFF_DUTY") {
+                          setShowShiftSummaryModal(true);
+                        }
                         setShowDutyMenu(false);
                       }}
                       style={{
@@ -1562,7 +1575,33 @@ export default function StaffPage({
               )}
             </div>
 
-            {/* 3. LIVE BREAK / EMERGENCY ROUND TIMER BADGE */}
+            {/* 3. DOCTOR SHIFT SUMMARY & ANALYTICS BUTTON */}
+            <button
+              type="button"
+              onClick={() => setShowShiftSummaryModal(true)}
+              className="shift-summary-analytics-btn"
+              style={{
+                background: isDark ? "rgba(99, 102, 241, 0.18)" : "#EEF2FF",
+                border: `1.5px solid ${isDark ? "rgba(99, 102, 241, 0.45)" : "#C7D2FE"}`,
+                color: isDark ? "#A5B4FC" : "#4F46E5",
+                padding: "6px 14px",
+                borderRadius: "12px",
+                fontSize: "12.5px",
+                fontWeight: 800,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "7px",
+                boxShadow: isDark ? "0 2px 6px rgba(0, 0, 0, 0.3)" : "0 1px 3px rgba(79, 70, 229, 0.08)",
+                transition: "all 0.15s ease",
+              }}
+              title={isHi ? "दैनिक शिफ्ट सारांश और 7-दिवसीय प्रदर्शन ग्राफ़ देखें" : "View End-of-Day Shift Summary & 7-Day Performance Analytics"}
+            >
+              <span style={{ fontSize: "14px" }}>📊</span>
+              <span>{isHi ? "शिफ्ट सारांश व एनालिटिक्स" : "Shift Summary & Stats"}</span>
+            </button>
+
+            {/* 4. LIVE BREAK / EMERGENCY ROUND TIMER BADGE */}
             {isOnBreakOrEmergency && (
               <div
                 className="duty-timer-live-badge"
@@ -3035,7 +3074,7 @@ export default function StaffPage({
             <div style={{ background: isDark ? "#1E293B" : "#F8FAFC", padding: "10px 14px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #E2E8F0", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: isDark ? "#F8FAFC" : "#334155" }}>
                 <IconDoctor size={14} color="#0284C7" />
-                <strong>{currentUser?.name || "Attending Consultant"}</strong>
+                <strong>{currentUser?.name || currentUser?.username || "Attending Consultant"}</strong>
                 <span style={{ color: isDark ? "#94A3B8" : "#64748B" }}>
                   ({currentUser?.department ? getCategoryLabel(currentUser.department, language) : getCategoryLabel(prescriptionTicket.service_category, language)})
                 </span>
@@ -3313,7 +3352,20 @@ export default function StaffPage({
         </div>
       )}
 
-      {/* 5. FOOTER WITH ECG HEARTBEAT */}
+      {/* 5. DOCTOR END-OF-DAY SHIFT SUMMARY & ANALYTICS MODAL */}
+      <DoctorShiftSummaryModal
+        isOpen={showShiftSummaryModal}
+        onClose={() => setShowShiftSummaryModal(false)}
+        currentUser={currentUser}
+        tenantId={tenantId}
+        effectiveHospitalCode={effectiveHospitalCode}
+        language={language}
+        isDark={isDark}
+        doctorDutyStatus={doctorDutyStatus}
+        onDutyStatusChange={handleUpdateDutyStatus}
+      />
+
+      {/* 6. FOOTER WITH ECG HEARTBEAT */}
       <Footer
         language={language}
         hospitalName={localBranding?.hospital_name || currentUser?.hospital_name || "City General Hospital"}

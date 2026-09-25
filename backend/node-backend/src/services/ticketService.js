@@ -684,6 +684,10 @@ async function completeTicket(tenantId, ticketId, department = null, prescriptio
     metadata: {
       service_minutes: ticket.actual_service_minutes,
       queue_date: ticket.queue_date || getCurrentQueueDate(),
+      doctor_id: ticket.served_by_doctor_id || null,
+      doctor_name: ticket.served_by_doctor_name || null,
+      doctor_email: ticket.served_by_doctor_email || null,
+      desk_id: ticket.desk_id || null,
     },
   });
 
@@ -701,7 +705,7 @@ async function completeTicket(tenantId, ticketId, department = null, prescriptio
       ticket_id: ticket.ticket_id,
       patient_id: ticket.patient_id,
       diagnosis: rxData.diagnosis || ticket.medical_condition,
-      doctor_name: rxData.doctor_name || "Dr. Staff Desk",
+      doctor_name: (rxData.doctor_name && rxData.doctor_name !== "Dr. Staff Desk") ? rxData.doctor_name : (ticket.served_by_doctor_name || rxData.doctor_name || "Dr. Staff Desk"),
       department_name: ticket.service_category,
       medicines: rxData.medicines || [],
       lab_tests: rxData.lab_tests || "",
@@ -756,6 +760,7 @@ async function transferTicket(tenantId, ticketId, targetDepartment, prescription
   }
 
   // 1. Complete original ticket
+  origTicket.transferred_to_dept = targetDepartment;
   origTicket.status = "transferred";
   origTicket.serve_end_time = Date.now() / 1000.0;
   origTicket.actual_service_minutes =
@@ -830,7 +835,15 @@ async function transferTicket(tenantId, ticketId, targetDepartment, prescription
     eventType: "TRANSFERRED",
     oldStatus: "serving",
     newStatus: "transferred",
-    metadata: { transferred_to_ticket: newTid, target_dept: targetDepartment, queue_date: targetQDate },
+    metadata: {
+      transferred_to_ticket: newTid,
+      target_dept: targetDepartment,
+      from_dept: origTicket.service_category,
+      queue_date: targetQDate,
+      doctor_id: origTicket.served_by_doctor_id || null,
+      doctor_name: origTicket.served_by_doctor_name || null,
+      doctor_email: origTicket.served_by_doctor_email || null,
+    },
   });
 
   await engine.logQueueEvent({

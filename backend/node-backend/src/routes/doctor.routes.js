@@ -7,8 +7,40 @@
 const express = require("express");
 const { optionalAuth } = require("../middleware/auth");
 const { getDoctorDutyStatus, setDoctorDutyStatus } = require("../services/ticketService");
+const { getDoctorShiftSummary } = require("../services/doctorService");
 
 const router = express.Router();
+
+/**
+ * GET /api/v1/doctor/shift-summary
+ * Query params: doctor_id, doctor_email, doctor_name, tenant_id, days
+ * Returns today's consulted count, avg duration, transfers breakdown, and last 7-day analytics.
+ */
+router.get("/doctor/shift-summary", optionalAuth, async (req, res) => {
+  try {
+    const doctorId = req.query.doctor_id || req.user?.id || null;
+    const doctorEmail = req.query.doctor_email || req.user?.email || null;
+    const doctorName = req.query.doctor_name || req.user?.name || req.user?.username || null;
+    const tenantId = req.query.tenant_id || req.user?.primary_hospital_code || "city-hospital-01";
+    const days = parseInt(req.query.days || "7", 10) || 7;
+
+    const summaryData = await getDoctorShiftSummary({
+      tenantId,
+      doctorId,
+      doctorEmail,
+      doctorName,
+      days,
+    });
+
+    return res.json({
+      status: "success",
+      summary: summaryData,
+    });
+  } catch (err) {
+    console.error("[Doctor Shift Summary Route Error]", err);
+    return res.status(500).json({ status: "error", message: err.message });
+  }
+});
 
 /**
  * GET /api/v1/doctor/duty-status/:identifier
