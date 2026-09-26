@@ -29,14 +29,12 @@ function getDoctorDutyStatus(docId, docEmail) {
   if (docEmail && doctorDutyStatusStore.has(String(docEmail).trim().toLowerCase())) {
     return doctorDutyStatusStore.get(String(docEmail).trim().toLowerCase());
   }
-  return {
-    status: "ACTIVE",
-    status_changed_at: Date.now(),
-    break_type: null,
-    note: "",
-    updated_at: Date.now(),
-  };
+  // Return null when no status has been set — do NOT default to ACTIVE
+  // This lets the frontend know the server has no record and it should
+  // keep whatever status is persisted in localStorage.
+  return null;
 }
+
 
 async function setDoctorDutyStatus(docIdentifier, statusData = {}) {
   const status = String(statusData.status || "ACTIVE").toUpperCase();
@@ -44,14 +42,14 @@ async function setDoctorDutyStatus(docIdentifier, statusData = {}) {
   const finalStatus = validStatuses.includes(status) ? status : "ACTIVE";
 
   const existing = getDoctorDutyStatus(docIdentifier, docIdentifier);
-  const isStatusChanging = existing.status !== finalStatus;
+  const isStatusChanging = existing ? existing.status !== finalStatus : true;
 
   const record = {
     status: finalStatus,
-    status_changed_at: isStatusChanging ? Date.now() : (existing.status_changed_at || Date.now()),
+    status_changed_at: (existing && !isStatusChanging) ? (existing.status_changed_at || Date.now()) : Date.now(),
     break_type: statusData.break_type || null,
     note: statusData.note || "",
-    doctor_name: statusData.doctor_name || existing.doctor_name || "",
+    doctor_name: statusData.doctor_name || (existing && existing.doctor_name) || "",
     updated_at: Date.now(),
   };
 

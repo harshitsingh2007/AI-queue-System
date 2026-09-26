@@ -48,7 +48,7 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
   const tenant = engine._getTenant(tenantId);
 
   const docIdentifier = doctorId || doctorEmail || doctorName || "doctor";
-  const dutyInfo = getDoctorDutyStatus(docIdentifier, docIdentifier);
+  const dutyInfo = getDoctorDutyStatus(docIdentifier, docIdentifier) || { status: "OFF_DUTY", status_changed_at: Date.now() };
 
   // 1. Gather Today's In-Memory Data
   const todayConsultedTickets = [];
@@ -161,68 +161,118 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
     todayEntry.total_minutes = Math.round(todayTotalDuration);
   }
 
-  // Query Database Prescriptions & Events for Past Days
+  // 3. Query Real Historical Ticket Data from DB for Past Days
+  // Excludes: cancelled, no_show, expired — only counts completed + transferred
   try {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
-
-    // Check prescriptions written by this doctor
     const docIdNum = parseInt(doctorId, 10);
-    const pastPrescriptions = await prisma.prescriptions.findMany({
-      where: {
-        hospital_id: hid,
-        created_at: { gte: startDate },
-        OR: [
-          ...(isNaN(docIdNum) ? [] : [{ doctor_id: docIdNum }]),
-          ...(doctorName ? [{ doctor_name: { contains: doctorName, mode: "insensitive" } }] : []),
-        ],
-      },
-      select: {
-        id: true,
-        ticket_id: true,
-        created_at: true,
-        lab_tests_json: true,
-      },
+
+    // Get ticket_ids associated with this doctor via prescriptions table
+    const prescriptionFilter = {
+      hospital_id: hid,
+      created_at: { gte: startDate },
+      OR: [
+        ...(isNaN(docIdNum) ? [] : [{ doctor_id: docIdNum }]),
+        ...(doctorName ? [{ doctor_name: { contains: doctorName, mode: "insensitive" } }] : []),
+      ],
+    };
+
+    const doctorRxs = await prisma.prescriptions.findMany({
+      where: prescriptionFilter,
+      select: { ticket_id: true, created_at: true },
     });
 
-    // Bucket past prescriptions by date
-    const dbDayCounts = {};
-    pastPrescriptions.forEach((rx) => {
-      const rxDate = rx.created_at.toISOString().split("T")[0];
-      if (rxDate !== todayStr) {
-        dbDayCounts[rxDate] = (dbDayCounts[rxDate] || 0) + 1;
+    // Build a set of ticket_ids this doctor handled
+    const doctorTicketIds = new Set(doctorRxs.map((rx) => rx.ticket_id).filter(Boolean));
+
+    // Also query tickets directly for past days — grouped by queue_date
+    // Only count completed and transferred (not cancelled, no_show, expired, waiting, serving)
+    const VALID_STATUSES = ["completed", "transferred"];
+
+    const pastTicketRows = await prisma.$queryRawUnsafe(
+      `SELECT
+         queue_date::text AS qd,
+         status,
+         COUNT(*)::int AS cnt,
+         ROUND(COALESCE(AVG(actual_service_minutes) FILTER (WHERE actual_service_minutes > 0), 0)::numeric, 1)::float AS avg_mins
+       FROM tickets
+       WHERE
+         hospital_id = $1
+         AND queue_date >= $2::date
+         AND queue_date < $3::date
+         AND status IN ('completed', 'transferred')
+       GROUP BY queue_date, status
+       ORDER BY queue_date DESC`,
+      hid,
+      startDate.toISOString().split("T")[0],
+      todayStr
+    );
+
+    // Bucket by date → { [dateStr]: { total_consulted, total_transferred, total_minutes } }
+    const dbDayMap = {};
+    pastTicketRows.forEach((row) => {
+      const d = row.qd;
+      if (!dbDayMap[d]) dbDayMap[d] = { total_consulted: 0, total_transferred: 0, total_minutes: 0, avg_duration_minutes: 0, sample_count: 0 };
+      const cnt = Number(row.cnt) || 0;
+      const avg = Number(row.avg_mins) || 0;
+
+      if (row.status === "completed") {
+        dbDayMap[d].total_consulted += cnt;
+        dbDayMap[d].total_minutes += Math.round(avg * cnt);
+        dbDayMap[d].sample_count += cnt;
+      } else if (row.status === "transferred") {
+        dbDayMap[d].total_transferred += cnt;
+        dbDayMap[d].total_consulted += cnt; // transfers are still consultations
+        dbDayMap[d].total_minutes += Math.round((avg || 3.5) * cnt);
+        dbDayMap[d].sample_count += cnt;
       }
     });
 
-    // Merge into daysList
+    // Compute avg duration per day
+    Object.values(dbDayMap).forEach((d) => {
+      d.avg_duration_minutes = d.sample_count > 0
+        ? Math.round((d.total_minutes / d.sample_count) * 10) / 10
+        : 0;
+    });
+
+    // If we have doctor-specific ticket IDs from prescriptions, also filter by those
+    // (for hospitals where tickets aren't tagged per-doctor in the tickets table)
+    if (doctorTicketIds.size > 0) {
+      // Prescriptions are the authoritative source — recount by date from those
+      const rxByDate = {};
+      doctorRxs.forEach((rx) => {
+        const d = rx.created_at.toISOString().split("T")[0];
+        if (d < todayStr) {
+          rxByDate[d] = (rxByDate[d] || 0) + 1;
+        }
+      });
+
+      // If prescriptions give a lower count than raw tickets, prefer prescriptions
+      // (more accurate for multi-doctor hospitals)
+      Object.entries(rxByDate).forEach(([d, cnt]) => {
+        if (!dbDayMap[d]) dbDayMap[d] = { total_consulted: 0, total_transferred: 0, total_minutes: 0, avg_duration_minutes: 5.0, sample_count: 0 };
+        // Only override if prescription count differs significantly (doctor-filtered)
+        if (cnt > 0) {
+          dbDayMap[d].total_consulted = cnt;
+          dbDayMap[d].total_minutes = Math.round(cnt * (dbDayMap[d].avg_duration_minutes || 5.0));
+        }
+      });
+    }
+
+    // Merge real data into daysList — NO fake fallback
     daysList.forEach((item) => {
-      if (!item.is_today && dbDayCounts[item.date]) {
-        item.total_consulted = dbDayCounts[item.date];
-        item.avg_duration_minutes = 5.2;
-        item.total_minutes = Math.round(item.total_consulted * item.avg_duration_minutes);
+      if (!item.is_today && dbDayMap[item.date]) {
+        const real = dbDayMap[item.date];
+        item.total_consulted = real.total_consulted;
+        item.avg_duration_minutes = real.avg_duration_minutes;
+        item.total_transferred = real.total_transferred;
+        item.total_minutes = real.total_minutes;
       }
+      // Days with no data stay at 0 — honest empty bars, no fake data
     });
   } catch (err) {
-    console.warn("[Doctor Shift Summary] DB query note:", err.message);
-  }
-
-  // 3. Fallback / Baseline Simulation if doctor is fresh with no historical days
-  // Ensure the 7-day graph looks beautifully populated and informative
-  const priorDaysWithData = daysList.filter((d) => !d.is_today && d.total_consulted > 0);
-  if (priorDaysWithData.length === 0) {
-    // Provide a realistic baseline trend modeled on a standard OPD doctor shift
-    const baselineConsults = [18, 22, 25, 19, 28, 24]; // 6 prior days
-    const baselineAvgs = [5.6, 5.2, 4.9, 5.8, 5.1, 5.4];
-    const baselineTransfers = [2, 3, 4, 1, 5, 3];
-
-    daysList.forEach((d, idx) => {
-      if (!d.is_today && idx < baselineConsults.length) {
-        d.total_consulted = baselineConsults[idx];
-        d.avg_duration_minutes = baselineAvgs[idx];
-        d.total_transferred = baselineTransfers[idx];
-        d.total_minutes = Math.round(d.total_consulted * d.avg_duration_minutes);
-      }
-    });
+    console.warn("[Doctor Shift Summary] DB query error:", err.message);
   }
 
   // 4. Compute Weekly Aggregates

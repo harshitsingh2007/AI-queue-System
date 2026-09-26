@@ -1636,7 +1636,7 @@ export default function PatientPage({
     setStatusMsg(`${t("profileSwitchedMsg", language)} ${tick.name}`);
   };
   return (
-    <div className="patient-portal-root" style={{ width: "100%", paddingBottom: "40px" }}>
+    <div className="patient-portal-root" style={{ width: "100%", paddingBottom: "4px" }}>
       <style>{`
         .patient-portal-root {
           font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

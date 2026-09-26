@@ -175,10 +175,6 @@ export default function DoctorShiftSummaryModal({
     setTimeout(() => setCopiedToast(""), 3000);
   };
 
-  // Print Summary
-  const handlePrint = () => {
-    window.print();
-  };
 
   // SVG Chart Dimensions & Computations
   const chartWidth = 620;
@@ -439,29 +435,8 @@ export default function DoctorShiftSummaryModal({
             </button>
           </div>
 
-          {/* Quick Actions (Print / CSV) */}
+          {/* Quick Actions (CSV) */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <button
-              type="button"
-              onClick={handlePrint}
-              style={{
-                padding: "6px 12px",
-                borderRadius: "8px",
-                background: isDark ? "#1E293B" : "#FFFFFF",
-                border: isDark ? "1px solid #334155" : "1px solid #CBD5E1",
-                color: isDark ? "#E2E8F0" : "#334155",
-                fontSize: "12px",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-              }}
-              title={isHi ? "सारांश प्रिंट करें या PDF सहेजें" : "Print shift summary or save as PDF"}
-            >
-              <span>🖨️</span>
-              <span>{isHi ? "प्रिंट" : "Print"}</span>
-            </button>
 
             <button
               type="button"
@@ -732,57 +707,6 @@ export default function DoctorShiftSummaryModal({
                 </div>
               </div>
 
-              {/* DEPARTMENTAL REFERRAL BREAKDOWN DETAIL */}
-              <div
-                style={{
-                  padding: "16px 20px",
-                  borderRadius: "16px",
-                  background: isDark ? "#131D31" : "#F8FAFC",
-                  border: isDark ? "1px solid #27354E" : "1px solid #E2E8F0",
-                }}
-              >
-                <h4 style={{ margin: "0 0 12px 0", fontSize: "13.5px", fontWeight: 800, color: isDark ? "#F8FAFC" : "#0F172A", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span>🏥</span>
-                  <span>{isHi ? "विभागीय रेफरल विवरण" : "Departmental Referral Breakdown (Today)"}</span>
-                </h4>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "10px" }}>
-                  {Object.entries(today.transferred_breakdown || {}).map(([dept, count]) => {
-                    const pct = today.total_transferred > 0 ? Math.round((count / today.total_transferred) * 100) : 0;
-                    return (
-                      <div
-                        key={dept}
-                        style={{
-                          padding: "12px 14px",
-                          borderRadius: "12px",
-                          background: isDark ? "#1E293B" : "#FFFFFF",
-                          border: isDark ? "1px solid #334155" : "1px solid #E2E8F0",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                          <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#E2E8F0" : "#334155" }}>
-                            {dept}
-                          </span>
-                          <strong style={{ fontSize: "13px", color: "#0284C7" }}>
-                            {count} ({pct}%)
-                          </strong>
-                        </div>
-                        {/* Progress Bar */}
-                        <div style={{ width: "100%", height: "6px", borderRadius: "3px", background: isDark ? "#334155" : "#E2E8F0", overflow: "hidden" }}>
-                          <div
-                            style={{
-                              width: `${Math.max(8, pct)}%`,
-                              height: "100%",
-                              borderRadius: "3px",
-                              background: "linear-gradient(90deg, #0284C7 0%, #38BDF8 100%)",
-                            }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
 
               {/* TODAY'S CONSULTED PATIENT ROSTER */}
               <div>

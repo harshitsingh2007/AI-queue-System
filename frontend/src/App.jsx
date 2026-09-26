@@ -1203,17 +1203,17 @@ export default function App() {
           max-width: 100vw;
           overflow-x: hidden;
           box-sizing: border-box;
-          padding: 18px 24px;
+          padding: 18px 24px 8px 24px;
           transition: background-color 0.25s ease, color 0.25s ease;
         }
         @media (max-width: 1024px) {
           .app-main-layout-wrapper {
-            padding: 14px 16px;
+            padding: 14px 16px 8px 16px;
           }
         }
         @media (max-width: 640px) {
           .app-main-layout-wrapper {
-            padding: 10px 8px;
+            padding: 10px 8px 6px 8px;
           }
         }
         .app-main-layout-inner {

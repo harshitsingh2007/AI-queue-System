@@ -60,10 +60,10 @@ async function runDoctorDutyStatusTests() {
     },
   });
 
-  // 2. Test initial status defaults to ACTIVE
+  // 2. Test initial status is null (unset on server to preserve doctor's preferred status across login/logout)
   const initDuty = ticketService.getDoctorDutyStatus(userDoc.id, userDoc.email);
-  assert.strictEqual(initDuty.status, "ACTIVE", "Initial status should default to ACTIVE");
-  console.log("[PASS] Test 1: Initial doctor duty status defaults to ACTIVE.");
+  assert.strictEqual(initDuty, null, "Initial status should be null (unset on server to preserve client preference)");
+  console.log("[PASS] Test 1: Initial doctor duty status is unset (null) to preserve login/logout preference.");
 
   // 3. Test changing status to ON_BREAK
   const breakStart = Date.now();

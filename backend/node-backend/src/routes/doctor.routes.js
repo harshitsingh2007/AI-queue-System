@@ -50,14 +50,16 @@ router.get("/doctor/duty-status/:identifier", optionalAuth, async (req, res) => 
   try {
     const { identifier } = req.params;
     const dutyInfo = getDoctorDutyStatus(identifier, identifier);
+    // dutyInfo is null if no status has been set — frontend should keep its localStorage value
     return res.json({
       status: "success",
-      duty: dutyInfo,
+      duty: dutyInfo, // may be null
     });
   } catch (err) {
     return res.status(500).json({ status: "error", message: err.message });
   }
 });
+
 
 /**
  * PUT /api/v1/doctor/duty-status

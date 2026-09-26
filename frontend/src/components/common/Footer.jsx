@@ -43,9 +43,10 @@ export default function Footer({ language = "en", hospitalName, currentUser }) {
     <footer style={footerWrapperStyle} className="user-dashboard-footer">
       <style>{`
         .user-dashboard-footer {
-          margin-top: 36px;
-          padding-top: 20px;
-          padding-bottom: 20px;
+          margin-top: 18px;
+          margin-bottom: 0px;
+          padding-top: 14px;
+          padding-bottom: 4px;
           border-top: 1px solid var(--patient-card-border, #E2E8F0);
           display: flex;
           justify-content: space-between;

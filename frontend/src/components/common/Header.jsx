@@ -875,24 +875,7 @@ export default function Header({
         {/* 2. Center: Quick Hospital Support & Emergency Hotline */}
         <nav className="header-center-nav">
 
-          {/* Super Admin Navigation Button */}
-          {isSuperAdmin && (
-            <button
-              type="button"
-              onClick={() => navigateTo("superadmin")}
-              className={`header-nav-btn ${activePage === "superadmin" ? "active" : ""}`}
-              style={{
-                background: activePage === "superadmin" ? "#0F172A" : "#F0F9FF",
-                color: activePage === "superadmin" ? "#FFFFFF" : "#0284C7",
-                fontWeight: 800,
-                border: "1px solid #BAE6FD",
-              }}
-              title="Super Admin / Hospital Owner Network Portal"
-            >
-              <span>👑</span>
-              <span>{language === "hi" ? "सुपर एडमिन" : "Super Admin"}</span>
-            </button>
-          )}
+
           {/* Emergency 24/7 Hotline Button (Visible only on Patient Portal, hidden on Doctor/Staff & Admin Portals) */}
           {activePage === "patient" && (
             <button

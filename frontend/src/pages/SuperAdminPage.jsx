@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel } from "../utils/i18n";
+import { fetchDailyHealthQuote } from "../utils/dailyHealthTips";
 import Footer from "../components/common/Footer";
 
 // Clean Professional Enterprise SVG Icon Components
@@ -170,10 +171,132 @@ const IconDownload = ({ size = 14, color = "currentColor" }) => (
     </svg>
 );
 
-const IconEyeOff = ({ size = 14, color = "currentColor" }) => (
+const IconPalette = ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-        <line x1="1" y1="1" x2="23" y2="23" />
+        <circle cx="13.5" cy="6.5" r=".5" fill={color} />
+        <circle cx="17.5" cy="10.5" r=".5" fill={color} />
+        <circle cx="8.5" cy="7.5" r=".5" fill={color} />
+        <circle cx="6.5" cy="12.5" r=".5" fill={color} />
+        <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.563-2.512 5.563-5.563C22 6.5 17.5 2 12 2z" />
+    </svg>
+);
+
+const IconFileText = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="16" y1="13" x2="8" y2="13" />
+        <line x1="16" y1="17" x2="8" y2="17" />
+        <polyline points="10 9 9 9 8 9" />
+    </svg>
+);
+
+const IconAlertTriangle = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+        <line x1="12" y1="9" x2="12" y2="13" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+);
+
+const IconZap = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+);
+
+const IconTicket = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z" />
+        <line x1="13" y1="5" x2="13" y2="19" strokeDasharray="2 2" />
+    </svg>
+);
+
+const IconPrinter = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="6 9 6 2 18 2 18 9" />
+        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+        <rect x="6" y="14" width="12" height="8" />
+    </svg>
+);
+
+const IconSearch = ({ size = 14, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+);
+
+const IconRefresh = ({ size = 14, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="23 4 23 10 17 10" />
+        <polyline points="1 20 1 14 7 14" />
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+);
+
+const IconBookOpen = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+    </svg>
+);
+
+const IconImage = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <polyline points="21 15 16 10 5 21" />
+    </svg>
+);
+
+const IconLightbulb = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 18h6" />
+        <path d="M10 22h4" />
+        <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" />
+    </svg>
+);
+
+const IconUser = ({ size = 14, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+    </svg>
+);
+
+const IconSmartphone = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+        <line x1="12" y1="18" x2="12.01" y2="18" />
+    </svg>
+);
+
+const IconSave = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <polyline points="17 21 17 13 7 13 7 21" />
+        <polyline points="7 3 7 8 15 8" />
+    </svg>
+);
+
+const IconX = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="18" y1="6" x2="6" y2="18" />
+        <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+);
+
+const IconFlame = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8.5 14.5A2.5 2.5 0 0 0 11 17c1.38 0 2.5-1.12 2.5-2.5 0-1.63-1.04-2.58-1.74-3.5C11.16 10.22 11 9.42 11 8.5c0-.85.34-1.7 1-2.5 0 0 1.5 2 2.5 3.5 1.5 2.25 1.5 4.5 1.5 5.5a5 5 0 1 1-10 0c0-2 .5-4 2-5.5.5 1.5 1.5 3 2 4.5z" />
+    </svg>
+);
+
+const IconMail = ({ size = 14, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+        <polyline points="22,6 12,13 2,6" />
     </svg>
 );
 
@@ -207,6 +330,19 @@ export default function SuperAdminPage({
 
     // Navigation Tabs: "overview" | "hospitals" | "employees" | "desks" | "depts" | "branding"
     const [activeTab, setActiveTab] = useState("overview");
+
+    // Dynamic Daily Quote / Insight State (matching Patient & Staff Portals)
+    const [dailyQuote, setDailyQuote] = useState(null);
+
+    useEffect(() => {
+        let isMounted = true;
+        fetchDailyHealthQuote(language).then((q) => {
+            if (isMounted && q) setDailyQuote(q);
+        });
+        return () => {
+            isMounted = false;
+        };
+    }, [language]);
 
     // Hospital 360 Command Console Configuration
     const [overviewDisplayMode, setOverviewDisplayMode] = useState("360"); // "360" | "classic"
@@ -541,8 +677,8 @@ export default function SuperAdminPage({
                 severityBg = "rgba(239, 68, 68, 0.15)";
                 severityBorder = "rgba(239, 68, 68, 0.3)";
                 recommendation = isHi
-                    ? `⚠️ गंभीर लोड: ${name} में तत्काल +1 अतिरिक्त डेस्क सक्रिय करें या डॉक्टर पुनः असाइन करें।`
-                    : `⚠️ Congestion Surge: Activate +1 desk in ${name} immediately or reassign standby clinician.`;
+                    ? `गंभीर लोड: ${name} में तत्काल +1 अतिरिक्त डेस्क सक्रिय करें या डॉक्टर पुनः असाइन करें।`
+                    : `Congestion Surge: Activate +1 desk in ${name} immediately or reassign standby clinician.`;
             } else if (waitingCount >= 2 || avgTAT > 14) {
                 severity = "MODERATE";
                 severityColor = "#F59E0B";
@@ -603,126 +739,126 @@ export default function SuperAdminPage({
             const htmlContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>${safeHospName} - NABH Executive Daily Audit Report</title>
-  <style>
-    @page { size: A4 portrait; margin: 12mm 15mm; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #0F172A; background: #FFFFFF; margin: 0; padding: 20px; font-size: 10pt; line-height: 1.45; }
-    .header { border-bottom: 2.5px solid #0284C7; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; }
-    .hospital-title { font-size: 19pt; font-weight: 800; color: #0284C7; margin: 0 0 4px 0; }
-    .hospital-meta { font-size: 9pt; color: #475569; }
-    .nabh-badge { border: 1.5px solid #16A34A; background: #F0FDF4; color: #15803D; padding: 6px 12px; border-radius: 8px; font-size: 9pt; font-weight: 700; text-align: right; }
-    .section-title { font-size: 11pt; font-weight: 800; color: #0F172A; margin: 16px 0 8px 0; border-bottom: 1px solid #CBD5E1; padding-bottom: 4px; display: flex; justify-content: space-between; }
-    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
-    .kpi-box { border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px; background: #F8FAFC; }
-    .kpi-label { font-size: 8pt; color: #64748B; font-weight: 700; text-transform: uppercase; }
-    .kpi-val { font-size: 15pt; font-weight: 900; color: #0284C7; margin-top: 2px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9pt; }
-    th { background: #0F172A; color: #FFFFFF; text-align: left; padding: 7px 9px; font-weight: 700; font-size: 8.5pt; }
-    td { padding: 7px 9px; border-bottom: 1px solid #E2E8F0; }
-    tr:nth-child(even) td { background: #F8FAFC; }
-    .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 8pt; font-weight: 700; }
-    .badge-optimal { background: #DCFCE7; color: #15803D; }
-    .badge-moderate { background: #FEF3C7; color: #B45309; }
-    .badge-severe { background: #FEE2E2; color: #B91C1C; }
-    .signatures { margin-top: 36px; display: flex; justify-content: space-between; page-break-inside: avoid; }
-    .sign-box { width: 190px; border-top: 1.5px solid #64748B; padding-top: 6px; text-align: center; font-size: 8.5pt; color: #475569; }
-    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0; } }
-  </style>
+  <meta charset="UTF-8" />
+  <title>${safeHospName} - NABH Executive Daily Audit Report</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm 15mm; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #0F172A; background: #FFFFFF; margin: 0; padding: 20px; font-size: 10pt; line-height: 1.45; }
+    .header { border-bottom: 2.5px solid #0284C7; padding-bottom: 12px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .hospital-title { font-size: 19pt; font-weight: 800; color: #0284C7; margin: 0 0 4px 0; }
+    .hospital-meta { font-size: 9pt; color: #475569; }
+    .nabh-badge { border: 1.5px solid #16A34A; background: #F0FDF4; color: #15803D; padding: 6px 12px; border-radius: 8px; font-size: 9pt; font-weight: 700; text-align: right; }
+    .section-title { font-size: 11pt; font-weight: 800; color: #0F172A; margin: 16px 0 8px 0; border-bottom: 1px solid #CBD5E1; padding-bottom: 4px; display: flex; justify-content: space-between; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+    .kpi-box { border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px; background: #F8FAFC; }
+    .kpi-label { font-size: 8pt; color: #64748B; font-weight: 700; text-transform: uppercase; }
+    .kpi-val { font-size: 15pt; font-weight: 900; color: #0284C7; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9pt; }
+    th { background: #0F172A; color: #FFFFFF; text-align: left; padding: 7px 9px; font-weight: 700; font-size: 8.5pt; }
+    td { padding: 7px 9px; border-bottom: 1px solid #E2E8F0; }
+    tr:nth-child(even) td { background: #F8FAFC; }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 8pt; font-weight: 700; }
+    .badge-optimal { background: #DCFCE7; color: #15803D; }
+    .badge-moderate { background: #FEF3C7; color: #B45309; }
+    .badge-severe { background: #FEE2E2; color: #B91C1C; }
+    .signatures { margin-top: 36px; display: flex; justify-content: space-between; page-break-inside: avoid; }
+    .sign-box { width: 190px; border-top: 1.5px solid #64748B; padding-top: 6px; text-align: center; font-size: 8.5pt; color: #475569; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 0; } }
+  </style>
 </head>
 <body>
-  <div class="header">
-    <div>
-      <h1 class="hospital-title">${safeHospName}</h1>
-      <div class="hospital-meta">
-        <strong>Facility Code:</strong> ${safeHospCode} &bull; <strong>Address:</strong> ${safeAddress}<br />
-        <strong>Report:</strong> Daily Executive Operations & Clinical Audit Log &bull; <strong>Date:</strong> ${dateStr} (${timeStr})
-      </div>
-    </div>
-    <div class="nabh-badge">
-      &#10003; NABH ACCREDITED AUDIT<br />
-      <span style="font-size: 8pt; font-weight: normal; color: #475569;">ISO 9001:2015 Healthcare Standard</span>
-    </div>
-  </div>
+  <div class="header">
+    <div>
+      <h1 class="hospital-title">${safeHospName}</h1>
+      <div class="hospital-meta">
+        <strong>Facility Code:</strong> ${safeHospCode} &bull; <strong>Address:</strong> ${safeAddress}<br />
+        <strong>Report:</strong> Daily Executive Operations & Clinical Audit Log &bull; <strong>Date:</strong> ${dateStr} (${timeStr})
+      </div>
+    </div>
+    <div class="nabh-badge">
+      &#10003; NABH ACCREDITED AUDIT<br />
+      <span style="font-size: 8pt; font-weight: normal; color: #475569;">ISO 9001:2015 Healthcare Standard</span>
+    </div>
+  </div>
 
-  <div class="section-title">
-    <span>1. EXECUTIVE QUALITY & QUEUE BENCHMARKS (NABH STANDARD COP 3.1)</span>
-    <span style="font-size: 8.5pt; font-weight: normal; color: #64748B;">Target Turnaround Time &lt; 15 mins</span>
-  </div>
-  <div class="kpi-grid">
-    <div class="kpi-box">
-      <div class="kpi-label">Total Patient Registrations</div>
-      <div class="kpi-val">${safeTotalPatients}</div>
-    </div>
-    <div class="kpi-box">
-      <div class="kpi-label">Consultations Completed</div>
-      <div class="kpi-val" style="color: #10B981;">${safeCompleted}</div>
-    </div>
-    <div class="kpi-box">
-      <div class="kpi-label">Average Wait Time (TAT)</div>
-      <div class="kpi-val" style="color: #6366F1;">${safeAvgWait} min</div>
-    </div>
-    <div class="kpi-box">
-      <div class="kpi-label">Peak Rush Window</div>
-      <div class="kpi-val" style="font-size: 12pt; color: #D97706; margin-top: 5px;">${safePeakRush}</div>
-    </div>
-  </div>
+  <div class="section-title">
+    <span>1. EXECUTIVE QUALITY & QUEUE BENCHMARKS (NABH STANDARD COP 3.1)</span>
+    <span style="font-size: 8.5pt; font-weight: normal; color: #64748B;">Target Turnaround Time &lt; 15 mins</span>
+  </div>
+  <div class="kpi-grid">
+    <div class="kpi-box">
+      <div class="kpi-label">Total Patient Registrations</div>
+      <div class="kpi-val">${safeTotalPatients}</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-label">Consultations Completed</div>
+      <div class="kpi-val" style="color: #10B981;">${safeCompleted}</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-label">Average Wait Time (TAT)</div>
+      <div class="kpi-val" style="color: #6366F1;">${safeAvgWait} min</div>
+    </div>
+    <div class="kpi-box">
+      <div class="kpi-label">Peak Rush Window</div>
+      <div class="kpi-val" style="font-size: 12pt; color: #D97706; margin-top: 5px;">${safePeakRush}</div>
+    </div>
+  </div>
 
-  <div class="section-title">
-    <span>2. DEPARTMENTAL THROUGHPUT & BOTTLENECK AUDIT</span>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Department</th>
-        <th>Total Traffic</th>
-        <th>Served</th>
-        <th>Waiting</th>
-        <th>Avg Turnaround Time</th>
-        <th>Bottleneck Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${depts.map((d) => `
-        <tr>
-          <td><strong>${d.name || d.code}</strong> (${d.code})</td>
-          <td>${d.totalVolume ?? 0} patients</td>
-          <td>${d.completedCount ?? 0}</td>
-          <td>${d.waitingCount ?? 0}</td>
-          <td>${d.avgTAT ?? 12} mins</td>
-          <td>
-            <span class="badge ${d.severity === 'OPTIMAL' ? 'badge-optimal' : d.severity === 'MODERATE' ? 'badge-moderate' : 'badge-severe'}">
-              ${d.severity || 'OPTIMAL'}
-            </span>
-          </td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
+  <div class="section-title">
+    <span>2. DEPARTMENTAL THROUGHPUT & BOTTLENECK AUDIT</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Department</th>
+        <th>Total Traffic</th>
+        <th>Served</th>
+        <th>Waiting</th>
+        <th>Avg Turnaround Time</th>
+        <th>Bottleneck Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${depts.map((d) => `
+        <tr>
+          <td><strong>${d.name || d.code}</strong> (${d.code})</td>
+          <td>${d.totalVolume ?? 0} patients</td>
+          <td>${d.completedCount ?? 0}</td>
+          <td>${d.waitingCount ?? 0}</td>
+          <td>${d.avgTAT ?? 12} mins</td>
+          <td>
+            <span class="badge ${d.severity === 'OPTIMAL' ? 'badge-optimal' : d.severity === 'MODERATE' ? 'badge-moderate' : 'badge-severe'}">
+              ${d.severity || 'OPTIMAL'}
+            </span>
+          </td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
 
-  <div class="section-title" style="margin-top: 20px;">
-    <span>3. AI OPERATIONAL RECOMMENDATIONS & COMPLIANCE SIGN-OFF</span>
-  </div>
-  <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 12px 14px; border-radius: 8px; font-size: 9pt;">
-    <strong>Quality Assurance Finding:</strong> Hospital turnaround time is operating at <strong>${safeScore}%</strong> compliance with national NABH standards. Peak volume period detected at <em>${safePeakRush}</em>. 
-    <br />
-    <strong>Action Item:</strong> ${safeRec}
-  </div>
+  <div class="section-title" style="margin-top: 20px;">
+    <span>3. AI OPERATIONAL RECOMMENDATIONS & COMPLIANCE SIGN-OFF</span>
+  </div>
+  <div style="background: #F8FAFC; border: 1px solid #E2E8F0; padding: 12px 14px; border-radius: 8px; font-size: 9pt;">
+    <strong>Quality Assurance Finding:</strong> Hospital turnaround time is operating at <strong>${safeScore}%</strong> compliance with national NABH standards. Peak volume period detected at <em>${safePeakRush}</em>. 
+    <br />
+    <strong>Action Item:</strong> ${safeRec}
+  </div>
 
-  <div class="signatures">
-    <div class="sign-box">
-      <strong>Dr. In-Charge / Medical Superintendent</strong><br />
-      Clinical Administration
-    </div>
-    <div class="sign-box">
-      <strong>NABH Quality Assurance Officer</strong><br />
-      Compliance & Safety Board
-    </div>
-    <div class="sign-box">
-      <strong>Hospital Super Admin</strong><br />
-      Executive Operations
-    </div>
-  </div>
+  <div class="signatures">
+    <div class="sign-box">
+      <strong>Dr. In-Charge / Medical Superintendent</strong><br />
+      Clinical Administration
+    </div>
+    <div class="sign-box">
+      <strong>NABH Quality Assurance Officer</strong><br />
+      Compliance & Safety Board
+    </div>
+    <div class="sign-box">
+      <strong>Hospital Super Admin</strong><br />
+      Executive Operations
+    </div>
+  </div>
 </body>
 </html>`;
 
@@ -1237,7 +1373,7 @@ export default function SuperAdminPage({
                     description: "",
                     status: "active",
                 });
-                notify(isHi ? `🏥 अस्पताल '${data.hospital.name}' सफलतापूर्वक पंजीकृत!` : `🏥 Hospital '${data.hospital.name}' registered successfully!`);
+                notify(isHi ? `अस्पताल '${data.hospital.name}' सफलतापूर्वक पंजीकृत!` : `Hospital '${data.hospital.name}' registered successfully!`);
                 fetchGlobalData();
                 setSelectedHospital(data.hospital);
             } else {
@@ -1260,7 +1396,7 @@ export default function SuperAdminPage({
             const data = await res.json();
             if (res.ok && data.status === "success") {
                 setShowEditHospitalModal(false);
-                notify(isHi ? `✓ अस्पताल जानकारी अद्यतन की गई!` : `✓ Hospital details updated successfully!`);
+                notify(isHi ? `अस्पताल जानकारी अद्यतन की गई!` : `Hospital details updated successfully!`);
 
                 window.dispatchEvent(new CustomEvent("hospital_branding_updated", {
                     detail: {
@@ -1296,7 +1432,7 @@ export default function SuperAdminPage({
             });
             const data = await res.json();
             if (res.ok && data.status === "success") {
-                notify(isHi ? `🗑️ अस्पताल '${hosp.name}' सफलतापूर्वक हटा दिया गया!` : `🗑️ Hospital '${hosp.name}' successfully deleted!`);
+                notify(isHi ? `अस्पताल '${hosp.name}' सफलतापूर्वक हटा दिया गया!` : `Hospital '${hosp.name}' successfully deleted!`);
                 fetchGlobalData();
                 if (selectedHospital?.hospital_code === hosp.hospital_code) {
                     setSelectedHospital(null);
@@ -1435,7 +1571,7 @@ export default function SuperAdminPage({
             const data = await res.json();
             if (res.ok && data.status === "success") {
                 setShowBrandingModal(false);
-                notify(isHi ? `🎨 '${targetHosp.name}' का ब्रांडिंग व समय सेटिंग्स सहेजा गया!` : `🎨 Branding & operating hours updated for '${targetHosp.name}'!`);
+                notify(isHi ? `'${targetHosp.name}' का ब्रांडिंग व समय सेटिंग्स सहेजा गया!` : `Branding & operating hours updated for '${targetHosp.name}'!`);
 
                 // Dispatch local event for other tabs/listeners
                 window.dispatchEvent(new CustomEvent("hospital_branding_updated", {
@@ -1507,7 +1643,7 @@ export default function SuperAdminPage({
                     phone: "",
                     password: "pass" + Math.floor(1000 + Math.random() * 9000),
                 });
-                notify(isHi ? `👤 कर्मचारी '${data.employee.username}' सफलतापूर्वक जोड़ा गया!` : `👤 Employee '${data.employee.username}' provisioned successfully!`);
+                notify(isHi ? `कर्मचारी '${data.employee.username}' सफलतापूर्वक जोड़ा गया!` : `Employee '${data.employee.username}' provisioned successfully!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 fetchGlobalData(true);
             } else {
@@ -1536,7 +1672,7 @@ export default function SuperAdminPage({
             if (res.ok && data.status === "success") {
                 setShowEditEmployeeModal(false);
                 setEditEmployeeForm({ ...editEmployeeForm, password: "" });
-                notify(isHi ? `✓ कर्मचारी रिकॉर्ड एवं पासवर्ड अपडेट हुआ!` : `✓ Employee record and credentials updated!`);
+                notify(isHi ? `कर्मचारी रिकॉर्ड एवं पासवर्ड अपडेट हुआ!` : `Employee record and credentials updated!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 fetchGlobalData();
             } else {
@@ -1563,7 +1699,7 @@ export default function SuperAdminPage({
             });
             const data = await res.json();
             if (res.ok && data.status === "success") {
-                notify(isHi ? `🗑️ कर्मचारी '${empName}' हटा दिया गया!` : `🗑️ Employee '${empName}' removed!`);
+                notify(isHi ? `कर्मचारी '${empName}' हटा दिया गया!` : `Employee '${empName}' removed!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 fetchGlobalData();
             } else {
@@ -1588,7 +1724,7 @@ export default function SuperAdminPage({
             if (res.ok && data.status === "success") {
                 setShowAddDeptModal(false);
                 setNewDeptForm({ dept_code: "", name: "", description: "" });
-                notify(isHi ? `🏢 विभाग '${data.department.name}' जोड़ा गया!` : `🏢 Department '${data.department.name}' added!`);
+                notify(isHi ? `विभाग '${data.department.name}' जोड़ा गया!` : `Department '${data.department.name}' added!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 window.dispatchEvent(new CustomEvent("hospital_departments_updated", { detail: { hospital_code: selectedHospital.hospital_code } }));
             } else {
@@ -1613,7 +1749,7 @@ export default function SuperAdminPage({
             });
             const data = await res.json();
             if (res.ok && data.status === "success") {
-                notify(isHi ? `🗑️ विभाग '${dept.name}' हटा दिया गया!` : `🗑️ Department '${dept.name}' removed!`);
+                notify(isHi ? `विभाग '${dept.name}' हटा दिया गया!` : `Department '${dept.name}' removed!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 fetchGlobalData();
                 window.dispatchEvent(new CustomEvent("hospital_departments_updated", { detail: { hospital_code: selectedHospital.hospital_code } }));
@@ -1680,7 +1816,7 @@ export default function SuperAdminPage({
             });
             const data = await res.json();
             if (res.ok && data.status === "success") {
-                notify(isHi ? `🗑️ डेस्क '${desk.desk_name}' हटा दिया गया!` : `🗑️ Desk '${desk.desk_name}' removed!`);
+                notify(isHi ? `डेस्क '${desk.desk_name}' हटा दिया गया!` : `Desk '${desk.desk_name}' removed!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 fetchGlobalData();
             } else {
@@ -1729,7 +1865,7 @@ export default function SuperAdminPage({
             const data = await res.json();
             if (res.ok && data.status === "success") {
                 setShowEditDeptModal(false);
-                notify(isHi ? `✓ विभाग जानकारी अद्यतन की गई!` : `✓ Department '${data.department.name}' updated!`);
+                notify(isHi ? `विभाग जानकारी अद्यतन की गई!` : `Department '${data.department.name}' updated!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 window.dispatchEvent(new CustomEvent("hospital_departments_updated", { detail: { hospital_code: selectedHospital.hospital_code } }));
             } else {
@@ -1761,7 +1897,7 @@ export default function SuperAdminPage({
             const data = await res.json();
             if (res.ok && data.status === "success") {
                 setShowEditDeskModal(false);
-                notify(isHi ? `✓ डेस्क अद्यतन किया गया!` : `✓ Desk '${data.desk.desk_name}' updated!`);
+                notify(isHi ? `डेस्क अद्यतन किया गया!` : `Desk '${data.desk.desk_name}' updated!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 fetchGlobalData();
             } else {
@@ -1791,8 +1927,8 @@ export default function SuperAdminPage({
                 setAssignDeskTarget({ desk: null, employee_id: "" });
                 notify(
                     empId
-                        ? (isHi ? `✓ डेस्क को '${data.desk?.assigned_employee_name || "कार्मिक"}' को सौंपा गया!` : `✓ Desk assigned to '${data.desk?.assigned_employee_name || "Staff"}'!`)
-                        : (isHi ? "✓ डेस्क को अनअसाइन (स्वचालित बे) किया गया!" : "✓ Desk unassigned (set to Auto-Assigned Bay)!")
+                        ? (isHi ? `डेस्क को '${data.desk?.assigned_employee_name || "कार्मिक"}' को सौंपा गया!` : `Desk assigned to '${data.desk?.assigned_employee_name || "Staff"}'!`)
+                        : (isHi ? "डेस्क को अनअसाइन (स्वचालित बे) किया गया!" : "Desk unassigned (set to Auto-Assigned Bay)!")
                 );
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 fetchGlobalData();
@@ -1826,7 +1962,7 @@ export default function SuperAdminPage({
                 notify(
                     isHi
                         ? `✓ ${data.result.updated_count} डेस्क अपडेट किए गए!`
-                        : `✓ Successfully set ${data.result.updated_count} desks to ${targetStatus}!`
+                        : `Successfully set ${data.result.updated_count} desks to ${targetStatus}!`
                 );
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
                 fetchGlobalData();
@@ -1881,8 +2017,8 @@ export default function SuperAdminPage({
                 });
                 notify(
                     isHi
-                        ? `🔑 '${passwordTargetEmployee.name || passwordTargetEmployee.username}' का पासवर्ड सफलतापूर्वक अपडेट किया गया!`
-                        : `🔑 Password for '${passwordTargetEmployee.name || passwordTargetEmployee.username}' updated successfully!`
+                        ? `'${passwordTargetEmployee.name || passwordTargetEmployee.username}' का पासवर्ड सफलतापूर्वक अपडेट किया गया!`
+                        : `Password for '${passwordTargetEmployee.name || passwordTargetEmployee.username}' updated successfully!`
                 );
             } else {
                 alert(data.detail || data.message || "Failed to update password.");
@@ -1905,1180 +2041,1208 @@ export default function SuperAdminPage({
     });
 
     return (
-        <div style={{ width: "100%", maxWidth: "100%", margin: "0 auto", padding: "0 4px 40px 4px", boxSizing: "border-box" }}>
+        <div className="superadmin-portal-root" style={{ width: "100%", maxWidth: "100%", margin: "0 auto", padding: "0 4px 4px 4px", boxSizing: "border-box" }}>
             {/* Dynamic CSS Styling matching PatientPage.jsx and HeroBanner.jsx */}
             <style>{`
-        .superadmin-hero-container {
-          display: flex;
-          flex-direction: row;
-          align-items: stretch;
-          border-radius: 28px;
-          overflow: hidden;
-          background: #0F172A;
-          box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(2, 132, 199, 0.05);
-          border: 1px solid rgba(2, 132, 199, 0.2);
-          margin-bottom: 24px;
-          position: relative;
-          min-height: 280px;
-          width: 100%;
-        }
-
-        .superadmin-hero-left-col {
-          flex: 1.25;
-          padding: 36px 38px;
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          z-index: 2;
-          background: linear-gradient(135deg, #0F172A 0%, #1E293B 70%, #0C4A6E 100%);
-          position: relative;
-        }
-
-        @media (min-width: 900px) {
-          .superadmin-hero-left-col {
-            padding-right: 40px;
-            margin-right: 0;
-            border-right: 1px solid rgba(2, 132, 199, 0.2);
-          }
-        }
-
-        .superadmin-hero-right-col {
-          flex: 0.95;
-          background: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
-          display: flex;
-          align-items: center;
-          justifyContent: center;
-          position: relative;
-          overflow: hidden;
-          min-height: 260px;
-        }
-
-        .superadmin-hero-title {
-          font-size: 32px;
-          font-weight: 800;
-          line-height: 1.18;
-          letter-spacing: -0.6px;
-          color: #FFFFFF;
-          margin: 0;
-        }
-
-        .superadmin-hero-title-highlight {
-          color: #38BDF8;
-        }
-
-        .superadmin-hero-subtitle {
-          color: rgba(224, 242, 254, 0.88);
-          font-size: 13.5px;
-          line-height: 1.5;
-          margin-top: 10px;
-          margin-bottom: 22px;
-          max-width: 440px;
-          font-weight: 500;
-        }
-
-        .superadmin-hero-stats-row {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 10px;
-          width: 100%;
-        }
-
-        .superadmin-hero-stat-card {
-          background: rgba(255, 255, 255, 0.08);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 14px;
-          padding: 10px 12px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-width: 0;
-          box-sizing: border-box;
-          transition: transform 0.2s ease, background 0.2s ease;
-        }
-
-        .superadmin-hero-stat-card:hover {
-          background: rgba(255, 255, 255, 0.15);
-          transform: translateY(-2px);
-        }
-
-        .superadmin-hero-stat-icon-wrap {
-          width: 34px;
-          height: 34px;
-          border-radius: 10px;
-          background: rgba(255, 255, 255, 0.15);
-          display: flex;
-          align-items: center;
-          justifyContent: center;
-          flex-shrink: 0;
-          color: #38BDF8;
-        }
-
-        .superadmin-hero-stat-value {
-          font-size: 16px;
-          font-weight: 800;
-          color: #FFFFFF;
-          line-height: 1.1;
-          letter-spacing: -0.3px;
-        }
-
-        .superadmin-hero-stat-label {
-          font-size: 10px;
-          font-weight: 600;
-          color: rgba(255, 255, 255, 0.8);
-          line-height: 1.2;
-          margin-top: 2px;
-        }
-
-        .superadmin-nav-section {
-          background: #FFFFFF;
-          border-radius: 20px;
-          border: 1px solid #E2E8F0;
-          padding: 20px;
-          margin-bottom: 24px;
-          box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
-        }
-
-        .superadmin-nav-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 16px;
-          padding-bottom: 12px;
-          border-bottom: 1px solid #F1F5F9;
-        }
-
-        .superadmin-nav-title {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 14px;
-          font-weight: 800;
-          color: #0F172A;
-          letter-spacing: -0.2px;
-        }
-
-        .superadmin-tabs-bar {
-          display: grid;
-          grid-template-columns: repeat(6, 1fr);
-          gap: 10px;
-        }
-
-        @media (max-width: 1200px) {
-          .superadmin-tabs-bar {
-            grid-template-columns: repeat(3, 1fr);
-          }
-        }
-
-        @media (max-width: 980px) {
-          .superadmin-tabs-bar {
-            grid-template-columns: repeat(2, 1fr);
-          }
-        }
-
-        .tab-button-modern {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          padding: 10px 14px;
-          border-radius: 14px;
-          border: 1px solid #E2E8F0;
-          background: #FFFFFF;
-          cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-          text-align: left;
-          user-select: none;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
-          outline: none;
-        }
-
-        .tab-button-modern:hover {
-          border-color: #BAE6FD;
-          background: #F0F9FF;
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(2, 132, 199, 0.1);
-        }
-
-        .tab-button-modern.active {
-          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
-          border-color: #0284C7;
-          color: #FFFFFF;
-          box-shadow: 0 8px 20px rgba(2, 132, 199, 0.28);
-          transform: translateY(-2px);
-        }
-
-        .tab-icon-wrapper {
-          width: 40px;
-          height: 40px;
-          border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justifyContent: center;
-          flex-shrink: 0;
-          transition: all 0.2s ease;
-        }
-
-        .tab-button-modern.active .tab-icon-wrapper {
-          background: rgba(255, 255, 255, 0.2);
-          color: #FFFFFF;
-        }
-
-        .tab-button-modern.inactive .tab-icon-wrapper {
-          background: #F0F9FF;
-          color: #0284C7;
-        }
-
-        .tab-title-text {
-          font-size: 14px;
-          font-weight: 800;
-          letter-spacing: -0.2px;
-          line-height: 1.2;
-        }
-
-        .tab-sub-text {
-          font-size: 11px;
-          font-weight: 600;
-          display: block;
-          margin-top: 2px;
-        }
-
-        .tab-count-badge {
-          padding: 2px 8px;
-          border-radius: 9999px;
-          font-size: 11px;
-          font-weight: 800;
-        }
-
-        .superadmin-portal-dashboard {
-          display: grid;
-          grid-template-columns: 1fr 320px;
-          gap: 24px;
-          align-items: start;
-        }
-
-        .superadmin-portal-dashboard.full-width-layout {
-          grid-template-columns: 1fr !important;
-        }
-
-        .branding-studio-container {
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-          width: 100%;
-        }
-
-        .branding-studio-grid {
-          display: grid;
-          grid-template-columns: 1.14fr 0.86fr;
-          gap: 24px;
-          align-items: start;
-        }
-
-        @media (max-width: 1160px) {
-          .branding-studio-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .branding-preset-btn {
-          padding: 10px 12px;
-          border-radius: 12px;
-          background: #FFFFFF;
-          border: 1.5px solid #E2E8F0;
-          cursor: pointer;
-          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 6px;
-          outline: none;
-        }
-
-        .branding-preset-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(2, 132, 199, 0.12);
-        }
-
-        .branding-preset-btn.active {
-          border-color: #0F172A;
-          box-shadow: 0 0 0 2px #0F172A, 0 6px 16px rgba(0,0,0,0.08);
-        }
-
-        .branding-tab-pill {
-          padding: 10px 18px;
-          border-radius: 12px;
-          border: 1.5px solid #E2E8F0;
-          background: #FFFFFF;
-          color: #475569;
-          font-weight: 800;
-          font-size: 13px;
-          cursor: pointer;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          transition: all 0.15s ease;
-          outline: none;
-        }
-
-        .branding-tab-pill:hover {
-          background: #F8FAFC;
-          border-color: #CBD5E1;
-        }
-
-        .branding-tab-pill.active {
-          border-color: #0284C7;
-          background: #F0F9FF;
-          color: #0284C7;
-          box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
-        }
-
-        @media (max-width: 1240px) {
-          .superadmin-hero-stats-row {
-            grid-template-columns: repeat(2, 1fr);
-          }
-        }
-
-        @media (max-width: 1024px) {
-          .superadmin-portal-dashboard {
-            grid-template-columns: 1fr;
-          }
-          .superadmin-tabs-bar {
-            grid-template-columns: repeat(2, 1fr);
-          }
-        }
-
-        @media (max-width: 900px) {
-          .superadmin-hero-container {
-            flex-direction: column;
-          }
-          .superadmin-hero-left-col {
-            clip-path: none !important;
-            padding: 28px 22px;
-            margin-right: 0;
-            border-right: none !important;
-            border-bottom: 1px solid rgba(2, 132, 199, 0.2);
-          }
-          .superadmin-hero-right-col {
-            min-height: 200px;
-            width: 100%;
-          }
-          .superadmin-tabs-bar {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        .telemetry-sidebar-card {
-          background: #FFFFFF;
-          border-radius: 20px;
-          border: 1px solid #E2E8F0;
-          padding: 20px;
-          box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-
-        .admin-action-btn-primary {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          padding: 12px 20px;
-          border-radius: 12px;
-          border: none;
-          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
-          color: #FFFFFF;
-          font-size: 13.5px;
-          font-weight: 800;
-          cursor: pointer;
-          box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
-          transition: all 0.2s ease;
-          outline: none;
-          width: 100%;
-        }
-
-        .admin-action-btn-primary:hover {
-          background: #0369A1;
-          transform: translateY(-1px);
-          box-shadow: 0 6px 18px rgba(2, 132, 199, 0.35);
-        }
-
-        /* Hospital 360 Cyber Command Center Dashboard Styles */
-        @keyframes pulse360Green {
-          0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); transform: scale(1); }
-          50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); transform: scale(1.08); }
-          100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); transform: scale(1); }
-        }
-        .hosp360-live-pulse {
-          width: 9px;
-          height: 9px;
-          border-radius: 50%;
-          background: #10B981;
-          display: inline-block;
-          animation: pulse360Green 2s infinite ease-in-out;
-        }
-        @keyframes hosp360Spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .hosp360-spin {
-          display: inline-block;
-          animation: hosp360Spin 0.75s linear infinite;
-        }
-        .hosp360-container-dark {
-          background: #090D14;
-          color: #F1F5F9;
-          border-radius: 24px;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          padding: 26px;
-          box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5), 0 0 40px rgba(2, 132, 199, 0.05);
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-          position: relative;
-        }
-        .hosp360-container-light {
-          background: #FFFFFF;
-          color: #0F172A;
-          border-radius: 24px;
-          border: 1.5px solid #E2E8F0;
-          padding: 26px;
-          box-shadow: 0 10px 30px -4px rgba(2, 132, 199, 0.06);
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-          position: relative;
-        }
-        .hosp360-kpi-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 14px;
-        }
-        @media (max-width: 860px) {
-          .hosp360-kpi-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-        }
-        @media (max-width: 480px) {
-          .hosp360-kpi-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-        .hosp360-kpi-card-dark {
-          background: #0F1622;
-          border-radius: 14px;
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          padding: 16px 18px;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          position: relative;
-          overflow: hidden;
-          transition: transform 0.15s ease, border-color 0.15s ease;
-        }
-        .hosp360-kpi-card-dark:hover {
-          transform: translateY(-2px);
-          border-color: rgba(255, 255, 255, 0.2);
-        }
-        .hosp360-kpi-card-light {
-          background: #F8FAFC;
-          border-radius: 14px;
-          border: 1px solid #E2E8F0;
-          padding: 16px 18px;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          position: relative;
-          overflow: hidden;
-          transition: transform 0.15s ease;
-        }
-        .hosp360-kpi-card-light:hover {
-          transform: translateY(-2px);
-        }
-        .hosp360-two-col {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 18px;
-        }
-        @media (max-width: 900px) {
-          .hosp360-two-col {
-            grid-template-columns: 1fr;
-          }
-        }
-        .hosp360-panel-dark {
-          background: #0F1622;
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 16px;
-          padding: 18px 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-        .hosp360-panel-light {
-          background: #F8FAFC;
-          border: 1px solid #E2E8F0;
-          border-radius: 16px;
-          padding: 18px 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 14px;
-        }
-        .hosp360-table-scroll {
-          max-height: 250px;
-          overflow-y: auto;
-          scrollbar-width: thin;
-          scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-        }
-        .hosp360-table-scroll::-webkit-scrollbar {
-          width: 5px;
-        }
-        .hosp360-table-scroll::-webkit-scrollbar-thumb {
-          background: rgba(255, 255, 255, 0.2);
-          border-radius: 4px;
-        }
-        .hosp360-desk-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 8px 12px;
-          border-radius: 8px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-          transition: background 0.15s ease;
-        }
-        .hosp360-desk-row:hover {
-          background: rgba(255, 255, 255, 0.04);
-        }
-        .hosp360-mono-tag {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-          font-weight: 700;
-          letter-spacing: 0.3px;
-        }
-        .hosp360-nav-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          padding: 9px 16px;
-          border-radius: 10px;
-          font-size: 13px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        }
-        .hosp360-nav-btn:hover {
-          transform: translateY(-1px);
-        }
-
-        /* Base CSS Theme Variables */
-        :root {
-          --superadmin-bg: #F8FAFC;
-          --superadmin-card-bg: #FFFFFF;
-          --superadmin-card-border: #E2E8F0;
-          --superadmin-text-main: #0F172A;
-          --superadmin-text-sub: #334155;
-          --superadmin-text-muted: #64748B;
-          --superadmin-sub-card: #F8FAFC;
-          --superadmin-input-bg: #FFFFFF;
-          --superadmin-input-border: #CBD5E1;
-          --superadmin-card-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
-        }
-
-        /* Dark Theme Variables (Strictly No Pure Black #000000 - Using Rich Dark Slate & Navy) */
-        body.theme-dark {
-          --superadmin-bg: #0B111E;
-          --superadmin-card-bg: #0F172A;
-          --superadmin-card-border: #1E293B;
-          --superadmin-text-main: #F8FAFC;
-          --superadmin-text-sub: #CBD5E1;
-          --superadmin-text-muted: #94A3B8;
-          --superadmin-sub-card: #1E293B;
-          --superadmin-input-bg: #1E293B;
-          --superadmin-input-border: #334155;
-          --superadmin-card-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
-        }
-
-        /* Branding Studio Classes */
-        .branding-studio-container {
-          background: var(--superadmin-card-bg, #FFFFFF);
-          border-radius: 24px;
-          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
-          padding: 24px;
-          box-shadow: var(--superadmin-card-shadow, 0 4px 20px -2px rgba(2, 132, 199, 0.04));
-          color: var(--superadmin-text-main, #0F172A);
-        }
-        .branding-studio-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding-bottom: 20px;
-          border-bottom: 1.5px solid var(--superadmin-card-border, #E2E8F0);
-          margin-bottom: 20px;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-        .branding-sub-nav-bar {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          background: var(--superadmin-card-bg, #FFFFFF);
-          padding: 10px 14px;
-          border-radius: 16px;
-          border: 1px solid var(--superadmin-card-border, #E2E8F0);
-          box-shadow: 0 2px 10px rgba(0,0,0,0.02);
-        }
-        .branding-tab-pill {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 10px 18px;
-          border-radius: 12px;
-          font-size: 13px;
-          font-weight: 800;
-          cursor: pointer;
-          border: 1px solid var(--superadmin-card-border, #E2E8F0);
-          background: var(--superadmin-card-bg, #FFFFFF);
-          color: var(--superadmin-text-sub, #475569);
-          transition: all 0.15s ease;
-        }
-        .branding-tab-pill:hover {
-          background: var(--superadmin-sub-card, #F1F5F9);
-          color: var(--superadmin-text-main, #0F172A);
-        }
-        .branding-tab-pill.active {
-          border-color: #0284C7;
-          background: #F0F9FF;
-          color: #0284C7;
-          box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
-        }
-        .branding-studio-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.85fr);
-          gap: 24px;
-          margin-top: 20px;
-          align-items: start;
-        }
-        @media (max-width: 1100px) {
-          .branding-studio-grid {
-            grid-template-columns: 1fr;
-          }
-        }
-        .branding-section-card {
-          background: var(--superadmin-card-bg, #FFFFFF);
-          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
-          border-radius: 20px;
-          padding: 24px;
-          box-shadow: var(--superadmin-card-shadow, 0 4px 20px rgba(0,0,0,0.03));
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-        .branding-preset-btn {
-          padding: 10px 12px;
-          border-radius: 12px;
-          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
-          background: var(--superadmin-card-bg, #FFFFFF);
-          cursor: pointer;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 8px;
-          transition: all 0.15s ease;
-          color: var(--superadmin-text-main, #334155);
-        }
-        .branding-preset-btn:hover {
-          transform: translateY(-1px);
-          border-color: #38BDF8;
-        }
-        .branding-preset-btn.active {
-          border-color: #0284C7;
-          background: #F0F9FF;
-        }
-        .branding-inset-box {
-          background: var(--superadmin-sub-card, #F8FAFC);
-          padding: 16px;
-          border-radius: 16px;
-          border: 1px solid var(--superadmin-card-border, #E2E8F0);
-          color: var(--superadmin-text-main, #0F172A);
-        }
-        .branding-sticky-preview {
-          position: sticky;
-          top: 24px;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-        }
-        .branding-mode-pills-bar {
-          display: flex;
-          background: var(--superadmin-sub-card, #F1F5F9);
-          padding: 4px;
-          border-radius: 12px;
-          gap: 4px;
-          border: 1px solid var(--superadmin-card-border, #E2E8F0);
-        }
-        .branding-mode-pill-btn {
-          flex: 1;
-          padding: 8px 6px;
-          border-radius: 8px;
-          border: none;
-          background: transparent;
-          color: var(--superadmin-text-muted, #64748B);
-          font-weight: 800;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        }
-        .branding-mode-pill-btn.active {
-          background: var(--superadmin-card-bg, #FFFFFF);
-          color: var(--superadmin-text-main, #0F172A);
-          box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-        }
-        .branding-preview-container {
-          background: var(--superadmin-card-bg, #FFFFFF);
-          border-radius: 20px;
-          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
-          padding: 20px;
-          box-shadow: var(--superadmin-card-shadow, 0 10px 30px -4px rgba(0,0,0,0.08));
-          position: relative;
-          overflow: hidden;
-        }
-        .branding-bottom-bar {
-          background: var(--superadmin-card-bg, #FFFFFF);
-          border-radius: 16px;
-          border: 1px solid var(--superadmin-card-border, #E2E8F0);
-          padding: 14px 18px;
-          box-shadow: 0 4px 14px rgba(0,0,0,0.04);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        /* Overview KPI Cards */
-        .overview-kpi-card {
-          background: var(--superadmin-card-bg, #FFFFFF);
-          border-radius: 18px;
-          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
-          padding: 18px 20px;
-          box-shadow: var(--superadmin-card-shadow, 0 4px 14px rgba(0, 0, 0, 0.04));
-          display: flex;
-          flex-direction: column;
-          justify-content: space-between;
-          transition: transform 0.15s ease;
-        }
-        .overview-kpi-card:hover {
-          transform: translateY(-2px);
-        }
-
-        /* Hero Right Column in Dark Mode */
-        body.theme-dark .superadmin-hero-right-col {
-          background: linear-gradient(180deg, #090e1f 0%, #0F172A 100%) !important;
-          border-left: 1px solid rgba(2, 132, 199, 0.25) !important;
-        }
-
-        body.theme-dark .superadmin-hero-telemetry-badge {
-          background: rgba(15, 23, 42, 0.9) !important;
-          border-color: rgba(56, 189, 248, 0.3) !important;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
-        }
-
-        body.theme-dark .superadmin-hero-telemetry-card {
-          background: rgba(15, 23, 42, 0.85) !important;
-          border-color: rgba(56, 189, 248, 0.25) !important;
-          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        body.theme-dark .superadmin-hero-telemetry-card .superadmin-telemetry-label {
-          color: #94A3B8 !important;
-        }
-
-        body.theme-dark .superadmin-hero-telemetry-card .superadmin-telemetry-val {
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .superadmin-hero-telemetry-footer {
-          background: rgba(15, 23, 42, 0.85) !important;
-          border-color: rgba(56, 189, 248, 0.25) !important;
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .superadmin-nav-section {
-          background: #0F172A;
-          border-color: #1E293B;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-        }
-
-        body.theme-dark .superadmin-nav-header {
-          border-bottom-color: #1E293B;
-        }
-
-        body.theme-dark .superadmin-nav-title {
-          color: #F8FAFC;
-        }
-
-        body.theme-dark .tab-button-modern.inactive {
-          background: #1E293B;
-          border-color: #334155;
-          color: #F1F5F9;
-        }
-
-        body.theme-dark .tab-button-modern.inactive:hover {
-          background: #27354A;
-          border-color: #475569;
-        }
-
-        body.theme-dark .tab-button-modern.inactive .tab-icon-wrapper {
-          background: #0F172A;
-          color: #38BDF8;
-        }
-
-        body.theme-dark .tab-button-modern.inactive .tab-title-text {
-          color: #F8FAFC;
-        }
-
-        body.theme-dark .tab-button-modern.inactive .tab-sub-text {
-          color: #94A3B8 !important;
-        }
-
-        body.theme-dark .tab-button-modern.inactive .tab-count-badge {
-          background: rgba(2, 132, 199, 0.25) !important;
-          color: #38BDF8 !important;
-        }
-
-        body.theme-dark .tab-button-modern.active .tab-count-badge {
-          background: #FFFFFF !important;
-          color: #0284C7 !important;
-        }
-
-        body.theme-dark .telemetry-sidebar-card {
-          background: #0F172A;
-          border-color: #1E293B;
-          color: #F8FAFC;
-          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
-        }
-
-        body.theme-dark .telemetry-sidebar-card h3 {
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .telemetry-sidebar-card span {
-          color: #94A3B8;
-        }
-
-        /* Standalone Tab Cards in Dark Mode */
-        body.theme-dark .standalone-card {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        /* Headings & Texts in Dashboard */
-        body.theme-dark .superadmin-portal-dashboard h1,
-        body.theme-dark .superadmin-portal-dashboard h2,
-        body.theme-dark .superadmin-portal-dashboard h3,
-        body.theme-dark .superadmin-portal-dashboard h4,
-        body.theme-dark .superadmin-portal-dashboard strong {
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .superadmin-portal-dashboard p {
-          color: #94A3B8 !important;
-        }
-
-        /* Inputs, Selects, Textareas across all SuperAdmin */
-        body.theme-dark .superadmin-portal-dashboard input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
-        body.theme-dark .superadmin-portal-dashboard select,
-        body.theme-dark .superadmin-portal-dashboard textarea,
-        body.theme-dark .superadmin-modal-box input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
-        body.theme-dark .superadmin-modal-box select,
-        body.theme-dark .superadmin-modal-box textarea {
-          background-color: #1E293B !important;
-          border-color: #334155 !important;
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark input::placeholder,
-        body.theme-dark textarea::placeholder {
-          color: #64748B !important;
-        }
-
-        body.theme-dark input:focus,
-        body.theme-dark select:focus,
-        body.theme-dark textarea:focus {
-          border-color: #38BDF8 !important;
-          box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18) !important;
-        }
-
-        /* Tables in Dark Mode */
-        body.theme-dark table thead tr {
-          background: #1E293B !important;
-          border-bottom-color: #334155 !important;
-        }
-
-        body.theme-dark table tbody tr {
-          border-bottom-color: #1E293B !important;
-        }
-
-        body.theme-dark table tbody tr:hover {
-          background: rgba(255, 255, 255, 0.03) !important;
-        }
-
-        body.theme-dark table th {
-          background: #1E293B !important;
-          color: #94A3B8 !important;
-        }
-
-        body.theme-dark table td {
-          color: #CBD5E1 !important;
-        }
-
-        /* Modals in Dark Mode */
-        body.theme-dark .superadmin-modal-box {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-          box-shadow: 0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15) !important;
-        }
-
-        body.theme-dark .superadmin-modal-box h3 {
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .superadmin-modal-box label {
-          color: #CBD5E1 !important;
-        }
-
-        body.theme-dark .modal-cancel-btn {
-          background: #1E293B !important;
-          border-color: #334155 !important;
-          color: #CBD5E1 !important;
-        }
-
-        body.theme-dark .modal-cancel-btn:hover {
-          background: #27354A !important;
-          border-color: #475569 !important;
-          color: #F8FAFC !important;
-        }
-
-        /* Secondary buttons in dark mode */
-        body.theme-dark .superadmin-secondary-btn {
-          background: #1E293B !important;
-          border-color: #334155 !important;
-          color: #CBD5E1 !important;
-        }
-
-        body.theme-dark .superadmin-secondary-btn:hover {
-          background: #27354A !important;
-          border-color: #475569 !important;
-          color: #F8FAFC !important;
-        }
-
-        /* Feedback Toast */
-        body.theme-dark .superadmin-feedback-toast {
-          background: rgba(2, 132, 199, 0.18) !important;
-          border-color: #0284C7 !important;
-          color: #38BDF8 !important;
-        }
-
-        /* Hospital 360 Cyber theme overrides in dark mode */
-        body.theme-dark .hosp360-container-light {
-          background: #090D14 !important;
-          color: #F1F5F9 !important;
-          border-color: rgba(255, 255, 255, 0.1) !important;
-          box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5), 0 0 40px rgba(2, 132, 199, 0.05) !important;
-        }
-
-        body.theme-dark .hosp360-kpi-card-light {
-          background: #0F1622 !important;
-          border-color: rgba(255, 255, 255, 0.08) !important;
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .hosp360-panel-light {
-          background: #0F1622 !important;
-          border-color: rgba(255, 255, 255, 0.08) !important;
-          color: #F8FAFC !important;
-        }
-
-        /* Overview KPI & Banner in Dark Mode */
-        body.theme-dark .overview-kpi-card {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        body.theme-dark .overview-facility-banner {
-          background: linear-gradient(135deg, #0F172A 0%, #131D31 100%) !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
-        }
-
-        body.theme-dark .overview-sub-panel {
-          background: #131D31 !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .overview-inner-card {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .overview-stream-item {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .overview-desk-pod {
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-        }
-
-        body.theme-dark .overview-desk-pod.status-serving {
-          background: #0D233A !important;
-          border-color: #0369A1 !important;
-        }
-
-        body.theme-dark .overview-desk-pod.status-available {
-          background: #0D281E !important;
-          border-color: #047857 !important;
-        }
-
-        body.theme-dark .overview-desk-pod.status-offline {
-          background: #131D31 !important;
-          border-color: #1E293B !important;
-        }
-
-        /* Dark Theme overrides for Branding Studio and Live Simulator */
-        body.theme-dark .branding-studio-container {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4) !important;
-        }
-        body.theme-dark .branding-studio-header {
-          border-bottom-color: #1E293B !important;
-        }
-        body.theme-dark .branding-sub-nav-bar {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
-        }
-        body.theme-dark .branding-tab-pill {
-          background: #1E293B !important;
-          border-color: #334155 !important;
-          color: #CBD5E1 !important;
-        }
-        body.theme-dark .branding-tab-pill:hover {
-          background: #27354A !important;
-          color: #F8FAFC !important;
-        }
-        body.theme-dark .branding-tab-pill.active {
-          background: rgba(2, 132, 199, 0.22) !important;
-          border-color: #38BDF8 !important;
-          color: #38BDF8 !important;
-          box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
-        }
-        body.theme-dark .branding-section-card {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
-        }
-        body.theme-dark .branding-section-card h3,
-        body.theme-dark .branding-section-card h4 {
-          color: #F8FAFC !important;
-        }
-        body.theme-dark .branding-section-card p,
-        body.theme-dark .branding-section-card span {
-          color: #94A3B8;
-        }
-        body.theme-dark .branding-preset-btn {
-          background: #1E293B !important;
-          border-color: #334155 !important;
-          color: #F8FAFC !important;
-        }
-        body.theme-dark .branding-preset-btn:hover {
-          background: #27354A !important;
-          border-color: #475569 !important;
-        }
-        body.theme-dark .branding-preset-btn.active {
-          background: rgba(2, 132, 199, 0.25) !important;
-          border-color: #38BDF8 !important;
-          box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35) !important;
-        }
-        body.theme-dark .branding-preset-btn span {
-          color: #F8FAFC !important;
-        }
-        body.theme-dark .branding-inset-box {
-          background: #1E293B !important;
-          border-color: #334155 !important;
-          color: #F8FAFC !important;
-        }
-        body.theme-dark .branding-mode-pills-bar {
-          background: #1E293B !important;
-          border-color: #334155 !important;
-        }
-        body.theme-dark .branding-mode-pill-btn {
-          color: #94A3B8 !important;
-        }
-        body.theme-dark .branding-mode-pill-btn.active {
-          background: #0F172A !important;
-          color: #38BDF8 !important;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
-        }
-        body.theme-dark .branding-preview-container {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.5) !important;
-        }
-        body.theme-dark .branding-sim-portal-card,
-        body.theme-dark .branding-sim-slip-card,
-        body.theme-dark .branding-sim-about-card {
-          background: #131D31 !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-        }
-        body.theme-dark .branding-sim-inner-box {
-          background: #1E293B !important;
-          border-color: #334155 !important;
-          color: #F8FAFC !important;
-        }
-        body.theme-dark .branding-bottom-bar {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
-        }
-        body.theme-dark .branding-bottom-bar span {
-          color: #F8FAFC !important;
-        }
-
-        /* Modal Quick Branding Container in Dark Mode */
-        body.theme-dark .branding-modal-card {
-          background: #0F172A !important;
-          border-color: #1E293B !important;
-          color: #F8FAFC !important;
-        }
-        body.theme-dark .branding-modal-inner {
-          background: #1E293B !important;
-          border-color: #334155 !important;
-          color: #F8FAFC !important;
-        }
-      `}</style>
+        .superadmin-portal-root {
+          font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+
+        .superadmin-portal-root *,
+        .superadmin-portal-root input,
+        .superadmin-portal-root button,
+        .superadmin-portal-root select,
+        .superadmin-portal-root textarea,
+        .superadmin-modal-box,
+        .superadmin-modal-box * {
+          font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .superadmin-hero-container {
+          display: flex;
+          flex-direction: row;
+          align-items: stretch;
+          border-radius: 28px;
+          overflow: hidden;
+          background: #0F172A;
+          box-shadow: 0 16px 36px -8px rgba(15, 23, 42, 0.12), 0 4px 12px rgba(2, 132, 199, 0.05);
+          border: 1px solid rgba(2, 132, 199, 0.2);
+          margin-bottom: 24px;
+          position: relative;
+          min-height: 280px;
+          width: 100%;
+        }
+
+        .superadmin-hero-left-col {
+          flex: 1.25;
+          padding: 36px 38px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          z-index: 2;
+          background: linear-gradient(135deg, #0F172A 0%, #1E293B 70%, #0C4A6E 100%);
+          position: relative;
+        }
+
+        @media (min-width: 900px) {
+          .superadmin-hero-left-col {
+            padding-right: 40px;
+            margin-right: 0;
+            border-right: 1px solid rgba(2, 132, 199, 0.2);
+          }
+        }
+
+        .superadmin-hero-right-col {
+          flex: 0.95;
+          background: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          position: relative;
+          overflow: hidden;
+          min-height: 260px;
+        }
+
+        .superadmin-hero-title {
+          font-size: 32px;
+          font-weight: 800;
+          line-height: 1.18;
+          letter-spacing: -0.6px;
+          color: #FFFFFF;
+          margin: 0;
+        }
+
+        .superadmin-hero-title-highlight {
+          color: #38BDF8;
+        }
+
+        .superadmin-hero-subtitle {
+          color: rgba(224, 242, 254, 0.88);
+          font-size: 13.5px;
+          line-height: 1.5;
+          margin-top: 10px;
+          margin-bottom: 22px;
+          max-width: 440px;
+          font-weight: 500;
+        }
+
+        .superadmin-hero-stats-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+          width: 100%;
+        }
+
+        .superadmin-hero-stat-card {
+          background: rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 14px;
+          padding: 10px 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+          box-sizing: border-box;
+          transition: transform 0.2s ease, background 0.2s ease;
+        }
+
+        .superadmin-hero-stat-card:hover {
+          background: rgba(255, 255, 255, 0.15);
+          transform: translateY(-2px);
+        }
+
+        .superadmin-hero-stat-icon-wrap {
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.15);
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          flex-shrink: 0;
+          color: #38BDF8;
+        }
+
+        .superadmin-hero-stat-value {
+          font-size: 16px;
+          font-weight: 800;
+          color: #FFFFFF;
+          line-height: 1.1;
+          letter-spacing: -0.3px;
+        }
+
+        .superadmin-hero-stat-label {
+          font-size: 10px;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.8);
+          line-height: 1.2;
+          margin-top: 2px;
+        }
+
+        .superadmin-nav-section {
+          background: #FFFFFF;
+          border-radius: 20px;
+          border: 1px solid #E2E8F0;
+          padding: 20px;
+          margin-bottom: 24px;
+          box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
+        }
+
+        .superadmin-nav-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #F1F5F9;
+        }
+
+        .superadmin-nav-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+          font-weight: 800;
+          color: #0F172A;
+          letter-spacing: -0.2px;
+        }
+
+        .superadmin-tabs-bar {
+          display: grid;
+          grid-template-columns: repeat(6, 1fr);
+          gap: 10px;
+        }
+
+        @media (max-width: 1200px) {
+          .superadmin-tabs-bar {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
+
+        @media (max-width: 980px) {
+          .superadmin-tabs-bar {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        .tab-button-modern {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 14px;
+          border-radius: 14px;
+          border: 1px solid #E2E8F0;
+          background: #FFFFFF;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          text-align: left;
+          user-select: none;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+          outline: none;
+        }
+
+        .tab-button-modern:hover {
+          border-color: #BAE6FD;
+          background: #F0F9FF;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(2, 132, 199, 0.1);
+        }
+
+        .tab-button-modern.active {
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+          border-color: #0284C7;
+          color: #FFFFFF;
+          box-shadow: 0 8px 20px rgba(2, 132, 199, 0.28);
+          transform: translateY(-2px);
+        }
+
+        .tab-icon-wrapper {
+          width: 40px;
+          height: 40px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justifyContent: center;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+
+        .tab-button-modern.active .tab-icon-wrapper {
+          background: rgba(255, 255, 255, 0.2);
+          color: #FFFFFF;
+        }
+
+        .tab-button-modern.inactive .tab-icon-wrapper {
+          background: #F0F9FF;
+          color: #0284C7;
+        }
+
+        .tab-title-text {
+          font-size: 14px;
+          font-weight: 800;
+          letter-spacing: -0.2px;
+          line-height: 1.2;
+        }
+
+        .tab-sub-text {
+          font-size: 11px;
+          font-weight: 600;
+          display: block;
+          margin-top: 2px;
+        }
+
+        .tab-count-badge {
+          padding: 2px 8px;
+          border-radius: 9999px;
+          font-size: 11px;
+          font-weight: 800;
+        }
+
+        .superadmin-portal-dashboard {
+          display: grid;
+          grid-template-columns: 1fr 320px;
+          gap: 24px;
+          align-items: start;
+        }
+
+        .superadmin-portal-dashboard.full-width-layout {
+          grid-template-columns: 1fr !important;
+        }
+
+        .branding-studio-container {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          width: 100%;
+        }
+
+        .branding-studio-grid {
+          display: grid;
+          grid-template-columns: 1.14fr 0.86fr;
+          gap: 24px;
+          align-items: start;
+        }
+
+        @media (max-width: 1160px) {
+          .branding-studio-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .branding-preset-btn {
+          padding: 10px 12px;
+          border-radius: 12px;
+          background: #FFFFFF;
+          border: 1.5px solid #E2E8F0;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          outline: none;
+        }
+
+        .branding-preset-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(2, 132, 199, 0.12);
+        }
+
+        .branding-preset-btn.active {
+          border-color: #0F172A;
+          box-shadow: 0 0 0 2px #0F172A, 0 6px 16px rgba(0,0,0,0.08);
+        }
+
+        .branding-tab-pill {
+          padding: 10px 18px;
+          border-radius: 12px;
+          border: 1.5px solid #E2E8F0;
+          background: #FFFFFF;
+          color: #475569;
+          font-weight: 800;
+          font-size: 13px;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.15s ease;
+          outline: none;
+        }
+
+        .branding-tab-pill:hover {
+          background: #F8FAFC;
+          border-color: #CBD5E1;
+        }
+
+        .branding-tab-pill.active {
+          border-color: #0284C7;
+          background: #F0F9FF;
+          color: #0284C7;
+          box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
+        }
+
+        @media (max-width: 1240px) {
+          .superadmin-hero-stats-row {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 1024px) {
+          .superadmin-portal-dashboard {
+            grid-template-columns: 1fr;
+          }
+          .superadmin-tabs-bar {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
+        @media (max-width: 900px) {
+          .superadmin-hero-container {
+            flex-direction: column;
+          }
+          .superadmin-hero-left-col {
+            clip-path: none !important;
+            padding: 28px 22px;
+            margin-right: 0;
+            border-right: none !important;
+            border-bottom: 1px solid rgba(2, 132, 199, 0.2);
+          }
+          .superadmin-hero-right-col {
+            min-height: 200px;
+            width: 100%;
+          }
+          .superadmin-tabs-bar {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .telemetry-sidebar-card {
+          background: #FFFFFF;
+          border-radius: 20px;
+          border: 1px solid #E2E8F0;
+          padding: 20px;
+          box-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+
+        .admin-action-btn-primary {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 12px 20px;
+          border-radius: 12px;
+          border: none;
+          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
+          color: #FFFFFF;
+          font-size: 13.5px;
+          font-weight: 800;
+          cursor: pointer;
+          box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
+          transition: all 0.2s ease;
+          outline: none;
+          width: 100%;
+        }
+
+        .admin-action-btn-primary:hover {
+          background: #0369A1;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 18px rgba(2, 132, 199, 0.35);
+        }
+
+        /* Hospital 360 Cyber Command Center Dashboard Styles */
+        @keyframes pulse360Green {
+          0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); transform: scale(1); }
+          50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); transform: scale(1.08); }
+          100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); transform: scale(1); }
+        }
+        .hosp360-live-pulse {
+          width: 9px;
+          height: 9px;
+          border-radius: 50%;
+          background: #10B981;
+          display: inline-block;
+          animation: pulse360Green 2s infinite ease-in-out;
+        }
+        @keyframes hosp360Spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .hosp360-spin {
+          display: inline-block;
+          animation: hosp360Spin 0.75s linear infinite;
+        }
+        .hosp360-container-dark {
+          background: #090D14;
+          color: #F1F5F9;
+          border-radius: 24px;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 26px;
+          box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5), 0 0 40px rgba(2, 132, 199, 0.05);
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          position: relative;
+        }
+        .hosp360-container-light {
+          background: #FFFFFF;
+          color: #0F172A;
+          border-radius: 24px;
+          border: 1.5px solid #E2E8F0;
+          padding: 26px;
+          box-shadow: 0 10px 30px -4px rgba(2, 132, 199, 0.06);
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          position: relative;
+        }
+        .hosp360-kpi-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+        }
+        @media (max-width: 860px) {
+          .hosp360-kpi-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+        @media (max-width: 480px) {
+          .hosp360-kpi-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .hosp360-kpi-card-dark {
+          background: #0F1622;
+          border-radius: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          position: relative;
+          overflow: hidden;
+          transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+        .hosp360-kpi-card-dark:hover {
+          transform: translateY(-2px);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        .hosp360-kpi-card-light {
+          background: #F8FAFC;
+          border-radius: 14px;
+          border: 1px solid #E2E8F0;
+          padding: 16px 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          position: relative;
+          overflow: hidden;
+          transition: transform 0.15s ease;
+        }
+        .hosp360-kpi-card-light:hover {
+          transform: translateY(-2px);
+        }
+        .hosp360-two-col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 18px;
+        }
+        @media (max-width: 900px) {
+          .hosp360-two-col {
+            grid-template-columns: 1fr;
+          }
+        }
+        .hosp360-panel-dark {
+          background: #0F1622;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 16px;
+          padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .hosp360-panel-light {
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 16px;
+          padding: 18px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+        }
+        .hosp360-table-scroll {
+          max-height: 250px;
+          overflow-y: auto;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+        .hosp360-table-scroll::-webkit-scrollbar {
+          width: 5px;
+        }
+        .hosp360-table-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+        }
+        .hosp360-desk-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 12px;
+          border-radius: 8px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+          transition: background 0.15s ease;
+        }
+        .hosp360-desk-row:hover {
+          background: rgba(255, 255, 255, 0.04);
+        }
+        .hosp360-mono-tag {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          font-weight: 700;
+          letter-spacing: 0.3px;
+        }
+        .hosp360-nav-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 9px 16px;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .hosp360-nav-btn:hover {
+          transform: translateY(-1px);
+        }
+
+        /* Base CSS Theme Variables */
+        :root {
+          --superadmin-bg: #F8FAFC;
+          --superadmin-card-bg: #FFFFFF;
+          --superadmin-card-border: #E2E8F0;
+          --superadmin-text-main: #0F172A;
+          --superadmin-text-sub: #334155;
+          --superadmin-text-muted: #64748B;
+          --superadmin-sub-card: #F8FAFC;
+          --superadmin-input-bg: #FFFFFF;
+          --superadmin-input-border: #CBD5E1;
+          --superadmin-card-shadow: 0 4px 20px -2px rgba(2, 132, 199, 0.04);
+        }
+
+        /* Dark Theme Variables (Strictly No Pure Black #000000 - Using Rich Dark Slate & Navy) */
+        body.theme-dark {
+          --superadmin-bg: #0B111E;
+          --superadmin-card-bg: #0F172A;
+          --superadmin-card-border: #1E293B;
+          --superadmin-text-main: #F8FAFC;
+          --superadmin-text-sub: #CBD5E1;
+          --superadmin-text-muted: #94A3B8;
+          --superadmin-sub-card: #1E293B;
+          --superadmin-input-bg: #1E293B;
+          --superadmin-input-border: #334155;
+          --superadmin-card-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Branding Studio Classes */
+        .branding-studio-container {
+          background: var(--superadmin-card-bg, #FFFFFF);
+          border-radius: 24px;
+          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
+          padding: 24px;
+          box-shadow: var(--superadmin-card-shadow, 0 4px 20px -2px rgba(2, 132, 199, 0.04));
+          color: var(--superadmin-text-main, #0F172A);
+        }
+        .branding-studio-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding-bottom: 20px;
+          border-bottom: 1.5px solid var(--superadmin-card-border, #E2E8F0);
+          margin-bottom: 20px;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+        .branding-sub-nav-bar {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          background: var(--superadmin-card-bg, #FFFFFF);
+          padding: 10px 14px;
+          border-radius: 16px;
+          border: 1px solid var(--superadmin-card-border, #E2E8F0);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+        }
+        .branding-tab-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 18px;
+          border-radius: 12px;
+          font-size: 13px;
+          font-weight: 800;
+          cursor: pointer;
+          border: 1px solid var(--superadmin-card-border, #E2E8F0);
+          background: var(--superadmin-card-bg, #FFFFFF);
+          color: var(--superadmin-text-sub, #475569);
+          transition: all 0.15s ease;
+        }
+        .branding-tab-pill:hover {
+          background: var(--superadmin-sub-card, #F1F5F9);
+          color: var(--superadmin-text-main, #0F172A);
+        }
+        .branding-tab-pill.active {
+          border-color: #0284C7;
+          background: #F0F9FF;
+          color: #0284C7;
+          box-shadow: 0 2px 8px rgba(2, 132, 199, 0.12);
+        }
+        .branding-studio-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.85fr);
+          gap: 24px;
+          margin-top: 20px;
+          align-items: start;
+        }
+        @media (max-width: 1100px) {
+          .branding-studio-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+        .branding-section-card {
+          background: var(--superadmin-card-bg, #FFFFFF);
+          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
+          border-radius: 20px;
+          padding: 24px;
+          box-shadow: var(--superadmin-card-shadow, 0 4px 20px rgba(0,0,0,0.03));
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+        .branding-preset-btn {
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
+          background: var(--superadmin-card-bg, #FFFFFF);
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.15s ease;
+          color: var(--superadmin-text-main, #334155);
+        }
+        .branding-preset-btn:hover {
+          transform: translateY(-1px);
+          border-color: #38BDF8;
+        }
+        .branding-preset-btn.active {
+          border-color: #0284C7;
+          background: #F0F9FF;
+        }
+        .branding-inset-box {
+          background: var(--superadmin-sub-card, #F8FAFC);
+          padding: 16px;
+          border-radius: 16px;
+          border: 1px solid var(--superadmin-card-border, #E2E8F0);
+          color: var(--superadmin-text-main, #0F172A);
+        }
+        .branding-sticky-preview {
+          position: sticky;
+          top: 24px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .branding-mode-pills-bar {
+          display: flex;
+          background: var(--superadmin-sub-card, #F1F5F9);
+          padding: 4px;
+          border-radius: 12px;
+          gap: 4px;
+          border: 1px solid var(--superadmin-card-border, #E2E8F0);
+        }
+        .branding-mode-pill-btn {
+          flex: 1;
+          padding: 8px 6px;
+          border-radius: 8px;
+          border: none;
+          background: transparent;
+          color: var(--superadmin-text-muted, #64748B);
+          font-weight: 800;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .branding-mode-pill-btn.active {
+          background: var(--superadmin-card-bg, #FFFFFF);
+          color: var(--superadmin-text-main, #0F172A);
+          box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        }
+        .branding-preview-container {
+          background: var(--superadmin-card-bg, #FFFFFF);
+          border-radius: 20px;
+          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
+          padding: 20px;
+          box-shadow: var(--superadmin-card-shadow, 0 10px 30px -4px rgba(0,0,0,0.08));
+          position: relative;
+          overflow: hidden;
+        }
+        .branding-bottom-bar {
+          background: var(--superadmin-card-bg, #FFFFFF);
+          border-radius: 16px;
+          border: 1px solid var(--superadmin-card-border, #E2E8F0);
+          padding: 14px 18px;
+          box-shadow: 0 4px 14px rgba(0,0,0,0.04);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        /* Overview KPI Cards */
+        .overview-kpi-card {
+          background: var(--superadmin-card-bg, #FFFFFF);
+          border-radius: 18px;
+          border: 1.5px solid var(--superadmin-card-border, #E2E8F0);
+          padding: 18px 20px;
+          box-shadow: var(--superadmin-card-shadow, 0 4px 14px rgba(0, 0, 0, 0.04));
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          transition: transform 0.15s ease;
+        }
+        .overview-kpi-card:hover {
+          transform: translateY(-2px);
+        }
+
+        /* Hero Right Column in Dark Mode */
+        body.theme-dark .superadmin-hero-right-col {
+          background: linear-gradient(180deg, #090e1f 0%, #0F172A 100%) !important;
+          border-left: 1px solid rgba(2, 132, 199, 0.25) !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-badge {
+          background: rgba(15, 23, 42, 0.9) !important;
+          border-color: rgba(56, 189, 248, 0.3) !important;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3) !important;
+          color: #38BDF8 !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-badge span {
+          color: #38BDF8 !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-card {
+          background: rgba(15, 23, 42, 0.85) !important;
+          border-color: rgba(56, 189, 248, 0.25) !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-card .superadmin-telemetry-label {
+          color: #94A3B8 !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-card .superadmin-telemetry-val {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-card .superadmin-telemetry-sub {
+          color: #38BDF8 !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-footer {
+          background: rgba(15, 23, 42, 0.85) !important;
+          border-color: rgba(56, 189, 248, 0.25) !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-footer span {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-hero-telemetry-footer strong {
+          color: #38BDF8 !important;
+        }
+
+        body.theme-dark .superadmin-nav-section {
+          background: #0F172A;
+          border-color: #1E293B;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        body.theme-dark .superadmin-nav-header {
+          border-bottom-color: #1E293B;
+        }
+
+        body.theme-dark .superadmin-nav-title {
+          color: #F8FAFC;
+        }
+
+        body.theme-dark .tab-button-modern.inactive {
+          background: #1E293B;
+          border-color: #334155;
+          color: #F1F5F9;
+        }
+
+        body.theme-dark .tab-button-modern.inactive:hover {
+          background: #27354A;
+          border-color: #475569;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-icon-wrapper {
+          background: #0F172A;
+          color: #38BDF8;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-title-text {
+          color: #F8FAFC;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-sub-text {
+          color: #94A3B8 !important;
+        }
+
+        body.theme-dark .tab-button-modern.inactive .tab-count-badge {
+          background: rgba(2, 132, 199, 0.25) !important;
+          color: #38BDF8 !important;
+        }
+
+        body.theme-dark .tab-button-modern.active .tab-count-badge {
+          background: #FFFFFF !important;
+          color: #0284C7 !important;
+        }
+
+        body.theme-dark .telemetry-sidebar-card {
+          background: #0F172A;
+          border-color: #1E293B;
+          color: #F8FAFC;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4);
+        }
+
+        body.theme-dark .telemetry-sidebar-card h3 {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .telemetry-sidebar-card span {
+          color: #94A3B8;
+        }
+
+        /* Standalone Tab Cards in Dark Mode */
+        body.theme-dark .standalone-card {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        /* Headings & Texts in Dashboard */
+        body.theme-dark .superadmin-portal-dashboard h1,
+        body.theme-dark .superadmin-portal-dashboard h2,
+        body.theme-dark .superadmin-portal-dashboard h3,
+        body.theme-dark .superadmin-portal-dashboard h4,
+        body.theme-dark .superadmin-portal-dashboard strong {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-portal-dashboard p {
+          color: #94A3B8 !important;
+        }
+
+        /* Inputs, Selects, Textareas across all SuperAdmin */
+        body.theme-dark .superadmin-portal-dashboard input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+        body.theme-dark .superadmin-portal-dashboard select,
+        body.theme-dark .superadmin-portal-dashboard textarea,
+        body.theme-dark .superadmin-modal-box input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+        body.theme-dark .superadmin-modal-box select,
+        body.theme-dark .superadmin-modal-box textarea {
+          background-color: #1E293B !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark input::placeholder,
+        body.theme-dark textarea::placeholder {
+          color: #64748B !important;
+        }
+
+        body.theme-dark input:focus,
+        body.theme-dark select:focus,
+        body.theme-dark textarea:focus {
+          border-color: #38BDF8 !important;
+          box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18) !important;
+        }
+
+        /* Tables in Dark Mode */
+        body.theme-dark table thead tr {
+          background: #1E293B !important;
+          border-bottom-color: #334155 !important;
+        }
+
+        body.theme-dark table tbody tr {
+          border-bottom-color: #1E293B !important;
+        }
+
+        body.theme-dark table tbody tr:hover {
+          background: rgba(255, 255, 255, 0.03) !important;
+        }
+
+        body.theme-dark table th {
+          background: #1E293B !important;
+          color: #94A3B8 !important;
+        }
+
+        body.theme-dark table td {
+          color: #CBD5E1 !important;
+        }
+
+        /* Modals in Dark Mode */
+        body.theme-dark .superadmin-modal-box {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 24px 48px -8px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(56, 189, 248, 0.15) !important;
+        }
+
+        body.theme-dark .superadmin-modal-box h3 {
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .superadmin-modal-box label {
+          color: #CBD5E1 !important;
+        }
+
+        body.theme-dark .modal-cancel-btn {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #CBD5E1 !important;
+        }
+
+        body.theme-dark .modal-cancel-btn:hover {
+          background: #27354A !important;
+          border-color: #475569 !important;
+          color: #F8FAFC !important;
+        }
+
+        /* Secondary buttons in dark mode */
+        body.theme-dark .superadmin-secondary-btn {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #CBD5E1 !important;
+        }
+
+        body.theme-dark .superadmin-secondary-btn:hover {
+          background: #27354A !important;
+          border-color: #475569 !important;
+          color: #F8FAFC !important;
+        }
+
+        /* Feedback Toast */
+        body.theme-dark .superadmin-feedback-toast {
+          background: rgba(2, 132, 199, 0.18) !important;
+          border-color: #0284C7 !important;
+          color: #38BDF8 !important;
+        }
+
+        /* Hospital 360 Cyber theme overrides in dark mode */
+        body.theme-dark .hosp360-container-light {
+          background: #090D14 !important;
+          color: #F1F5F9 !important;
+          border-color: rgba(255, 255, 255, 0.1) !important;
+          box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.5), 0 0 40px rgba(2, 132, 199, 0.05) !important;
+        }
+
+        body.theme-dark .hosp360-kpi-card-light {
+          background: #0F1622 !important;
+          border-color: rgba(255, 255, 255, 0.08) !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .hosp360-panel-light {
+          background: #0F1622 !important;
+          border-color: rgba(255, 255, 255, 0.08) !important;
+          color: #F8FAFC !important;
+        }
+
+        /* Overview KPI & Banner in Dark Mode */
+        body.theme-dark .overview-kpi-card {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        body.theme-dark .overview-facility-banner {
+          background: linear-gradient(135deg, #0F172A 0%, #131D31 100%) !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        body.theme-dark .overview-sub-panel {
+          background: #131D31 !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .overview-inner-card {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .overview-stream-item {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .overview-desk-pod {
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+        }
+
+        body.theme-dark .overview-desk-pod.status-serving {
+          background: #0D233A !important;
+          border-color: #0369A1 !important;
+        }
+
+        body.theme-dark .overview-desk-pod.status-available {
+          background: #0D281E !important;
+          border-color: #047857 !important;
+        }
+
+        body.theme-dark .overview-desk-pod.status-offline {
+          background: #131D31 !important;
+          border-color: #1E293B !important;
+        }
+
+        /* Dark Theme overrides for Branding Studio and Live Simulator */
+        body.theme-dark .branding-studio-container {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4) !important;
+        }
+        body.theme-dark .branding-studio-header {
+          border-bottom-color: #1E293B !important;
+        }
+        body.theme-dark .branding-sub-nav-bar {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+        }
+        body.theme-dark .branding-tab-pill {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #CBD5E1 !important;
+        }
+        body.theme-dark .branding-tab-pill:hover {
+          background: #27354A !important;
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .branding-tab-pill.active {
+          background: rgba(2, 132, 199, 0.22) !important;
+          border-color: #38BDF8 !important;
+          color: #38BDF8 !important;
+          box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
+        }
+        body.theme-dark .branding-section-card {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.4) !important;
+        }
+        body.theme-dark .branding-section-card h3,
+        body.theme-dark .branding-section-card h4 {
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .branding-section-card p,
+        body.theme-dark .branding-section-card span {
+          color: #94A3B8;
+        }
+        body.theme-dark .branding-preset-btn {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .branding-preset-btn:hover {
+          background: #27354A !important;
+          border-color: #475569 !important;
+        }
+        body.theme-dark .branding-preset-btn.active {
+          background: rgba(2, 132, 199, 0.25) !important;
+          border-color: #38BDF8 !important;
+          box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35) !important;
+        }
+        body.theme-dark .branding-preset-btn span {
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .branding-inset-box {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .branding-mode-pills-bar {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+        }
+        body.theme-dark .branding-mode-pill-btn {
+          color: #94A3B8 !important;
+        }
+        body.theme-dark .branding-mode-pill-btn.active {
+          background: #0F172A !important;
+          color: #38BDF8 !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+        }
+        body.theme-dark .branding-preview-container {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.5) !important;
+        }
+        body.theme-dark .branding-sim-portal-card,
+        body.theme-dark .branding-sim-slip-card,
+        body.theme-dark .branding-sim-about-card {
+          background: #131D31 !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .branding-sim-inner-box {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .branding-bottom-bar {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+        }
+        body.theme-dark .branding-bottom-bar span {
+          color: #F8FAFC !important;
+        }
+
+        /* Modal Quick Branding Container in Dark Mode */
+        body.theme-dark .branding-modal-card {
+          background: #0F172A !important;
+          border-color: #1E293B !important;
+          color: #F8FAFC !important;
+        }
+        body.theme-dark .branding-modal-inner {
+          background: #1E293B !important;
+          border-color: #334155 !important;
+          color: #F8FAFC !important;
+        }
+      `}</style>
 
             {/* 1. SUPER ADMIN HERO SECTION (Real-Time Live Telemetry) */}
             <section className="superadmin-hero-container">
                 <div className="superadmin-hero-left-col">
                     <div>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 12px", borderRadius: "9999px", background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.35)", color: "#38BDF8", fontSize: "11px", fontWeight: 800, marginBottom: "10px" }}>
-                            <IconShield size={13} color="#38BDF8" />
-                            <span>{isHi ? "सुपर एडमिन कंसोल" : "SUPER ADMIN / HOSPITAL NETWORK HQ"}</span>
-                        </div>
-
                         <h1 className="superadmin-hero-title">
                             {isHi ? (
                                 <>
@@ -3094,11 +3258,104 @@ export default function SuperAdminPage({
                                 </>
                             )}
                         </h1>
-                        <p className="superadmin-hero-subtitle">
+                        <p className="superadmin-hero-subtitle" style={{ marginBottom: "12px" }}>
                             {isHi
                                 ? "सभी अस्पताल शाखाओं, क्लिनिकल विभागों, डॉक्टर क्रेडेंशियल्स, और सक्रिय काउंटरों का केंद्रीकृत नियंत्रण।"
                                 : "Centralized control for medical centers, clinical departments, staff credentials, and active desk throughput."}
                         </p>
+
+                        {/* Dynamic Daily Health / Leadership Quote (matching Patient & Doctor Portals) */}
+                        <div
+                            style={{
+                                background: "rgba(255, 255, 255, 0.07)",
+                                backdropFilter: "blur(12px)",
+                                WebkitBackdropFilter: "blur(12px)",
+                                border: "1px solid rgba(56, 189, 248, 0.22)",
+                                borderRadius: "14px",
+                                padding: "10px 14px",
+                                marginBottom: "20px",
+                                display: "flex",
+                                alignItems: "flex-start",
+                                gap: "10px",
+                                maxWidth: "520px",
+                                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)",
+                                transition: "all 0.2s ease",
+                            }}
+                        >
+                            <div
+                                style={{
+                                    width: "28px",
+                                    height: "28px",
+                                    borderRadius: "8px",
+                                    background: "rgba(56, 189, 248, 0.18)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                    color: "#38BDF8",
+                                }}
+                            >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="5" />
+                                    <line x1="12" y1="1" x2="12" y2="3" />
+                                    <line x1="12" y1="21" x2="12" y2="23" />
+                                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                                    <line x1="1" y1="12" x2="3" y2="12" />
+                                    <line x1="21" y1="12" x2="23" y2="12" />
+                                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                                </svg>
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "space-between",
+                                        gap: "8px",
+                                        marginBottom: "3px",
+                                    }}
+                                >
+                                    <span
+                                        style={{
+                                            fontSize: "10px",
+                                            fontWeight: 800,
+                                            color: "#38BDF8",
+                                            textTransform: "uppercase",
+                                            letterSpacing: "0.5px",
+                                        }}
+                                    >
+                                        {isHi ? "दैनिक स्वास्थ्य एवं नेतृत्व विचार" : "Daily Healthcare & Executive Insight"}{" "}
+                                        {dailyQuote?.category ? `• ${dailyQuote.category}` : ""}
+                                    </span>
+                                </div>
+                                <p
+                                    style={{
+                                        margin: 0,
+                                        color: "#E0F2FE",
+                                        fontSize: "12px",
+                                        lineHeight: "1.45",
+                                        fontWeight: 500,
+                                        fontStyle: "italic",
+                                    }}
+                                >
+                                    "{dailyQuote?.text || (isHi ? "सर्वोत्तम स्वास्थ्य सेवा समर्पण एवं प्रभावी प्रबंधन से ही संभव है।" : "Excellence in healthcare throughput begins with compassionate administration and seamless coordination.")}"
+                                </p>
+                                {dailyQuote?.author && (
+                                    <div
+                                        style={{
+                                            fontSize: "9.5px",
+                                            color: "rgba(224, 242, 254, 0.6)",
+                                            marginTop: "3px",
+                                            textAlign: "right",
+                                        }}
+                                    >
+                                        — {dailyQuote.author}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     {/* 4 Real-Data Stats Cards */}
@@ -3158,10 +3415,7 @@ export default function SuperAdminPage({
                                 {isHi ? "लाइव नेटवर्क टेलीमेट्री" : "LIVE CLOUD TELEMETRY"}
                             </span>
                         </div>
-                        <div className="superadmin-hero-telemetry-badge" style={{ fontSize: "11px", fontWeight: 700, color: "#0369A1", background: "rgba(255, 255, 255, 0.85)", padding: "4px 10px", borderRadius: "8px", border: "1px solid #BAE6FD", display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#0284C7" }} />
-                            <span>4s Real-Time Sync</span>
-                        </div>
+
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", width: "100%", margin: "14px 0", zIndex: 3 }}>
@@ -3173,7 +3427,7 @@ export default function SuperAdminPage({
                             <div className="superadmin-telemetry-val" style={{ fontSize: "22px", fontWeight: 800, color: "#0284C7", lineHeight: 1.1 }}>
                                 {overview.active_queues || 0}
                             </div>
-                            <span style={{ fontSize: "10px", color: "#0369A1", fontWeight: 600, display: "block", marginTop: "2px" }}>
+                            <span className="superadmin-telemetry-sub" style={{ fontSize: "10px", color: "#0369A1", fontWeight: 600, display: "block", marginTop: "2px" }}>
                                 {isHi ? "प्रतीक्षारत / सेवारत टोकन" : "Waiting & Serving Tokens"}
                             </span>
                         </div>
@@ -3192,15 +3446,7 @@ export default function SuperAdminPage({
                         </div>
                     </div>
 
-                    <div className="superadmin-hero-telemetry-footer" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", zIndex: 3, background: "rgba(255, 255, 255, 0.8)", padding: "6px 12px", borderRadius: "10px", border: "1px solid rgba(186, 230, 253, 0.6)" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#0F172A", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                            <IconCpu size={14} color="#0284C7" />
-                            <span>{isHi ? "AI कतार एल्गोरिदम" : "AI Routing Engine"}: <strong style={{ color: "#0284C7" }}>v2.4 Online</strong></span>
-                        </span>
-                        <span style={{ fontSize: "10.5px", fontWeight: 800, color: "#059669" }}>
-                            ● 99.98% System Uptime
-                        </span>
-                    </div>
+
 
                     {/* Background Vector Graphic Silhouette */}
                     <div style={{ position: "absolute", right: "-10px", bottom: "-10px", opacity: 0.12, pointerEvents: "none", zIndex: 1, width: "240px", maxHeight: "200px" }}>
@@ -3251,7 +3497,7 @@ export default function SuperAdminPage({
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                                 <span className="tab-title-text">
-                                    {isHi ? "📊 अस्पताल 360°" : "📊 Hospital 360°"}
+                                    {isHi ? "अस्पताल 360°" : "Hospital 360°"}
                                 </span>
                                 <span
                                     className="tab-count-badge"
@@ -3402,7 +3648,7 @@ export default function SuperAdminPage({
                         className={`tab-button-modern ${activeTab === "branding" ? "active" : "inactive"}`}
                     >
                         <div className="tab-icon-wrapper">
-                            <span style={{ fontSize: "18px" }}>🎨</span>
+                            <IconPalette size={20} />
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center" }}>
@@ -3791,7 +4037,7 @@ export default function SuperAdminPage({
                                                             border: isOpdOpen ? "1px solid #BBF7D0" : "1px solid #FDE68A",
                                                         }}
                                                     >
-                                                        {isOpdOpen ? (isHi ? "🟢 ओपीडी खुला है" : "🟢 OPD Open") : (isHi ? "🟡 ओपीडी बंद है" : "🟡 OPD Closed")}
+                                                        {isOpdOpen ? (isHi ? "ओपीडी खुला है" : "OPD Open") : (isHi ? "ओपीडी बंद है" : "OPD Closed")}
                                                     </span>
                                                 </div>
                                                 <p style={{ margin: "4px 0 0", color: "var(--superadmin-text-sub, #475569)", fontSize: "13px", fontWeight: 500 }}>
@@ -3864,7 +4110,7 @@ export default function SuperAdminPage({
                                                     boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
                                                 }}
                                             >
-                                                <span>🎨</span>
+                                                <IconPalette size={16} color="#0284C7" />
                                                 <span>{isHi ? "व्हाइट-लेबल ब्रांडिंग" : "Branding Settings"}</span>
                                             </button>
 
@@ -4129,7 +4375,7 @@ export default function SuperAdminPage({
                                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px", borderBottom: "1px solid var(--superadmin-card-border, #E2E8F0)", paddingBottom: "14px" }}>
                                                 <div>
                                                     <h2 style={{ margin: "0 0 4px 0", fontSize: "19px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                        <span>📊</span>
+                                                        <IconChart size={18} color="#0284C7" />
                                                         <span>{isHi ? "रीयल-टाइम क्लिनिकल एनालिटिक्स एवं बॉटलनेक इंटेलिजेंस" : "Unified Visual Analytics & Department Bottleneck Radar"}</span>
                                                     </h2>
                                                     <p style={{ margin: 0, color: "var(--superadmin-text-muted, #64748B)", fontSize: "12.5px" }}>
@@ -4142,9 +4388,9 @@ export default function SuperAdminPage({
                                                     {/* Sub-view switcher pills */}
                                                     <div style={{ display: "inline-flex", background: "var(--superadmin-sub-card, #1E293B)", padding: "3px", borderRadius: "10px", border: "1px solid var(--superadmin-card-border, #334155)" }}>
                                                         {[
-                                                            { id: "all", label: isHi ? "⚡ सभी दृश्य" : "⚡ 360° All" },
-                                                            { id: "hourly", label: isHi ? "📈 प्रति घंटा हीटमैप" : "📈 Hourly Heatmap" },
-                                                            { id: "bottleneck", label: isHi ? "🚨 बॉटलनेक विश्लेषक" : "🚨 Bottleneck Radar" },
+                                                            { id: "all", label: isHi ? "सभी दृश्य" : "360° All", icon: IconZap },
+                                                            { id: "hourly", label: isHi ? "प्रति घंटा हीटमैप" : "Hourly Heatmap", icon: IconTrendingUp },
+                                                            { id: "bottleneck", label: isHi ? "बॉटलनेक विश्लेषक" : "Bottleneck Radar", icon: IconAlertTriangle },
                                                         ].map((tab) => (
                                                             <button
                                                                 key={tab.id}
@@ -4187,7 +4433,7 @@ export default function SuperAdminPage({
                                                             transition: "all 0.15s ease",
                                                         }}
                                                     >
-                                                        <span>📄</span>
+                                                        <IconFileText size={15} />
                                                         <span>{isHi ? "एनएबीएच दैनिक रिपोर्ट (PDF/Excel)" : "NABH Executive Report (PDF/Excel)"}</span>
                                                     </button>
                                                 </div>
@@ -4211,7 +4457,7 @@ export default function SuperAdminPage({
                                                         <div>
                                                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                                                 <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)" }}>
-                                                                    📈 {isHi ? "प्रति घंटा मरीज आवागमन एवं प्रतीक्षा समय हीटमैप" : "Hourly Footfall & Wait Time Timeline"}
+                                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconTrendingUp size={16} color="#0284C7" /><span>{isHi ? "प्रति घंटा मरीज आवागमन एवं प्रतीक्षा समय हीटमैप" : "Hourly Footfall & Wait Time Timeline"}</span></span>
                                                                 </span>
                                                             </div>
                                                             <span style={{ fontSize: "11.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
@@ -4234,7 +4480,7 @@ export default function SuperAdminPage({
                                                                 fontWeight: 800,
                                                             }}
                                                         >
-                                                            <span>🔥</span>
+                                                            <IconFlame size={14} color="#F59E0B" />
                                                             <span>{isHi ? `शिखर समय: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait} मिनट प्रतीक्षा)` : `Peak Rush: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait}m avg wait)`}</span>
                                                         </div>
                                                     </div>
@@ -4361,7 +4607,7 @@ export default function SuperAdminPage({
                                                         {/* Active Hover Detail Info */}
                                                         {hoveredChartHour !== null && hourlyAnalytics.hourlyData[hoveredChartHour] && (
                                                             <div style={{ background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: "6px", padding: "3px 10px", color: "#38BDF8", fontWeight: 700 }}>
-                                                                <span>🕒 {hourlyAnalytics.hourlyData[hoveredChartHour].hour} — Footfall: {hourlyAnalytics.hourlyData[hoveredChartHour].count} | Wait: ~{hourlyAnalytics.hourlyData[hoveredChartHour].avgWait}m | Consult: ~{hourlyAnalytics.hourlyData[hoveredChartHour].avgConsult}m</span>
+                                                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClock size={12} color="#38BDF8" /> {hourlyAnalytics.hourlyData[hoveredChartHour].hour} — Footfall: {hourlyAnalytics.hourlyData[hoveredChartHour].count} | Wait: ~{hourlyAnalytics.hourlyData[hoveredChartHour].avgWait}m | Consult: ~{hourlyAnalytics.hourlyData[hoveredChartHour].avgConsult}m</span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -4386,7 +4632,7 @@ export default function SuperAdminPage({
                                                         <div>
                                                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                                                 <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)" }}>
-                                                                    🚨 {isHi ? "विभागवार बॉटलनेक विश्लेषक एवं थ्रूपुट रडार" : "Department Bottleneck Analyzer & Traffic Shares"}
+                                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconAlertTriangle size={16} color="#EF4444" /><span>{isHi ? "विभागवार बॉटलनेक विश्लेषक एवं थ्रूपुट रडार" : "Department Bottleneck Analyzer & Traffic Shares"}</span></span>
                                                                 </span>
                                                             </div>
                                                             <span style={{ fontSize: "11.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
@@ -4433,7 +4679,7 @@ export default function SuperAdminPage({
                                                                                 border: `1px solid ${dept.severityBorder}`,
                                                                             }}
                                                                         >
-                                                                            {dept.severity === "SEVERE" ? "🔴 HIGH CONGESTION" : dept.severity === "MODERATE" ? "🟡 MODERATE LOAD" : "🟢 OPTIMAL FLOW"}
+                                                                            {dept.severity === "SEVERE" ? "HIGH CONGESTION" : dept.severity === "MODERATE" ? "MODERATE LOAD" : "OPTIMAL FLOW"}
                                                                         </span>
                                                                     </div>
 
@@ -4445,7 +4691,7 @@ export default function SuperAdminPage({
 
                                                                     {/* AI Recommendation Pill */}
                                                                     <div style={{ fontSize: "10.5px", color: dept.severityColor, fontWeight: 600, display: "flex", alignItems: "center", gap: "5px" }}>
-                                                                        <span>💡</span>
+                                                                        <IconLightbulb size={14} color="#F59E0B" />
                                                                         <span>{dept.recommendation}</span>
                                                                     </div>
                                                                 </div>
@@ -4542,7 +4788,7 @@ export default function SuperAdminPage({
                                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                                                 <span style={{ fontSize: "15px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)" }}>
-                                                                    🏢 {isHi ? "विभागवार क्षमता एवं लोड मीटर" : "Department Traffic & Capacity Meters"}
+                                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconBuilding size={16} color="#0284C7" /><span>{isHi ? "विभागवार क्षमता एवं लोड मीटर" : "Department Traffic & Capacity Meters"}</span></span>
                                                                 </span>
                                                             </div>
                                                             <button
@@ -4653,7 +4899,7 @@ export default function SuperAdminPage({
                                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                                                 <span style={{ fontSize: "15px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)" }}>
-                                                                    🚨 {isHi ? "कतार प्राथमिकता एवं ट्राइएज दबाव" : "Queue Urgency & Triage Pressure"}
+                                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconShield size={16} color="#0284C7" /><span>{isHi ? "कतार प्राथमिकता एवं ट्राइएज दबाव" : "Queue Urgency & Triage Pressure"}</span></span>
                                                                 </span>
                                                             </div>
                                                             <span
@@ -4714,7 +4960,7 @@ export default function SuperAdminPage({
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "10px" }}>
                                         <div>
                                             <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                <span>🖥️</span>
+                                                <IconDesk size={18} color="#0284C7" />
                                                 <span>{isHi ? "लाइव कॉलिंग डेस्क एवं डॉक्टर आवंटन" : "Live Calling Desk Stations & Doctor Allocation"}</span>
                                             </h3>
                                             <p style={{ margin: 0, color: "var(--superadmin-text-muted, #64748B)", fontSize: "12.5px" }}>
@@ -4739,26 +4985,7 @@ export default function SuperAdminPage({
                                             >
                                                 {isHi ? "सभी डेस्क प्रबंधित करें →" : "Manage Desks →"}
                                             </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowAddDeskModal(true)}
-                                                style={{
-                                                    background: facilityPrimary,
-                                                    border: "none",
-                                                    borderRadius: "10px",
-                                                    padding: "6px 12px",
-                                                    fontSize: "12px",
-                                                    fontWeight: 700,
-                                                    color: "#FFFFFF",
-                                                    cursor: "pointer",
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    gap: "4px",
-                                                }}
-                                            >
-                                                <IconPlus size={13} />
-                                                <span>{isHi ? "नया डेस्क" : "Add Desk"}</span>
-                                            </button>
+
                                         </div>
                                     </div>
 
@@ -4915,7 +5142,7 @@ export default function SuperAdminPage({
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showVisitHistoryTable ? "18px" : "0px", flexWrap: "wrap", gap: "14px" }}>
                                         <div>
                                             <h3 style={{ margin: "0 0 4px 0", fontSize: "18px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                <span>📋</span>
+                                                <IconFileText size={18} color="#0284C7" />
                                                 <span>{isHi ? "मरीज विज़िट इतिहास एवं उपचार लॉग" : "Patient Visit History & Treatment Log"}</span>
                                                 <span
                                                     style={{
@@ -4957,7 +5184,7 @@ export default function SuperAdminPage({
                                                 }}
                                                 title={isHi ? "एनएबीएच कार्यकारी दैनिक ऑडिट रिपोर्ट खोलें एवं प्रिंट करें" : "Open and export NABH Executive Daily Audit Report (PDF/Excel)"}
                                             >
-                                                <span>📑</span>
+                                                <IconFileText size={16} color="#FFFFFF" />
                                                 <span>{isHi ? "एनएबीएच दैनिक रिपोर्ट (PDF/Excel)" : "NABH Executive Report (PDF/Excel)"}</span>
                                             </button>
 
@@ -5038,13 +5265,13 @@ export default function SuperAdminPage({
                                         >
                                             <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
                                                 <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
-                                                    📊 {isHi ? "उपलब्ध रिकॉर्ड:" : "Recorded Visits:"} <strong style={{ color: "var(--superadmin-text-main, #0F172A)" }}>{rawVisits.length}</strong>
+                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconChart size={14} color="#0284C7" /><span>{isHi ? "उपलब्ध रिकॉर्ड:" : "Recorded Visits:"}</span></span> <strong style={{ color: "var(--superadmin-text-main, #0F172A)" }}>{rawVisits.length}</strong>
                                                 </span>
                                                 <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
-                                                    ✅ {isHi ? "पूर्ण उपचार:" : "Completed Treatments:"} <strong style={{ color: "#16A34A" }}>{allTimeCompleted || footfallSummary.today_completed || 0}</strong>
+                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheckCircle size={14} color="#16A34A" /><span>{isHi ? "पूर्ण उपचार:" : "Completed Treatments:"}</span></span> <strong style={{ color: "#16A34A" }}>{allTimeCompleted || footfallSummary.today_completed || 0}</strong>
                                                 </span>
                                                 <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
-                                                    🏥 {isHi ? "आज के मरीज:" : "Today's Footfall:"} <strong style={{ color: "#0284C7" }}>{todayFootfall}</strong>
+                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconHospital size={14} color="#0284C7" /><span>{isHi ? "आज के मरीज:" : "Today's Footfall:"}</span></span> <strong style={{ color: "#0284C7" }}>{todayFootfall}</strong>
                                                 </span>
                                             </div>
                                             <span style={{ color: "var(--superadmin-text-muted, #94A3B8)", fontSize: "11.5px" }}>
@@ -5396,7 +5623,7 @@ export default function SuperAdminPage({
                                                 title={isHi ? "ब्रांडिंग और संचालन समय" : "Branding & Operating Hours"}
                                             >
                                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                                    <span>🎨</span>
+                                                    <IconPalette size={16} color="#0284C7" />
                                                     <span>{isHi ? "ब्रांडिंग" : "Branding"}</span>
                                                 </span>
                                             </button>
@@ -5470,7 +5697,7 @@ export default function SuperAdminPage({
                                                 title={isHi ? "ब्रांडिंग और समय सेटिंग्स" : "Branding & Operating Hours"}
                                             >
                                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                                    <span>🎨</span>
+                                                    <IconPalette size={16} color="#0284C7" />
                                                     <span>{isHi ? "ब्रांडिंग सेटिंग्स" : "Branding & Hours"}</span>
                                                 </span>
                                             </button>
@@ -5578,7 +5805,7 @@ export default function SuperAdminPage({
                                             style={{ ...fieldInputStyle, paddingLeft: "32px", fontSize: "12.5px" }}
                                         />
                                         <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }}>
-                                            🔍
+                                            
                                         </span>
                                     </div>
                                 </div>
@@ -5928,7 +6155,7 @@ export default function SuperAdminPage({
                                             style={{ ...fieldInputStyle, paddingLeft: "32px", fontSize: "12.5px" }}
                                         />
                                         <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }}>
-                                            🔍
+                                            
                                         </span>
                                     </div>
                                     {deskSearchQuery && (
@@ -6054,9 +6281,7 @@ export default function SuperAdminPage({
                                                                             onClick={() => handleDeleteDesk(desk)}
                                                                             style={deleteDeskIconBtnStyle}
                                                                             title={isHi ? "डेस्क हटाएं" : "Remove Desk"}
-                                                                        >
-                                                                            ✕
-                                                                        </button>
+                                                                        ><IconX size={15} /></button>
                                                                     </div>
                                                                 </div>
 
@@ -6082,7 +6307,7 @@ export default function SuperAdminPage({
                                                                             >
                                                                                 <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1 }}>
                                                                                     <span style={{ fontSize: "14px" }}>
-                                                                                        {isDoc ? "🩺" : "👤"}
+                                                                                        {isDoc ? "[Dr]" : "[Staff]"}
                                                                                     </span>
                                                                                     <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                                                                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -6154,9 +6379,7 @@ export default function SuperAdminPage({
                                                                                             cursor: "pointer",
                                                                                         }}
                                                                                         title={isHi ? "अनअसाइन करें" : "Unassign Desk"}
-                                                                                    >
-                                                                                        ✕
-                                                                                    </button>
+                                                                                    ><IconX size={15} /></button>
                                                                                 </div>
                                                                             </div>
 
@@ -6177,7 +6400,7 @@ export default function SuperAdminPage({
                                                                                         fontWeight: 600,
                                                                                     }}
                                                                                 >
-                                                                                    <span>⚠️</span>
+                                                                                    <IconAlertTriangle size={14} color="#F59E0B" />
                                                                                     <span>{isHi ? "सावधानी: नियुक्त कार्मिक वर्तमान में ऑफलाइन हैं" : "Notice: Assigned doctor is currently offline"}</span>
                                                                                 </div>
                                                                             )}
@@ -6197,7 +6420,7 @@ export default function SuperAdminPage({
                                                                         }}
                                                                     >
                                                                         <span style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #94A3B8)", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
-                                                                            <span>⚡</span>
+                                                                            <IconZap size={14} color="#F59E0B" />
                                                                             <span>{isHi ? "स्वचालित बे" : "Auto Bay"}</span>
                                                                         </span>
                                                                         <button
@@ -6255,7 +6478,7 @@ export default function SuperAdminPage({
                                                                         }}
                                                                         title={isHi ? "डॉक्टर या स्टाफ सौंपें" : "Assign Doctor or Staff"}
                                                                     >
-                                                                        <span>👤</span>
+                                                                        <IconUser size={14} />
                                                                         <span>{desk.assigned_employee_id ? (isHi ? "पुनः" : "Reassign") : (isHi ? "सौंपें" : "Assign")}</span>
                                                                     </button>
                                                                 </div>
@@ -6395,7 +6618,7 @@ export default function SuperAdminPage({
                                             {brandingForm.logo_url ? (
                                                 <img src={brandingForm.logo_url} alt="Brand Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                                             ) : (
-                                                <span style={{ fontSize: "28px" }}>🏥</span>
+                                                <IconHospital size={28} color="#0284C7" />
                                             )}
                                         </div>
                                         <div>
@@ -6488,7 +6711,7 @@ export default function SuperAdminPage({
                                             }}
                                             title="Reset current hospital branding to medical defaults"
                                         >
-                                            <span>🔄</span>
+                                            <IconRefresh size={14} />
                                             <span>{isHi ? "डिफ़ॉल्ट रीसेट" : "Reset Defaults"}</span>
                                         </button>
 
@@ -6514,7 +6737,7 @@ export default function SuperAdminPage({
                                                 transition: "all 0.2s ease",
                                             }}
                                         >
-                                            <span>{isSavingBranding ? "⏳" : "💾"}</span>
+                                            {isSavingBranding ? <IconRefresh size={14} /> : <IconSave size={14} />}
                                             <span>{isSavingBranding ? (isHi ? "सहेजा जा रहा है..." : "Saving...") : (isHi ? "ब्रांडिंग सहेजें" : "Save All Changes")}</span>
                                         </button>
                                     </div>
@@ -6523,12 +6746,12 @@ export default function SuperAdminPage({
                                 {/* 2. SUB-NAVIGATION PILLS */}
                                 <div className="branding-sub-nav-bar">
                                     {[
-                                        { id: "theme", label: isHi ? "थीम और रंग" : "Theme & Colors", icon: "🎨" },
-                                        { id: "logo", label: isHi ? "लोगो और आइकन" : "Logo & Favicon", icon: "🖼️" },
-                                        { id: "about", label: isHi ? "हमारे बारे में व सेवाएं" : "About Us & Services", icon: "📖" },
-                                        { id: "slip", label: isHi ? "टोकन पर्ची व हेल्पलाइन" : "Token Slip & Helpline", icon: "🎫" },
-                                        { id: "hours", label: isHi ? "संचालन समय व कटऑफ" : "Operating Hours & Cutoff", icon: "⏰" },
-                                        { id: "contact", label: isHi ? "पता एवं सहायता डेस्क" : "Address & Help Desk", icon: "📍" },
+                                        { id: "theme", label: isHi ? "थीम और रंग" : "Theme & Colors", icon: IconPalette },
+{ id: "logo", label: isHi ? "लोगो और आइकन" : "Logo & Favicon", icon: IconImage },
+{ id: "about", label: isHi ? "हमारे बारे में व सेवाएं" : "About Us & Services", icon: IconBookOpen },
+{ id: "slip", label: isHi ? "टोकन पर्ची व हेल्पलाइन" : "Token Slip & Helpline", icon: IconTicket },
+{ id: "hours", label: isHi ? "संचालन समय व कटऑफ" : "Operating Hours & Cutoff", icon: IconClock },
+{ id: "contact", label: isHi ? "पता एवं सहायता डेस्क" : "Address & Help Desk", icon: IconMapPin },
                                     ].map((tab) => {
                                         const isActive = activeBrandingTab === tab.id;
                                         return (
@@ -6538,7 +6761,7 @@ export default function SuperAdminPage({
                                                 onClick={() => setActiveBrandingTab(tab.id)}
                                                 className={`branding-tab-pill ${isActive ? "active" : ""}`}
                                             >
-                                                <span style={{ fontSize: "16px" }}>{tab.icon}</span>
+                                                <tab.icon size={16} />
                                                 <span>{tab.label}</span>
                                             </button>
                                         );
@@ -6554,7 +6777,7 @@ export default function SuperAdminPage({
                                             <div className="branding-section-card">
                                                 <div>
                                                     <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                        <span>🎨</span>
+                                                        <IconPalette size={16} color="#0284C7" />
                                                         <span>{isHi ? "क्लिनिकल थीम व रंग प्रणाली" : "Clinical Color System & Palettes"}</span>
                                                     </h3>
                                                     <p style={{ margin: 0, fontSize: "12.5px" }}>
@@ -6674,7 +6897,7 @@ export default function SuperAdminPage({
                                                     fontSize: "12.5px",
                                                     fontWeight: 700,
                                                 }}>
-                                                    <span>✨ Active Brand Gradient Preview</span>
+                                                    <span>Active Brand Gradient Preview</span>
                                                     <span style={{ background: "rgba(255,255,255,0.2)", padding: "3px 10px", borderRadius: "8px", fontSize: "11px" }}>
                                                         WCAG AA Compliant
                                                     </span>
@@ -6687,7 +6910,7 @@ export default function SuperAdminPage({
                                             <div className="branding-section-card">
                                                 <div>
                                                     <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                        <span>🖼️</span>
+                                                        <IconImage size={16} color="#0284C7" />
                                                         <span>{isHi ? "अस्पताल का आधिकारिक लोगो और आइकन" : "Hospital Official Logo & Browser Icon"}</span>
                                                     </h3>
                                                     <p style={{ margin: 0, fontSize: "12.5px" }}>
@@ -6771,7 +6994,7 @@ export default function SuperAdminPage({
                                                                 boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
                                                             }}
                                                         >
-                                                            <span>📁</span>
+                                                            <IconBuilding size={16} color="#0284C7" />
                                                             <span>{isHi ? "कंप्यूटर से लोगो अपलोड करें" : "Upload Logo from Device"}</span>
                                                         </button>
 
@@ -6824,7 +7047,7 @@ export default function SuperAdminPage({
                                                                     onError={(e) => { e.target.style.display = "none"; }}
                                                                 />
                                                             ) : (
-                                                                <span style={{ fontSize: "24px" }}>🏥</span>
+                                                                <IconHospital size={24} color="#0284C7" />
                                                             )}
                                                         </div>
                                                     </div>
@@ -6840,7 +7063,7 @@ export default function SuperAdminPage({
                                                     alignItems: "flex-start",
                                                     gap: "10px",
                                                 }}>
-                                                    <span style={{ fontSize: "18px" }}>💡</span>
+                                                    <IconLightbulb size={18} color="#0284C7" />
                                                     <span style={{ fontSize: "12px", color: "var(--superadmin-text-main, #0F172A)", lineHeight: 1.5 }}>
                                                         <strong>{isHi ? "ब्राउज़र टैब आइकन (Favicon):" : "Isolated Multi-Tenant Favicon:"}</strong>{" "}
                                                         {isHi
@@ -6856,7 +7079,7 @@ export default function SuperAdminPage({
                                             <div className="branding-section-card">
                                                 <div>
                                                     <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                        <span>📖</span>
+                                                        <IconBookOpen size={16} color="#0284C7" />
                                                         <span>{isHi ? "हमारे बारे में व क्लिनिकल सेवाएं (About Us)" : "About Us & Clinical Specializations"}</span>
                                                     </h3>
                                                     <p style={{ margin: 0, fontSize: "12.5px" }}>
@@ -6966,7 +7189,7 @@ export default function SuperAdminPage({
                                             <div className="branding-section-card">
                                                 <div>
                                                     <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                        <span>🎫</span>
+                                                        <IconTicket size={16} color="#0284C7" />
                                                         <span>{isHi ? "टोकन पर्ची एवं आपातकालीन हेल्पलाइन" : "Printed Token Slip & Patient Pass"}</span>
                                                     </h3>
                                                     <p style={{ margin: 0, fontSize: "12.5px" }}>
@@ -7131,7 +7354,7 @@ export default function SuperAdminPage({
                                             <div className="branding-section-card">
                                                 <div>
                                                     <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                        <span>📍</span>
+                                                        <IconMapPin size={16} color="#0284C7" />
                                                         <span>{isHi ? "परिसर पता एवं कतार सहायता डेस्क" : "Hospital Campus Address & Help Desk"}</span>
                                                     </h3>
                                                     <p style={{ margin: 0, fontSize: "12.5px" }}>
@@ -7206,9 +7429,9 @@ export default function SuperAdminPage({
                                         {/* Mockup Mode Selector Pills */}
                                         <div className="branding-mode-pills-bar">
                                             {[
-                                                { id: "portal", label: isHi ? "📱 मरीज़ पोर्टल" : "📱 Patient View" },
-                                                { id: "slip", label: isHi ? "🎫 टोकन पर्ची" : "🎫 Queue Pass" },
-                                                { id: "about", label: isHi ? "📖 About Us" : "📖 About Modal" },
+                                                { id: "portal", label: isHi ? "मरीज़ पोर्टल" : "Patient View", icon: IconSmartphone },
+{ id: "slip", label: isHi ? "टोकन पर्ची" : "Queue Pass", icon: IconTicket },
+{ id: "about", label: isHi ? "About Us" : "About Modal", icon: IconBookOpen },
                                             ].map((mode) => (
                                                 <button
                                                     key={mode.id}
@@ -7216,8 +7439,7 @@ export default function SuperAdminPage({
                                                     onClick={() => setBrandingPreviewMode(mode.id)}
                                                     className={`branding-mode-pill-btn ${brandingPreviewMode === mode.id ? "active" : ""}`}
                                                 >
-                                                    {mode.label}
-                                                </button>
+                                                    <mode.icon size={14} style={{ marginRight: 5, verticalAlign: "middle" }} />{mode.label}</button>
                                             ))}
                                         </div>
 
@@ -7225,7 +7447,7 @@ export default function SuperAdminPage({
                                         <div className="branding-preview-container">
                                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
                                                 <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--superadmin-text-muted, #64748B)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                                                    🔴 LIVE PREVIEW SIMULATOR
+                                                    LIVE PREVIEW SIMULATOR
                                                 </span>
                                                 <span style={{ fontSize: "11px", color: primaryClr, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                                     <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
@@ -7265,7 +7487,7 @@ export default function SuperAdminPage({
                                                             {brandingForm.logo_url ? (
                                                                 <img src={brandingForm.logo_url} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                                                             ) : (
-                                                                <span style={{ fontSize: "20px" }}>🏥</span>
+                                                                <IconHospital size={20} color="#0284C7" />
                                                             )}
                                                         </div>
                                                         <div style={{ overflow: "hidden", flex: 1 }}>
@@ -7291,7 +7513,7 @@ export default function SuperAdminPage({
                                                         justifyContent: "center",
                                                         gap: "6px",
                                                     }}>
-                                                        <span>🚨</span>
+                                                        <IconAlertTriangle size={16} color="#EF4444" />
                                                         <span>{brandingForm.emergency_helpline || "Emergency: 108"}</span>
                                                     </div>
 
@@ -7325,7 +7547,7 @@ export default function SuperAdminPage({
                                                             textAlign: "center",
                                                         }}>
                                                             <div style={{ fontSize: "13px", fontWeight: 800, color: primaryClr, marginBottom: "4px" }}>
-                                                                🎫 Instant Token Generation
+                                                                Instant Token Generation
                                                             </div>
                                                             <div style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)", marginBottom: "10px" }}>
                                                                 Smart AI Queue Assignment with Real-Time Turn Estimator
@@ -7345,7 +7567,7 @@ export default function SuperAdminPage({
 
                                                         {/* Help Desk Footer */}
                                                         <div style={{ fontSize: "10.5px", color: "var(--superadmin-text-muted, #64748B)", textAlign: "center", borderTop: "1px solid var(--superadmin-card-border, #E2E8F0)", paddingTop: "8px" }}>
-                                                            📍 {brandingForm.address || currentHosp?.address || "Medical District Blvd"} • 📞 {brandingForm.opd_helpdesk_phone || currentHosp?.phone || "Helpdesk"}
+                                                            {brandingForm.address || currentHosp?.address || "Medical District Blvd"} • {brandingForm.opd_helpdesk_phone || currentHosp?.phone || "Helpdesk"}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -7376,7 +7598,7 @@ export default function SuperAdminPage({
                                                             {brandingForm.logo_url ? (
                                                                 <img src={brandingForm.logo_url} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                                                             ) : (
-                                                                <span style={{ fontSize: "18px" }}>🏥</span>
+                                                                <IconHospital size={18} color="#0284C7" />
                                                             )}
                                                         </div>
                                                         <div style={{ overflow: "hidden" }}>
@@ -7391,7 +7613,7 @@ export default function SuperAdminPage({
 
                                                     {/* Helpline Banner */}
                                                     <div style={{ background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.25)", borderRadius: "6px", padding: "4px 8px", marginBottom: "10px", color: "#EF4444", fontWeight: 800, fontSize: "10.5px", textAlign: "center" }}>
-                                                        📞 {brandingForm.emergency_helpline || "Emergency: 108"}
+                                                        Helpline: {brandingForm.emergency_helpline || "Emergency: 108"}
                                                     </div>
 
                                                     {/* Token Box */}
@@ -7438,7 +7660,7 @@ export default function SuperAdminPage({
                                                             {brandingForm.logo_url ? (
                                                                 <img src={brandingForm.logo_url} alt="Logo" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
                                                             ) : (
-                                                                <span style={{ fontSize: "18px", color: "#FFFFFF" }}>🏥</span>
+                                                                <IconHospital size={18} color="#FFFFFF" />
                                                             )}
                                                         </div>
                                                         <div>
@@ -7501,7 +7723,7 @@ export default function SuperAdminPage({
                                                     boxShadow: `0 4px 12px ${primaryClr}44`,
                                                 }}
                                             >
-                                                <span>{isSavingBranding ? "⏳" : "💾"}</span>
+                                                {isSavingBranding ? <IconRefresh size={14} /> : <IconSave size={14} />}
                                                 <span>{isSavingBranding ? (isHi ? "सहेजा जा रहा है..." : "Saving...") : (isHi ? "सहेजें" : "Save Changes")}</span>
                                             </button>
                                         </div>
@@ -7585,7 +7807,7 @@ export default function SuperAdminPage({
                                 <IconHospital size={18} color="#0284C7" />
                                 <span>{isHi ? "नया अस्पताल जोड़ें" : "Add New Hospital"}</span>
                             </h3>
-                            <button type="button" onClick={() => setShowAddHospitalModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowAddHospitalModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <form onSubmit={handleCreateHospitalSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -7680,7 +7902,7 @@ export default function SuperAdminPage({
                                 <IconEdit size={18} color="#0284C7" />
                                 <span>{isHi ? "अस्पताल जानकारी संपादित करें" : "Edit Hospital Details"}</span>
                             </h3>
-                            <button type="button" onClick={() => setShowEditHospitalModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowEditHospitalModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <form onSubmit={handleUpdateHospitalSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -7770,7 +7992,7 @@ export default function SuperAdminPage({
                                 <IconUsers size={18} color="#0284C7" />
                                 <span>{isHi ? "नया डॉक्टर / कर्मचारी जोड़ें" : "Add Doctor / Employee"}</span>
                             </h3>
-                            <button type="button" onClick={() => setShowAddEmployeeModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowAddEmployeeModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "#EFF6FF", border: "1px solid #BFDBFE", fontSize: "12px", color: "#1E40AF" }}>
@@ -7892,7 +8114,7 @@ export default function SuperAdminPage({
                                 <IconCheckCircle size={18} color="#16A34A" />
                                 <span>{isHi ? "कर्मचारी क्रेडेंशियल तैयार हैं" : "Employee Account Provisioned"}</span>
                             </h3>
-                            <button type="button" onClick={() => setCreatedCredentials(null)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setCreatedCredentials(null)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD", fontSize: "12px", color: "#0369A1" }}>
@@ -7968,7 +8190,7 @@ export default function SuperAdminPage({
                                 <IconEdit size={18} color="#0284C7" />
                                 <span>{isHi ? "कर्मचारी रिकॉर्ड संपादित करें" : "Edit Employee Record"}</span>
                             </h3>
-                            <button type="button" onClick={() => setShowEditEmployeeModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowEditEmployeeModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <form onSubmit={handleUpdateEmployeeSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -8087,9 +8309,7 @@ export default function SuperAdminPage({
                                 type="button"
                                 onClick={() => { setShowChangePasswordModal(false); setPasswordUpdateSuccess(null); }}
                                 style={modalCloseIconBtnStyle}
-                            >
-                                ✕
-                            </button>
+                            ><IconX size={15} /></button>
                         </div>
 
                         {/* Target Employee Info Banner */}
@@ -8170,7 +8390,7 @@ export default function SuperAdminPage({
                                                 textDecoration: "underline",
                                             }}
                                         >
-                                            {isHi ? "🔄 रैंडम पासवर्ड बनाएं" : "🔄 Generate Random PIN"}
+                                            {isHi ? "रैंडम पासवर्ड बनाएं" : "Generate Random PIN"}
                                         </button>
                                     </div>
                                     <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
@@ -8239,7 +8459,7 @@ export default function SuperAdminPage({
                                     >
                                         {isUpdatingPassword
                                             ? (isHi ? "अपडेट हो रहा है..." : "Updating...")
-                                            : (isHi ? "🔑 पासवर्ड अपडेट करें" : "🔑 Update Password")}
+                                            : (isHi ? "पासवर्ड अपडेट करें" : "Update Password")}
                                     </button>
                                 </div>
                             </form>
@@ -8257,7 +8477,7 @@ export default function SuperAdminPage({
                                 <IconBuilding size={18} color="#0284C7" />
                                 <span>{isHi ? "नया विभाग जोड़ें" : "Add Clinical Department"}</span>
                             </h3>
-                            <button type="button" onClick={() => setShowAddDeptModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowAddDeptModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <form onSubmit={handleAddDeptSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -8318,7 +8538,7 @@ export default function SuperAdminPage({
                                 <IconDesk size={18} color="#0284C7" />
                                 <span>{isHi ? "नया सेवा डेस्क जोड़ें" : "Add New Service Desk"}</span>
                             </h3>
-                            <button type="button" onClick={() => setShowAddDeskModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowAddDeskModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <form onSubmit={handleAddDeskSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -8326,7 +8546,7 @@ export default function SuperAdminPage({
                                 <label style={fieldLabelStyle}>{isHi ? "विभाग चुनें" : "Assign to Department"} *</label>
                                 {hospitalDepts.length === 0 ? (
                                     <div style={{ padding: "10px 12px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: "8px", color: "#991B1B", fontSize: "12.5px" }}>
-                                        ⚠️ {isHi ? "इस अस्पताल में कोई विभाग नहीं मिला। कृपया डेस्क जोड़ने से पहले 'विभाग' टैब में एक नया विभाग बनाएं।" : "No departments found for this hospital. Please create at least one clinical department in the Departments tab before adding a desk."}
+                                        {isHi ? "इस अस्पताल में कोई विभाग नहीं मिला। कृपया डेस्क जोड़ने से पहले 'विभाग' टैब में एक नया विभाग बनाएं।" : "No departments found for this hospital. Please create at least one clinical department in the Departments tab before adding a desk."}
                                     </div>
                                 ) : (
                                     <select
@@ -8386,20 +8606,20 @@ export default function SuperAdminPage({
                                                 const currentDesk = getEmployeeCurrentDesk(doc);
                                                 return (
                                                     <option key={doc.id || doc.employee_id_num} value={doc.id || doc.employee_id_num}>
-                                                        {isOnline ? "🟢 [Online]" : "⚪ [Offline]"} {doc.name || doc.username} ({getCategoryLabel(doc.department, language)}) {currentDesk ? `[At ${currentDesk.desk_name}]` : ""}
+                                                        {isOnline ? "[Online]" : "[Offline]"} {doc.name || doc.username} ({getCategoryLabel(doc.department, language)}) {currentDesk ? `[At ${currentDesk.desk_name}]` : ""}
                                                     </option>
                                                 );
                                             })}
                                         </optgroup>
                                     )}
                                     {hospitalEmployees.some(e => (e.role || "").toLowerCase() !== "doctor") && (
-                                        <optgroup label={isHi ? "👤 अन्य स्टाफ एवं नर्स" : "👤 Staff & Nurses"}>
+                                        <optgroup label={isHi ? "अन्य स्टाफ एवं नर्स" : "Staff & Nurses"}>
                                             {hospitalEmployees.filter(e => (e.role || "").toLowerCase() !== "doctor").map((stf) => {
                                                 const isOnline = (stf.status || "").toLowerCase() === "active";
                                                 const currentDesk = getEmployeeCurrentDesk(stf);
                                                 return (
                                                     <option key={stf.id || stf.employee_id_num} value={stf.id || stf.employee_id_num}>
-                                                        {isOnline ? "🟢 [Online]" : "⚪ [Offline]"} {stf.name || stf.username} - {(stf.role || "staff").toUpperCase()} ({getCategoryLabel(stf.department, language)}) {currentDesk ? `[At ${currentDesk.desk_name}]` : ""}
+                                                        {isOnline ? "[Online]" : "[Offline]"} {stf.name || stf.username} - {(stf.role || "staff").toUpperCase()} ({getCategoryLabel(stf.department, language)}) {currentDesk ? `[At ${currentDesk.desk_name}]` : ""}
                                                     </option>
                                                 );
                                             })}
@@ -8441,7 +8661,7 @@ export default function SuperAdminPage({
                                 <IconBuilding size={18} color="#0284C7" />
                                 <span>{isHi ? "क्लिनिकल विभाग संपादित करें" : "Edit Clinical Department"}</span>
                             </h3>
-                            <button type="button" onClick={() => setShowEditDeptModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowEditDeptModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <form onSubmit={handleUpdateDepartmentSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -8506,7 +8726,7 @@ export default function SuperAdminPage({
                                 <IconDesk size={18} color="#0284C7" />
                                 <span>{isHi ? "सेवा डेस्क संपादित करें" : "Edit Service Desk"}</span>
                             </h3>
-                            <button type="button" onClick={() => setShowEditDeskModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowEditDeskModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <form onSubmit={handleUpdateDeskSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -8560,7 +8780,7 @@ export default function SuperAdminPage({
                                         </optgroup>
                                     )}
                                     {hospitalEmployees.some(e => (e.role || "").toLowerCase() !== "doctor") && (
-                                        <optgroup label={isHi ? "👤 अन्य स्टाफ एवं नर्स" : "👤 Staff & Nurses"}>
+                                        <optgroup label={isHi ? "अन्य स्टाफ एवं नर्स" : "Staff & Nurses"}>
                                             {hospitalEmployees.filter(e => (e.role || "").toLowerCase() !== "doctor").map((stf) => {
                                                 const currentDesk = getEmployeeCurrentDesk(stf);
                                                 const isThisDesk = currentDesk && currentDesk.id === editDeskForm.id;
@@ -8605,7 +8825,7 @@ export default function SuperAdminPage({
                                     {assignDeskTarget.desk.desk_name} &bull; {getCategoryLabel(assignDeskTarget.desk.dept_code, language)}
                                 </span>
                             </div>
-                            <button type="button" onClick={() => setShowAssignDeskModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowAssignDeskModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -8689,7 +8909,7 @@ export default function SuperAdminPage({
                                             const isThisDesk = currentDesk && currentDesk.id === assignDeskTarget.desk?.id;
                                             return (
                                                 <option key={emp.id || emp.employee_id_num} value={emp.id || emp.employee_id_num}>
-                                                    {isOnline ? "🟢 [Online - Active]" : "⚪ [Offline - Inactive]"} {isDoc ? "🩺 [Doctor]" : "👤 [Staff]"} {emp.name || emp.username} &bull; {(emp.role || "staff").toUpperCase()} &bull; {getCategoryLabel(emp.department, language)} {currentDesk ? (isThisDesk ? "★ (Assigned Here)" : `⚠️ (Currently at ${currentDesk.desk_name})`) : "✓ (Available)"}
+                                                    {isOnline ? "[Active]" : "[Inactive]"} {isDoc ? "[Doctor]" : "[Staff]"} {emp.name || emp.username} &bull; {(emp.role || "staff").toUpperCase()} &bull; {getCategoryLabel(emp.department, language)} {currentDesk ? (isThisDesk ? "★ (Assigned Here)" : `(Currently at ${currentDesk.desk_name})`) : "✓ (Available)"}
                                                 </option>
                                             );
                                         })}
@@ -8700,7 +8920,7 @@ export default function SuperAdminPage({
                                     if (chosenEmp && (chosenEmp.status || "").toLowerCase() !== "active") {
                                         return (
                                             <div style={{ marginTop: "8px", padding: "10px 14px", background: "#FEF2F2", border: "1.5px solid #FCA5A5", borderRadius: "10px", fontSize: "12px", color: "#B91C1C", display: "flex", alignItems: "center", gap: "8px" }}>
-                                                <span style={{ fontSize: "16px" }}>⚠️</span>
+                                                <IconAlertTriangle size={16} color="#F59E0B" />
                                                 <div>
                                                     <strong style={{ display: "block", marginBottom: "2px" }}>
                                                         {isHi ? "चिकित्सक ऑफ़लाइन / निष्क्रिय हैं" : "Doctor / Staff Member is Offline (Inactive)"}
@@ -8719,7 +8939,7 @@ export default function SuperAdminPage({
                             </div>
 
                             <div style={{ padding: "10px 12px", background: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: "8px", fontSize: "11.5px", color: "#0369A1" }}>
-                                💡 {isHi
+                                {isHi
                                     ? "डॉक्टर या स्टाफ को डेस्क सौंपने पर टोकन और कतार प्रबंधन उस डेस्क से उनके नाम से संचालित होगा। केवल सक्रिय (लॉगिन) कार्मिक को ही असाइन किया जा सकता है।"
                                     : "When a doctor or staff member is assigned to a desk, patient queues and active calls will reflect their designated station. Only active, logged-in personnel can be assigned."}
                             </div>
@@ -8763,7 +8983,7 @@ export default function SuperAdminPage({
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "18px", borderBottom: "1px solid var(--superadmin-border, #E2E8F0)", paddingBottom: "14px" }}>
                             <div>
                                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <span style={{ fontSize: "22px" }}>🎨</span>
+                                    <IconPalette size={22} color="#0284C7" />
                                     <h3 style={{ margin: 0, fontSize: "19px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800 }}>
                                         {isHi ? "अस्पताल ब्रांडिंग एवं संचालन समय (White-Labeling)" : "Hospital Branding & Operating Hours"}
                                     </h3>
@@ -8777,7 +8997,7 @@ export default function SuperAdminPage({
                                     </span>
                                 </div>
                             </div>
-                            <button type="button" onClick={() => setShowBrandingModal(false)} style={modalCloseIconBtnStyle}>✕</button>
+                            <button type="button" onClick={() => setShowBrandingModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
                         {/* Navigation Tabs */}
@@ -8800,7 +9020,7 @@ export default function SuperAdminPage({
                                     transition: "all 0.15s ease",
                                 }}
                             >
-                                <span>🎨</span>
+                                <IconPalette size={16} color="#0284C7" />
                                 <span>{isHi ? "थीम और लोगो" : "Theme & Logo"}</span>
                             </button>
 
@@ -8822,7 +9042,7 @@ export default function SuperAdminPage({
                                     transition: "all 0.15s ease",
                                 }}
                             >
-                                <span>📖</span>
+                                <IconBookOpen size={16} color="#0284C7" />
                                 <span>{isHi ? "हमारे बारे में (About Us)" : "About Us & Services"}</span>
                             </button>
 
@@ -8844,7 +9064,7 @@ export default function SuperAdminPage({
                                     transition: "all 0.15s ease",
                                 }}
                             >
-                                <span>🎫</span>
+                                <IconTicket size={16} color="#0284C7" />
                                 <span>{isHi ? "टोकन पर्ची (Token Slip)" : "Token Slip & Helpline"}</span>
                             </button>
 
@@ -8888,7 +9108,7 @@ export default function SuperAdminPage({
                                     transition: "all 0.15s ease",
                                 }}
                             >
-                                <span>📍</span>
+                                <IconMapPin size={16} color="#0284C7" />
                                 <span>{isHi ? "पता एवं सहायता डेस्क" : "Address & Help Desk"}</span>
                             </button>
                         </div>
@@ -9073,7 +9293,7 @@ export default function SuperAdminPage({
                                                     gap: "6px",
                                                 }}
                                             >
-                                                <span>📁</span>
+                                                <IconBuilding size={16} color="#0284C7" />
                                                 <span>{isHi ? "कंप्यूटर से लोगो अपलोड करें" : "Upload Logo from Device"}</span>
                                             </button>
                                             {brandingForm.logo_url && (
@@ -9126,13 +9346,13 @@ export default function SuperAdminPage({
                                                         onError={(e) => { e.target.style.display = "none"; }}
                                                     />
                                                 ) : (
-                                                    <span style={{ fontSize: "22px" }}>🏥</span>
+                                                    <IconHospital size={22} color="#0284C7" />
                                                 )}
                                             </div>
                                         </div>
 
                                         <p style={{ margin: "8px 0 0 0", fontSize: "11.5px", color: "var(--superadmin-text-muted, #64748B)", lineHeight: "1.4" }}>
-                                            💡 <strong>{isHi ? "ब्राउज़र टैब लोगो:" : "Browser Tab Icon:"}</strong>{" "}
+                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><IconLightbulb size={14} color="#0284C7" /><strong>{isHi ? "ब्राउज़र टैब लोगो:" : "Browser Tab Icon:"}</strong></span>{" "}
                                             {isHi
                                                 ? "यह लोगो केवल इस अस्पताल के मरीज़ों और कर्मचारियों (Staff) के ब्राउज़र टैब (Favicon) में दिखाई देगा। यह विश्व स्तर (Globally) पर अन्य अस्पतालों या सुपर एडमिन पर लागू नहीं होगा।"
                                                 : "This uploaded logo will automatically appear in the browser tab icon (favicon) exclusively for this hospital's affiliate patients and staff. It is never applied globally to other hospitals or the Super Admin overview."}
@@ -9243,7 +9463,7 @@ export default function SuperAdminPage({
                                     {/* Right Column: Live Interactive "About Us" Modal Preview */}
                                     <div>
                                         <span style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
-                                            👁️ {isHi ? "मरीज़ पोर्टल 'About Us' पूर्वावलोकन" : "Patient Portal 'About Us' Preview"}
+                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconEye size={15} color="#0284C7" /><span>{isHi ? "मरीज़ पोर्टल 'About Us' पूर्वावलोकन" : "Patient Portal 'About Us' Preview"}</span></span>
                                         </span>
                                         <div
                                             style={{
@@ -9378,7 +9598,7 @@ export default function SuperAdminPage({
                                     {/* Live Thermal Pass Preview */}
                                     <div>
                                         <span style={{ ...fieldLabelStyle, marginBottom: "6px" }}>
-                                            👁️ {isHi ? "लाइव टोकन पर्ची पूर्वावलोकन" : "Live Printed Pass Preview"}
+                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconEye size={15} color="#0284C7" /><span>{isHi ? "लाइव टोकन पर्ची पूर्वावलोकन" : "Live Printed Pass Preview"}</span></span>
                                         </span>
                                         <div
                                             style={{
@@ -9397,7 +9617,7 @@ export default function SuperAdminPage({
                                                     {brandingForm.logo_url ? (
                                                         <img src={brandingForm.logo_url} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                                                     ) : (
-                                                        <span style={{ fontSize: "16px" }}>🏥</span>
+                                                        <IconHospital size={16} color="#0284C7" />
                                                     )}
                                                 </div>
                                                 <div style={{ overflow: "hidden" }}>
@@ -9412,7 +9632,7 @@ export default function SuperAdminPage({
 
                                             {/* Helpline Banner */}
                                             <div style={{ background: "rgba(220, 38, 38, 0.15)", border: "1px solid rgba(220, 38, 38, 0.3)", borderRadius: "6px", padding: "4px 8px", marginBottom: "8px", color: "#EF4444", fontWeight: 800, fontSize: "10px", textAlign: "center" }}>
-                                                📞 {brandingForm.emergency_helpline || "Emergency: 108"}
+                                                Helpline: {brandingForm.emergency_helpline || "Emergency: 108"}
                                             </div>
 
                                             {/* Token Box */}
@@ -9553,7 +9773,7 @@ export default function SuperAdminPage({
                                     <div>
                                         <label style={fieldLabelStyle}>
                                             <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                <span>📍</span>
+                                                <IconMapPin size={16} color="#0284C7" />
                                                 <span>{isHi ? "अस्पताल परिसर पता (Hospital Campus Address)" : "Hospital Campus Address"}</span>
                                             </span>
                                         </label>
@@ -9592,7 +9812,7 @@ export default function SuperAdminPage({
                                         <div>
                                             <label style={fieldLabelStyle}>
                                                 <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                    <span>✉️</span>
+                                                    <IconMail size={14} color="#0284C7" />
                                                     <span>{isHi ? "सहायता / संपर्क ईमेल" : "Support & Inquiries Email"}</span>
                                                 </span>
                                             </label>
@@ -9639,7 +9859,7 @@ export default function SuperAdminPage({
                                     <div>
                                         <label style={{ ...fieldLabelStyle, color: "#EF4444" }}>
                                             <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                <span>🚨</span>
+                                                <IconAlertTriangle size={16} color="#EF4444" />
                                                 <span>{isHi ? "24/7 आपातकालीन एम्बुलेंस हेल्पलाइन" : "24/7 Emergency Ambulance Helpline"}</span>
                                             </span>
                                         </label>
@@ -9659,12 +9879,12 @@ export default function SuperAdminPage({
                                         </div>
                                         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                             <div style={{ padding: "10px", background: "var(--superadmin-card-bg, #FFFFFF)", borderRadius: "8px", border: "1px solid var(--superadmin-border, #E2E8F0)" }}>
-                                                <div style={{ fontSize: "11px", fontWeight: 800, color: "#38BDF8" }}>🏥 OPD Reception & Queue Help Desk</div>
+                                                <div style={{ fontSize: "11px", fontWeight: 800, color: "#38BDF8" }}>OPD Reception & Queue Help Desk</div>
                                                 <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--superadmin-text-main, #0F172A)", marginTop: "2px" }}>{brandingForm.opd_helpdesk_phone || "+1 (800) 456-7890 (Ext: 101)"}</div>
                                                 <div style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)" }}>{brandingForm.opd_helpdesk_hours || "Mon – Sat: 8:00 AM – 8:00 PM"}</div>
                                             </div>
                                             <div style={{ padding: "10px", background: "var(--superadmin-card-bg, #FFFFFF)", borderRadius: "8px", border: "1px solid var(--superadmin-border, #E2E8F0)" }}>
-                                                <div style={{ fontSize: "11px", fontWeight: 800, color: "#38BDF8" }}>📍 Hospital Campus Address</div>
+                                                <div style={{ fontSize: "11px", fontWeight: 800, color: "#38BDF8" }}>Hospital Campus Address</div>
                                                 <div style={{ fontSize: "12px", color: "var(--superadmin-text-sub, #334155)", marginTop: "2px" }}>{brandingForm.address || "742 Evergreen Healthcare Ave, Medical District, Suite 100"}</div>
                                                 <div style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)" }}>Email: {brandingForm.support_email || brandingForm.email || "support@citygeneralhospital.org"}</div>
                                             </div>
@@ -9764,7 +9984,7 @@ export default function SuperAdminPage({
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", borderBottom: "1px solid var(--superadmin-card-border, #E2E8F0)", paddingBottom: "12px" }}>
                                 <div>
                                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                        <span style={{ fontSize: "20px" }}>📑</span>
+                                        <IconFileText size={20} color="#0284C7" />
                                         <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)" }}>
                                             {isHi ? "एनएबीएच कार्यकारी दैनिक संचालन एवं गुणवत्ता ऑडिट रिपोर्ट" : "NABH Executive Daily Operations & Quality Audit Report"}
                                         </h3>
@@ -9778,15 +9998,13 @@ export default function SuperAdminPage({
                                     onClick={() => setShowNABHReportModal(false)}
                                     style={modalCloseIconBtnStyle}
                                     title="Close"
-                                >
-                                    ✕
-                                </button>
+                                ><IconX size={15} /></button>
                             </div>
 
                             {/* NABH Compliance Banner */}
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: "10px", padding: "10px 14px", marginBottom: "16px" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <span style={{ fontSize: "16px" }}>🛡️</span>
+                                    <IconShield size={16} color="#10B981" />
                                     <div>
                                         <div style={{ fontSize: "12px", fontWeight: 800, color: "#10B981" }}>NABH ACCREDITATION STANDARD COP 3.1 & AAC 4.2</div>
                                         <div style={{ fontSize: "10.5px", color: "var(--superadmin-text-sub, #CBD5E1)" }}>Continuous Turnaround Time (TAT) and Emergency Triage Quality Verification</div>
@@ -9821,7 +10039,7 @@ export default function SuperAdminPage({
                             {/* Departmental Breakdown Table */}
                             <div style={{ marginBottom: "18px" }}>
                                 <div style={{ fontSize: "12.5px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)", marginBottom: "8px" }}>
-                                    🏢 {isHi ? "विभागवार थ्रूपुट एवं बॉटलनेक ऑडिट" : "Departmental Throughput & Bottleneck Audit"}
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconBuilding size={15} color="#0284C7" /><span>{isHi ? "विभागवार थ्रूपुट एवं बॉटलनेक ऑडिट" : "Departmental Throughput & Bottleneck Audit"}</span></span>
                                 </div>
                                 <div style={{ overflowX: "auto", border: "1px solid var(--superadmin-card-border, #E2E8F0)", borderRadius: "10px" }}>
                                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11.5px" }}>
@@ -9857,7 +10075,7 @@ export default function SuperAdminPage({
 
                             {/* Quality & AI Recommendation */}
                             <div style={{ background: "var(--superadmin-sub-card, #1E293B)", border: "1px solid var(--superadmin-card-border, #334155)", borderRadius: "10px", padding: "12px 14px", marginBottom: "18px", fontSize: "11.5px" }}>
-                                <div style={{ fontWeight: 800, color: "#38BDF8", marginBottom: "3px" }}>💡 Clinical QA Audit Finding & Recommendation:</div>
+                                <div style={{ fontWeight: 800, color: "#38BDF8", marginBottom: "3px" }}>Clinical QA Audit Finding & Recommendation:</div>
                                 <div style={{ color: "var(--superadmin-text-sub, #CBD5E1)" }}>{nabhReportData.primaryRecommendation}</div>
                             </div>
 
@@ -9885,7 +10103,7 @@ export default function SuperAdminPage({
                                         gap: "6px",
                                     }}
                                 >
-                                    <span>📊</span>
+                                    <IconChart size={18} color="#0284C7" />
                                     <span>{isHi ? "एक्सेल डाउनलोड (CSV)" : "Download Excel (CSV)"}</span>
                                 </button>
 
@@ -9900,7 +10118,7 @@ export default function SuperAdminPage({
                                         gap: "6px",
                                     }}
                                 >
-                                    <span>🖨️</span>
+                                    <IconPrinter size={15} />
                                     <span>{isHi ? "प्रिंट / सेव PDF" : "Print / Save as PDF"}</span>
                                 </button>
                             </div>
@@ -9910,7 +10128,7 @@ export default function SuperAdminPage({
             })()}
 
             {/* FOOTER */}
-            <div style={{ marginTop: "40px" }}>
+            <div style={{ marginTop: "20px", marginBottom: "0px" }}>
                 <Footer
                     language={language}
                     hospitalName={selectedHospital?.name || currentUser?.hospital_name || "City General Hospital"}

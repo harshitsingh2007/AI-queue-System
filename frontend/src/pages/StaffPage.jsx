@@ -363,7 +363,8 @@ export default function StaffPage({
     [currentUser, tenantId, effectiveHospitalCode, socketRef, userStorageKey, dutyStatusChangedAt, doctorDutyStatus]
   );
 
-  // Sync initial status from server on mount
+  // Sync status from server on mount — only if server has a real stored record.
+  // When duty is null, server has no entry (restart / first login) — keep localStorage value.
   useEffect(() => {
     const docId = currentUser?.id || currentUser?.email;
     if (!docId) return;
@@ -372,14 +373,22 @@ export default function StaffPage({
       .then((r) => r.json())
       .then((d) => {
         if (d.status === "success" && d.duty && d.duty.status) {
+          // Server has a real record — trust it and sync
           setDoctorDutyStatus(d.duty.status);
           if (d.duty.status === "ON_BREAK" || d.duty.status === "EMERGENCY_ROUND") {
             setDutyStatusChangedAt(d.duty.status_changed_at || Date.now());
+          } else {
+            setDutyStatusChangedAt(null);
           }
+          try {
+            localStorage.setItem(`doctor_duty_status_${userStorageKey}`, d.duty.status);
+          } catch (e) {}
         }
+        // d.duty is null → server has no record, keep localStorage value — do nothing
       })
       .catch(() => {});
   }, [currentUser]);
+
 
   // Socket listener for remote duty status updates
   useEffect(() => {
@@ -890,6 +899,9 @@ export default function StaffPage({
     >
       <style>{`
         .staff-portal-wrapper {
+          font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
           transition: background-color 0.2s ease, color 0.2s ease;
           --staff-card-bg: #FFFFFF;
           --staff-card-border: #E2E8F0;
@@ -903,6 +915,10 @@ export default function StaffPage({
           --staff-muted-text: #64748B;
           --staff-dropzone-bg: #F0F9FF;
           --staff-dropzone-border: #BAE6FD;
+        }
+
+        .staff-portal-wrapper * {
+          font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
         .admin-tabs-bar {
