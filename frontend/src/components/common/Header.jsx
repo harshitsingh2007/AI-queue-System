@@ -1198,21 +1198,6 @@ export default function Header({
 
                   <div style={{ height: "1px", background: isDarkHeader ? "#334155" : "#E2E8F0", margin: "6px 0" }} />
 
-                  {/* Super Admin Switcher / Quick Navigation Option */}
-                  {isSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProfileDropdownOpen(false);
-                        navigateTo("superadmin");
-                      }}
-                      className="header-dropdown-item"
-                      style={{ padding: "9px 12px", color: "#0284C7", fontWeight: 700 }}
-                    >
-                      <span>👑</span>
-                      <span>{language === "hi" ? "सुपर एडमिन पोर्टल" : "Super Admin Dashboard"}</span>
-                    </button>
-                  )}
 
                   {/* Sign Out Button */}
                   <button

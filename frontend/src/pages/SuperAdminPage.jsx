@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 import { API_BASE } from "../config/hospitalConfig";
 import { t, getCategoryLabel } from "../utils/i18n";
-import { fetchDailyHealthQuote } from "../utils/dailyHealthTips";
 import Footer from "../components/common/Footer";
 
 // Clean Professional Enterprise SVG Icon Components
@@ -94,20 +93,6 @@ const IconTrendingUp = ({ size = 14, color = "currentColor" }) => (
     </svg>
 );
 
-const IconCpu = ({ size = 14, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="4" y="4" width="16" height="16" rx="2" />
-        <rect x="9" y="9" width="6" height="6" />
-        <line x1="9" y1="1" x2="9" y2="4" />
-        <line x1="15" y1="1" x2="15" y2="4" />
-        <line x1="9" y1="20" x2="9" y2="23" />
-        <line x1="15" y1="20" x2="15" y2="23" />
-        <line x1="20" y1="9" x2="23" y2="9" />
-        <line x1="20" y1="14" x2="23" y2="14" />
-        <line x1="1" y1="9" x2="4" y2="9" />
-        <line x1="1" y1="14" x2="4" y2="14" />
-    </svg>
-);
 
 const IconPlus = ({ size = 14, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -220,12 +205,6 @@ const IconPrinter = ({ size = 16, color = "currentColor" }) => (
     </svg>
 );
 
-const IconSearch = ({ size = 14, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="11" cy="11" r="8" />
-        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-    </svg>
-);
 
 const IconRefresh = ({ size = 14, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -293,12 +272,6 @@ const IconFlame = ({ size = 16, color = "currentColor" }) => (
     </svg>
 );
 
-const IconMail = ({ size = 14, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-        <polyline points="22,6 12,13 2,6" />
-    </svg>
-);
 
 export default function SuperAdminPage({
     currentUser,
@@ -331,28 +304,8 @@ export default function SuperAdminPage({
     // Navigation Tabs: "overview" | "hospitals" | "employees" | "desks" | "depts" | "branding"
     const [activeTab, setActiveTab] = useState("overview");
 
-    // Dynamic Daily Quote / Insight State (matching Patient & Staff Portals)
-    const [dailyQuote, setDailyQuote] = useState(null);
 
-    useEffect(() => {
-        let isMounted = true;
-        fetchDailyHealthQuote(language).then((q) => {
-            if (isMounted && q) setDailyQuote(q);
-        });
-        return () => {
-            isMounted = false;
-        };
-    }, [language]);
 
-    // Hospital 360 Command Console Configuration
-    const [overviewDisplayMode, setOverviewDisplayMode] = useState("360"); // "360" | "classic"
-    const [hosp360Theme, setHosp360Theme] = useState(theme === "dark" ? "dark" : "light");
-
-    useEffect(() => {
-        if (theme) {
-            setHosp360Theme(theme);
-        }
-    }, [theme]);
 
     // Deep-Dive Selected Hospital Mode
     const [selectedHospital, setSelectedHospital] = useState(null);
@@ -428,9 +381,6 @@ export default function SuperAdminPage({
 
     // Real-time Live Operations Telemetry States
     const [lastSyncedAt, setLastSyncedAt] = useState(new Date());
-    const [isLiveSyncing, setIsLiveSyncing] = useState(false);
-    const [socketLiveConnected, setSocketLiveConnected] = useState(false);
-    const [liveTick, setLiveTick] = useState(0);
 
     // Modals
     const [showAddHospitalModal, setShowAddHospitalModal] = useState(false);
@@ -442,7 +392,6 @@ export default function SuperAdminPage({
     const [createdCredentials, setCreatedCredentials] = useState(null);
 
     // Hospital Branding & White-Labeling States
-    const [showBrandingModal, setShowBrandingModal] = useState(false);
     const [brandingTargetHospital, setBrandingTargetHospital] = useState(null);
     const [brandingForm, setBrandingForm] = useState({
         logo_url: "",
@@ -570,7 +519,6 @@ export default function SuperAdminPage({
     const [showNABHReportModal, setShowNABHReportModal] = useState(false);
     const [hoveredChartHour, setHoveredChartHour] = useState(null);
     const [analyticsViewTab, setAnalyticsViewTab] = useState("all"); // "all" | "hourly" | "bottleneck"
-    const [selectedBottleneckDept, setSelectedBottleneckDept] = useState(null);
 
     // Hourly Analytics Computations Engine
     const computeHourlyAnalytics = useCallback((visitsList = [], queueList = []) => {
@@ -1076,7 +1024,6 @@ export default function SuperAdminPage({
     const [employeeStatusFilter, setEmployeeStatusFilter] = useState("all"); // "all" | "active" | "inactive"
     const [isTogglingEmpStatus, setIsTogglingEmpStatus] = useState(null);
     const [deskSearchQuery, setDeskSearchQuery] = useState("");
-    const [deskPage, setDeskPage] = useState(1);
 
     // Helper to format relative login / activity time
     const formatRelativeLogin = useCallback((isoString) => {
@@ -1156,7 +1103,6 @@ export default function SuperAdminPage({
         setEmployeePage(1);
         setEmployeeStatusFilter("all");
         setDeskSearchQuery("");
-        setDeskPage(1);
     }, [selectedHospital?.hospital_code]);
 
     useEffect(() => {
@@ -1251,18 +1197,6 @@ export default function SuperAdminPage({
         }
     }, [getAuthHeaders, normalizeDesksData]);
 
-    // Manual Live Force Refresh Action
-    const manualLiveRefresh = useCallback(async () => {
-        const hCode = selectedHospitalRef.current?.hospital_code || selectedHospital?.hospital_code;
-        if (!hCode) return;
-        setIsLiveSyncing(true);
-        await Promise.all([
-            fetchHospitalDeepDive(hCode),
-            fetchGlobalData(true),
-        ]);
-        setTimeout(() => setIsLiveSyncing(false), 450);
-    }, [selectedHospital?.hospital_code, fetchHospitalDeepDive, fetchGlobalData]);
-
     // Real-Time Socket.IO Live Telemetry Integration
     useEffect(() => {
         const hCode = selectedHospital?.hospital_code;
@@ -1277,12 +1211,7 @@ export default function SuperAdminPage({
             });
 
             socket.on("connect", () => {
-                setSocketLiveConnected(true);
                 socket.emit("join_room", { tenant_id: hCode });
-            });
-
-            socket.on("disconnect", () => {
-                setSocketLiveConnected(false);
             });
 
             const handleLiveStreamData = (data) => {
@@ -1336,13 +1265,8 @@ export default function SuperAdminPage({
             }
         }, 2500);
 
-        const tickerInterval = setInterval(() => {
-            setLiveTick((prev) => prev + 1);
-        }, 1000);
-
         return () => {
             clearInterval(pollInterval);
-            clearInterval(tickerInterval);
         };
     }, [fetchGlobalData, fetchHospitalDeepDive]);
 
@@ -1518,11 +1442,6 @@ export default function SuperAdminPage({
         }
     }, [getAuthHeaders]);
 
-    const handleOpenBrandingModal = async (hosp) => {
-        await loadHospitalBrandingData(hosp);
-        setActiveBrandingTab("theme");
-        setShowBrandingModal(true);
-    };
 
     const handleResetBrandingDefaults = () => {
         const targetHosp = brandingTargetHospital || selectedHospital;
@@ -1570,7 +1489,6 @@ export default function SuperAdminPage({
             });
             const data = await res.json();
             if (res.ok && data.status === "success") {
-                setShowBrandingModal(false);
                 notify(isHi ? `'${targetHosp.name}' का ब्रांडिंग व समय सेटिंग्स सहेजा गया!` : `Branding & operating hours updated for '${targetHosp.name}'!`);
 
                 // Dispatch local event for other tabs/listeners
@@ -3258,104 +3176,11 @@ export default function SuperAdminPage({
                                 </>
                             )}
                         </h1>
-                        <p className="superadmin-hero-subtitle" style={{ marginBottom: "12px" }}>
+                        <p className="superadmin-hero-subtitle">
                             {isHi
                                 ? "सभी अस्पताल शाखाओं, क्लिनिकल विभागों, डॉक्टर क्रेडेंशियल्स, और सक्रिय काउंटरों का केंद्रीकृत नियंत्रण।"
                                 : "Centralized control for medical centers, clinical departments, staff credentials, and active desk throughput."}
                         </p>
-
-                        {/* Dynamic Daily Health / Leadership Quote (matching Patient & Doctor Portals) */}
-                        <div
-                            style={{
-                                background: "rgba(255, 255, 255, 0.07)",
-                                backdropFilter: "blur(12px)",
-                                WebkitBackdropFilter: "blur(12px)",
-                                border: "1px solid rgba(56, 189, 248, 0.22)",
-                                borderRadius: "14px",
-                                padding: "10px 14px",
-                                marginBottom: "20px",
-                                display: "flex",
-                                alignItems: "flex-start",
-                                gap: "10px",
-                                maxWidth: "520px",
-                                boxShadow: "0 4px 16px rgba(0, 0, 0, 0.1)",
-                                transition: "all 0.2s ease",
-                            }}
-                        >
-                            <div
-                                style={{
-                                    width: "28px",
-                                    height: "28px",
-                                    borderRadius: "8px",
-                                    background: "rgba(56, 189, 248, 0.18)",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    flexShrink: 0,
-                                    color: "#38BDF8",
-                                }}
-                            >
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="5" />
-                                    <line x1="12" y1="1" x2="12" y2="3" />
-                                    <line x1="12" y1="21" x2="12" y2="23" />
-                                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                                    <line x1="1" y1="12" x2="3" y2="12" />
-                                    <line x1="21" y1="12" x2="23" y2="12" />
-                                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                                </svg>
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "space-between",
-                                        gap: "8px",
-                                        marginBottom: "3px",
-                                    }}
-                                >
-                                    <span
-                                        style={{
-                                            fontSize: "10px",
-                                            fontWeight: 800,
-                                            color: "#38BDF8",
-                                            textTransform: "uppercase",
-                                            letterSpacing: "0.5px",
-                                        }}
-                                    >
-                                        {isHi ? "दैनिक स्वास्थ्य एवं नेतृत्व विचार" : "Daily Healthcare & Executive Insight"}{" "}
-                                        {dailyQuote?.category ? `• ${dailyQuote.category}` : ""}
-                                    </span>
-                                </div>
-                                <p
-                                    style={{
-                                        margin: 0,
-                                        color: "#E0F2FE",
-                                        fontSize: "12px",
-                                        lineHeight: "1.45",
-                                        fontWeight: 500,
-                                        fontStyle: "italic",
-                                    }}
-                                >
-                                    "{dailyQuote?.text || (isHi ? "सर्वोत्तम स्वास्थ्य सेवा समर्पण एवं प्रभावी प्रबंधन से ही संभव है।" : "Excellence in healthcare throughput begins with compassionate administration and seamless coordination.")}"
-                                </p>
-                                {dailyQuote?.author && (
-                                    <div
-                                        style={{
-                                            fontSize: "9.5px",
-                                            color: "rgba(224, 242, 254, 0.6)",
-                                            marginTop: "3px",
-                                            textAlign: "right",
-                                        }}
-                                    >
-                                        — {dailyQuote.author}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
                     </div>
 
                     {/* 4 Real-Data Stats Cards */}
@@ -3727,7 +3552,6 @@ export default function SuperAdminPage({
                         const allTimePatientsVisited = footfallSummary.total_patients_visited_all_time ?? (hospitalAnalytics?.total_patients_visited_all_time || 0);
                         const allTimeCompleted = footfallSummary.all_time_completed ?? 0;
                         const todayFootfall = footfallSummary.today_patients_visited ?? completedToday;
-                        const thisWeekFootfall = footfallSummary.this_week_visits ?? 0;
                         const thisMonthFootfall = footfallSummary.this_month_visits ?? 0;
                         const rawVisits = hospitalVisitsData?.visits || [];
 
@@ -3761,11 +3585,7 @@ export default function SuperAdminPage({
                         });
 
                         // --- HOSPITAL 360 COMMAND CENTER DATA PREPARATION ---
-                        const isDark360 = hosp360Theme === "dark";
-                        const themeBg = isDark360 ? "#090D14" : "#FFFFFF";
-                        const panelBg = isDark360 ? "#0F1622" : "#F8FAFC";
-                        const borderCol = isDark360 ? "rgba(255, 255, 255, 0.08)" : "#E2E8F0";
-                        const textMain = isDark360 ? "#F8FAFC" : "#0F172A";
+                        const isDark360 = theme === "dark";
                         const textMuted = isDark360 ? "#94A3B8" : "#64748B";
 
                         // Check OPD Open status:
@@ -3777,15 +3597,6 @@ export default function SuperAdminPage({
                         const isOpdOpen = (currH > opdStartH || (currH === opdStartH && currM >= opdStartM)) &&
                             (currH < opdEndH || (currH === opdEndH && currM <= opdEndM));
 
-                        // 1. REAL LIVE KPI STATS
-                        const kpiWaitCount = (hospitalQueueSnapshot || []).filter((t) => (t.status || "").toLowerCase() === "waiting").length;
-                        const kpiServCount = (hospitalServingTickets || []).length;
-                        const kpiDoneCount = footfallSummary.today_completed ?? (hospitalAnalytics?.completed_today ?? 0);
-                        const kpiAvgWaitStr = kpiWaitCount === 0
-                            ? "0m"
-                            : (hospitalAnalytics?.avg_wait_minutes && hospitalAnalytics.avg_wait_minutes > 0
-                                ? `${Math.round(hospitalAnalytics.avg_wait_minutes)}m`
-                                : `${Math.round(kpiWaitCount * 8)}m`);
 
                         // 2. REAL LIVE DESKS
                         let liveDesksList = [];
@@ -3837,7 +3648,6 @@ export default function SuperAdminPage({
 
                         let deptLoadArr = Object.entries(dCountMap).map(([name, count]) => ({ name, count }));
                         deptLoadArr.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-                        const peakDeptLoad = Math.max(...deptLoadArr.map(d => d.count), 1);
 
                         // 4. REAL LIVE CURRENTLY SERVING STREAM
                         let servingStreamItems = [];
@@ -3894,7 +3704,6 @@ export default function SuperAdminPage({
                                 docsAvailable += 1;
                             }
                         });
-                        const totalDocsCount = docsAvailable + docsBusy + docsUnavailable;
 
                         // 6. REAL LIVE QUEUE PRESSURE
                         const countEmergency = (hospitalQueueSnapshot || []).filter(t => t.priority_level === 1 || (t.priority || "").toLowerCase() === "emergency").length;
@@ -4094,7 +3903,14 @@ export default function SuperAdminPage({
 
                                             <button
                                                 type="button"
-                                                onClick={() => handleOpenBrandingModal(currentHosp)}
+                                                onClick={() => {
+                                                    if (currentHosp) {
+                                                        setSelectedHospital(currentHosp);
+                                                        loadHospitalBrandingData(currentHosp);
+                                                    }
+                                                    setActiveTab("branding");
+                                                    window.scrollTo({ top: 380, behavior: "smooth" });
+                                                }}
                                                 style={{
                                                     display: "flex",
                                                     alignItems: "center",
@@ -4109,9 +3925,10 @@ export default function SuperAdminPage({
                                                     cursor: "pointer",
                                                     boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
                                                 }}
+                                                title={isHi ? "ब्रांडिंग पेज पर जाएं" : "Go to Branding Page"}
                                             >
                                                 <IconPalette size={16} color="#0284C7" />
-                                                <span>{isHi ? "व्हाइट-लेबल ब्रांडिंग" : "Branding Settings"}</span>
+                                                <span>{isHi ? "ब्रांडिंग" : "Branding"}</span>
                                             </button>
 
                                             <button
@@ -5613,14 +5430,19 @@ export default function SuperAdminPage({
 
                                             <button
                                                 type="button"
-                                                onClick={() => handleOpenBrandingModal(hosp)}
+                                                onClick={() => {
+                                                    setSelectedHospital(hosp);
+                                                    loadHospitalBrandingData(hosp);
+                                                    setActiveTab("branding");
+                                                    window.scrollTo({ top: 380, behavior: "smooth" });
+                                                }}
                                                 style={{
                                                     ...secondarySmallBtnStyle,
                                                     background: "rgba(124, 58, 237, 0.15)",
                                                     color: "#C084FC",
                                                     borderColor: "rgba(124, 58, 237, 0.3)",
                                                 }}
-                                                title={isHi ? "ब्रांडिंग और संचालन समय" : "Branding & Operating Hours"}
+                                                title={isHi ? "ब्रांडिंग पेज पर जाएं" : "Go to Branding Page"}
                                             >
                                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                                     <IconPalette size={16} color="#0284C7" />
@@ -5685,7 +5507,11 @@ export default function SuperAdminPage({
                                         {selectedHospital && (
                                             <button
                                                 type="button"
-                                                onClick={() => handleOpenBrandingModal(selectedHospital)}
+                                                onClick={() => {
+                                                    loadHospitalBrandingData(selectedHospital);
+                                                    setActiveTab("branding");
+                                                    window.scrollTo({ top: 380, behavior: "smooth" });
+                                                }}
                                                 style={{
                                                     ...secondarySmallBtnStyle,
                                                     background: "#F5F3FF",
@@ -5694,11 +5520,11 @@ export default function SuperAdminPage({
                                                     padding: "8px 14px",
                                                     fontWeight: 800,
                                                 }}
-                                                title={isHi ? "ब्रांडिंग और समय सेटिंग्स" : "Branding & Operating Hours"}
+                                                title={isHi ? "ब्रांडिंग पेज पर जाएं" : "Go to Branding Page"}
                                             >
                                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                                                     <IconPalette size={16} color="#0284C7" />
-                                                    <span>{isHi ? "ब्रांडिंग सेटिंग्स" : "Branding & Hours"}</span>
+                                                    <span>{isHi ? "ब्रांडिंग" : "Branding"}</span>
                                                 </span>
                                             </button>
                                         )}
@@ -6151,7 +5977,7 @@ export default function SuperAdminPage({
                                             type="text"
                                             placeholder={isHi ? "डेस्क या विभाग से खोजें..." : "Filter desks by name or department..."}
                                             value={deskSearchQuery}
-                                            onChange={(e) => { setDeskSearchQuery(e.target.value); setDeskPage(1); }}
+                                            onChange={(e) => setDeskSearchQuery(e.target.value)}
                                             style={{ ...fieldInputStyle, paddingLeft: "32px", fontSize: "12.5px" }}
                                         />
                                         <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }}>
@@ -6581,7 +6407,6 @@ export default function SuperAdminPage({
                         const currentHosp = brandingTargetHospital || selectedHospital || hospitals[0] || null;
                         const primaryClr = brandingForm.primary_color || "#0284C7";
                         const secondaryClr = brandingForm.secondary_color || "#0369A1";
-                        const accentClr = brandingForm.accent_color || "#F0F9FF";
 
                         return (
                             <div className="branding-studio-container">
@@ -7053,24 +6878,6 @@ export default function SuperAdminPage({
                                                     </div>
                                                 </div>
 
-                                                {/* Favicon info note */}
-                                                <div style={{
-                                                    background: "rgba(2, 132, 199, 0.12)",
-                                                    border: "1px solid rgba(56, 189, 248, 0.3)",
-                                                    borderRadius: "12px",
-                                                    padding: "12px 16px",
-                                                    display: "flex",
-                                                    alignItems: "flex-start",
-                                                    gap: "10px",
-                                                }}>
-                                                    <IconLightbulb size={18} color="#0284C7" />
-                                                    <span style={{ fontSize: "12px", color: "var(--superadmin-text-main, #0F172A)", lineHeight: 1.5 }}>
-                                                        <strong>{isHi ? "ब्राउज़र टैब आइकन (Favicon):" : "Isolated Multi-Tenant Favicon:"}</strong>{" "}
-                                                        {isHi
-                                                            ? "अपलोड किया गया लोगो केवल इस अस्पताल के मरीज़ों और कर्मचारियों के ब्राउज़र टैब में दिखाई देगा। यह अन्य अस्पतालों को प्रभावित नहीं करता।"
-                                                            : "This logo automatically sets the browser tab favicon exclusively for this hospital's patients and doctors without affecting global network screens."}
-                                                    </span>
-                                                </div>
                                             </div>
                                         )}
 
@@ -8117,9 +7924,6 @@ export default function SuperAdminPage({
                             <button type="button" onClick={() => setCreatedCredentials(null)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
                         </div>
 
-                        <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "#F0F9FF", border: "1px solid #BAE6FD", fontSize: "12px", color: "#0369A1" }}>
-                            <strong>Account Created:</strong> Share the assigned Employee ID (or Login Email) and temporary password with this doctor or staff member so they can sign in.
-                        </div>
 
                         <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: "12px", padding: "14px", marginBottom: "16px" }}>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
@@ -8626,9 +8430,7 @@ export default function SuperAdminPage({
                                         </optgroup>
                                     )}
                                 </select>
-                                <span style={{ fontSize: "11px", color: "#64748B", marginTop: "3px", display: "block" }}>
-                                    {isHi ? "आप बाद में कभी भी इस डेस्क का कार्यभार बदल सकते हैं।" : "You can change or unassign the stationed personnel at any time."}
-                                </span>
+
                             </div>
 
                             <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
@@ -8938,13 +8740,7 @@ export default function SuperAdminPage({
                                 })()}
                             </div>
 
-                            <div style={{ padding: "10px 12px", background: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: "8px", fontSize: "11.5px", color: "#0369A1" }}>
-                                {isHi
-                                    ? "डॉक्टर या स्टाफ को डेस्क सौंपने पर टोकन और कतार प्रबंधन उस डेस्क से उनके नाम से संचालित होगा। केवल सक्रिय (लॉगिन) कार्मिक को ही असाइन किया जा सकता है।"
-                                    : "When a doctor or staff member is assigned to a desk, patient queues and active calls will reflect their designated station. Only active, logged-in personnel can be assigned."}
-                            </div>
-
-                            <div style={{ display: "flex", gap: "10px", marginTop: "6px" }}>
+                            <div style={{ display: "flex", gap: "10px", marginTop: "14px" }}>
                                 <button
                                     type="button"
                                     onClick={() => { setShowAssignDeskModal(false); setAssignSearchQuery(""); }}
@@ -8965,999 +8761,7 @@ export default function SuperAdminPage({
                 </div>
             )}
 
-            {/* MODAL 9: TENANT BRANDING & WHITE-LABELING */}
-            {showBrandingModal && brandingTargetHospital && (
-                <div style={modalOverlayStyle} onClick={() => setShowBrandingModal(false)}>
-                    <div
-                        style={{
-                            ...modalContentStyle,
-                            maxWidth: "920px",
-                            padding: "26px 30px",
-                            maxHeight: "88vh",
-                            overflowY: "auto",
-                            scrollbarWidth: "thin",
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Modal Header */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "18px", borderBottom: "1px solid var(--superadmin-border, #E2E8F0)", paddingBottom: "14px" }}>
-                            <div>
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <IconPalette size={22} color="#0284C7" />
-                                    <h3 style={{ margin: 0, fontSize: "19px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800 }}>
-                                        {isHi ? "अस्पताल ब्रांडिंग एवं संचालन समय (White-Labeling)" : "Hospital Branding & Operating Hours"}
-                                    </h3>
-                                </div>
-                                <div style={{ marginTop: "4px", display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <span style={{ fontSize: "13px", fontWeight: 700, color: brandingForm.primary_color || "#38BDF8" }}>
-                                        {brandingTargetHospital.name}
-                                    </span>
-                                    <span style={{ fontSize: "11px", background: "var(--superadmin-sub-card, #F1F5F9)", color: "var(--superadmin-text-sub, #475569)", padding: "1px 7px", borderRadius: "5px", fontFamily: "monospace", fontWeight: 700 }}>
-                                        {brandingTargetHospital.hospital_code}
-                                    </span>
-                                </div>
-                            </div>
-                            <button type="button" onClick={() => setShowBrandingModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
-                        </div>
-
-                        {/* Navigation Tabs */}
-                        <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--superadmin-border, #E2E8F0)", paddingBottom: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
-                            <button
-                                type="button"
-                                onClick={() => setActiveBrandingTab("theme")}
-                                style={{
-                                    padding: "8px 16px",
-                                    borderRadius: "10px",
-                                    border: "none",
-                                    background: activeBrandingTab === "theme" ? (brandingForm.primary_color || "#0284C7") : "var(--superadmin-sub-card, #F1F5F9)",
-                                    color: activeBrandingTab === "theme" ? "#FFFFFF" : "var(--superadmin-text-sub, #475569)",
-                                    fontWeight: 800,
-                                    fontSize: "12.5px",
-                                    cursor: "pointer",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "6px",
-                                    transition: "all 0.15s ease",
-                                }}
-                            >
-                                <IconPalette size={16} color="#0284C7" />
-                                <span>{isHi ? "थीम और लोगो" : "Theme & Logo"}</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setActiveBrandingTab("about")}
-                                style={{
-                                    padding: "8px 16px",
-                                    borderRadius: "10px",
-                                    border: "none",
-                                    background: activeBrandingTab === "about" ? (brandingForm.primary_color || "#0284C7") : "var(--superadmin-sub-card, #F1F5F9)",
-                                    color: activeBrandingTab === "about" ? "#FFFFFF" : "var(--superadmin-text-sub, #475569)",
-                                    fontWeight: 800,
-                                    fontSize: "12.5px",
-                                    cursor: "pointer",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "6px",
-                                    transition: "all 0.15s ease",
-                                }}
-                            >
-                                <IconBookOpen size={16} color="#0284C7" />
-                                <span>{isHi ? "हमारे बारे में (About Us)" : "About Us & Services"}</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setActiveBrandingTab("slip")}
-                                style={{
-                                    padding: "8px 16px",
-                                    borderRadius: "10px",
-                                    border: "none",
-                                    background: activeBrandingTab === "slip" ? (brandingForm.primary_color || "#0284C7") : "var(--superadmin-sub-card, #F1F5F9)",
-                                    color: activeBrandingTab === "slip" ? "#FFFFFF" : "var(--superadmin-text-sub, #475569)",
-                                    fontWeight: 800,
-                                    fontSize: "12.5px",
-                                    cursor: "pointer",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "6px",
-                                    transition: "all 0.15s ease",
-                                }}
-                            >
-                                <IconTicket size={16} color="#0284C7" />
-                                <span>{isHi ? "टोकन पर्ची (Token Slip)" : "Token Slip & Helpline"}</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setActiveBrandingTab("hours")}
-                                style={{
-                                    padding: "8px 16px",
-                                    borderRadius: "10px",
-                                    border: "none",
-                                    background: activeBrandingTab === "hours" ? (brandingForm.primary_color || "#0284C7") : "var(--superadmin-sub-card, #F1F5F9)",
-                                    color: activeBrandingTab === "hours" ? "#FFFFFF" : "var(--superadmin-text-sub, #475569)",
-                                    fontWeight: 800,
-                                    fontSize: "12.5px",
-                                    cursor: "pointer",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "6px",
-                                    transition: "all 0.15s ease",
-                                }}
-                            >
-                                <span>⏰</span>
-                                <span>{isHi ? "संचालन समय व कटऑफ" : "Operating Hours & Cutoff"}</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setActiveBrandingTab("contact")}
-                                style={{
-                                    padding: "8px 16px",
-                                    borderRadius: "10px",
-                                    border: "none",
-                                    background: activeBrandingTab === "contact" ? (brandingForm.primary_color || "#0284C7") : "var(--superadmin-sub-card, #F1F5F9)",
-                                    color: activeBrandingTab === "contact" ? "#FFFFFF" : "var(--superadmin-text-sub, #475569)",
-                                    fontWeight: 800,
-                                    fontSize: "12.5px",
-                                    cursor: "pointer",
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "6px",
-                                    transition: "all 0.15s ease",
-                                }}
-                            >
-                                <IconMapPin size={16} color="#0284C7" />
-                                <span>{isHi ? "पता एवं सहायता डेस्क" : "Address & Help Desk"}</span>
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleSaveBrandingSubmit} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-                            {/* TAB 1: VISUAL THEME & LOGO */}
-                            {activeBrandingTab === "theme" && (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                                    {/* Curated Color Presets */}
-                                    <div>
-                                        <label style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
-                                            {isHi ? "त्वरित रंग पट्टियाँ (One-Click Presets)" : "Quick Healthcare Color Palettes"}
-                                        </label>
-                                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: "8px" }}>
-                                            {[
-                                                { name: "Ocean Blue", primary: "#0284C7", secondary: "#0369A1", accent: "#F0F9FF" },
-                                                { name: "Emerald Healing", primary: "#059669", secondary: "#047857", accent: "#ECFDF5" },
-                                                { name: "Royal Purple", primary: "#7C3AED", secondary: "#6D28D9", accent: "#F5F3FF" },
-                                                { name: "Crimson Care", primary: "#DC2626", secondary: "#B91C1C", accent: "#FEF2F2" },
-                                                { name: "Slate Teal", primary: "#0D9488", secondary: "#0F766E", accent: "#F0FDFA" },
-                                                { name: "Sunset Amber", primary: "#D97706", secondary: "#B45309", accent: "#FFFBEB" },
-                                            ].map((pal) => (
-                                                <button
-                                                    key={pal.name}
-                                                    type="button"
-                                                    onClick={() => setBrandingForm({
-                                                        ...brandingForm,
-                                                        primary_color: pal.primary,
-                                                        secondary_color: pal.secondary,
-                                                        accent_color: pal.accent,
-                                                    })}
-                                                    style={{
-                                                        padding: "8px",
-                                                        borderRadius: "10px",
-                                                        border: brandingForm.primary_color === pal.primary ? "2px solid #38BDF8" : "1px solid var(--superadmin-border, #E2E8F0)",
-                                                        background: "var(--superadmin-card-bg, #FFFFFF)",
-                                                        cursor: "pointer",
-                                                        textAlign: "center",
-                                                        display: "flex",
-                                                        flexDirection: "column",
-                                                        alignItems: "center",
-                                                        gap: "5px",
-                                                        transition: "all 0.15s ease",
-                                                    }}
-                                                >
-                                                    <div style={{ display: "flex", width: "100%", height: "18px", borderRadius: "6px", overflow: "hidden" }}>
-                                                        <div style={{ flex: 2, background: pal.primary }} />
-                                                        <div style={{ flex: 1, background: pal.secondary }} />
-                                                        <div style={{ flex: 1, background: pal.accent, border: "0.5px solid var(--superadmin-border, #CBD5E1)" }} />
-                                                    </div>
-                                                    <span style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--superadmin-text-main, #334155)" }}>{pal.name}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Custom Hex Color Pickers */}
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", background: "var(--superadmin-sub-card, #F8FAFC)", padding: "14px", borderRadius: "14px", border: "1px solid var(--superadmin-border, #E2E8F0)" }}>
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "प्राथमिक रंग (Primary)" : "Primary Brand Color"}</label>
-                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                                <input
-                                                    type="color"
-                                                    value={brandingForm.primary_color || "#0284C7"}
-                                                    onChange={(e) => setBrandingForm({ ...brandingForm, primary_color: e.target.value })}
-                                                    style={{ width: "36px", height: "36px", border: "none", borderRadius: "8px", cursor: "pointer", padding: 0, background: "transparent" }}
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={brandingForm.primary_color || "#0284C7"}
-                                                    onChange={(e) => setBrandingForm({ ...brandingForm, primary_color: e.target.value })}
-                                                    style={{ ...fieldInputStyle, padding: "6px 8px", fontSize: "12px", fontFamily: "monospace" }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "द्वितीयक रंग (Secondary)" : "Secondary Color"}</label>
-                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                                <input
-                                                    type="color"
-                                                    value={brandingForm.secondary_color || "#0369A1"}
-                                                    onChange={(e) => setBrandingForm({ ...brandingForm, secondary_color: e.target.value })}
-                                                    style={{ width: "36px", height: "36px", border: "none", borderRadius: "8px", cursor: "pointer", padding: 0, background: "transparent" }}
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={brandingForm.secondary_color || "#0369A1"}
-                                                    onChange={(e) => setBrandingForm({ ...brandingForm, secondary_color: e.target.value })}
-                                                    style={{ ...fieldInputStyle, padding: "6px 8px", fontSize: "12px", fontFamily: "monospace" }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "बैकग्राउंड एक्सेंट (Accent)" : "Accent Tint"}</label>
-                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                                <input
-                                                    type="color"
-                                                    value={brandingForm.accent_color || "#F0F9FF"}
-                                                    onChange={(e) => setBrandingForm({ ...brandingForm, accent_color: e.target.value })}
-                                                    style={{ width: "36px", height: "36px", border: "none", borderRadius: "8px", cursor: "pointer", padding: 0, background: "transparent" }}
-                                                />
-                                                <input
-                                                    type="text"
-                                                    value={brandingForm.accent_color || "#F0F9FF"}
-                                                    onChange={(e) => setBrandingForm({ ...brandingForm, accent_color: e.target.value })}
-                                                    style={{ ...fieldInputStyle, padding: "6px 8px", fontSize: "12px", fontFamily: "monospace" }}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Hospital Logo URL and Presets */}
-                                    <div style={{ background: "var(--superadmin-sub-card, #F8FAFC)", padding: "14px", borderRadius: "14px", border: "1px solid var(--superadmin-border, #E2E8F0)" }}>
-                                        <label style={fieldLabelStyle}>{isHi ? "अस्पताल का लोगो (Logo)" : "Hospital Brand Logo"}</label>
-
-                                        {/* Quick Preset Logos */}
-                                        <div style={{ display: "flex", gap: "8px", marginBottom: "10px", flexWrap: "wrap" }}>
-                                            {[
-                                                { label: "Shield Cross", url: "https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?w=120&auto=format&fit=crop&q=80" },
-                                                { label: "Modern Cross", url: "https://cdn-icons-png.flaticon.com/512/2966/2966327.png" },
-                                                { label: "Red Cross", url: "https://cdn-icons-png.flaticon.com/512/883/883407.png" },
-                                                { label: "Heartbeat", url: "https://cdn-icons-png.flaticon.com/512/2966/2966384.png" },
-                                                { label: "Clear (Default)", url: "" },
-                                            ].map((item) => (
-                                                <button
-                                                    key={item.label}
-                                                    type="button"
-                                                    onClick={() => setBrandingForm({ ...brandingForm, logo_url: item.url })}
-                                                    style={{
-                                                        padding: "4px 10px",
-                                                        borderRadius: "8px",
-                                                        border: brandingForm.logo_url === item.url ? "1.5px solid #0284C7" : "1px solid var(--superadmin-border, #CBD5E1)",
-                                                        background: brandingForm.logo_url === item.url ? "rgba(2, 132, 199, 0.15)" : "var(--superadmin-card-bg, #FFFFFF)",
-                                                        color: brandingForm.logo_url === item.url ? "#38BDF8" : "var(--superadmin-text-sub, #475569)",
-                                                        fontSize: "11px",
-                                                        fontWeight: 700,
-                                                        cursor: "pointer",
-                                                    }}
-                                                >
-                                                    {item.label}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "10px" }}>
-                                            <input
-                                                type="file"
-                                                id="superadmin-logo-file-input"
-                                                accept="image/png, image/jpeg, image/svg+xml, image/webp"
-                                                style={{ display: "none" }}
-                                                onChange={(e) => {
-                                                    const file = e.target.files && e.target.files[0];
-                                                    if (file) {
-                                                        if (file.size > 2 * 1024 * 1024) {
-                                                            notify(isHi ? "लोगो फ़ाइल 2MB से कम होनी चाहिए" : "Logo image must be under 2MB", "error");
-                                                            return;
-                                                        }
-                                                        const reader = new FileReader();
-                                                        reader.onload = (loadEvt) => {
-                                                            setBrandingForm({ ...brandingForm, logo_url: loadEvt.target.result });
-                                                        };
-                                                        reader.readAsDataURL(file);
-                                                    }
-                                                }}
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => document.getElementById("superadmin-logo-file-input")?.click()}
-                                                style={{
-                                                    padding: "6px 14px",
-                                                    borderRadius: "8px",
-                                                    border: "1.5px solid #0284C7",
-                                                    background: "rgba(2, 132, 199, 0.12)",
-                                                    color: "#38BDF8",
-                                                    fontSize: "12px",
-                                                    fontWeight: 700,
-                                                    cursor: "pointer",
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    gap: "6px",
-                                                }}
-                                            >
-                                                <IconBuilding size={16} color="#0284C7" />
-                                                <span>{isHi ? "कंप्यूटर से लोगो अपलोड करें" : "Upload Logo from Device"}</span>
-                                            </button>
-                                            {brandingForm.logo_url && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setBrandingForm({ ...brandingForm, logo_url: "" })}
-                                                    style={{
-                                                        padding: "6px 12px",
-                                                        borderRadius: "8px",
-                                                        border: "1px solid var(--superadmin-border, #CBD5E1)",
-                                                        background: "var(--superadmin-card-bg, #FFFFFF)",
-                                                        color: "var(--superadmin-text-muted, #64748B)",
-                                                        fontSize: "11.5px",
-                                                        fontWeight: 600,
-                                                        cursor: "pointer",
-                                                    }}
-                                                >
-                                                    {isHi ? "हटाएं (डिफ़ॉल्ट)" : "Clear Logo"}
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                                            <div style={{ flex: 1 }}>
-                                                <input
-                                                    type="url"
-                                                    placeholder={isHi ? "या इमेज URL पेस्ट करें (https://...)" : "Or paste image URL (https://...)"}
-                                                    value={brandingForm.logo_url || ""}
-                                                    onChange={(e) => setBrandingForm({ ...brandingForm, logo_url: e.target.value })}
-                                                    style={fieldInputStyle}
-                                                />
-                                            </div>
-                                            <div style={{
-                                                width: "48px",
-                                                height: "48px",
-                                                borderRadius: "10px",
-                                                border: "1.5px solid var(--superadmin-border, #CBD5E1)",
-                                                background: "var(--superadmin-sub-card, #F8FAFC)",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "center",
-                                                overflow: "hidden",
-                                                flexShrink: 0,
-                                            }}>
-                                                {brandingForm.logo_url ? (
-                                                    <img
-                                                        src={brandingForm.logo_url}
-                                                        alt="Logo"
-                                                        style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                                                        onError={(e) => { e.target.style.display = "none"; }}
-                                                    />
-                                                ) : (
-                                                    <IconHospital size={22} color="#0284C7" />
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <p style={{ margin: "8px 0 0 0", fontSize: "11.5px", color: "var(--superadmin-text-muted, #64748B)", lineHeight: "1.4" }}>
-                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><IconLightbulb size={14} color="#0284C7" /><strong>{isHi ? "ब्राउज़र टैब लोगो:" : "Browser Tab Icon:"}</strong></span>{" "}
-                                            {isHi
-                                                ? "यह लोगो केवल इस अस्पताल के मरीज़ों और कर्मचारियों (Staff) के ब्राउज़र टैब (Favicon) में दिखाई देगा। यह विश्व स्तर (Globally) पर अन्य अस्पतालों या सुपर एडमिन पर लागू नहीं होगा।"
-                                                : "This uploaded logo will automatically appear in the browser tab icon (favicon) exclusively for this hospital's affiliate patients and staff. It is never applied globally to other hospitals or the Super Admin overview."}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB 2: ABOUT US & CLINICAL SERVICES CUSTOMIZATION */}
-                            {activeBrandingTab === "about" && (
-                                <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: "20px" }}>
-                                    {/* Left Column: Form Controls */}
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "अस्पताल शीर्षक (Modal Title)" : "About Us Modal Title"}</label>
-                                            <input
-                                                type="text"
-                                                placeholder={`e.g. About ${brandingTargetHospital?.name || "City General Hospital"}`}
-                                                value={brandingForm.about_us_title || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, about_us_title: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "उपशीर्षक / ध्येय (Subtitle / Motto)" : "About Us Subtitle / Care Motto"}</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. Care you can trust • NABH Accredited"
-                                                value={brandingForm.about_us_subtitle || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, about_us_subtitle: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "अस्पताल विवरण (English Story / Mission)" : "About Hospital Description (English)"}</label>
-                                            <textarea
-                                                rows="3"
-                                                placeholder="Premier medical institution dedicated to patient-first care with AI queue orchestration..."
-                                                value={brandingForm.about_us || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, about_us: e.target.value })}
-                                                style={{ ...fieldInputStyle, resize: "vertical" }}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "हिंदी विवरण (Hindi Translation)" : "About Hospital Description (Hindi / द्विभाषी)"}</label>
-                                            <textarea
-                                                rows="3"
-                                                placeholder="मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है..."
-                                                value={brandingForm.about_us_hi || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, about_us_hi: e.target.value })}
-                                                style={{ ...fieldInputStyle, resize: "vertical" }}
-                                            />
-                                        </div>
-
-                                        {/* Key Services / Highlights (4 Highlights) */}
-                                        <div style={{ background: "var(--superadmin-sub-card, #F8FAFC)", padding: "12px 14px", borderRadius: "12px", border: "1px solid var(--superadmin-border, #E2E8F0)" }}>
-                                            <label style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
-                                                {isHi ? "4 प्रमुख विशेषताएं व सेवाएं (Key Highlights)" : "4 Key Clinical Highlights / Features"}
-                                            </label>
-                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-                                                <div>
-                                                    <span style={{ fontSize: "10px", color: "var(--superadmin-text-muted, #64748B)", fontWeight: 700 }}>Feature 1</span>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="e.g. 24/7 Emergency Triage"
-                                                        value={brandingForm.about_service_1 || ""}
-                                                        onChange={(e) => setBrandingForm({ ...brandingForm, about_service_1: e.target.value })}
-                                                        style={{ ...fieldInputStyle, padding: "7px 10px", fontSize: "12px" }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <span style={{ fontSize: "10px", color: "var(--superadmin-text-muted, #64748B)", fontWeight: 700 }}>Feature 2</span>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="e.g. AI Wait Prediction"
-                                                        value={brandingForm.about_service_2 || ""}
-                                                        onChange={(e) => setBrandingForm({ ...brandingForm, about_service_2: e.target.value })}
-                                                        style={{ ...fieldInputStyle, padding: "7px 10px", fontSize: "12px" }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <span style={{ fontSize: "10px", color: "var(--superadmin-text-muted, #64748B)", fontWeight: 700 }}>Feature 3</span>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="e.g. Multi-Specialty OPD"
-                                                        value={brandingForm.about_service_3 || ""}
-                                                        onChange={(e) => setBrandingForm({ ...brandingForm, about_service_3: e.target.value })}
-                                                        style={{ ...fieldInputStyle, padding: "7px 10px", fontSize: "12px" }}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <span style={{ fontSize: "10px", color: "var(--superadmin-text-muted, #64748B)", fontWeight: 700 }}>Feature 4</span>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="e.g. Digital E-Prescriptions"
-                                                        value={brandingForm.about_service_4 || ""}
-                                                        onChange={(e) => setBrandingForm({ ...brandingForm, about_service_4: e.target.value })}
-                                                        style={{ ...fieldInputStyle, padding: "7px 10px", fontSize: "12px" }}
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Right Column: Live Interactive "About Us" Modal Preview */}
-                                    <div>
-                                        <span style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
-                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconEye size={15} color="#0284C7" /><span>{isHi ? "मरीज़ पोर्टल 'About Us' पूर्वावलोकन" : "Patient Portal 'About Us' Preview"}</span></span>
-                                        </span>
-                                        <div
-                                            style={{
-                                                background: "var(--superadmin-card-bg, #FFFFFF)",
-                                                borderRadius: "18px",
-                                                border: `1.5px solid ${brandingForm.primary_color || "#0284C7"}40`,
-                                                padding: "20px",
-                                                boxShadow: "0 12px 28px -4px rgba(0,0,0,0.25)",
-                                            }}
-                                        >
-                                            {/* Header row with logo shield */}
-                                            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
-                                                <div
-                                                    style={{
-                                                        width: "36px",
-                                                        height: "36px",
-                                                        borderRadius: "10px",
-                                                        background: brandingForm.primary_color || "#0284C7",
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "center",
-                                                        flexShrink: 0,
-                                                        overflow: "hidden",
-                                                    }}
-                                                >
-                                                    {brandingForm.logo_url ? (
-                                                        <img src={brandingForm.logo_url} alt="Logo" style={{ width: "24px", height: "24px", objectFit: "contain" }} />
-                                                    ) : (
-                                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                                            <path d="M12 2.5L4.5 5.5v5.5c0 5.1 3.2 9.85 7.5 11 4.3-1.15 7.5-5.9 7.5-11V5.5L12 2.5z" fill="#044E3B" />
-                                                            <path d="M12 7.5v9M7.5 12h9" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                                                        </svg>
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <h4 style={{ margin: 0, fontSize: "15px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800 }}>
-                                                        {brandingForm.about_us_title || `About ${brandingTargetHospital?.name || "City General Hospital"}`}
-                                                    </h4>
-                                                    <span style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)", fontWeight: 600 }}>
-                                                        {brandingForm.about_us_subtitle || brandingForm.tagline || "Care you can trust • NABH Accredited"}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            {/* Description Preview */}
-                                            <p style={{ fontSize: "12.5px", color: "var(--superadmin-text-sub, #334155)", lineHeight: "1.55", margin: "0 0 14px 0" }}>
-                                                {brandingForm.about_us || "Premier medical institution dedicated to patient-first care with AI-driven intelligent queue orchestration..."}
-                                            </p>
-
-                                            {/* Key Features Grid */}
-                                            <div style={{ background: "var(--superadmin-sub-card, #F8FAFC)", borderRadius: "10px", padding: "10px 12px", border: "1px solid var(--superadmin-border, #E2E8F0)", marginBottom: "14px" }}>
-                                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "11px" }}>
-                                                    <div>
-                                                        <strong style={{ color: brandingForm.primary_color || "#38BDF8" }}>✓ {brandingForm.about_service_1 || "24/7 Emergency Triage"}</strong>
-                                                    </div>
-                                                    <div>
-                                                        <strong style={{ color: brandingForm.primary_color || "#38BDF8" }}>✓ {brandingForm.about_service_2 || "AI Wait Prediction"}</strong>
-                                                    </div>
-                                                    <div>
-                                                        <strong style={{ color: brandingForm.primary_color || "#38BDF8" }}>✓ {brandingForm.about_service_3 || "Multi-Specialty OPD"}</strong>
-                                                    </div>
-                                                    <div>
-                                                        <strong style={{ color: brandingForm.primary_color || "#38BDF8" }}>✓ {brandingForm.about_service_4 || "Digital E-Prescriptions"}</strong>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                                                <button
-                                                    type="button"
-                                                    style={{
-                                                        padding: "6px 14px",
-                                                        borderRadius: "8px",
-                                                        border: "none",
-                                                        background: "var(--superadmin-sub-card, #F1F5F9)",
-                                                        color: "var(--superadmin-text-sub, #475569)",
-                                                        fontSize: "11px",
-                                                        fontWeight: 700,
-                                                        cursor: "default",
-                                                    }}
-                                                >
-                                                    {isHi ? "बंद करें (Close)" : "Close"}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB 3: TOKEN SLIP & HELPLINE SETTINGS + LIVE PREVIEW */}
-                            {activeBrandingTab === "slip" && (
-                                <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: "18px" }}>
-                                    {/* Form Controls */}
-                                    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "अस्पताल टैगलाइन (Tagline)" : "Hospital Tagline / Motto"}</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. Care You Can Trust • NABH Accredited"
-                                                value={brandingForm.tagline || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, tagline: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "आपातकालीन हेल्पलाइन (Emergency Helpline)" : "24x7 Emergency Helpline Text"}</label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g. Emergency Helpline: 108 / +91 11 2658 8500"
-                                                value={brandingForm.emergency_helpline || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, emergency_helpline: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                            <span style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)", marginTop: "3px", display: "block" }}>
-                                                {isHi ? "यह प्रत्येक मरीज के टोकन पास पर प्रमुखता से छपता है।" : "Printed boldly on every printed patient ticket pass."}
-                                            </span>
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "पर्ची पाद लेख सूचना (Footer Notice)" : "Token Slip Footer Notice"}</label>
-                                            <textarea
-                                                rows="3"
-                                                placeholder="e.g. Non-transferable official patient record. Please keep until consultation is complete."
-                                                value={brandingForm.slip_footer_text || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, slip_footer_text: e.target.value })}
-                                                style={{ ...fieldInputStyle, resize: "none" }}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Live Thermal Pass Preview */}
-                                    <div>
-                                        <span style={{ ...fieldLabelStyle, marginBottom: "6px" }}>
-                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconEye size={15} color="#0284C7" /><span>{isHi ? "लाइव टोकन पर्ची पूर्वावलोकन" : "Live Printed Pass Preview"}</span></span>
-                                        </span>
-                                        <div
-                                            style={{
-                                                background: "var(--superadmin-card-bg, #FFFFFF)",
-                                                borderRadius: "14px",
-                                                border: `2px solid ${brandingForm.primary_color || "#0284C7"}`,
-                                                padding: "16px",
-                                                boxShadow: "0 8px 24px -4px rgba(0,0,0,0.25)",
-                                                fontSize: "11px",
-                                                fontFamily: "monospace, sans-serif",
-                                            }}
-                                        >
-                                            {/* Pass Header */}
-                                            <div style={{ display: "flex", alignItems: "center", gap: "8px", borderBottom: `2px solid ${brandingForm.primary_color || "#0284C7"}`, paddingBottom: "8px", marginBottom: "8px" }}>
-                                                <div style={{ width: "32px", height: "32px", borderRadius: "6px", background: brandingForm.accent_color || "var(--superadmin-sub-card, #F0F9FF)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-                                                    {brandingForm.logo_url ? (
-                                                        <img src={brandingForm.logo_url} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-                                                    ) : (
-                                                        <IconHospital size={16} color="#0284C7" />
-                                                    )}
-                                                </div>
-                                                <div style={{ overflow: "hidden" }}>
-                                                    <div style={{ fontWeight: 900, fontSize: "13px", color: brandingForm.primary_color || "#38BDF8", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                                        {brandingTargetHospital.name}
-                                                    </div>
-                                                    <div style={{ fontSize: "9px", color: "var(--superadmin-text-muted, #64748B)" }}>
-                                                        {brandingForm.tagline || "Care you can trust"}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Helpline Banner */}
-                                            <div style={{ background: "rgba(220, 38, 38, 0.15)", border: "1px solid rgba(220, 38, 38, 0.3)", borderRadius: "6px", padding: "4px 8px", marginBottom: "8px", color: "#EF4444", fontWeight: 800, fontSize: "10px", textAlign: "center" }}>
-                                                Helpline: {brandingForm.emergency_helpline || "Emergency: 108"}
-                                            </div>
-
-                                            {/* Token Box */}
-                                            <div style={{ textAlign: "center", border: `2px dashed ${brandingForm.primary_color || "#0284C7"}`, borderRadius: "10px", padding: "10px", margin: "8px 0", background: brandingForm.accent_color || "var(--superadmin-sub-card, #F0F9FF)" }}>
-                                                <div style={{ fontSize: "9px", color: "var(--superadmin-text-muted, #64748B)", textTransform: "uppercase", fontWeight: 700 }}>YOUR QUEUE TOKEN</div>
-                                                <div style={{ fontSize: "28px", fontWeight: 900, color: brandingForm.primary_color || "#38BDF8", letterSpacing: "1px" }}>P-104</div>
-                                                <div style={{ fontSize: "10px", fontWeight: 800, color: "#10B981" }}>PRIORITY: STANDARD</div>
-                                            </div>
-
-                                            {/* Ticket Details */}
-                                            <div style={{ fontSize: "10.5px", color: "var(--superadmin-text-main, #334155)", lineHeight: 1.5, borderBottom: "1px dashed var(--superadmin-border, #CBD5E1)", paddingBottom: "8px", marginBottom: "8px" }}>
-                                                <div><strong>Patient:</strong> Ramesh Sharma (38Y / M)</div>
-                                                <div><strong>Dept:</strong> General OPD • Desk 02</div>
-                                                <div><strong>Time:</strong> Today at 09:30 AM</div>
-                                            </div>
-
-                                            {/* Footer notice */}
-                                            <div style={{ fontSize: "8.5px", color: "var(--superadmin-text-muted, #64748B)", textAlign: "center", fontStyle: "italic" }}>
-                                                {brandingForm.slip_footer_text || "Non-transferable official patient record."}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB 4: OPERATING HOURS & CUTOFF */}
-                            {activeBrandingTab === "hours" && (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                                    {/* Hours Grid */}
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "14px", background: "var(--superadmin-sub-card, #F8FAFC)", padding: "16px", borderRadius: "14px", border: "1px solid var(--superadmin-border, #E2E8F0)" }}>
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "ओपीडी खुलने का समय" : "OPD Opening Time"}</label>
-                                            <input
-                                                type="time"
-                                                value={brandingForm.opd_start_time || "08:00"}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, opd_start_time: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>{isHi ? "ओपीडी बंद होने का समय" : "OPD Closing Time"}</label>
-                                            <input
-                                                type="time"
-                                                value={brandingForm.opd_end_time || "20:00"}
-                                                onChange={(e) => {
-                                                    const newEnd = e.target.value;
-                                                    setBrandingForm((prev) => ({
-                                                        ...prev,
-                                                        opd_end_time: newEnd,
-                                                        registration_close_time: newEnd,
-                                                        registration_cutoff_time: (!prev.registration_cutoff_time || prev.registration_cutoff_time === prev.opd_end_time) ? newEnd : prev.registration_cutoff_time,
-                                                    }));
-                                                }}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={{ ...fieldLabelStyle, color: "#EF4444" }}>
-                                                {isHi ? "दैनिक पंजीकरण कटऑफ समय *" : "Registration Cutoff Time *"}
-                                            </label>
-                                            <input
-                                                type="time"
-                                                value={brandingForm.registration_cutoff_time || "19:00"}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, registration_cutoff_time: e.target.value })}
-                                                style={{ ...fieldInputStyle, borderColor: "rgba(239, 68, 68, 0.4)", background: "var(--superadmin-input-bg, #FFF5F5)" }}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Cutoff Explanation Banner */}
-                                    <div style={{ background: "rgba(2, 132, 199, 0.12)", border: "1px solid rgba(2, 132, 199, 0.3)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-                                        <span style={{ fontSize: "20px" }}>ℹ️</span>
-                                        <span style={{ fontSize: "12px", color: "#38BDF8", lineHeight: 1.4 }}>
-                                            {isHi
-                                                ? "कटऑफ समय के बाद गैर-आपातकालीन (Standard/Vulnerable) मरीज टोकन जनरेट नहीं कर सकते। आपातकालीन (Emergency) मरीज 24/7 कभी भी रजिस्टर कर सकते हैं।"
-                                                : "Non-emergency patients cannot register or join the queue after this cutoff time. Emergency triage registrations remain active 24/7."}
-                                        </span>
-                                    </div>
-
-                                    {/* Operating Days Selector */}
-                                    <div>
-                                        <label style={{ ...fieldLabelStyle, marginBottom: "8px" }}>
-                                            {isHi ? "सक्रिय ओपीडी संचालन दिवस (Operating Days)" : "Weekly OPD Operating Days"}
-                                        </label>
-                                        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                                            {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => {
-                                                const isChecked = (brandingForm.operating_days || []).includes(day);
-                                                return (
-                                                    <button
-                                                        key={day}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const currentDays = brandingForm.operating_days || [];
-                                                            const newDays = isChecked
-                                                                ? currentDays.filter((d) => d !== day)
-                                                                : [...currentDays, day];
-                                                            setBrandingForm({ ...brandingForm, operating_days: newDays });
-                                                        }}
-                                                        style={{
-                                                            padding: "7px 14px",
-                                                            borderRadius: "8px",
-                                                            border: isChecked ? `1.5px solid ${brandingForm.primary_color || "#0284C7"}` : "1px solid var(--superadmin-border, #CBD5E1)",
-                                                            background: isChecked ? (brandingForm.primary_color || "#0284C7") : "var(--superadmin-card-bg, #FFFFFF)",
-                                                            color: isChecked ? "#FFFFFF" : "var(--superadmin-text-sub, #475569)",
-                                                            fontWeight: 700,
-                                                            fontSize: "12px",
-                                                            cursor: "pointer",
-                                                            transition: "all 0.15s ease",
-                                                        }}
-                                                    >
-                                                        {isChecked ? "✓ " : ""}{day}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    {/* Closed Notice */}
-                                    <div>
-                                        <label style={fieldLabelStyle}>{isHi ? "क्लिनिक बंद होने की सूचना (Closed Notice)" : "Off-Hours Closed Notice to Patients"}</label>
-                                        <textarea
-                                            rows="2"
-                                            placeholder="Registrations are closed for today..."
-                                            value={brandingForm.closed_notice || ""}
-                                            onChange={(e) => setBrandingForm({ ...brandingForm, closed_notice: e.target.value })}
-                                            style={{ ...fieldInputStyle, resize: "none" }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* TAB 5: ADDRESS & OPD RECEPTION / QUEUE HELP DESK */}
-                            {activeBrandingTab === "contact" && (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                                    {/* Hospital Campus Address */}
-                                    <div>
-                                        <label style={fieldLabelStyle}>
-                                            <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                <IconMapPin size={16} color="#0284C7" />
-                                                <span>{isHi ? "अस्पताल परिसर पता (Hospital Campus Address)" : "Hospital Campus Address"}</span>
-                                            </span>
-                                        </label>
-                                        <textarea
-                                            rows="3"
-                                            placeholder="e.g., 742 Evergreen Healthcare Ave, Medical District, Suite 100"
-                                            value={brandingForm.address || ""}
-                                            onChange={(e) => setBrandingForm({ ...brandingForm, address: e.target.value })}
-                                            style={{ ...fieldInputStyle, resize: "none" }}
-                                        />
-                                        <div style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)", marginTop: "4px" }}>
-                                            {isHi
-                                                ? "यह पता रोगी पोर्टल, संपर्क पॉपअप और डिजिटल पर्ची पर प्रदर्शित होता है।"
-                                                : "Displayed across patient portal headers, support modals, and official appointment slips."}
-                                        </div>
-                                    </div>
-
-                                    {/* OPD Reception & Queue Help Desk */}
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                                        <div>
-                                            <label style={fieldLabelStyle}>
-                                                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                    <span>🏥</span>
-                                                    <span>{isHi ? "ओपीडी रिसेप्शन एवं सहायता फ़ोन" : "OPD Reception & Queue Help Desk Phone"}</span>
-                                                </span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g., +1 (800) 456-7890 (Ext: 101)"
-                                                value={brandingForm.opd_helpdesk_phone || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, opd_helpdesk_phone: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>
-                                                <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                    <IconMail size={14} color="#0284C7" />
-                                                    <span>{isHi ? "सहायता / संपर्क ईमेल" : "Support & Inquiries Email"}</span>
-                                                </span>
-                                            </label>
-                                            <input
-                                                type="email"
-                                                placeholder="e.g., support@citygeneralhospital.org"
-                                                value={brandingForm.support_email || brandingForm.email || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, support_email: e.target.value, email: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* OPD Help Desk Operating Hours */}
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                                        <div>
-                                            <label style={fieldLabelStyle}>
-                                                <span>{isHi ? "ओपीडी सहायता डेस्क समय (अंग्रेजी)" : "OPD Help Desk Hours (English)"}</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g., Mon – Sat: 8:00 AM – 8:00 PM"
-                                                value={brandingForm.opd_helpdesk_hours || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, opd_helpdesk_hours: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-
-                                        <div>
-                                            <label style={fieldLabelStyle}>
-                                                <span>{isHi ? "ओपीडी सहायता डेस्क समय (हिंदी)" : "OPD Help Desk Hours (Hindi)"}</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                placeholder="e.g., सोम – शनि: सुबह 8:00 – रात 8:00"
-                                                value={brandingForm.opd_helpdesk_hours_hi || ""}
-                                                onChange={(e) => setBrandingForm({ ...brandingForm, opd_helpdesk_hours_hi: e.target.value })}
-                                                style={fieldInputStyle}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* 24/7 Emergency Ambulance Helpline */}
-                                    <div>
-                                        <label style={{ ...fieldLabelStyle, color: "#EF4444" }}>
-                                            <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                <IconAlertTriangle size={16} color="#EF4444" />
-                                                <span>{isHi ? "24/7 आपातकालीन एम्बुलेंस हेल्पलाइन" : "24/7 Emergency Ambulance Helpline"}</span>
-                                            </span>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="e.g., Emergency Helpline: 108 / +91 98765 43210"
-                                            value={brandingForm.emergency_helpline || ""}
-                                            onChange={(e) => setBrandingForm({ ...brandingForm, emergency_helpline: e.target.value })}
-                                            style={{ ...fieldInputStyle, borderColor: "rgba(239, 68, 68, 0.4)", background: "var(--superadmin-input-bg, #FFF5F5)" }}
-                                        />
-                                    </div>
-
-                                    {/* Live Preview Card */}
-                                    <div style={{ background: "var(--superadmin-sub-card, #F8FAFC)", border: "1px solid var(--superadmin-border, #E2E8F0)", borderRadius: "12px", padding: "14px" }}>
-                                        <div style={{ fontSize: "12px", fontWeight: 800, color: "var(--superadmin-text-sub, #475569)", marginBottom: "8px", textTransform: "uppercase" }}>
-                                            {isHi ? "लाइव संपर्क कार्ड पूर्वावलोकन" : "Live Patient Modal Preview"}
-                                        </div>
-                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                            <div style={{ padding: "10px", background: "var(--superadmin-card-bg, #FFFFFF)", borderRadius: "8px", border: "1px solid var(--superadmin-border, #E2E8F0)" }}>
-                                                <div style={{ fontSize: "11px", fontWeight: 800, color: "#38BDF8" }}>OPD Reception & Queue Help Desk</div>
-                                                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--superadmin-text-main, #0F172A)", marginTop: "2px" }}>{brandingForm.opd_helpdesk_phone || "+1 (800) 456-7890 (Ext: 101)"}</div>
-                                                <div style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)" }}>{brandingForm.opd_helpdesk_hours || "Mon – Sat: 8:00 AM – 8:00 PM"}</div>
-                                            </div>
-                                            <div style={{ padding: "10px", background: "var(--superadmin-card-bg, #FFFFFF)", borderRadius: "8px", border: "1px solid var(--superadmin-border, #E2E8F0)" }}>
-                                                <div style={{ fontSize: "11px", fontWeight: 800, color: "#38BDF8" }}>Hospital Campus Address</div>
-                                                <div style={{ fontSize: "12px", color: "var(--superadmin-text-sub, #334155)", marginTop: "2px" }}>{brandingForm.address || "742 Evergreen Healthcare Ave, Medical District, Suite 100"}</div>
-                                                <div style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)" }}>Email: {brandingForm.support_email || brandingForm.email || "support@citygeneralhospital.org"}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Modal Actions */}
-                            <div style={{ display: "flex", gap: "10px", marginTop: "10px", borderTop: "1px solid var(--superadmin-border, #E2E8F0)", paddingTop: "14px" }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowBrandingModal(false)}
-                                    style={modalCancelBtnStyle}
-                                >
-                                    {isHi ? "रद्द करें" : "Cancel"}
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setBrandingForm({
-                                        logo_url: "",
-                                        primary_color: "#0284C7",
-                                        secondary_color: "#0369A1",
-                                        accent_color: "#F0F9FF",
-                                        tagline: "Care you can trust • NABH Accredited",
-                                        emergency_helpline: "Emergency Helpline: 108 / +91 98765 43210",
-                                        slip_footer_text: "Non-transferable official patient record. Please keep until consultation is complete.",
-                                        about_us_title: `About ${brandingTargetHospital?.name || "City General Hospital"}`,
-                                        about_us_subtitle: "Care you can trust • NABH Accredited",
-                                        about_us: "City General Hospital is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.",
-                                        about_us_hi: "सिटी जनरल अस्पताल मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।",
-                                        about_service_1: "24/7 Emergency Triage • Priority ambulance & ICU care",
-                                        about_service_2: "AI Wait Prediction • Live queue synchronization",
-                                        about_service_3: "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho",
-                                        about_service_4: "Digital E-Prescriptions • Seamless pharmacy refills",
-                                        opd_start_time: "08:00",
-                                        opd_end_time: "20:00",
-                                        registration_cutoff_time: "19:00",
-                                        operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-                                        closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
-                                    })}
-                                    style={{
-                                        ...modalCancelBtnStyle,
-                                        color: "#D97706",
-                                        borderColor: "rgba(245, 158, 11, 0.4)",
-                                        background: "var(--superadmin-sub-card, #FFFBEB)",
-                                    }}
-                                >
-                                    {isHi ? "डिफ़ॉल्ट रीसेट" : "Reset Defaults"}
-                                </button>
-
-                                <button
-                                    type="submit"
-                                    disabled={isSavingBranding}
-                                    style={{
-                                        ...modalSubmitBtnStyle,
-                                        background: `linear-gradient(135deg, ${brandingForm.primary_color || "#0284C7"} 0%, ${brandingForm.secondary_color || "#0369A1"} 100%)`,
-                                        opacity: isSavingBranding ? 0.7 : 1,
-                                        cursor: isSavingBranding ? "not-allowed" : "pointer",
-                                    }}
-                                >
-                                    {isSavingBranding
-                                        ? (isHi ? "सहेज रहा है..." : "Saving Settings...")
-                                        : (isHi ? "ब्रांडिंग सेटिंग्स सहेजें" : "Save Branding Settings")}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* FEATURE 3: NABH EXECUTIVE DAILY REPORT MODAL */}
+{/* FEATURE 3: NABH EXECUTIVE DAILY REPORT MODAL */}
             {showNABHReportModal && (() => {
                 const hourlyAnalytics = computeHourlyAnalytics(rawVisits, hospitalQueueSnapshot);
                 const bottleneckAnalytics = computeDepartmentBottlenecks(hospitalDepts, hospitalQueueSnapshot, rawVisits);
@@ -10295,22 +9099,6 @@ const actionBtnStyle = {
     boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
 };
 
-const sidebarSecondaryBtnStyle = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    padding: "11px 16px",
-    borderRadius: "12px",
-    border: "1px solid var(--superadmin-input-border, #CBD5E1)",
-    background: "var(--superadmin-sub-card, #F8FAFC)",
-    color: "var(--superadmin-text-sub, #334155)",
-    fontSize: "13px",
-    fontWeight: 700,
-    cursor: "pointer",
-    width: "100%",
-    outline: "none",
-};
 
 const sidebarSelectStyle = {
     width: "100%",
@@ -10345,15 +9133,6 @@ const roleBadgeStyle = (role) => {
     return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "rgba(29, 78, 216, 0.15)", color: "#60A5FA", border: "1px solid rgba(29, 78, 216, 0.3)" };
 };
 
-const empStatusBadgeStyle = (status) => ({
-    fontSize: "10px",
-    fontWeight: 800,
-    padding: "2px 6px",
-    borderRadius: "4px",
-    background: status === "inactive" ? "rgba(239, 68, 68, 0.15)" : "rgba(16, 185, 129, 0.15)",
-    color: status === "inactive" ? "#EF4444" : "#10B981",
-    border: status === "inactive" ? "1px solid rgba(239, 68, 68, 0.3)" : "1px solid rgba(16, 185, 129, 0.3)",
-});
 
 const copySmallBtnStyle = {
     padding: "4px 8px",
