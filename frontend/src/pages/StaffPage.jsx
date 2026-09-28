@@ -128,6 +128,7 @@ export default function StaffPage({
 
   const [activeTab, setActiveTab] = useState("ops"); // "ops" | "queue" | "apts"
   const [appointments, setAppointments] = useState([]);
+  const [bookedSlotsViewMode, setBookedSlotsViewMode] = useState("pending"); // "pending" | "all"
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [targetDept, setTargetDept] = useState("pharmacy");
@@ -876,6 +877,12 @@ export default function StaffPage({
     );
   });
 
+  // Only show true booked slots (scheduled appointments not yet checked in / not yet in the active queue)
+  const scheduledBookedSlots = appointments.filter(
+    (a) => (a.status || "").toLowerCase() === "scheduled" && !a.ticket_id
+  );
+  const displayedAppointments = bookedSlotsViewMode === "pending" ? scheduledBookedSlots : appointments;
+
   return (
     <div
       style={{ maxWidth: "1440px", margin: "0 auto", width: "100%", padding: "0 8px", boxSizing: "border-box" }}
@@ -1390,7 +1397,7 @@ export default function StaffPage({
         heldCount={heldTickets.length}
         servingTicket={primaryServing}
         nextTicket={queueSnapshot.length > 0 ? queueSnapshot[0] : null}
-        appointmentsCount={appointments.length}
+        appointmentsCount={scheduledBookedSlots.length}
         handleCounterChange={canModifyDesks ? handleCounterChange : null}
         handleServeNext={onCallNextPatient}
         isDoctorBusy={isDoctorBusy}
@@ -1788,11 +1795,11 @@ export default function StaffPage({
                     color: activeTab === "apts" ? "#0F172A" : "#0284C7",
                   }}
                 >
-                  {appointments.length}
+                  {scheduledBookedSlots.length}
                 </span>
               </div>
               <span className="tab-sub-text" style={{ color: activeTab === "apts" ? "#BAE6FD" : "#64748B" }}>
-                {language === "hi" ? "शेड्यूल एवं चेक-इन" : "Roster & Priority Merge"}
+                {language === "hi" ? "आगमन हेतु प्रतीक्षारत" : "Awaiting Arrival"}
               </span>
             </div>
           </button>
@@ -2041,9 +2048,6 @@ export default function StaffPage({
                   {t("nowServingAt", language)} {getCategoryLabel(adminDept, language)}
                 </span>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
-                    {servingTickets.length} {language === "hi" ? "सक्रिय" : "Active"}
-                  </span>
                   <span style={{ fontSize: "11px", fontWeight: 700, color: isDoctorBusy ? "#D97706" : "#059669", background: isDoctorBusy ? "#FEF3C7" : "#ECFDF5", padding: "2px 8px", borderRadius: "6px", border: isDoctorBusy ? "1px solid #FDE68A" : "1px solid #A7F3D0" }}>
                     {isDoctorBusy
                       ? (language === "hi" ? "डॉक्टर व्यस्त (1/1 क्षमता)" : "Doctor Busy (1/1 Capacity)")
@@ -2655,7 +2659,48 @@ export default function StaffPage({
                             <span style={{ fontWeight: 800, color: "#64748B" }}>#{ticket.position}</span>
                           </td>
                           <td style={{ ...staffTdStyle, fontWeight: 900, color: "#0284C7" }}>
-                            #{ticket.ticket_id}
+                            <div style={{ fontSize: "14px", fontWeight: 900 }}>#{ticket.ticket_id}</div>
+                            {ticket.appointment_id ? (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  marginTop: "3px",
+                                  padding: "2px 7px",
+                                  borderRadius: "6px",
+                                  fontSize: "10.5px",
+                                  fontWeight: 800,
+                                  background: isDark ? "rgba(99, 102, 241, 0.2)" : "#EEF2FF",
+                                  color: isDark ? "#A5B4FC" : "#4F46E5",
+                                  border: `1px solid ${isDark ? "rgba(99, 102, 241, 0.4)" : "#C7D2FE"}`,
+                                }}
+                                title={`Booked Slot Checked-In: ${ticket.appointment_id}`}
+                              >
+                                <IconCalendar size={11} color={isDark ? "#A5B4FC" : "#4F46E5"} />
+                                <span>{language === "hi" ? "बुक स्लॉट (चेक-इन)" : "Booked Slot"}</span>
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                  marginTop: "3px",
+                                  padding: "2px 7px",
+                                  borderRadius: "6px",
+                                  fontSize: "10.5px",
+                                  fontWeight: 800,
+                                  background: isDark ? "rgba(16, 185, 129, 0.2)" : "#ECFDF5",
+                                  color: isDark ? "#6EE7B7" : "#059669",
+                                  border: `1px solid ${isDark ? "rgba(16, 185, 129, 0.4)" : "#A7F3D0"}`,
+                                }}
+                                title="Instant Live Walk-In Ticket"
+                              >
+                                <span>🚶</span>
+                                <span>{language === "hi" ? "लाइव वॉक-इन" : "Live Walk-In"}</span>
+                              </span>
+                            )}
                           </td>
                           <td style={{ ...staffTdStyle, fontWeight: 700, color: "#0F172A" }}>
                             {ticket.name}
@@ -2693,30 +2738,74 @@ export default function StaffPage({
             <div style={standaloneCardStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
                 <div>
-                  <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: "#0F172A", fontWeight: 800, letterSpacing: "-0.4px" }}>
-                    {getCategoryLabel(adminDept, language)} {t("todayApts", language)} ({appointments.length})
+                  <h2 style={{ margin: "0 0 4px 0", fontSize: "22px", color: isDark ? "#F8FAFC" : "#0F172A", fontWeight: 800, letterSpacing: "-0.4px" }}>
+                    {getCategoryLabel(adminDept, language)} {language === "hi" ? "बुक किए गए स्लॉट" : "Booked Appointment Slots"} ({scheduledBookedSlots.length})
                   </h2>
-                  <p style={{ margin: 0, color: "#64748B", fontSize: "13px" }}>
-                    {t("scheduledAppointmentsToday", language)}
+                  <p style={{ margin: 0, color: isDark ? "#94A3B8" : "#64748B", fontSize: "13px" }}>
+                    {language === "hi"
+                      ? "आगमन की प्रतीक्षा में निर्धारित स्लॉट। चेक-इन होते ही मरीज़ 'प्रतीक्षारत कतार (Waiting Queue)' में चले जाते हैं।"
+                      : "Pre-scheduled appointment slots awaiting arrival. Once checked in, patients move to the live Waiting Queue."}
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={fetchTenantAppointments}
-                  style={refreshBtnStyle}
-                  title="Refresh Appointments"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="23 4 23 10 17 10" />
-                    <polyline points="1 20 1 14 7 14" />
-                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                  </svg>
-                  <span>{language === "hi" ? "ताज़ा करें" : "Refresh"}</span>
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                  {/* View Mode Toggle: Pending Slots vs All */}
+                  <div style={{ display: "inline-flex", background: isDark ? "#1E293B" : "#F1F5F9", padding: "3px", borderRadius: "10px", border: `1px solid ${isDark ? "#334155" : "#E2E8F0"}` }}>
+                    <button
+                      type="button"
+                      onClick={() => setBookedSlotsViewMode("pending")}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: "7px",
+                        border: "none",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        background: bookedSlotsViewMode === "pending" ? (isDark ? "#0284C7" : "#FFFFFF") : "transparent",
+                        color: bookedSlotsViewMode === "pending" ? (isDark ? "#FFFFFF" : "#0284C7") : (isDark ? "#94A3B8" : "#64748B"),
+                        boxShadow: bookedSlotsViewMode === "pending" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                      }}
+                      title={language === "hi" ? "केवल वे स्लॉट जो अभी कतार में नहीं आए हैं" : "Only pending pre-booked slots awaiting arrival"}
+                    >
+                      {language === "hi" ? `लंबित स्लॉट (${scheduledBookedSlots.length})` : `Pending Arrival (${scheduledBookedSlots.length})`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBookedSlotsViewMode("all")}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: "7px",
+                        border: "none",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        background: bookedSlotsViewMode === "all" ? (isDark ? "#0284C7" : "#FFFFFF") : "transparent",
+                        color: bookedSlotsViewMode === "all" ? (isDark ? "#FFFFFF" : "#0284C7") : (isDark ? "#94A3B8" : "#64748B"),
+                        boxShadow: bookedSlotsViewMode === "all" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
+                      }}
+                      title={language === "hi" ? "सभी अपॉइंटमेंट्स (चेक-इन और पूर्ण सहित)" : "All appointments including checked-in & completed"}
+                    >
+                      {language === "hi" ? `सभी बुकिंग (${appointments.length})` : `All Bookings (${appointments.length})`}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={fetchTenantAppointments}
+                    style={refreshBtnStyle}
+                    title="Refresh Appointments"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="23 4 23 10 17 10" />
+                      <polyline points="1 20 1 14 7 14" />
+                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                    </svg>
+                    <span>{language === "hi" ? "ताज़ा करें" : "Refresh"}</span>
+                  </button>
+                </div>
               </div>
 
-              {appointments.length === 0 ? (
+              {displayedAppointments.length === 0 ? (
                 <div
                   className={`staff-empty-box ${isDark ? "dark-mode-box" : ""}`}
                   style={{
@@ -2732,10 +2821,14 @@ export default function StaffPage({
                     <IconCalendar size={26} color="#0284C7" />
                   </div>
                   <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: isDark ? "#F8FAFC" : "var(--staff-card-text, #0F172A)" }}>
-                    {t("noActiveAptsMsg", language)}
+                    {bookedSlotsViewMode === "pending"
+                      ? (language === "hi" ? "कोई लंबित बुक किया गया स्लॉट नहीं है" : "No Pending Booked Slots Awaiting Arrival")
+                      : t("noActiveAptsMsg", language)}
                   </h4>
                   <p style={{ margin: 0, fontSize: "12.5px", color: isDark ? "#94A3B8" : "var(--staff-muted-text, #64748B)" }}>
-                    {language === "hi" ? "आज के लिए कोई निर्धारित अपॉइंटमेंट लंबित नहीं है।" : "No pending pre-scheduled appointment bookings found."}
+                    {language === "hi"
+                      ? "सभी चेक-इन किए गए मरीज़ और लाइव वॉक-इन 'प्रतीक्षारत कतार (Waiting Queue)' में सक्रिय हैं।"
+                      : "All checked-in patients and instant walk-ins are active in the live Waiting Queue."}
                   </p>
                 </div>
               ) : (
@@ -2752,7 +2845,7 @@ export default function StaffPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {appointments.map((apt) => {
+                      {displayedAppointments.map((apt) => {
                         const statusKey = (apt.status || "").toLowerCase();
                         const isCheckedIn = statusKey === "checked_in" || (apt.ticket_id && statusKey !== "completed" && statusKey !== "cancelled" && statusKey !== "no_show");
                         const isScheduled = statusKey === "scheduled" && !apt.ticket_id;
@@ -2933,32 +3026,8 @@ export default function StaffPage({
               </span>
             </div>
 
-            {/* Now Serving Highlight in Dark Ocean / Slate Gradient */}
-            <div style={{ background: "linear-gradient(135deg, #0F172A 0%, #1E293B 70%, #0C4A6E 100%)", borderRadius: "14px", padding: "16px", color: "#FFFFFF" }}>
-              <div style={{ fontSize: "11px", color: "#BAE6FD", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                {t("nowServing", language)}
-              </div>
-              {primaryServing ? (
-                <div style={{ marginTop: "4px" }}>
-                  <div style={{ fontSize: "32px", fontWeight: 900, color: "#38BDF8", lineHeight: 1.1 }}>
-                    #{primaryServing.ticket_id}
-                  </div>
-                  <div style={{ fontSize: "14px", fontWeight: 700, marginTop: "2px" }}>
-                    {primaryServing.name}
-                  </div>
-                  <div style={{ fontSize: "11.5px", color: "rgba(255,255,255,0.75)", marginTop: "2px" }}>
-                    {language === "hi" ? "विभाग:" : "Dept:"} {getCategoryLabel(primaryServing.service_category || "consultation", language)}
-                  </div>
-                </div>
-              ) : (
-                <div style={{ marginTop: "6px", fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 600 }}>
-                  {language === "hi" ? "अगले मरीज़ हेतु सभी डेस्क तैयार हैं" : "All desks ready for next patient"}
-                </div>
-              )}
-            </div>
-
             {/* Live Stats Row */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "14px" }}>
               <div style={{ background: isDark ? "#1E293B" : "#F8FAFC", padding: "10px 12px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #E2E8F0" }}>
                 <span style={{ fontSize: "10.5px", color: isDark ? "#94A3B8" : "#64748B", display: "block" }}>
                   {language === "hi" ? "औसत प्रतीक्षा" : "Est. Avg Wait"}

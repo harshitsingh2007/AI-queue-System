@@ -293,26 +293,6 @@ export default function AdminHeroBanner({
           cursor: not-allowed;
         }
 
-        .call-next-badge-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 2px 7px;
-          border-radius: 6px;
-          background: linear-gradient(135deg, #0284C7 0%, #0369A1 100%);
-          border: 1px solid rgba(56, 189, 248, 0.4);
-          color: #FFFFFF;
-          font-size: 10px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        }
-
-        .call-next-badge-btn:hover {
-          background: #0369A1;
-          transform: translateY(-1px);
-        }
-
         @keyframes pulseTimerGlow {
           0% {
             box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
@@ -645,17 +625,6 @@ export default function AdminHeroBanner({
                 <span className="hero-stat-value" style={{ color: "#34D399" }}>
                   {displayServing}
                 </span>
-                {!activeServing && waitingCount > 0 && handleServeNext && (
-                  <button
-                    type="button"
-                    onClick={handleServeNext}
-                    className="call-next-badge-btn"
-                    title="Call Next Patient"
-                  >
-                    <span>{isHi ? "बुलाएं" : "Call"}</span>
-                    <span>→</span>
-                  </button>
-                )}
               </div>
               <div className="hero-stat-label">
                 {isHi ? "वर्तमान सेवारत" : "Now Serving"}
