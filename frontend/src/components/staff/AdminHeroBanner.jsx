@@ -137,7 +137,7 @@ export default function AdminHeroBanner({
           padding: 38px 36px;
           display: flex;
           flex-direction: column;
-          justifyContent: space-between;
+          justify-content: space-between;
           z-index: 2;
           background: linear-gradient(135deg, #0F172A 0%, #1E293B 70%, ${secondaryBrandColor} 100%);
           position: relative;
@@ -157,7 +157,7 @@ export default function AdminHeroBanner({
           background: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           position: relative;
           overflow: hidden;
           min-height: 260px;

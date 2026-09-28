@@ -208,46 +208,112 @@ async function getSuperAdminOverview(requesterUser = null) {
  * Lists hospitals scoped to user ownership or all hospitals for global admin.
  */
 async function getAllHospitals(requesterUser = null) {
+  let list = [];
   if (requesterUser) {
     const role = (requesterUser.role || "").toLowerCase();
     if (requesterUser.email === "superadmin@hospital.com" || requesterUser.is_superadmin) {
-      return prisma.hospitals.findMany({
+      list = await prisma.hospitals.findMany({
         orderBy: { id: "asc" },
       });
-    }
+    } else {
+      const primaryCode = requesterUser.primary_hospital_code || null;
 
-    const primaryCode = requesterUser.primary_hospital_code || null;
-
-    if (role === "hospital_owner" || role === "superadmin" || role === "super_admin") {
-      const owned = await prisma.hospitals.findMany({
-        where: {
-          OR: [
-            { owner_user_id: requesterUser.id },
-            ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
-            { employees: { some: { user_id: requesterUser.id } } },
-          ],
-        },
-        orderBy: { id: "asc" },
-      });
-      if (owned.length > 0) {
-        return owned;
+      if (role === "hospital_owner" || role === "superadmin" || role === "super_admin") {
+        const owned = await prisma.hospitals.findMany({
+          where: {
+            OR: [
+              { owner_user_id: requesterUser.id },
+              ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
+              { employees: { some: { user_id: requesterUser.id } } },
+            ],
+          },
+          orderBy: { id: "asc" },
+        });
+        if (owned.length > 0) {
+          list = owned;
+        }
+      } else if (["admin", "doctor", "staff"].includes(role)) {
+        list = await prisma.hospitals.findMany({
+          where: {
+            OR: [
+              { employees: { some: { user_id: requesterUser.id } } },
+              ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
+            ],
+          },
+          orderBy: { id: "asc" },
+        });
       }
-    } else if (["admin", "doctor", "staff"].includes(role)) {
-      return prisma.hospitals.findMany({
-        where: {
-          OR: [
-            { employees: { some: { user_id: requesterUser.id } } },
-            ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
-          ],
-        },
-        orderBy: { id: "asc" },
-      });
     }
   }
 
-  return prisma.hospitals.findMany({
-    orderBy: { id: "asc" },
-  });
+  if (!list || list.length === 0) {
+    list = await prisma.hospitals.findMany({
+      orderBy: { id: "asc" },
+    });
+  }
+
+  if (!list || list.length === 0) return [];
+
+  const hIds = list.map((h) => h.id);
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const [empCounts, docCounts, deskCounts, activeDeskCounts, todayTicketCounts, allTicketCounts] = await Promise.all([
+    prisma.employees.groupBy({
+      by: ["hospital_id"],
+      _count: { id: true },
+      where: { hospital_id: { in: hIds }, status: { notIn: ["deactivated", "suspended", "blocked"] } },
+    }),
+    prisma.employees.groupBy({
+      by: ["hospital_id"],
+      _count: { id: true },
+      where: {
+        hospital_id: { in: hIds },
+        status: "active",
+        users: { role: { in: ["doctor", "admin"] } },
+      },
+    }),
+    prisma.desks.groupBy({
+      by: ["hospital_id"],
+      _count: { id: true },
+      where: { hospital_id: { in: hIds } },
+    }),
+    prisma.desks.groupBy({
+      by: ["hospital_id"],
+      _count: { id: true },
+      where: {
+        hospital_id: { in: hIds },
+        status: { in: ["AVAILABLE", "OCCUPIED", "BUSY", "CALLING"] },
+      },
+    }),
+    prisma.tickets.groupBy({
+      by: ["hospital_id"],
+      _count: { id: true },
+      where: { hospital_id: { in: hIds }, join_timestamp: { gte: startOfDay } },
+    }),
+    prisma.tickets.groupBy({
+      by: ["hospital_id"],
+      _count: { id: true },
+      where: { hospital_id: { in: hIds } },
+    }),
+  ]);
+
+  const empMap = new Map(empCounts.map((e) => [e.hospital_id, e._count.id]));
+  const docMap = new Map(docCounts.map((d) => [d.hospital_id, d._count.id]));
+  const deskMap = new Map(deskCounts.map((k) => [k.hospital_id, k._count.id]));
+  const activeDeskMap = new Map(activeDeskCounts.map((a) => [a.hospital_id, a._count.id]));
+  const todayTicketMap = new Map(todayTicketCounts.map((t) => [t.hospital_id, t._count.id]));
+  const allTicketMap = new Map(allTicketCounts.map((t) => [t.hospital_id, t._count.id]));
+
+  return list.map((h) => ({
+    ...h,
+    employee_count: empMap.get(h.id) ?? 0,
+    doctor_count: docMap.get(h.id) ?? 0,
+    total_desks: deskMap.get(h.id) ?? 0,
+    active_desks: activeDeskMap.get(h.id) ?? 0,
+    patients_today: todayTicketMap.get(h.id) || allTicketMap.get(h.id) || 0,
+    total_visits: allTicketMap.get(h.id) ?? 0,
+  }));
 }
 
 /**

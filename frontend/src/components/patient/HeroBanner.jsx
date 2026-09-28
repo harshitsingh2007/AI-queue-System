@@ -64,7 +64,7 @@ export default function HeroBanner({
           padding: 28px 30px;
           display: flex;
           flex-direction: column;
-          justifyContent: space-between;
+          justify-content: space-between;
           z-index: 2;
           background: transparent;
           position: relative;

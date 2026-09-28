@@ -43,3 +43,6 @@ Thumbs.db
 .env.*.local
 # Ignore old nested project copy
 backend/AI-queue-System/
+
+# Playwright MCP testing artifacts
+.playwright-mcp/

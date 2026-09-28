@@ -142,6 +142,13 @@ const IconEye = ({ size = 14, color = "currentColor" }) => (
     </svg>
 );
 
+const IconEyeOff = ({ size = 14, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+        <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+);
+
 const IconActivity = ({ size = 16, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
@@ -321,7 +328,7 @@ export default function SuperAdminPage({
     const [hospitalVisitsData, setHospitalVisitsData] = useState({ summary: {}, visits: [] });
     const [visitHistorySearchQuery, setVisitHistorySearchQuery] = useState("");
     const [visitHistoryStatusFilter, setVisitHistoryStatusFilter] = useState("all");
-    const [showVisitHistoryTable, setShowVisitHistoryTable] = useState(false);
+    const [showVisitHistoryTable, setShowVisitHistoryTable] = useState(true);
 
     // 1-Click Patient Visit History & Treatment Log CSV Export
     const handleDownloadVisitHistory = (visitsToExport, hospitalName) => {
@@ -391,9 +398,16 @@ export default function SuperAdminPage({
     const [showAddDeskModal, setShowAddDeskModal] = useState(false);
     const [createdCredentials, setCreatedCredentials] = useState(null);
 
-    // Hospital Branding & White-Labeling States
+    // Hospital Customization & Branding States
     const [brandingTargetHospital, setBrandingTargetHospital] = useState(null);
     const [brandingForm, setBrandingForm] = useState({
+        name: "",
+        hospital_code: "",
+        status: "active",
+        description: "",
+        phone: "",
+        email: "",
+        address: "",
         logo_url: "",
         primary_color: "#0284C7",
         secondary_color: "#0369A1",
@@ -414,14 +428,13 @@ export default function SuperAdminPage({
         registration_cutoff_time: "19:00",
         operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
         closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
-        address: "742 Evergreen Healthcare Ave, Medical District, Suite 100",
         opd_helpdesk_phone: "+1 (800) 456-7890 (Ext: 101)",
         opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
         opd_helpdesk_hours_hi: "सोम – शनि: सुबह 8:00 – रात 8:00",
         support_email: "support@citygeneralhospital.org",
     });
     const [isSavingBranding, setIsSavingBranding] = useState(false);
-    const [activeBrandingTab, setActiveBrandingTab] = useState("theme"); // "theme" | "logo" | "about" | "slip" | "hours" | "contact"
+    const [activeBrandingTab, setActiveBrandingTab] = useState("profile"); // "profile" | "theme" | "logo" | "about" | "slip" | "hours" | "contact"
     const [brandingPreviewMode, setBrandingPreviewMode] = useState("portal"); // "portal" | "slip" | "about"
 
     const getAuthHeaders = useCallback(() => {
@@ -1369,12 +1382,19 @@ export default function SuperAdminPage({
         }
     };
 
-    // 4.5. Hospital Branding & White-Labeling Handlers
+    // 4.5. Hospital Customization & Branding Handlers
     const loadHospitalBrandingData = useCallback(async (hosp) => {
         if (!hosp) return;
         setBrandingTargetHospital(hosp);
         // Preload current values or defaults
         const defaultData = {
+            name: hosp.name || "",
+            hospital_code: hosp.hospital_code || "",
+            status: hosp.status || "active",
+            description: hosp.description || "",
+            phone: hosp.phone || "",
+            email: hosp.email || "",
+            address: hosp.address || "",
             logo_url: hosp.logo_url || "",
             primary_color: "#0284C7",
             secondary_color: "#0369A1",
@@ -1395,7 +1415,6 @@ export default function SuperAdminPage({
             registration_cutoff_time: "19:00",
             operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
             closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
-            address: hosp.address || "742 Evergreen Healthcare Ave, Medical District, Suite 100",
             opd_helpdesk_phone: hosp.phone || "+1 (800) 456-7890 (Ext: 101)",
             opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
             opd_helpdesk_hours_hi: "सोम – शनि: सुबह 8:00 – रात 8:00",
@@ -1410,6 +1429,13 @@ export default function SuperAdminPage({
             const data = await res.json();
             if (res.ok && data.branding) {
                 setBrandingForm({
+                    name: data.branding.hospital_name || data.branding.name || hosp.name || "",
+                    hospital_code: hosp.hospital_code || "",
+                    status: hosp.status || "active",
+                    description: data.branding.about_us || hosp.description || "",
+                    phone: data.branding.opd_helpdesk_phone || hosp.phone || "",
+                    email: data.branding.support_email || data.branding.email || hosp.email || "",
+                    address: data.branding.address || hosp.address || "",
                     logo_url: data.branding.logo_url || hosp.logo_url || "",
                     primary_color: data.branding.primary_color || "#0284C7",
                     secondary_color: data.branding.secondary_color || "#0369A1",
@@ -1419,22 +1445,21 @@ export default function SuperAdminPage({
                     slip_footer_text: data.branding.slip_footer_text || "Non-transferable official patient record. Please keep until consultation is complete.",
                     about_us_title: data.branding.about_us_title || `About ${hosp.name || "City General Hospital"}`,
                     about_us_subtitle: data.branding.about_us_subtitle || data.branding.tagline || "Care you can trust • NABH Accredited",
-                    about_us: data.branding.about_us || hosp.description || "City General Hospital is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.",
-                    about_us_hi: data.branding.about_us_hi || "सिटी जनरल अस्पताल मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।",
-                    about_service_1: data.branding.about_service_1 || "24/7 Emergency Triage • Priority ambulance & ICU care",
-                    about_service_2: data.branding.about_service_2 || "AI Wait Prediction • Live queue synchronization",
-                    about_service_3: data.branding.about_service_3 || "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho",
-                    about_service_4: data.branding.about_service_4 || "Digital E-Prescriptions • Seamless pharmacy refills",
+                    about_us: data.branding.about_us || hosp.description || "",
+                    about_us_hi: data.branding.about_us_hi || "",
+                    about_service_1: data.branding.about_service_1 || "",
+                    about_service_2: data.branding.about_service_2 || "",
+                    about_service_3: data.branding.about_service_3 || "",
+                    about_service_4: data.branding.about_service_4 || "",
                     opd_start_time: data.branding.opd_start_time || "08:00",
                     opd_end_time: data.branding.opd_end_time || "20:00",
                     registration_cutoff_time: data.branding.registration_cutoff_time || "19:00",
                     operating_days: Array.isArray(data.branding.operating_days) ? data.branding.operating_days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
-                    closed_notice: data.branding.closed_notice || "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
-                    address: data.branding.address || hosp.address || "742 Evergreen Healthcare Ave, Medical District, Suite 100",
-                    opd_helpdesk_phone: data.branding.opd_helpdesk_phone || hosp.phone || "+1 (800) 456-7890 (Ext: 101)",
+                    closed_notice: data.branding.closed_notice || "",
+                    opd_helpdesk_phone: data.branding.opd_helpdesk_phone || hosp.phone || "",
                     opd_helpdesk_hours: data.branding.opd_helpdesk_hours || "Mon – Sat: 8:00 AM – 8:00 PM",
                     opd_helpdesk_hours_hi: data.branding.opd_helpdesk_hours_hi || "सोम – शनि: सुबह 8:00 – रात 8:00",
-                    support_email: data.branding.support_email || data.branding.email || hosp.email || "support@citygeneralhospital.org",
+                    support_email: data.branding.support_email || data.branding.email || hosp.email || "",
                 });
             }
         } catch (e) {
@@ -1442,11 +1467,17 @@ export default function SuperAdminPage({
         }
     }, [getAuthHeaders]);
 
-
     const handleResetBrandingDefaults = () => {
         const targetHosp = brandingTargetHospital || selectedHospital;
         if (!targetHosp) return;
         setBrandingForm({
+            name: targetHosp.name || "",
+            hospital_code: targetHosp.hospital_code || "",
+            status: targetHosp.status || "active",
+            description: targetHosp.description || "",
+            phone: targetHosp.phone || "",
+            email: targetHosp.email || "",
+            address: targetHosp.address || "",
             logo_url: "",
             primary_color: "#0284C7",
             secondary_color: "#0369A1",
@@ -1467,7 +1498,6 @@ export default function SuperAdminPage({
             registration_cutoff_time: "19:00",
             operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
             closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
-            address: targetHosp.address || "742 Evergreen Healthcare Ave, Medical District, Suite 100",
             opd_helpdesk_phone: targetHosp.phone || "+1 (800) 456-7890 (Ext: 101)",
             opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
             opd_helpdesk_hours_hi: "सोम – शनि: सुबह 8:00 – रात 8:00",
@@ -1482,14 +1512,32 @@ export default function SuperAdminPage({
         if (!targetHosp) return;
         setIsSavingBranding(true);
         try {
+            // 1. Save branding JSON & tenant customization
             const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${targetHosp.hospital_code}/branding`, {
                 method: "PUT",
                 headers: getAuthHeaders(),
                 body: JSON.stringify(brandingForm),
             });
             const data = await res.json();
+
+            // 2. Also ensure core hospital record (status, name, phone, email, address, description) is synced
+            await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${targetHosp.hospital_code}`, {
+                method: "PUT",
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    hospital_code: targetHosp.hospital_code,
+                    name: brandingForm.name || targetHosp.name,
+                    address: brandingForm.address || targetHosp.address,
+                    phone: brandingForm.phone || brandingForm.opd_helpdesk_phone || targetHosp.phone,
+                    email: brandingForm.email || brandingForm.support_email || targetHosp.email,
+                    description: brandingForm.description || brandingForm.about_us || targetHosp.description,
+                    status: brandingForm.status || targetHosp.status || "active",
+                }),
+            }).catch(() => null);
+
             if (res.ok && data.status === "success") {
-                notify(isHi ? `'${targetHosp.name}' का ब्रांडिंग व समय सेटिंग्स सहेजा गया!` : `Branding & operating hours updated for '${targetHosp.name}'!`);
+                const hospDisplayName = brandingForm.name || targetHosp.name;
+                notify(isHi ? `'${hospDisplayName}' की कस्टमाइज़ेशन व ब्रांडिंग सेटिंग्स सहेजी गईं!` : `Customization & branding updated for '${hospDisplayName}'!`);
 
                 // Dispatch local event for other tabs/listeners
                 window.dispatchEvent(new CustomEvent("hospital_branding_updated", {
@@ -2017,7 +2065,7 @@ export default function SuperAdminPage({
           background: linear-gradient(180deg, #F0F9FF 0%, #E0F2FE 100%);
           display: flex;
           align-items: center;
-          justifyContent: center;
+          justify-content: center;
           position: relative;
           overflow: hidden;
           min-height: 260px;
@@ -2078,11 +2126,20 @@ export default function SuperAdminPage({
           height: 34px;
           border-radius: 10px;
           background: rgba(255, 255, 255, 0.15);
-          display: flex;
-          align-items: center;
-          justifyContent: center;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
           flex-shrink: 0;
           color: #38BDF8;
+          padding: 0 !important;
+          box-sizing: border-box;
+          line-height: 1;
+        }
+
+        .superadmin-hero-stat-icon-wrap svg {
+          display: block !important;
+          margin: 0 auto !important;
+          flex-shrink: 0;
         }
 
         .superadmin-hero-stat-value {
@@ -2182,11 +2239,21 @@ export default function SuperAdminPage({
           width: 40px;
           height: 40px;
           border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justifyContent: center;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
           flex-shrink: 0;
           transition: all 0.2s ease;
+          padding: 0 !important;
+          box-sizing: border-box;
+          line-height: 1;
+          text-align: center;
+        }
+
+        .tab-icon-wrapper svg {
+          display: block !important;
+          margin: 0 auto !important;
+          flex-shrink: 0;
         }
 
         .tab-button-modern.active .tab-icon-wrapper {
@@ -2687,7 +2754,11 @@ export default function SuperAdminPage({
         }
         .branding-mode-pill-btn {
           flex: 1;
-          padding: 8px 6px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          padding: 8px 10px;
           border-radius: 8px;
           border: none;
           background: transparent;
@@ -2696,6 +2767,12 @@ export default function SuperAdminPage({
           font-size: 12px;
           cursor: pointer;
           transition: all 0.15s ease;
+          line-height: 1;
+          white-space: nowrap;
+        }
+        .branding-mode-pill-btn svg {
+          display: block;
+          flex-shrink: 0;
         }
         .branding-mode-pill-btn.active {
           background: var(--superadmin-card-bg, #FFFFFF);
@@ -3460,11 +3537,12 @@ export default function SuperAdminPage({
                         </div>
                     </button>
 
-                    {/* Tab 5: Hospital Branding & White-Labeling */}
+                    {/* Tab 5: Hospital Customization & Branding Studio */}
                     <button
                         type="button"
                         onClick={() => {
                             setActiveTab("branding");
+                            setActiveBrandingTab("profile");
                             const target = selectedHospital || hospitals[0];
                             if (target) {
                                 loadHospitalBrandingData(target);
@@ -3478,11 +3556,11 @@ export default function SuperAdminPage({
                         <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: "flex", alignItems: "center" }}>
                                 <span className="tab-title-text">
-                                    {isHi ? "ब्रांडिंग सेटिंग्स" : "Branding"}
+                                    {isHi ? "कस्टमाइज़ेशन व ब्रांडिंग" : "Customization & Branding"}
                                 </span>
                             </div>
                             <span className="tab-sub-text" style={{ color: activeTab === "branding" ? "#E0F2FE" : "#64748B" }}>
-                                {isHi ? "थीम, लोगो, समय, पर्ची" : "Theme, Logo, Schedule"}
+                                {isHi ? "प्रोफाइल, थीम, लोगो, समय" : "Profile, Theme, Logo & Hours"}
                             </span>
                         </div>
                     </button>
@@ -3563,11 +3641,11 @@ export default function SuperAdminPage({
                                 if (visitHistoryStatusFilter === "cancelled" && !["cancelled", "expired", "no_show"].includes(st)) return false;
                             }
                             if (visitHistorySearchQuery.trim()) {
-                                const q = visitHistorySearchQuery.toLowerCase();
-                                const nameMatch = (v.patient_name || "").toLowerCase().includes(q);
-                                const tokenMatch = (v.ticket_id || "").toLowerCase().includes(q);
-                                const deptMatch = (v.department || "").toLowerCase().includes(q);
-                                const phoneMatch = (v.phone || "").toLowerCase().includes(q);
+                                const q = visitHistorySearchQuery.toLowerCase().trim();
+                                const nameMatch = (v.patient_name || "").toString().toLowerCase().includes(q);
+                                const tokenMatch = (v.ticket_id || v.token_number || `#${v.id}` || "").toString().toLowerCase().includes(q);
+                                const deptMatch = (v.department || "").toString().toLowerCase().includes(q);
+                                const phoneMatch = (v.phone || "").toString().toLowerCase().includes(q);
                                 return nameMatch || tokenMatch || deptMatch || phoneMatch;
                             }
                             return true;
@@ -3908,6 +3986,7 @@ export default function SuperAdminPage({
                                                         setSelectedHospital(currentHosp);
                                                         loadHospitalBrandingData(currentHosp);
                                                     }
+                                                    setActiveBrandingTab("theme");
                                                     setActiveTab("branding");
                                                     window.scrollTo({ top: 380, behavior: "smooth" });
                                                 }}
@@ -3925,25 +4004,22 @@ export default function SuperAdminPage({
                                                     cursor: "pointer",
                                                     boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
                                                 }}
-                                                title={isHi ? "ब्रांडिंग पेज पर जाएं" : "Go to Branding Page"}
+                                                title={isHi ? "ब्रांडिंग व थीम कस्टमाइज़ करें" : "Customize Themes & Color System"}
                                             >
                                                 <IconPalette size={16} color="#0284C7" />
-                                                <span>{isHi ? "ब्रांडिंग" : "Branding"}</span>
+                                                <span>{isHi ? "थीम व रंग" : "Themes & Colors"}</span>
                                             </button>
 
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    setEditHospitalForm({
-                                                        hospital_code: currentHosp.hospital_code,
-                                                        name: currentHosp.name,
-                                                        address: currentHosp.address || "",
-                                                        phone: currentHosp.phone || "",
-                                                        email: currentHosp.email || "",
-                                                        description: currentHosp.description || "",
-                                                        status: currentHosp.status || "active",
-                                                    });
-                                                    setShowEditHospitalModal(true);
+                                                    if (currentHosp) {
+                                                        setSelectedHospital(currentHosp);
+                                                        loadHospitalBrandingData(currentHosp);
+                                                    }
+                                                    setActiveBrandingTab("profile");
+                                                    setActiveTab("branding");
+                                                    window.scrollTo({ top: 380, behavior: "smooth" });
                                                 }}
                                                 style={{
                                                     display: "flex",
@@ -3959,9 +4035,10 @@ export default function SuperAdminPage({
                                                     cursor: "pointer",
                                                     boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
                                                 }}
+                                                title={isHi ? "अस्पताल कस्टमाइज़ेशन स्टूडियो पर जाएं" : "Go to Hospital Customization Studio"}
                                             >
                                                 <IconEdit size={14} color="#FFFFFF" />
-                                                <span>{isHi ? "शाखा विवरण बदलें" : "Manage Hospital"}</span>
+                                                <span>{isHi ? "कस्टमाइज़ेशन स्टूडियो" : "Customization Studio"}</span>
                                             </button>
                                         </div>
                                     </div>
@@ -4208,6 +4285,7 @@ export default function SuperAdminPage({
                                                             { id: "all", label: isHi ? "सभी दृश्य" : "360° All", icon: IconZap },
                                                             { id: "hourly", label: isHi ? "प्रति घंटा हीटमैप" : "Hourly Heatmap", icon: IconTrendingUp },
                                                             { id: "bottleneck", label: isHi ? "बॉटलनेक विश्लेषक" : "Bottleneck Radar", icon: IconAlertTriangle },
+                                                            { id: "visits", label: isHi ? `मरीज लॉग (${rawVisits.length || allTimePatientsVisited})` : `Patient Visits (${rawVisits.length || allTimePatientsVisited})`, icon: IconFileText },
                                                         ].map((tab) => (
                                                             <button
                                                                 key={tab.id}
@@ -4768,6 +4846,326 @@ export default function SuperAdminPage({
                                                     </div>
                                                 </div>
                                             )}
+
+                                            {/* FEATURE 3: INTEGRATED PATIENT VISIT HISTORY & TREATMENT RECORDS */}
+                                            {(analyticsViewTab === "all" || analyticsViewTab === "visits") && (
+                                                <div
+                                                    className="overview-sub-panel"
+                                                    style={{
+                                                        marginTop: "18px",
+                                                        padding: "20px",
+                                                        borderRadius: "18px",
+                                                        border: "1.5px solid var(--superadmin-card-border, #E2E8F0)",
+                                                        background: "var(--superadmin-card-bg, #FFFFFF)",
+                                                        display: "flex",
+                                                        flexDirection: "column",
+                                                        gap: "14px",
+                                                    }}
+                                                >
+                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showVisitHistoryTable ? "4px" : "0px", flexWrap: "wrap", gap: "14px" }}>
+                                                        <div>
+                                                            <h3 style={{ margin: "0 0 4px 0", fontSize: "16.5px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                                                                <IconFileText size={18} color="#0284C7" />
+                                                                <span>{isHi ? "मरीज विज़िट इतिहास एवं उपचार लॉग" : "Patient Visit History & Treatment Log"}</span>
+                                                                <span
+                                                                    style={{
+                                                                        fontSize: "11.5px",
+                                                                        fontWeight: 700,
+                                                                        padding: "2px 8px",
+                                                                        borderRadius: "12px",
+                                                                        background: "rgba(2, 132, 199, 0.12)",
+                                                                        color: "#0284C7",
+                                                                        border: "1px solid rgba(2, 132, 199, 0.25)",
+                                                                    }}
+                                                                >
+                                                                    {allTimePatientsVisited} {isHi ? "कुल मरीज" : "Total Visited"}
+                                                                </span>
+                                                            </h3>
+                                                            <p style={{ margin: 0, color: "var(--superadmin-text-muted, #64748B)", fontSize: "12px" }}>
+                                                                {isHi ? "अस्पताल में अब तक आए सभी मरीजों का इतिहास, परामर्श समय और सेवा स्थिति।" : "Chronological log of all patient visits, consultation durations, and service outcomes."}
+                                                            </p>
+                                                        </div>
+
+                                                        {/* 1-Click Action Controls: Download CSV + Show/Hide Table */}
+                                                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleDownloadVisitHistory(rawVisits, currentHosp?.name || selectedHospital?.name)}
+                                                                style={{
+                                                                    display: "inline-flex",
+                                                                    alignItems: "center",
+                                                                    gap: "6px",
+                                                                    background: "var(--superadmin-sub-card, #F8FAFC)",
+                                                                    color: "#0284C7",
+                                                                    border: "1.5px solid var(--superadmin-card-border, #BAE6FD)",
+                                                                    padding: "7px 13px",
+                                                                    borderRadius: "9px",
+                                                                    fontSize: "12px",
+                                                                    fontWeight: 700,
+                                                                    cursor: "pointer",
+                                                                    boxShadow: "0 1px 3px rgba(2, 132, 199, 0.08)",
+                                                                    transition: "all 0.15s ease",
+                                                                }}
+                                                                title={isHi ? "विज़िट इतिहास CSV के रूप में डाउनलोड करें" : "Download complete visit history as CSV"}
+                                                            >
+                                                                <IconDownload size={14} color="#0284C7" />
+                                                                <span>{isHi ? "लॉग डाउनलोड करें (CSV)" : "Download Log (CSV)"}</span>
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowVisitHistoryTable(!showVisitHistoryTable)}
+                                                                style={{
+                                                                    display: "inline-flex",
+                                                                    alignItems: "center",
+                                                                    gap: "6px",
+                                                                    background: showVisitHistoryTable ? "var(--superadmin-sub-card, #1E293B)" : "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                                                                    color: showVisitHistoryTable ? "var(--superadmin-text-main, #F8FAFC)" : "#FFFFFF",
+                                                                    border: showVisitHistoryTable ? "1px solid var(--superadmin-card-border, #334155)" : "none",
+                                                                    padding: "7px 14px",
+                                                                    borderRadius: "9px",
+                                                                    fontSize: "12px",
+                                                                    fontWeight: 700,
+                                                                    cursor: "pointer",
+                                                                    boxShadow: "0 2px 6px rgba(2, 132, 199, 0.2)",
+                                                                    transition: "all 0.15s ease",
+                                                                }}
+                                                            >
+                                                                {showVisitHistoryTable ? (
+                                                                    <>
+                                                                        <IconEyeOff size={14} />
+                                                                        <span>{isHi ? "लॉग छिपाएं" : "Hide Records"}</span>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <IconEye size={14} />
+                                                                        <span>{isHi ? "लॉग देखें" : "Show Records"}</span>
+                                                                    </>
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Summary Bar when collapsed */}
+                                                    {!showVisitHistoryTable && (
+                                                        <div
+                                                            style={{
+                                                                padding: "10px 14px",
+                                                                borderRadius: "10px",
+                                                                border: "1px solid var(--superadmin-card-border, #E2E8F0)",
+                                                                background: "var(--superadmin-sub-card, #F8FAFC)",
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                justifyContent: "space-between",
+                                                                flexWrap: "wrap",
+                                                                gap: "10px",
+                                                                fontSize: "12px",
+                                                            }}
+                                                        >
+                                                            <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+                                                                <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
+                                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconChart size={13} color="#0284C7" /><span>{isHi ? "उपलब्ध रिकॉर्ड:" : "Recorded Visits:"}</span></span> <strong style={{ color: "var(--superadmin-text-main, #0F172A)" }}>{rawVisits.length}</strong>
+                                                                </span>
+                                                                <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
+                                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheckCircle size={13} color="#16A34A" /><span>{isHi ? "पूर्ण उपचार:" : "Completed Treatments:"}</span></span> <strong style={{ color: "#16A34A" }}>{allTimeCompleted || footfallSummary.today_completed || 0}</strong>
+                                                                </span>
+                                                                <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
+                                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconHospital size={13} color="#0284C7" /><span>{isHi ? "आज के मरीज:" : "Today's Footfall:"}</span></span> <strong style={{ color: "#0284C7" }}>{todayFootfall}</strong>
+                                                                </span>
+                                                            </div>
+                                                            <span style={{ color: "var(--superadmin-text-muted, #94A3B8)", fontSize: "11px" }}>
+                                                                {isHi ? "लॉग देखने के लिए 'लॉग देखें' पर क्लिक करें या 1-क्लिक में डाउनलोड करें।" : "Click 'Show Records' to inspect in-browser or download the CSV report."}
+                                                            </span>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Search, Filter & Visit Log Table */}
+                                                    {showVisitHistoryTable && (
+                                                        <div>
+                                                            {/* Search & Filter Controls */}
+                                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px", gap: "10px", flexWrap: "wrap" }}>
+                                                                <div style={{ position: "relative", minWidth: "220px", flex: 1, maxWidth: "340px" }}>
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder={isHi ? "मरीज नाम, टोकन, फोन, विभाग खोजें..." : "Search patient, token, phone, dept..."}
+                                                                        value={visitHistorySearchQuery}
+                                                                        onChange={(e) => setVisitHistorySearchQuery(e.target.value)}
+                                                                        style={{
+                                                                            ...searchInputStyle,
+                                                                            padding: "7px 12px",
+                                                                            fontSize: "12px",
+                                                                        }}
+                                                                    />
+                                                                </div>
+
+                                                                {/* Status Filter Tabs */}
+                                                                <div style={{ display: "flex", background: "var(--superadmin-sub-card, #F1F5F9)", padding: "3px", borderRadius: "8px", gap: "3px", border: "1px solid var(--superadmin-card-border, #E2E8F0)" }}>
+                                                                    {[
+                                                                        { id: "all", label: isHi ? "सभी" : "All" },
+                                                                        { id: "completed", label: isHi ? "पूर्ण" : "Completed" },
+                                                                        { id: "active", label: isHi ? "सक्रिय" : "Active" },
+                                                                        { id: "cancelled", label: isHi ? "अन्य" : "Other" },
+                                                                    ].map((flt) => (
+                                                                        <button
+                                                                            key={flt.id}
+                                                                            type="button"
+                                                                            onClick={() => setVisitHistoryStatusFilter(flt.id)}
+                                                                            style={{
+                                                                                border: "none",
+                                                                                padding: "4px 10px",
+                                                                                borderRadius: "6px",
+                                                                                fontSize: "11px",
+                                                                                fontWeight: 700,
+                                                                                cursor: "pointer",
+                                                                                background: visitHistoryStatusFilter === flt.id ? "#0284C7" : "transparent",
+                                                                                color: visitHistoryStatusFilter === flt.id ? "#FFFFFF" : "var(--superadmin-text-muted, #64748B)",
+                                                                                transition: "all 0.15s ease",
+                                                                            }}
+                                                                        >
+                                                                            {flt.label}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Visit Log Table */}
+                                                            <div style={{ overflowX: "auto", borderRadius: "12px", border: "1px solid var(--superadmin-card-border, #E2E8F0)" }}>
+                                                                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "12.5px" }}>
+                                                                    <thead>
+                                                                        <tr style={{ background: "var(--superadmin-sub-card, #F8FAFC)", borderBottom: "1px solid var(--superadmin-card-border, #E2E8F0)" }}>
+                                                                            <th style={tableThStyle}>{isHi ? "टोकन / आईडी" : "Token / Ticket"}</th>
+                                                                            <th style={tableThStyle}>{isHi ? "मरीज का नाम" : "Patient Name"}</th>
+                                                                            <th style={tableThStyle}>{isHi ? "क्लिनिकल विभाग" : "Department"}</th>
+                                                                            <th style={tableThStyle}>{isHi ? "विज़िट तिथि एवं समय" : "Visit Date & Time"}</th>
+                                                                            <th style={tableThStyle}>{isHi ? "परामर्श अवधि" : "Consult Duration"}</th>
+                                                                            <th style={tableThStyle}>{isHi ? "स्थिति" : "Status"}</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {filteredVisits.length === 0 ? (
+                                                                            <tr>
+                                                                                <td colSpan="6" style={{ textAlign: "center", padding: "28px 16px", color: "var(--superadmin-text-muted, #64748B)" }}>
+                                                                                    <IconClock size={26} color="#94A3B8" />
+                                                                                    <div style={{ marginTop: "8px", fontSize: "12.5px" }}>
+                                                                                        {visitHistorySearchQuery
+                                                                                            ? (isHi ? "खोज से मेल खाता कोई विज़िट रिकॉर्ड नहीं मिला।" : "No patient visit records match your search filter.")
+                                                                                            : (isHi ? "इस अस्पताल के लिए अभी तक कोई विज़िट रिकॉर्ड दर्ज नहीं हुआ है।" : "No patient visit history recorded for this facility yet.")}
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        ) : (
+                                                                            filteredVisits.slice(0, 30).map((visit, idx) => {
+                                                                                const st = (visit.status || "").toLowerCase();
+                                                                                const isDone = st === "completed";
+                                                                                const isCurrent = ["serving", "called", "waiting"].includes(st);
+                                                                                const isCancelled = ["cancelled", "no_show", "expired"].includes(st);
+                                                                                const statusBg = isDone
+                                                                                    ? "rgba(16, 185, 129, 0.12)"
+                                                                                    : isCurrent
+                                                                                        ? "rgba(2, 132, 199, 0.12)"
+                                                                                        : isCancelled
+                                                                                            ? "rgba(239, 68, 68, 0.12)"
+                                                                                            : "rgba(100, 116, 139, 0.12)";
+                                                                                const statusColor = isDone
+                                                                                    ? "#10B981"
+                                                                                    : isCurrent
+                                                                                        ? "#0284C7"
+                                                                                        : isCancelled
+                                                                                            ? "#EF4444"
+                                                                                            : "#64748B";
+                                                                                const statusBorder = isDone
+                                                                                    ? "rgba(16, 185, 129, 0.3)"
+                                                                                    : isCurrent
+                                                                                        ? "rgba(2, 132, 199, 0.3)"
+                                                                                        : isCancelled
+                                                                                            ? "rgba(239, 68, 68, 0.3)"
+                                                                                            : "rgba(100, 116, 139, 0.3)";
+
+                                                                                const dateStr = visit.created_at
+                                                                                    ? new Date(visit.created_at).toLocaleString(isHi ? "hi-IN" : "en-US", {
+                                                                                        month: "short",
+                                                                                        day: "numeric",
+                                                                                        hour: "2-digit",
+                                                                                        minute: "2-digit",
+                                                                                    })
+                                                                                    : visit.queue_date || "Today";
+
+                                                                                return (
+                                                                                    <tr key={visit.id || visit.ticket_id || idx} style={{ borderBottom: "1px solid var(--superadmin-card-border, #E2E8F0)" }}>
+                                                                                        <td style={tableTdStyle}>
+                                                                                            <span
+                                                                                                style={{
+                                                                                                    fontSize: "12px",
+                                                                                                    fontWeight: 800,
+                                                                                                    padding: "3px 8px",
+                                                                                                    borderRadius: "6px",
+                                                                                                    background: "rgba(2, 132, 199, 0.1)",
+                                                                                                    border: "1px solid rgba(2, 132, 199, 0.25)",
+                                                                                                    color: "#0284C7",
+                                                                                                    display: "inline-block",
+                                                                                                }}
+                                                                                            >
+                                                                                                {visit.ticket_id || visit.token_number || `#${visit.id}`}
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td style={tableTdStyle}>
+                                                                                            <div style={{ fontWeight: 700, color: "var(--superadmin-text-main, #0F172A)" }}>
+                                                                                                {visit.patient_name || "Patient"}
+                                                                                            </div>
+                                                                                            {(visit.age || visit.gender || visit.phone) && (
+                                                                                                <span style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)", display: "block", marginTop: "2px" }}>
+                                                                                                    {[visit.gender, visit.age ? `${visit.age}y` : "", visit.phone].filter(Boolean).join(" • ")}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </td>
+                                                                                        <td style={tableTdStyle}>
+                                                                                            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--superadmin-text-sub, #334155)" }}>
+                                                                                                {visit.department || "General OPD"}
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td style={tableTdStyle}>
+                                                                                            <span style={{ fontSize: "11.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
+                                                                                                {dateStr}
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td style={tableTdStyle}>
+                                                                                            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--superadmin-text-main, #0F172A)" }}>
+                                                                                                {visit.service_duration_minutes ? `~${visit.service_duration_minutes} min` : "—"}
+                                                                                            </span>
+                                                                                        </td>
+                                                                                        <td style={tableTdStyle}>
+                                                                                            <span
+                                                                                                style={{
+                                                                                                    fontSize: "10.5px",
+                                                                                                    fontWeight: 800,
+                                                                                                    padding: "3px 8px",
+                                                                                                    borderRadius: "8px",
+                                                                                                    background: statusBg,
+                                                                                                    color: statusColor,
+                                                                                                    border: `1px solid ${statusBorder}`,
+                                                                                                    textTransform: "uppercase",
+                                                                                                }}
+                                                                                            >
+                                                                                                {visit.status || "COMPLETED"}
+                                                                                            </span>
+                                                                                        </td>
+                                                                                    </tr>
+                                                                                );
+                                                                            })
+                                                                        )}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+
+                                                            {filteredVisits.length > 30 && (
+                                                                <div style={{ textAlign: "center", marginTop: "10px", fontSize: "11.5px", color: "var(--superadmin-text-muted, #64748B)", fontWeight: 600 }}>
+                                                                    Showing 30 most recent of {filteredVisits.length} recorded patient visits
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })()}
@@ -4953,336 +5351,6 @@ export default function SuperAdminPage({
                                         </div>
                                     )}
                                 </div>
-
-                                {/* 5. PATIENT VISIT HISTORY & TREATMENT RECORDS */}
-                                <div style={standaloneCardStyle}>
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showVisitHistoryTable ? "18px" : "0px", flexWrap: "wrap", gap: "14px" }}>
-                                        <div>
-                                            <h3 style={{ margin: "0 0 4px 0", fontSize: "18px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                                <IconFileText size={18} color="#0284C7" />
-                                                <span>{isHi ? "मरीज विज़िट इतिहास एवं उपचार लॉग" : "Patient Visit History & Treatment Log"}</span>
-                                                <span
-                                                    style={{
-                                                        fontSize: "12px",
-                                                        fontWeight: 700,
-                                                        padding: "2px 8px",
-                                                        borderRadius: "12px",
-                                                        background: "rgba(2, 132, 199, 0.15)",
-                                                        color: "#0284C7",
-                                                    }}
-                                                >
-                                                    {allTimePatientsVisited} {isHi ? "कुल मरीज" : "Total Visited"}
-                                                </span>
-                                            </h3>
-                                            <p style={{ margin: 0, color: "var(--superadmin-text-muted, #64748B)", fontSize: "12.5px" }}>
-                                                {isHi ? "अस्पताल में अब तक आए सभी मरीजों का इतिहास, परामर्श समय और सेवा स्थिति।" : "Chronological log of all patient visits, consultation durations, and service outcomes."}
-                                            </p>
-                                        </div>
-
-                                        {/* 1-Click Action Controls: Download CSV + NABH Report + Show/Hide Table */}
-                                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowNABHReportModal(true)}
-                                                style={{
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    gap: "6px",
-                                                    background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
-                                                    color: "#FFFFFF",
-                                                    border: "none",
-                                                    padding: "8px 14px",
-                                                    borderRadius: "10px",
-                                                    fontSize: "12.5px",
-                                                    fontWeight: 800,
-                                                    cursor: "pointer",
-                                                    boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
-                                                    transition: "all 0.15s ease",
-                                                }}
-                                                title={isHi ? "एनएबीएच कार्यकारी दैनिक ऑडिट रिपोर्ट खोलें एवं प्रिंट करें" : "Open and export NABH Executive Daily Audit Report (PDF/Excel)"}
-                                            >
-                                                <IconFileText size={16} color="#FFFFFF" />
-                                                <span>{isHi ? "एनएबीएच दैनिक रिपोर्ट (PDF/Excel)" : "NABH Executive Report (PDF/Excel)"}</span>
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDownloadVisitHistory(rawVisits, currentHosp.name)}
-                                                style={{
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    gap: "6px",
-                                                    background: "var(--superadmin-card-bg, #FFFFFF)",
-                                                    color: "#0284C7",
-                                                    border: "1.5px solid var(--superadmin-card-border, #BAE6FD)",
-                                                    padding: "8px 14px",
-                                                    borderRadius: "10px",
-                                                    fontSize: "12.5px",
-                                                    fontWeight: 700,
-                                                    cursor: "pointer",
-                                                    boxShadow: "0 1px 4px rgba(2, 132, 199, 0.08)",
-                                                    transition: "all 0.15s ease",
-                                                }}
-                                                title={isHi ? "विज़िट इतिहास CSV के रूप में डाउनलोड करें" : "Download complete visit history as CSV"}
-                                            >
-                                                <IconDownload size={15} color="#0284C7" />
-                                                <span>{isHi ? "लॉग डाउनलोड करें (CSV)" : "Download Log (CSV)"}</span>
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowVisitHistoryTable(!showVisitHistoryTable)}
-                                                style={{
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    gap: "6px",
-                                                    background: showVisitHistoryTable ? "#1E293B" : "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
-                                                    color: "#FFFFFF",
-                                                    border: "none",
-                                                    padding: "8px 16px",
-                                                    borderRadius: "10px",
-                                                    fontSize: "12.5px",
-                                                    fontWeight: 700,
-                                                    cursor: "pointer",
-                                                    boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
-                                                    transition: "all 0.15s ease",
-                                                }}
-                                            >
-                                                {showVisitHistoryTable ? (
-                                                    <>
-                                                        <IconEyeOff size={15} color="#FFFFFF" />
-                                                        <span>{isHi ? "लॉग छिपाएं" : "Hide Records"}</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <IconEye size={15} color="#FFFFFF" />
-                                                        <span>{isHi ? "लॉग देखें" : "Show Records"}</span>
-                                                    </>
-                                                )}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Summary Bar when collapsed */}
-                                    {!showVisitHistoryTable && (
-                                        <div
-                                            className="overview-sub-panel"
-                                            style={{
-                                                marginTop: "14px",
-                                                padding: "12px 16px",
-                                                borderRadius: "12px",
-                                                border: "1px solid var(--superadmin-card-border, #E2E8F0)",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                justifyContent: "space-between",
-                                                flexWrap: "wrap",
-                                                gap: "12px",
-                                                fontSize: "12.5px",
-                                            }}
-                                        >
-                                            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-                                                <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
-                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconChart size={14} color="#0284C7" /><span>{isHi ? "उपलब्ध रिकॉर्ड:" : "Recorded Visits:"}</span></span> <strong style={{ color: "var(--superadmin-text-main, #0F172A)" }}>{rawVisits.length}</strong>
-                                                </span>
-                                                <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
-                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheckCircle size={14} color="#16A34A" /><span>{isHi ? "पूर्ण उपचार:" : "Completed Treatments:"}</span></span> <strong style={{ color: "#16A34A" }}>{allTimeCompleted || footfallSummary.today_completed || 0}</strong>
-                                                </span>
-                                                <span style={{ color: "var(--superadmin-text-sub, #475569)" }}>
-                                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconHospital size={14} color="#0284C7" /><span>{isHi ? "आज के मरीज:" : "Today's Footfall:"}</span></span> <strong style={{ color: "#0284C7" }}>{todayFootfall}</strong>
-                                                </span>
-                                            </div>
-                                            <span style={{ color: "var(--superadmin-text-muted, #94A3B8)", fontSize: "11.5px" }}>
-                                                {isHi ? "लॉग देखने के लिए 'लॉग देखें' पर क्लिक करें या 1-क्लिक में डाउनलोड करें।" : "Click 'Show Records' to inspect in-browser or download the CSV report."}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* Search, Filter & Visit Log Table (Only rendered when showVisitHistoryTable is true) */}
-                                    {showVisitHistoryTable && (
-                                        <div style={{ marginTop: "14px" }}>
-                                            {/* Search & Filter Controls */}
-                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px", gap: "10px", flexWrap: "wrap" }}>
-                                                <div style={{ position: "relative", minWidth: "240px", flex: 1, maxWidth: "360px" }}>
-                                                    <input
-                                                        type="text"
-                                                        placeholder={isHi ? "मरीज नाम, टोकन खोजें..." : "Search patient, token, dept..."}
-                                                        value={visitHistorySearchQuery}
-                                                        onChange={(e) => setVisitHistorySearchQuery(e.target.value)}
-                                                        style={{
-                                                            ...searchInputStyle,
-                                                            padding: "7px 12px",
-                                                            fontSize: "12.5px",
-                                                        }}
-                                                    />
-                                                </div>
-
-                                                {/* Status Filter Tabs */}
-                                                <div style={{ display: "flex", background: "var(--superadmin-sub-card, #F1F5F9)", padding: "3px", borderRadius: "10px", gap: "3px" }}>
-                                                    {[
-                                                        { id: "all", label: isHi ? "सभी" : "All" },
-                                                        { id: "completed", label: isHi ? "पूर्ण" : "Completed" },
-                                                        { id: "active", label: isHi ? "सक्रिय" : "Active" },
-                                                        { id: "cancelled", label: isHi ? "अन्य" : "Other" },
-                                                    ].map((flt) => (
-                                                        <button
-                                                            key={flt.id}
-                                                            type="button"
-                                                            onClick={() => setVisitHistoryStatusFilter(flt.id)}
-                                                            style={{
-                                                                border: "none",
-                                                                padding: "5px 10px",
-                                                                borderRadius: "8px",
-                                                                fontSize: "11.5px",
-                                                                fontWeight: 700,
-                                                                cursor: "pointer",
-                                                                background: visitHistoryStatusFilter === flt.id ? "var(--superadmin-card-bg, #FFFFFF)" : "transparent",
-                                                                color: visitHistoryStatusFilter === flt.id ? "#0284C7" : "var(--superadmin-text-muted, #64748B)",
-                                                                boxShadow: visitHistoryStatusFilter === flt.id ? "0 1px 4px rgba(0,0,0,0.06)" : "none",
-                                                            }}
-                                                        >
-                                                            {flt.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            {/* Visit Log Table */}
-                                            <div style={{ overflowX: "auto", borderRadius: "14px", border: "1px solid var(--superadmin-card-border, #E2E8F0)" }}>
-                                                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "13px" }}>
-                                                    <thead>
-                                                        <tr style={{ background: "var(--superadmin-sub-card, #F8FAFC)", borderBottom: "1px solid var(--superadmin-card-border, #E2E8F0)" }}>
-                                                            <th style={tableThStyle}>{isHi ? "टोकन / आईडी" : "Token / Ticket"}</th>
-                                                            <th style={tableThStyle}>{isHi ? "मरीज का नाम" : "Patient Name"}</th>
-                                                            <th style={tableThStyle}>{isHi ? "क्लिनिकल विभाग" : "Department"}</th>
-                                                            <th style={tableThStyle}>{isHi ? "विज़िट तिथि एवं समय" : "Visit Date & Time"}</th>
-                                                            <th style={tableThStyle}>{isHi ? "परामर्श अवधि" : "Consult Duration"}</th>
-                                                            <th style={tableThStyle}>{isHi ? "स्थिति" : "Status"}</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {filteredVisits.length === 0 ? (
-                                                            <tr>
-                                                                <td colSpan="6" style={{ textAlign: "center", padding: "30px 16px", color: "var(--superadmin-text-muted, #64748B)" }}>
-                                                                    <IconClock size={28} color="#CBD5E1" />
-                                                                    <div style={{ marginTop: "8px", fontSize: "13px" }}>
-                                                                        {visitHistorySearchQuery
-                                                                            ? (isHi ? "खोज से मेल खाता कोई विज़िट रिकॉर्ड नहीं मिला।" : "No patient visit records match your search filter.")
-                                                                            : (isHi ? "इस अस्पताल के लिए अभी तक कोई विज़िट रिकॉर्ड दर्ज नहीं हुआ है।" : "No patient visit history recorded for this facility yet.")}
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        ) : (
-                                                            filteredVisits.slice(0, 30).map((visit, idx) => {
-                                                                const st = (visit.status || "").toLowerCase();
-                                                                const isDone = st === "completed";
-                                                                const isCurrent = ["serving", "called", "waiting"].includes(st);
-                                                                const isCancelled = ["cancelled", "no_show", "expired"].includes(st);
-                                                                const statusBg = isDone
-                                                                    ? "rgba(16, 185, 129, 0.15)"
-                                                                    : isCurrent
-                                                                        ? "rgba(2, 132, 199, 0.15)"
-                                                                        : isCancelled
-                                                                            ? "rgba(239, 68, 68, 0.15)"
-                                                                            : "rgba(100, 116, 139, 0.15)";
-                                                                const statusColor = isDone
-                                                                    ? "#10B981"
-                                                                    : isCurrent
-                                                                        ? "#38BDF8"
-                                                                        : isCancelled
-                                                                            ? "#EF4444"
-                                                                            : "#94A3B8";
-                                                                const statusBorder = isDone
-                                                                    ? "rgba(16, 185, 129, 0.3)"
-                                                                    : isCurrent
-                                                                        ? "rgba(2, 132, 199, 0.3)"
-                                                                        : isCancelled
-                                                                            ? "rgba(239, 68, 68, 0.3)"
-                                                                            : "rgba(100, 116, 139, 0.3)";
-
-                                                                const dateStr = visit.created_at
-                                                                    ? new Date(visit.created_at).toLocaleString(isHi ? "hi-IN" : "en-US", {
-                                                                        month: "short",
-                                                                        day: "numeric",
-                                                                        hour: "2-digit",
-                                                                        minute: "2-digit",
-                                                                    })
-                                                                    : visit.queue_date || "Today";
-
-                                                                return (
-                                                                    <tr key={visit.id || visit.ticket_id || idx} style={{ borderBottom: "1px solid var(--superadmin-card-border, #1E293B)" }}>
-                                                                        <td style={tableTdStyle}>
-                                                                            <span
-                                                                                style={{
-                                                                                    fontSize: "12.5px",
-                                                                                    fontWeight: 800,
-                                                                                    padding: "3px 8px",
-                                                                                    borderRadius: "6px",
-                                                                                    background: "var(--superadmin-sub-card, #1E293B)",
-                                                                                    border: "1px solid var(--superadmin-card-border, #334155)",
-                                                                                    color: "#38BDF8",
-                                                                                    display: "inline-block",
-                                                                                }}
-                                                                            >
-                                                                                {visit.ticket_id || `#${visit.id}`}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td style={tableTdStyle}>
-                                                                            <div style={{ fontWeight: 700, color: "var(--superadmin-text-main, #F8FAFC)" }}>
-                                                                                {visit.patient_name || "Patient"}
-                                                                            </div>
-                                                                            {(visit.age || visit.gender || visit.phone) && (
-                                                                                <span style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #94A3B8)", display: "block", marginTop: "2px" }}>
-                                                                                    {[visit.gender, visit.age ? `${visit.age}y` : "", visit.phone].filter(Boolean).join(" • ")}
-                                                                                </span>
-                                                                            )}
-                                                                        </td>
-                                                                        <td style={tableTdStyle}>
-                                                                            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--superadmin-text-sub, #CBD5E1)" }}>
-                                                                                {visit.department}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td style={tableTdStyle}>
-                                                                            <span style={{ fontSize: "12px", color: "var(--superadmin-text-muted, #94A3B8)" }}>
-                                                                                {dateStr}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td style={tableTdStyle}>
-                                                                            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--superadmin-text-sub, #CBD5E1)" }}>
-                                                                                {visit.service_duration_minutes ? `~${visit.service_duration_minutes} min` : "—"}
-                                                                            </span>
-                                                                        </td>
-                                                                        <td style={tableTdStyle}>
-                                                                            <span
-                                                                                style={{
-                                                                                    fontSize: "11px",
-                                                                                    fontWeight: 800,
-                                                                                    padding: "3px 8px",
-                                                                                    borderRadius: "10px",
-                                                                                    background: statusBg,
-                                                                                    color: statusColor,
-                                                                                    border: `1px solid ${statusBorder}`,
-                                                                                    textTransform: "uppercase",
-                                                                                }}
-                                                                            >
-                                                                                {visit.status}
-                                                                            </span>
-                                                                        </td>
-                                                                    </tr>
-                                                                );
-                                                            })
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-
-                                            {filteredVisits.length > 30 && (
-                                                <div style={{ textAlign: "center", marginTop: "12px", fontSize: "12px", color: "#64748B", fontWeight: 600 }}>
-                                                    Showing 30 most recent of {filteredVisits.length} recorded patient visits
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
                             </div>
                         );
                     })()}
@@ -5377,19 +5445,19 @@ export default function SuperAdminPage({
                                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px", padding: "10px", background: "var(--superadmin-sub-card, #1E293B)", borderRadius: "10px", border: "1px solid var(--superadmin-card-border, #334155)", marginBottom: "14px" }}>
                                             <div style={{ textAlign: "center" }}>
                                                 <span style={{ fontSize: "9.5px", color: "var(--superadmin-text-muted, #94A3B8)", fontWeight: 700, display: "block" }}>Staff</span>
-                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--superadmin-text-main, #F8FAFC)" }}>{hosp.employee_count}</span>
+                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--superadmin-text-main, #F8FAFC)" }}>{hosp.employee_count ?? 0}</span>
                                             </div>
                                             <div style={{ textAlign: "center" }}>
                                                 <span style={{ fontSize: "9.5px", color: "var(--superadmin-text-muted, #94A3B8)", fontWeight: 700, display: "block" }}>Docs</span>
-                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#38BDF8" }}>{hosp.doctor_count}</span>
+                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#38BDF8" }}>{hosp.doctor_count ?? 0}</span>
                                             </div>
                                             <div style={{ textAlign: "center" }}>
                                                 <span style={{ fontSize: "9.5px", color: "var(--superadmin-text-muted, #94A3B8)", fontWeight: 700, display: "block" }}>Desks</span>
-                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#38BDF8" }}>{hosp.active_desks}/{hosp.total_desks}</span>
+                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#38BDF8" }}>{hosp.active_desks ?? 0}/{hosp.total_desks ?? 0}</span>
                                             </div>
                                             <div style={{ textAlign: "center" }}>
                                                 <span style={{ fontSize: "9.5px", color: "var(--superadmin-text-muted, #94A3B8)", fontWeight: 700, display: "block" }}>Visits</span>
-                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#FBBF24" }}>{hosp.patients_today}</span>
+                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#FBBF24" }}>{hosp.patients_today ?? hosp.total_visits ?? 0}</span>
                                             </div>
                                         </div>
 
@@ -5409,44 +5477,24 @@ export default function SuperAdminPage({
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    setEditHospitalForm({
-                                                        hospital_code: hosp.hospital_code,
-                                                        name: hosp.name,
-                                                        address: hosp.address || "",
-                                                        phone: hosp.phone || "",
-                                                        email: hosp.email || "",
-                                                        description: hosp.description || "",
-                                                        status: hosp.status || "active",
-                                                    });
-                                                    setShowEditHospitalModal(true);
-                                                }}
-                                                style={secondarySmallBtnStyle}
-                                            >
-                                                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                                    <IconEdit size={12} />
-                                                    <span>{isHi ? "संपादित" : "Edit"}</span>
-                                                </span>
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={() => {
                                                     setSelectedHospital(hosp);
                                                     loadHospitalBrandingData(hosp);
+                                                    setActiveBrandingTab("profile");
                                                     setActiveTab("branding");
                                                     window.scrollTo({ top: 380, behavior: "smooth" });
                                                 }}
                                                 style={{
                                                     ...secondarySmallBtnStyle,
-                                                    background: "rgba(124, 58, 237, 0.15)",
-                                                    color: "#C084FC",
-                                                    borderColor: "rgba(124, 58, 237, 0.3)",
+                                                    background: "rgba(2, 132, 199, 0.12)",
+                                                    color: "#0284C7",
+                                                    borderColor: "rgba(2, 132, 199, 0.3)",
+                                                    fontWeight: 800,
                                                 }}
-                                                title={isHi ? "ब्रांडिंग पेज पर जाएं" : "Go to Branding Page"}
+                                                title={isHi ? "कस्टमाइज़ेशन व ब्रांडिंग पेज पर जाएं" : "Go to Customization & Branding Studio"}
                                             >
                                                 <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                                    <IconPalette size={16} color="#0284C7" />
-                                                    <span>{isHi ? "ब्रांडिंग" : "Branding"}</span>
+                                                    <IconPalette size={13} color="#0284C7" />
+                                                    <span>{isHi ? "कस्टमाइज़ करें" : "Customize & Brand"}</span>
                                                 </span>
                                             </button>
 
@@ -6571,12 +6619,13 @@ export default function SuperAdminPage({
                                 {/* 2. SUB-NAVIGATION PILLS */}
                                 <div className="branding-sub-nav-bar">
                                     {[
+                                        { id: "profile", label: isHi ? "अस्पताल प्रोफाइल" : "Hospital Profile", icon: IconHospital },
                                         { id: "theme", label: isHi ? "थीम और रंग" : "Theme & Colors", icon: IconPalette },
-{ id: "logo", label: isHi ? "लोगो और आइकन" : "Logo & Favicon", icon: IconImage },
-{ id: "about", label: isHi ? "हमारे बारे में व सेवाएं" : "About Us & Services", icon: IconBookOpen },
-{ id: "slip", label: isHi ? "टोकन पर्ची व हेल्पलाइन" : "Token Slip & Helpline", icon: IconTicket },
-{ id: "hours", label: isHi ? "संचालन समय व कटऑफ" : "Operating Hours & Cutoff", icon: IconClock },
-{ id: "contact", label: isHi ? "पता एवं सहायता डेस्क" : "Address & Help Desk", icon: IconMapPin },
+                                        { id: "logo", label: isHi ? "लोगो और आइकन" : "Logo & Favicon", icon: IconImage },
+                                        { id: "about", label: isHi ? "हमारे बारे में व सेवाएं" : "About Us & Services", icon: IconBookOpen },
+                                        { id: "slip", label: isHi ? "टोकन पर्ची व हेल्पलाइन" : "Token Slip & Helpline", icon: IconTicket },
+                                        { id: "hours", label: isHi ? "संचालन समय व कटऑफ" : "Operating Hours & Cutoff", icon: IconClock },
+                                        { id: "contact", label: isHi ? "पता एवं सहायता डेस्क" : "Address & Help Desk", icon: IconMapPin },
                                     ].map((tab) => {
                                         const isActive = activeBrandingTab === tab.id;
                                         return (
@@ -6597,6 +6646,104 @@ export default function SuperAdminPage({
                                 <div className="branding-studio-grid">
                                     {/* LEFT COLUMN: Configuration Form Controls */}
                                     <form onSubmit={handleSaveBrandingSubmit} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                                        {/* TAB 0: HOSPITAL PROFILE & CORE CONFIGURATION */}
+                                        {activeBrandingTab === "profile" && (
+                                            <div className="branding-section-card">
+                                                <div>
+                                                    <h3 style={{ margin: "0 0 4px 0", fontSize: "17px", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
+                                                        <IconHospital size={18} color="#0284C7" />
+                                                        <span>{isHi ? "अस्पताल प्रोफाइल एवं मुख्य सेटिंग्स" : "Hospital Profile & General Settings"}</span>
+                                                    </h3>
+                                                    <p style={{ margin: 0, fontSize: "12.5px" }}>
+                                                        {isHi ? "अस्पताल का नाम, पहचान कोड, परिचालन स्थिति और आधिकारिक विवरण अपडेट करें।" : "Manage the primary hospital name, unique tenant code, operating status, and facility description."}
+                                                    </p>
+                                                </div>
+
+                                                <div className="branding-inset-box" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                                                        <div>
+                                                            <label style={fieldLabelStyle}>{isHi ? "अस्पताल का पूरा नाम" : "Hospital Official Name"} *</label>
+                                                            <input
+                                                                type="text"
+                                                                required
+                                                                value={brandingForm.name || ""}
+                                                                onChange={(e) => setBrandingForm({ ...brandingForm, name: e.target.value })}
+                                                                placeholder={isHi ? "उदा. सिटी जनरल अस्पताल" : "e.g. City General Hospital"}
+                                                                style={fieldInputStyle}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label style={fieldLabelStyle}>{isHi ? "अस्पताल कोड (Tenant ID)" : "Hospital Identifier (Code)"}</label>
+                                                            <input
+                                                                type="text"
+                                                                disabled
+                                                                value={currentHosp?.hospital_code || brandingForm.hospital_code || ""}
+                                                                style={{ ...fieldInputStyle, background: "var(--superadmin-sub-card, #F1F5F9)", cursor: "not-allowed", color: "#64748B", fontWeight: 700 }}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                                                        <div>
+                                                            <label style={fieldLabelStyle}>{isHi ? "परिचालन स्थिति" : "Operational Status"} *</label>
+                                                            <select
+                                                                value={brandingForm.status || "active"}
+                                                                onChange={(e) => setBrandingForm({ ...brandingForm, status: e.target.value })}
+                                                                style={fieldInputStyle}
+                                                            >
+                                                                <option value="active">{isHi ? "सक्रिय (Active / Accepting Patients)" : "Active (Accepting Patients)"}</option>
+                                                                <option value="maintenance">{isHi ? "रखरखाव (Under Maintenance)" : "Under Maintenance"}</option>
+                                                                <option value="inactive">{isHi ? "निष्क्रिय (Inactive / Suspended)" : "Inactive / Suspended"}</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label style={fieldLabelStyle}>{isHi ? "आधिकारिक टेलीफोन" : "Official Phone"}</label>
+                                                            <input
+                                                                type="text"
+                                                                value={brandingForm.phone || brandingForm.opd_helpdesk_phone || ""}
+                                                                onChange={(e) => setBrandingForm({ ...brandingForm, phone: e.target.value, opd_helpdesk_phone: e.target.value })}
+                                                                placeholder="+91 98765 43210"
+                                                                style={fieldInputStyle}
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label style={fieldLabelStyle}>{isHi ? "आधिकारिक संपर्क ईमेल" : "Official Contact Email"}</label>
+                                                        <input
+                                                            type="email"
+                                                            value={brandingForm.email || brandingForm.support_email || ""}
+                                                            onChange={(e) => setBrandingForm({ ...brandingForm, email: e.target.value, support_email: e.target.value })}
+                                                            placeholder="contact@hospital.org"
+                                                            style={fieldInputStyle}
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label style={fieldLabelStyle}>{isHi ? "भौतिक परिसर का पता" : "Physical Address"}</label>
+                                                        <textarea
+                                                            rows={2}
+                                                            value={brandingForm.address || ""}
+                                                            onChange={(e) => setBrandingForm({ ...brandingForm, address: e.target.value })}
+                                                            placeholder="742 Evergreen Healthcare Ave, Medical District, Suite 100"
+                                                            style={{ ...fieldInputStyle, resize: "vertical" }}
+                                                        />
+                                                    </div>
+
+                                                    <div>
+                                                        <label style={fieldLabelStyle}>{isHi ? "अस्पताल का संक्षिप्त विवरण" : "Hospital Summary & Mission"}</label>
+                                                        <textarea
+                                                            rows={3}
+                                                            value={brandingForm.description || brandingForm.about_us || ""}
+                                                            onChange={(e) => setBrandingForm({ ...brandingForm, description: e.target.value, about_us: e.target.value })}
+                                                            placeholder="Premier medical institution dedicated to patient-first care..."
+                                                            style={{ ...fieldInputStyle, resize: "vertical" }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* TAB 1: THEME & COLOR SYSTEM */}
                                         {activeBrandingTab === "theme" && (
                                             <div className="branding-section-card">
@@ -7237,8 +7384,8 @@ export default function SuperAdminPage({
                                         <div className="branding-mode-pills-bar">
                                             {[
                                                 { id: "portal", label: isHi ? "मरीज़ पोर्टल" : "Patient View", icon: IconSmartphone },
-{ id: "slip", label: isHi ? "टोकन पर्ची" : "Queue Pass", icon: IconTicket },
-{ id: "about", label: isHi ? "About Us" : "About Modal", icon: IconBookOpen },
+                                                { id: "slip", label: isHi ? "टोकन पर्ची" : "Queue Pass", icon: IconTicket },
+                                                { id: "about", label: isHi ? "About Us" : "About Modal", icon: IconBookOpen },
                                             ].map((mode) => (
                                                 <button
                                                     key={mode.id}
@@ -7246,7 +7393,9 @@ export default function SuperAdminPage({
                                                     onClick={() => setBrandingPreviewMode(mode.id)}
                                                     className={`branding-mode-pill-btn ${brandingPreviewMode === mode.id ? "active" : ""}`}
                                                 >
-                                                    <mode.icon size={14} style={{ marginRight: 5, verticalAlign: "middle" }} />{mode.label}</button>
+                                                    <mode.icon size={15} />
+                                                    <span>{mode.label}</span>
+                                                </button>
                                             ))}
                                         </div>
 
@@ -7596,6 +7745,34 @@ export default function SuperAdminPage({
                                             {selectedHospital.patients_today} Visits
                                         </span>
                                     </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            loadHospitalBrandingData(selectedHospital);
+                                            setActiveBrandingTab("profile");
+                                            setActiveTab("branding");
+                                            window.scrollTo({ top: 380, behavior: "smooth" });
+                                        }}
+                                        style={{
+                                            marginTop: "10px",
+                                            width: "100%",
+                                            padding: "7px 10px",
+                                            borderRadius: "8px",
+                                            border: "1px solid rgba(2, 132, 199, 0.3)",
+                                            background: "rgba(2, 132, 199, 0.08)",
+                                            color: "#0284C7",
+                                            fontSize: "11.5px",
+                                            fontWeight: 700,
+                                            cursor: "pointer",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            gap: "6px",
+                                        }}
+                                    >
+                                        <IconPalette size={13} color="#0284C7" />
+                                        <span>{isHi ? "कस्टमाइज़ेशन व ब्रांडिंग स्टूडियो →" : "Customize & Branding Studio →"}</span>
+                                    </button>
                                 </div>
                             )}
                         </div>
@@ -7700,95 +7877,7 @@ export default function SuperAdminPage({
                 </div>
             )}
 
-            {/* MODAL 2: EDIT HOSPITAL */}
-            {showEditHospitalModal && (
-                <div style={modalOverlayStyle} onClick={() => setShowEditHospitalModal(false)}>
-                    <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                            <h3 style={{ margin: 0, fontSize: "18px", color: "#0F172A", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px" }}>
-                                <IconEdit size={18} color="#0284C7" />
-                                <span>{isHi ? "अस्पताल जानकारी संपादित करें" : "Edit Hospital Details"}</span>
-                            </h3>
-                            <button type="button" onClick={() => setShowEditHospitalModal(false)} style={modalCloseIconBtnStyle}><IconX size={15} /></button>
-                        </div>
 
-                        <form onSubmit={handleUpdateHospitalSubmit} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                            <div>
-                                <label style={fieldLabelStyle}>{isHi ? "अस्पताल का नाम" : "Hospital Name"} *</label>
-                                <input
-                                    type="text"
-                                    required
-                                    value={editHospitalForm.name}
-                                    onChange={(e) => setEditHospitalForm({ ...editHospitalForm, name: e.target.value })}
-                                    style={fieldInputStyle}
-                                />
-                            </div>
-
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                                <div>
-                                    <label style={fieldLabelStyle}>{isHi ? "फोन" : "Phone"}</label>
-                                    <input
-                                        type="text"
-                                        value={editHospitalForm.phone}
-                                        onChange={(e) => setEditHospitalForm({ ...editHospitalForm, phone: e.target.value })}
-                                        style={fieldInputStyle}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={fieldLabelStyle}>{isHi ? "ईमेल" : "Email"}</label>
-                                    <input
-                                        type="email"
-                                        value={editHospitalForm.email}
-                                        onChange={(e) => setEditHospitalForm({ ...editHospitalForm, email: e.target.value })}
-                                        style={fieldInputStyle}
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label style={fieldLabelStyle}>{isHi ? "पता" : "Address"}</label>
-                                <input
-                                    type="text"
-                                    value={editHospitalForm.address}
-                                    onChange={(e) => setEditHospitalForm({ ...editHospitalForm, address: e.target.value })}
-                                    style={fieldInputStyle}
-                                />
-                            </div>
-
-                            <div>
-                                <label style={fieldLabelStyle}>{isHi ? "विवरण" : "Description"}</label>
-                                <textarea
-                                    rows="2"
-                                    value={editHospitalForm.description}
-                                    onChange={(e) => setEditHospitalForm({ ...editHospitalForm, description: e.target.value })}
-                                    style={{ ...fieldInputStyle, resize: "none" }}
-                                />
-                            </div>
-
-                            <div>
-                                <label style={fieldLabelStyle}>{isHi ? "स्थिति" : "Status"}</label>
-                                <select
-                                    value={editHospitalForm.status}
-                                    onChange={(e) => setEditHospitalForm({ ...editHospitalForm, status: e.target.value })}
-                                    style={fieldInputStyle}
-                                >
-                                    <option value="active">Active</option>
-                                    <option value="inactive">Inactive</option>
-                                </select>
-                            </div>
-
-                            <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-                                <button type="button" onClick={() => setShowEditHospitalModal(false)} style={modalCancelBtnStyle}>
-                                    {isHi ? "रद्द करें" : "Cancel"}
-                                </button>
-                                <button type="submit" style={modalSubmitBtnStyle}>
-                                    {isHi ? "अपडेट करें" : "Update Hospital"}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
 
             {/* MODAL 3: ADD EMPLOYEE */}
             {showAddEmployeeModal && selectedHospital && (
@@ -8763,22 +8852,36 @@ export default function SuperAdminPage({
 
 {/* FEATURE 3: NABH EXECUTIVE DAILY REPORT MODAL */}
             {showNABHReportModal && (() => {
-                const hourlyAnalytics = computeHourlyAnalytics(rawVisits, hospitalQueueSnapshot);
-                const bottleneckAnalytics = computeDepartmentBottlenecks(hospitalDepts, hospitalQueueSnapshot, rawVisits);
+                const targetHosp = selectedHospital || (hospitals && hospitals.length > 0 ? hospitals[0] : null);
+                const visitsList = hospitalVisitsData?.visits || [];
+                const queueList = hospitalQueueSnapshot || [];
+                const deptsList = hospitalDepts || [];
+                const hourlyAnalytics = computeHourlyAnalytics(visitsList, queueList);
+                const bottleneckAnalytics = computeDepartmentBottlenecks(deptsList, queueList, visitsList);
+
+                const safeTotalPatients = hospitalVisitsData?.summary?.total_patients_visited_all_time ?? (hospitalAnalytics?.total_patients_visited_all_time || visitsList.length);
+                const safeCompleted = hospitalAnalytics?.completed_today ?? (hospitalVisitsData?.summary?.today_completed || 0);
+                const safeWaiting = hospitalAnalytics?.waiting_count ?? queueList.filter((q) => (q.status || "").toLowerCase() === "waiting").length;
+                const safeAvgWait = hospitalAnalytics?.avg_wait_minutes ?? 12;
+                const activeDoctorsCount = (hospitalEmployees || []).filter((e) => {
+                    const role = (e.role || "").toLowerCase();
+                    return (role === "doctor" || role === "physician") && (e.status || "").toLowerCase() === "active";
+                }).length || 1;
+
                 const nabhReportData = {
-                    hospitalName: selectedHospital?.name || currentHosp?.name || "City General Hospital",
-                    hospitalCode: selectedHospital?.hospital_code || currentHosp?.hospital_code || "HOSP-HQ",
-                    address: selectedHospital?.address || currentHosp?.address || brandingForm.address || "742 Evergreen Healthcare Ave",
-                    totalPatients: allTimePatientsVisited,
-                    completedCount: completedToday,
-                    waitingCount: waitingCount,
-                    avgWaitTime: avgWait,
-                    peakRushWindow: hourlyAnalytics.peakHourLabel,
-                    doctorsOnDuty: docsAvailable + docsBusy,
-                    totalStaff: hospitalEmployees.length,
-                    complianceScore: Math.min(100, Math.max(88, 100 - (waitingCount > 10 ? 12 : waitingCount > 4 ? 6 : 0))),
-                    primaryRecommendation: bottleneckAnalytics.find((d) => d.severity === "SEVERE")?.recommendation || (isHi ? "सभी विभाग सामान्य मानक के अंतर्गत संचालित हैं।" : "All departments operating well within NABH benchmark wait thresholds."),
-                    departmentBreakdown: bottleneckAnalytics,
+                    hospitalName: targetHosp?.name || "City General Hospital",
+                    hospitalCode: targetHosp?.hospital_code || "HOSP-HQ",
+                    address: targetHosp?.address || brandingForm?.address || "742 Evergreen Healthcare Ave",
+                    totalPatients: safeTotalPatients,
+                    completedCount: safeCompleted,
+                    waitingCount: safeWaiting,
+                    avgWaitTime: safeAvgWait,
+                    peakRushWindow: hourlyAnalytics?.peakHourLabel || "10:00 AM – 12:00 PM",
+                    doctorsOnDuty: activeDoctorsCount,
+                    totalStaff: (hospitalEmployees || []).length || 5,
+                    complianceScore: Math.min(100, Math.max(88, 100 - (safeWaiting > 10 ? 12 : safeWaiting > 4 ? 6 : 0))),
+                    primaryRecommendation: (bottleneckAnalytics || []).find((d) => d.severity === "SEVERE")?.recommendation || (isHi ? "सभी विभाग सामान्य मानक के अंतर्गत संचालित हैं।" : "All departments operating well within NABH benchmark wait thresholds."),
+                    departmentBreakdown: bottleneckAnalytics || [],
                 };
 
                 return (
