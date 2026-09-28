@@ -638,22 +638,6 @@ export default function StaffPage({
     }
   };
 
-  const handleStaffCheckInAppt = async (appointmentId) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/v1/plugin/appointments/check-in`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appointment_id: appointmentId }),
-      });
-      if (res.ok) {
-        fetchTenantAppointments();
-        if (refreshData) refreshData();
-      }
-    } catch (e) {
-      console.log("Check-in error:", e);
-    }
-  };
-
   const handleOpenTransferModal = (ticket) => {
     setSelectedTicket(ticket);
     setRxNotes("");
@@ -2763,48 +2747,166 @@ export default function StaffPage({
                         <th style={staffThStyle}>{t("patientDemographics", language)}</th>
                         <th style={staffThStyle}>{t("departmentLabel", language)}</th>
                         <th style={staffThStyle}>{t("reservedSlotLabel", language)}</th>
-                        <th style={staffThStyle}>{t("currentStatus", language)}</th>
-                        <th style={staffThStyle}>{t("mergedToken", language)} ID)</th>
-                        <th style={staffThStyle}>Actions</th>
+                        <th style={staffThStyle}>{language === "hi" ? "आगमन एवं ओपीडी स्थिति" : "Arrival & OPD Status"}</th>
+                        <th style={staffThStyle}>{language === "hi" ? "कतार टोकन संख्या" : "Queue Token #"}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {appointments.map((apt) => (
-                        <tr key={apt.appointment_id}>
-                          <td style={{ ...staffTdStyle, fontWeight: 900, color: "#0284C7" }}>{apt.appointment_id}</td>
-                          <td style={{ ...staffTdStyle, fontWeight: 700 }}>{apt.patient_name}</td>
-                          <td style={{ ...staffTdStyle, fontWeight: 700, color: "#0284C7" }}>
-                            {getCategoryLabel(apt.service_category, language)}
-                          </td>
-                          <td style={{ ...staffTdStyle, fontWeight: 600, color: "#0F172A" }}>
-                            {apt.appointment_date} @ {apt.time_slot}
-                          </td>
-                          <td style={staffTdStyle}>
-                            <span style={aptStatusBadgeStyle(apt.status)}>
-                              {getStatusLabel(apt.status, language)}
-                            </span>
-                          </td>
-                          <td style={{ ...staffTdStyle, fontWeight: 800, color: "#D97706" }}>
-                            {apt.ticket_id ? `#${apt.ticket_id}` : "—"}
-                          </td>
-                          <td style={staffTdStyle}>
-                            {apt.status === "scheduled" ? (
-                              <button
-                                type="button"
-                                onClick={() => handleStaffCheckInAppt(apt.appointment_id)}
-                                style={checkInRosterBtnStyle}
-                                title="Check in patient and issue priority token"
-                              >
-                                {t("checkInBtn", language)}
-                              </button>
-                            ) : (
-                              <span style={{ fontSize: "11px", color: "#94A3B8", fontWeight: 700 }}>
-                                {getStatusLabel(apt.status, language)}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                      {appointments.map((apt) => {
+                        const statusKey = (apt.status || "").toLowerCase();
+                        const isCheckedIn = statusKey === "checked_in" || (apt.ticket_id && statusKey !== "completed" && statusKey !== "cancelled" && statusKey !== "no_show");
+                        const isScheduled = statusKey === "scheduled" && !apt.ticket_id;
+                        const isServing = statusKey === "serving";
+                        const isCompleted = statusKey === "completed";
+                        const isCancelled = statusKey === "cancelled" || statusKey === "no_show";
+
+                        return (
+                          <tr key={apt.appointment_id}>
+                            <td style={{ ...staffTdStyle, fontWeight: 900, color: "#0284C7" }}>{apt.appointment_id}</td>
+                            <td style={{ ...staffTdStyle, fontWeight: 700 }}>{apt.patient_name}</td>
+                            <td style={{ ...staffTdStyle, fontWeight: 700, color: "#0284C7" }}>
+                              {getCategoryLabel(apt.service_category, language)}
+                            </td>
+                            <td style={{ ...staffTdStyle, fontWeight: 600, color: isDark ? "#E2E8F0" : "#0F172A" }}>
+                              {apt.appointment_date} @ {apt.time_slot}
+                            </td>
+                            <td style={staffTdStyle}>
+                              {isCheckedIn ? (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    padding: "4px 10px",
+                                    borderRadius: "8px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 800,
+                                    background: isDark ? "rgba(16, 185, 129, 0.18)" : "#ECFDF5",
+                                    color: isDark ? "#6EE7B7" : "#065F46",
+                                    border: `1px solid ${isDark ? "rgba(16, 185, 129, 0.35)" : "#A7F3D0"}`,
+                                  }}
+                                  title={language === "hi" ? "मरीज़ का स्वागत कक्ष / कियोस्क पर चेक-इन पूर्ण हो चुका है और वह प्रतीक्षालय में उपस्थित है।" : "Patient has completed check-in at reception/kiosk and is waiting in the lounge"}
+                                >
+                                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#10B981" }} />
+                                  <span>{language === "hi" ? "चेक-इन पूर्ण • प्रतीक्षालय में उपस्थित" : "Checked In & Waiting in Lounge"}</span>
+                                </span>
+                              ) : isScheduled ? (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "5px",
+                                    padding: "4px 10px",
+                                    borderRadius: "8px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 700,
+                                    background: isDark ? "rgba(56, 189, 248, 0.12)" : "#F0F9FF",
+                                    color: isDark ? "#38BDF8" : "#0284C7",
+                                    border: `1px solid ${isDark ? "rgba(56, 189, 248, 0.28)" : "#BAE6FD"}`,
+                                  }}
+                                  title={language === "hi" ? "निर्धारित स्लॉट। मरीज़ के आगमन पर स्वागत डेस्क या कियोस्क द्वारा चेक-इन किया जाएगा।" : "Scheduled slot. Front desk or self-service kiosk will check in patient upon arrival."}
+                                >
+                                  <IconClock size={12} color={isDark ? "#38BDF8" : "#0284C7"} />
+                                  <span>
+                                    {language === "hi"
+                                      ? `निर्धारित समय: ${apt.time_slot || "स्लॉट"}`
+                                      : `Scheduled for ${apt.time_slot || "Slot"}`}
+                                  </span>
+                                </span>
+                              ) : isServing ? (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    padding: "4px 10px",
+                                    borderRadius: "8px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 800,
+                                    background: isDark ? "rgba(245, 158, 11, 0.18)" : "#FEF3C7",
+                                    color: isDark ? "#FDE68A" : "#92400E",
+                                    border: `1px solid ${isDark ? "rgba(245, 158, 11, 0.35)" : "#FDE68A"}`,
+                                  }}
+                                >
+                                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#F59E0B" }} />
+                                  <span>{language === "hi" ? "परामर्श जारी (डेस्क पर)" : "In Consultation (At Desk)"}</span>
+                                </span>
+                              ) : isCompleted ? (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "5px",
+                                    padding: "4px 10px",
+                                    borderRadius: "8px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 700,
+                                    background: isDark ? "#1E293B" : "#F1F5F9",
+                                    color: isDark ? "#94A3B8" : "#475569",
+                                    border: `1px solid ${isDark ? "#334155" : "#CBD5E1"}`,
+                                  }}
+                                >
+                                  <IconCheckCircle size={12} color="#16A34A" />
+                                  <span>{language === "hi" ? "परामर्श पूर्ण" : "Consultation Completed"}</span>
+                                </span>
+                              ) : isCancelled ? (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "5px",
+                                    padding: "4px 10px",
+                                    borderRadius: "8px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 700,
+                                    background: isDark ? "rgba(239, 68, 68, 0.15)" : "#FEF2F2",
+                                    color: isDark ? "#FCA5A5" : "#DC2626",
+                                    border: `1px solid ${isDark ? "rgba(239, 68, 68, 0.3)" : "#FECACA"}`,
+                                  }}
+                                >
+                                  <IconUserX size={12} color={isDark ? "#FCA5A5" : "#DC2626"} />
+                                  <span>{language === "hi" ? "रद्द / अनुपस्थित" : "Cancelled / No-Show"}</span>
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "5px",
+                                    padding: "4px 10px",
+                                    borderRadius: "8px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 700,
+                                    background: isDark ? "#1E293B" : "#F8FAFC",
+                                    color: isDark ? "#CBD5E1" : "#475569",
+                                    border: `1px solid ${isDark ? "#334155" : "#E2E8F0"}`,
+                                  }}
+                                >
+                                  {getStatusLabel(apt.status, language)}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ ...staffTdStyle, fontWeight: 800 }}>
+                              {apt.ticket_id ? (
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    padding: "2px 8px",
+                                    borderRadius: "6px",
+                                    background: isDark ? "rgba(2,132,199,0.2)" : "#E0F2FE",
+                                    color: isDark ? "#38BDF8" : "#0284C7",
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  #{apt.ticket_id}
+                                </span>
+                              ) : (
+                                <span style={{ color: isDark ? "#64748B" : "#94A3B8" }}>—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -3488,18 +3590,6 @@ const staffTdStyle = {
   verticalAlign: "middle",
 };
 
-const checkInRosterBtnStyle = {
-  padding: "6px 14px",
-  borderRadius: "8px",
-  border: "none",
-  background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
-  color: "#FFFFFF",
-  fontWeight: 800,
-  fontSize: "11px",
-  cursor: "pointer",
-  boxShadow: "0 2px 6px rgba(2, 132, 199, 0.25)",
-};
-
 const badgePrioStyle = (color) => ({
   padding: "2px 8px",
   borderRadius: "6px",
@@ -3509,16 +3599,6 @@ const badgePrioStyle = (color) => ({
   fontWeight: 800,
   border: `1px solid ${color === "#DC2626" ? "#FECACA" : "#BAE6FD"}`,
 });
-
-const aptStatusBadgeStyle = (status) => {
-  const s = (status || "").toLowerCase();
-  if (s === "completed") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F1F5F9", color: "#475569", border: "1px solid #CBD5E1" };
-  if (s === "transferred") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#E0F2FE", color: "#0284C7", border: "1px solid #BAE6FD" };
-  if (s === "serving") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#FEF3C7", color: "#D97706", border: "1px solid #FDE68A" };
-  if (s === "checked_in") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F0FDF4", color: "#166534", border: "1px solid #BBF7D0" };
-  if (s === "cancelled" || s === "no_show") return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" };
-  return { padding: "3px 8px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
-};
 
 
 
