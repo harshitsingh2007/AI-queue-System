@@ -163,6 +163,10 @@ export default function StaffPage({
   const [rxTransferNotes, setRxTransferNotes] = useState("");
   const [rxSaving, setRxSaving] = useState(false);
   const [rxStatusMsg, setRxStatusMsg] = useState("");
+  const [rxAutoSaveStatus, setRxAutoSaveStatus] = useState("idle"); // "idle" | "saving" | "saved" | "error"
+  const [rxLastSavedAt, setRxLastSavedAt] = useState(null);
+  const isInitialLoadRef = useRef(true);
+  const autoSaveTimerRef = useRef(null);
 
   const effectiveHospitalCode =
     localBranding?.hospital_code ||
@@ -257,6 +261,9 @@ export default function StaffPage({
   const handleUsePreviousPrescription = (prevRx) => {
     if (!myServingTicket || !prevRx) return;
     setPrescriptionTicket(myServingTicket);
+    isInitialLoadRef.current = true;
+    setRxAutoSaveStatus("idle");
+    setRxLastSavedAt(null);
     setRxDiagnosis(prevRx.diagnosis || "");
     setRxMedicines(
       Array.isArray(prevRx.medicines) && prevRx.medicines.length > 0
@@ -654,8 +661,19 @@ export default function StaffPage({
     setRxSaving(false);
     setRxPreFillWarning("");
     setRxCustomFinding("");
+    isInitialLoadRef.current = true;
+    setRxAutoSaveStatus("idle");
+    setRxLastSavedAt(null);
 
     let parsed = null;
+    let localDraft = null;
+    try {
+      const stored = localStorage.getItem(`rx_draft_${ticket.ticket_id}`);
+      if (stored) {
+        localDraft = JSON.parse(stored);
+      }
+    } catch (_) {}
+
     if (ticket.prescription_notes) {
       try {
         if (typeof ticket.prescription_notes === "object") {
@@ -679,23 +697,29 @@ export default function StaffPage({
       } catch (e) {}
     }
 
-    if (parsed && typeof parsed === "object") {
-      setRxDiagnosis(parsed.diagnosis || "");
+    const effectiveData = localDraft || parsed;
+
+    if (effectiveData && typeof effectiveData === "object") {
+      setRxDiagnosis(effectiveData.diagnosis || "");
       setRxMedicines(
-        Array.isArray(parsed.medicines) && parsed.medicines.length > 0
-          ? parsed.medicines
+        Array.isArray(effectiveData.medicines) && effectiveData.medicines.length > 0
+          ? effectiveData.medicines
           : [{ name: "", dosage: "500mg", frequency: "1-0-1", duration: "5 days", instructions: "After food" }]
       );
-      setRxLabTests(parsed.lab_tests || "");
-      setRxAdvice(parsed.advice || "");
-      setRxFollowUp(parsed.follow_up || "");
+      setRxLabTests(effectiveData.lab_tests || "");
+      setRxAdvice(effectiveData.advice || "");
+      setRxFollowUp(effectiveData.follow_up || "");
       setRxRoutingDept(
-        parsed.target_department ||
-        (Array.isArray(parsed.medicines) && parsed.medicines.some((m) => m.name && m.name.trim() !== "")
+        effectiveData.target_department ||
+        (Array.isArray(effectiveData.medicines) && effectiveData.medicines.some((m) => m.name && m.name.trim() !== "")
           ? "pharmacy"
           : "none")
       );
-      setRxTransferNotes(parsed.transfer_notes || "");
+      setRxTransferNotes(effectiveData.transfer_notes || "");
+      if (localDraft) {
+        setRxAutoSaveStatus("saved");
+        setRxLastSavedAt(new Date());
+      }
     } else {
       setRxDiagnosis(
         ticket.medical_condition && ticket.medical_condition !== "general_checkup"
@@ -771,15 +795,47 @@ export default function StaffPage({
     };
   };
 
+  const handleClosePrescriptionModal = () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+      if (prescriptionTicket?.ticket_id) {
+        try {
+          const payload = buildPrescriptionPayload();
+          localStorage.setItem(`rx_draft_${prescriptionTicket.ticket_id}`, JSON.stringify(payload));
+          fetch(`${API_BASE}/api/v1/plugin/save-prescription`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tenant_id: tenantId,
+              ticket_id: prescriptionTicket.ticket_id,
+              prescription: payload,
+            }),
+          }).catch(() => {});
+        } catch (_) {}
+      }
+    }
+    setShowPrescriptionModal(false);
+  };
+
   const handleSavePrescription = async (andComplete = false) => {
     if (!prescriptionTicket) return;
     setRxSaving(true);
     setRxStatusMsg(language === "hi" ? "दवा पर्ची सहेजी जा रही है..." : "Saving E-Prescription...");
 
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+
     const payload = buildPrescriptionPayload();
 
     try {
       if (andComplete) {
+        try {
+          localStorage.removeItem(`rx_draft_${prescriptionTicket.ticket_id}`);
+        } catch (_) {}
+
         if (rxRoutingDept && rxRoutingDept !== "none") {
           // ROUTE / TRANSFER TO TARGET DEPARTMENT WITH STRUCTURED PRESCRIPTION
           setRxStatusMsg(
@@ -847,6 +903,11 @@ export default function StaffPage({
         });
         const data = await res.json();
         if (res.ok && data.success) {
+          try {
+            localStorage.setItem(`rx_draft_${prescriptionTicket.ticket_id}`, JSON.stringify(payload));
+          } catch (_) {}
+          setRxAutoSaveStatus("saved");
+          setRxLastSavedAt(new Date());
           setRxStatusMsg(
             language === "hi"
               ? "✓ ई-प्रिस्क्रिप्शन ड्राफ्ट सफलतापूर्वक सहेजा गया!"
@@ -869,6 +930,69 @@ export default function StaffPage({
       setRxSaving(false);
     }
   };
+
+  // Automatic Prescription Draft Background Auto-Saver (debounced)
+  useEffect(() => {
+    if (!showPrescriptionModal || !prescriptionTicket?.ticket_id) {
+      return;
+    }
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      return;
+    }
+
+    setRxAutoSaveStatus("saving");
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = setTimeout(async () => {
+      try {
+        const payload = buildPrescriptionPayload();
+        try {
+          localStorage.setItem(`rx_draft_${prescriptionTicket.ticket_id}`, JSON.stringify(payload));
+        } catch (_) {}
+
+        const res = await fetch(`${API_BASE}/api/v1/plugin/save-prescription`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tenant_id: tenantId,
+            ticket_id: prescriptionTicket.ticket_id,
+            prescription: payload,
+          }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          setRxAutoSaveStatus("saved");
+          setRxLastSavedAt(new Date());
+        } else {
+          setRxAutoSaveStatus("error");
+        }
+      } catch (err) {
+        console.warn("Auto-save draft error:", err);
+        setRxAutoSaveStatus("error");
+      }
+    }, 1000);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [
+    rxDiagnosis,
+    rxCustomFinding,
+    rxMedicines,
+    rxLabTests,
+    rxAdvice,
+    rxFollowUp,
+    rxRoutingDept,
+    rxTransferNotes,
+    showPrescriptionModal,
+    prescriptionTicket?.ticket_id,
+  ]);
 
   const fetchTenantAppointments = useCallback(() => {
     const params = new URLSearchParams();
@@ -2307,82 +2431,15 @@ export default function StaffPage({
                             type="button"
                             onClick={() => handleCompleteTicket(ticket.ticket_id)}
                             style={finishBtnStyle}
-                            title="Mark Consultation Complete (Discharge without prescription)"
+                            title={language === "hi" ? "परामर्श पूर्ण करें" : "Mark Consultation Complete"}
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                               <polyline points="20 6 9 17 4 12" />
                             </svg>
-                            <span>{t("finishConsult", language)}</span>
+                            <span>{language === "hi" ? "परामर्श पूर्ण करें" : "Finish Consult"}</span>
                           </button>
                         </div>
                       </div>
-
-                      {/* Attached E-Prescription Box */}
-                      {ticket.prescription_notes && (() => {
-                        let parsedRx = null;
-                        try {
-                          if (typeof ticket.prescription_notes === "object") {
-                            parsedRx = ticket.prescription_notes;
-                          } else if (typeof ticket.prescription_notes === "string") {
-                            let trimmed = ticket.prescription_notes.trim();
-                            while (
-                              (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-                              (trimmed.startsWith("'") && trimmed.endsWith("'"))
-                            ) {
-                              trimmed = trimmed.slice(1, -1).trim();
-                            }
-                            if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-                              parsedRx = JSON.parse(trimmed);
-                            } else {
-                              const direct = JSON.parse(ticket.prescription_notes);
-                              if (typeof direct === "object" && direct !== null) parsedRx = direct;
-                              else if (typeof direct === "string" && direct.trim().startsWith("{")) parsedRx = JSON.parse(direct);
-                            }
-                          }
-                        } catch (e) {}
-
-                        return (
-                          <div style={{ padding: "12px 14px", background: "#F0FDF4", borderRadius: "10px", border: "1px solid #BBF7D0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
-                            <div style={{ flex: 1, minWidth: "220px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
-                                <span style={{ fontSize: "11px", fontWeight: 800, color: "#15803D", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                                  ℞ {language === "hi" ? "संलग्न दवा पर्ची (ई-प्रिस्क्रिप्शन)" : "Active E-Prescription Attached"}
-                                </span>
-                                {parsedRx && parsedRx.diagnosis && (
-                                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#0F172A", background: "#DCFCE7", padding: "1px 7px", borderRadius: "4px" }}>
-                                    {parsedRx.diagnosis}
-                                  </span>
-                                )}
-                              </div>
-                              {parsedRx && Array.isArray(parsedRx.medicines) && parsedRx.medicines.length > 0 ? (
-                                <div style={{ fontSize: "12.5px", color: "#166534" }}>
-                                  <strong>{parsedRx.medicines.length} {language === "hi" ? "दवाएं निर्धारित" : "Medicines"}:</strong>{" "}
-                                  {parsedRx.medicines.map((m) => `${m.name} (${m.dosage || ""})`).join(", ")}
-                                </div>
-                              ) : (
-                                <p style={{ margin: 0, fontSize: "13px", color: "#166534", fontStyle: "italic" }}>
-                                  "{parsedRx?.advice || (typeof ticket.prescription_notes === "string" && !ticket.prescription_notes.startsWith("{") ? ticket.prescription_notes : "Clinical prescription on record")}"
-                                </p>
-                              )}
-                              {parsedRx && parsedRx.transfer_notes && (
-                                <div style={{ fontSize: "12px", color: "#0369A1", marginTop: "5px", background: "#E0F2FE", padding: "4px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
-                                  <strong>📌 {language === "hi" ? "विभाग निर्देश / विवरण" : "Department Transfer Notes"}:</strong> {parsedRx.transfer_notes}
-                                </div>
-                              )}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenPrescriptionModal(ticket)}
-                              style={{ padding: "5px 10px", borderRadius: "6px", border: "1px solid #86EFAC", background: "#FFFFFF", color: "#15803D", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}
-                            >
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                                <IconEdit size={12} color="#15803D" />
-                                {language === "hi" ? "पर्ची संपादित करें" : "Edit Prescription"}
-                              </span>
-                            </button>
-                          </div>
-                        );
-                      })()}
                     </div>
                   ))}
                 </div>
@@ -3093,7 +3150,7 @@ export default function StaffPage({
 
       {/* 4b. DOCTOR E-PRESCRIPTION (Rx) CLINICAL MODAL */}
       {showPrescriptionModal && prescriptionTicket && (
-        <div style={modalOverlayStyle} onClick={() => setShowPrescriptionModal(false)}>
+        <div style={modalOverlayStyle} onClick={handleClosePrescriptionModal}>
           <div
             style={{
               ...modalContentStyle,
@@ -3131,7 +3188,7 @@ export default function StaffPage({
               </div>
               <button
                 type="button"
-                onClick={() => setShowPrescriptionModal(false)}
+                onClick={handleClosePrescriptionModal}
                 style={{ background: "none", border: "none", fontSize: "20px", color: "#94A3B8", cursor: "pointer", padding: "4px" }}
               >
                 ✕
@@ -3673,38 +3730,13 @@ export default function StaffPage({
               )}
 
               {/* Action Buttons */}
-              <div style={{ display: "flex", gap: "10px", marginTop: "10px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: "10px", marginTop: "10px", flexWrap: "wrap", alignItems: "center" }}>
                 <button
                   type="button"
-                  onClick={() => setShowPrescriptionModal(false)}
-                  style={{ flex: 1, padding: "11px 16px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #CBD5E1", background: isDark ? "#1E293B" : "#F8FAFC", color: isDark ? "#94A3B8" : "#64748B", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                  onClick={handleClosePrescriptionModal}
+                  style={{ flex: 1, minWidth: "120px", padding: "11px 16px", borderRadius: "10px", border: isDark ? "1px solid #334155" : "1px solid #CBD5E1", background: isDark ? "#1E293B" : "#F8FAFC", color: isDark ? "#94A3B8" : "#64748B", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
                 >
                   {t("cancelBtn", language)}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={rxSaving}
-                  onClick={() => handleSavePrescription(false)}
-                  style={{
-                    flex: 1.2,
-                    padding: "11px 16px",
-                    borderRadius: "10px",
-                    border: "1.5px solid #0284C7",
-                    background: isDark ? "rgba(2, 132, 199, 0.15)" : "#F0F9FF",
-                    color: isDark ? "#38BDF8" : "#0369A1",
-                    fontWeight: 800,
-                    fontSize: "13px",
-                    cursor: rxSaving ? "wait" : "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                  }}
-                  title="Save prescription draft without ending or routing visit"
-                >
-                  <IconSave size={15} color={isDark ? "#38BDF8" : "#0369A1"} />
-                  <span>{language === "hi" ? "ड्राफ्ट सहेजें" : "Save Draft"}</span>
                 </button>
 
                 <button

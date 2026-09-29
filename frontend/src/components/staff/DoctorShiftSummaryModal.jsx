@@ -17,6 +17,15 @@
 
 import React, { useState, useEffect, useCallback, useRef, useId } from "react";
 import {
+  Users,
+  Clock,
+  ArrowRightLeft,
+  TrendingUp,
+  CheckCircle2,
+  Download,
+  Award,
+} from "lucide-react";
+import {
   IconDoctor,
   IconHospital,
   IconPill,
@@ -43,7 +52,6 @@ export default function DoctorShiftSummaryModal({
   const isHi = language === "hi";
   const [activeTab, setActiveTab] = useState("today"); // "today" | "trend"
   const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
   const [selectedDayIdx, setSelectedDayIdx] = useState(6); // default to today (last index)
   const [hoveredDayIdx, setHoveredDayIdx] = useState(null);
@@ -61,7 +69,6 @@ export default function DoctorShiftSummaryModal({
   const fetchShiftSummary = useCallback((silent = false) => {
     if (!isOpen) return;
     if (!silent) setLoading(true);
-    else setIsRefreshing(true);
 
     const queryParams = new URLSearchParams({
       tenant_id: hospCode,
@@ -81,12 +88,10 @@ export default function DoctorShiftSummaryModal({
           }
         }
         if (!silent) setLoading(false);
-        setIsRefreshing(false);
       })
       .catch((err) => {
         console.warn("[DoctorShiftSummary] Error fetching data:", err);
         if (!silent) setLoading(false);
-        setIsRefreshing(false);
       });
   }, [isOpen, hospCode, docId, docEmail, docName]);
 
@@ -482,37 +487,8 @@ export default function DoctorShiftSummaryModal({
             </button>
           </div>
 
-          {/* Quick Actions (Auto-Sync Badge + CSV) */}
+          {/* Quick Actions (CSV) */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div
-              style={{
-                padding: "6px 12px",
-                borderRadius: "8px",
-                background: isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5",
-                border: isDark ? "1px solid rgba(16, 185, 129, 0.35)" : "1px solid #A7F3D0",
-                color: isDark ? "#34D399" : "#059669",
-                fontSize: "12px",
-                fontWeight: 800,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                userSelect: "none",
-              }}
-              title={isHi ? "रीयल-टाइम ऑटो-सिंक सक्रिय है" : "Live telemetry automatically updated in real-time"}
-            >
-              <span
-                style={{
-                  width: "7px",
-                  height: "7px",
-                  borderRadius: "50%",
-                  background: isRefreshing ? "#3B82F6" : "#10B981",
-                  display: "inline-block",
-                  boxShadow: "0 0 8px rgba(16, 185, 129, 0.6)",
-                }}
-              />
-              <span>{isRefreshing ? (isHi ? "ऑटो-सिंक..." : "Syncing...") : (isHi ? "लाइव ऑटो-सिंक" : "Live Auto-Synced")}</span>
-            </div>
-
             <button
               type="button"
               onClick={handleExportCsv}
@@ -527,11 +503,12 @@ export default function DoctorShiftSummaryModal({
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "5px",
+                gap: "6px",
+                transition: "all 0.15s ease",
               }}
               title={isHi ? "CSV डाउनलोड करें" : "Download CSV"}
             >
-              <span>📥</span>
+              <Download size={14} style={{ color: isDark ? "#38BDF8" : "#0284C7" }} />
               <span>{isHi ? "CSV निर्यात" : "Export CSV"}</span>
             </button>
           </div>
@@ -579,55 +556,71 @@ export default function DoctorShiftSummaryModal({
               <div
                 style={{
                   padding: "16px 20px",
-                  borderRadius: "16px",
+                  borderRadius: "14px",
                   background: isDark
-                    ? "linear-gradient(135deg, rgba(2, 132, 199, 0.22) 0%, rgba(14, 165, 233, 0.1) 100%)"
-                    : "linear-gradient(135deg, #E0F2FE 0%, #F0F9FF 100%)",
-                  border: isDark ? "1px solid rgba(56, 189, 248, 0.3)" : "1px solid #BAE6FD",
+                    ? "linear-gradient(135deg, rgba(2, 132, 199, 0.18) 0%, rgba(14, 165, 233, 0.06) 100%)"
+                    : "linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%)",
+                  border: isDark ? "1px solid rgba(56, 189, 248, 0.25)" : "1px solid #BAE6FD",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   flexWrap: "wrap",
-                  gap: "12px",
+                  gap: "14px",
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                  <span style={{ fontSize: "28px" }}>🌟</span>
+                  <div
+                    style={{
+                      width: "38px",
+                      height: "38px",
+                      borderRadius: "10px",
+                      background: isDark ? "rgba(56, 189, 248, 0.2)" : "#E0F2FE",
+                      color: isDark ? "#38BDF8" : "#0284C7",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Award size={20} strokeWidth={2.2} />
+                  </div>
                   <div>
-                    <h4 style={{ margin: 0, fontSize: "15px", fontWeight: 800, color: isDark ? "#38BDF8" : "#0369A1" }}>
-                      {isHi ? "शानदार कार्य! आपकी आज की ओपीडी शिफ्ट समाप्त हुई।" : "Outstanding Clinical Dedication! Shift Successfully Wrapped."}
+                    <h4 style={{ margin: 0, fontSize: "14.5px", fontWeight: 800, color: isDark ? "#38BDF8" : "#0369A1" }}>
+                      {isHi ? "शानदार कार्य! आपकी आज की ओपीडी शिफ्ट समाप्त हुई।" : "Clinical Shift Summary Wrapped"}
                     </h4>
-                    <p style={{ margin: "2px 0 0 0", fontSize: "12.5px", color: isDark ? "#94A3B8" : "#075985" }}>
+                    <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: isDark ? "#94A3B8" : "#075985" }}>
                       {isHi
-                        ? `आपने आज ${today.total_consulted} मरीज़ों का परामर्श पूर्ण किया। सभी रिकॉर्ड्स डिजिटल रूप से सुरक्षित हैं।`
-                        : `You consulted ${today.total_consulted} patient(s) today. Real-time patient routing has been closed for your desk.`}
+                        ? `आपने आज ${today.total_consulted} मरीज़ों का परामर्श पूर्ण किया। सभी रिकॉर्ड्स सुरक्षित हैं।`
+                        : `You completed ${today.total_consulted} patient consultation${today.total_consulted === 1 ? "" : "s"} today. Encounter telemetry is synchronized.`}
                     </p>
                   </div>
                 </div>
 
                 <div
                   style={{
-                    padding: "6px 12px",
-                    borderRadius: "10px",
-                    background: isDark ? "rgba(15, 23, 42, 0.6)" : "#FFFFFF",
-                    border: isDark ? "1px solid rgba(255, 255, 255, 0.12)" : "1px solid #E2E8F0",
+                    padding: "6px 14px",
+                    borderRadius: "8px",
+                    background: isDark ? "rgba(15, 23, 42, 0.65)" : "#FFFFFF",
+                    border: isDark ? "1px solid rgba(255, 255, 255, 0.1)" : "1px solid #E2E8F0",
                     fontSize: "12px",
-                    fontWeight: 700,
+                    fontWeight: 600,
                     color: isDark ? "#E2E8F0" : "#334155",
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
                   }}
                 >
-                  <span>⏱️</span>
+                  <Clock size={14} style={{ color: "#0284C7" }} />
                   <span>
                     {isHi ? "कुल परामर्श समय:" : "Total Consult Time:"}{" "}
-                    <strong style={{ color: "#0284C7" }}>{today.total_service_minutes} mins</strong>
+                    <strong style={{ color: isDark ? "#38BDF8" : "#0284C7", fontWeight: 700 }}>
+                      {today.total_service_minutes} mins
+                    </strong>
                   </span>
                 </div>
               </div>
 
-              {/* 3 CORE SUMMARY METRIC CARDS (Requested by User) */}
+              {/* 3 CORE SUMMARY METRIC CARDS */}
               <div
                 style={{
                   display: "grid",
@@ -639,41 +632,78 @@ export default function DoctorShiftSummaryModal({
                 <div
                   style={{
                     padding: "18px 20px",
-                    borderRadius: "16px",
+                    borderRadius: "14px",
                     background: isDark ? "#1E293B" : "#FFFFFF",
                     border: isDark ? "1px solid #334155" : "1px solid #E2E8F0",
-                    boxShadow: isDark ? "0 4px 12px rgba(0,0,0,0.25)" : "0 2px 8px rgba(0,0,0,0.04)",
+                    boxShadow: isDark ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    minHeight: "135px",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#94A3B8" : "#64748B", textTransform: "uppercase" }}>
-                      {isHi ? "कुल परामर्शित मरीज़" : "Total Consulted Today"}
-                    </span>
-                    <span
-                      style={{
-                        width: "32px",
-                        height: "32px",
-                        borderRadius: "10px",
-                        background: isDark ? "rgba(2,132,199,0.2)" : "#E0F2FE",
-                        color: "#0284C7",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "16px",
-                      }}
-                    >
-                      👥
-                    </span>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          letterSpacing: "0.06em",
+                          color: isDark ? "#94A3B8" : "#64748B",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {isHi ? "कुल परामर्शित मरीज़" : "Total Consulted Today"}
+                      </span>
+                      <div
+                        style={{
+                          width: "34px",
+                          height: "34px",
+                          borderRadius: "9px",
+                          background: isDark ? "rgba(2, 132, 199, 0.15)" : "#F0F9FF",
+                          border: isDark ? "1px solid rgba(56, 189, 248, 0.25)" : "1px solid #BAE6FD",
+                          color: isDark ? "#38BDF8" : "#0284C7",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Users size={17} strokeWidth={2.2} />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "12px" }}>
+                      <span
+                        style={{
+                          fontSize: "30px",
+                          fontWeight: 800,
+                          color: isDark ? "#F8FAFC" : "#0F172A",
+                          lineHeight: 1,
+                          letterSpacing: "-0.02em",
+                        }}
+                      >
+                        {today.total_consulted}
+                      </span>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: isDark ? "#94A3B8" : "#64748B" }}>
+                        {isHi ? "मरीज़" : "patients"}
+                      </span>
+                    </div>
                   </div>
-                  <div style={{ fontSize: "32px", fontWeight: 900, color: isDark ? "#38BDF8" : "#0284C7", lineHeight: 1.1 }}>
-                    {today.total_consulted}
-                    <span style={{ fontSize: "14px", fontWeight: 600, color: isDark ? "#94A3B8" : "#64748B", marginLeft: "6px" }}>
-                      {isHi ? "मरीज़" : "patients"}
-                    </span>
-                  </div>
-                  <div style={{ marginTop: "10px", fontSize: "11.5px", color: isDark ? "#94A3B8" : "#64748B" }}>
-                    <span>{isHi ? "साप्ताहिक औसत:" : "Weekly Daily Avg:"}</span>{" "}
-                    <strong>{weekly.avg_daily_patients} / day</strong>
+                  <div
+                    style={{
+                      paddingTop: "10px",
+                      borderTop: isDark ? "1px solid #334155" : "1px solid #F1F5F9",
+                      fontSize: "11.5px",
+                      color: isDark ? "#94A3B8" : "#64748B",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "5px",
+                    }}
+                  >
+                    <TrendingUp size={13} style={{ color: "#0284C7" }} />
+                    <span>{isHi ? "साप्ताहिक दैनिक औसत:" : "Weekly Daily Avg:"}</span>
+                    <strong style={{ color: isDark ? "#E2E8F0" : "#1E293B", fontWeight: 700 }}>
+                      {weekly.avg_daily_patients} / day
+                    </strong>
                   </div>
                 </div>
 
@@ -681,44 +711,92 @@ export default function DoctorShiftSummaryModal({
                 <div
                   style={{
                     padding: "18px 20px",
-                    borderRadius: "16px",
+                    borderRadius: "14px",
                     background: isDark ? "#1E293B" : "#FFFFFF",
                     border: isDark ? "1px solid #334155" : "1px solid #E2E8F0",
-                    boxShadow: isDark ? "0 4px 12px rgba(0,0,0,0.25)" : "0 2px 8px rgba(0,0,0,0.04)",
+                    boxShadow: isDark ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    minHeight: "135px",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#94A3B8" : "#64748B", textTransform: "uppercase" }}>
-                      {isHi ? "औसत परामर्श अवधि" : "Avg Consultation Duration"}
-                    </span>
-                    <span
-                      style={{
-                        width: "32px",
-                        height: "32px",
-                        borderRadius: "10px",
-                        background: isDark ? "rgba(245,158,11,0.2)" : "#FEF3C7",
-                        color: "#D97706",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "16px",
-                      }}
-                    >
-                      ⏱️
-                    </span>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          letterSpacing: "0.06em",
+                          color: isDark ? "#94A3B8" : "#64748B",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {isHi ? "औसत परामर्श अवधि" : "Avg Consultation Duration"}
+                      </span>
+                      <div
+                        style={{
+                          width: "34px",
+                          height: "34px",
+                          borderRadius: "9px",
+                          background: isDark ? "rgba(245, 158, 11, 0.15)" : "#FFFBEB",
+                          border: isDark ? "1px solid rgba(245, 158, 11, 0.25)" : "1px solid #FDE68A",
+                          color: isDark ? "#FBBF24" : "#D97706",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Clock size={17} strokeWidth={2.2} />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "12px" }}>
+                      <span
+                        style={{
+                          fontSize: "30px",
+                          fontWeight: 800,
+                          color: isDark ? "#F8FAFC" : "#0F172A",
+                          lineHeight: 1,
+                          letterSpacing: "-0.02em",
+                        }}
+                      >
+                        {today.avg_duration_minutes > 0
+                          ? today.avg_duration_minutes
+                          : (today.total_consulted > 0 ? "1.0" : "0.0")}
+                      </span>
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: isDark ? "#94A3B8" : "#64748B" }}>
+                        {isHi ? "मिनट / मरीज़" : "mins/patient"}
+                      </span>
+                    </div>
                   </div>
-                  <div style={{ fontSize: "32px", fontWeight: 900, color: "#D97706", lineHeight: 1.1 }}>
-                    {today.avg_duration_minutes > 0
-                      ? today.avg_duration_minutes
-                      : (today.total_consulted > 0 ? "1.0" : "0.0")}
-                    <span style={{ fontSize: "14px", fontWeight: 600, color: isDark ? "#94A3B8" : "#64748B", marginLeft: "6px" }}>
-                      {isHi ? "मिनट / मरीज़" : "mins/patient"}
+                  <div
+                    style={{
+                      paddingTop: "10px",
+                      borderTop: isDark ? "1px solid #334155" : "1px solid #F1F5F9",
+                      fontSize: "11.5px",
+                      color: isDark ? "#94A3B8" : "#64748B",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <span style={{ color: isDark ? "#64748B" : "#94A3B8", fontWeight: 500 }}>
+                        {isHi ? "न्यूनतम" : "Fastest"}
+                      </span>
+                      <strong style={{ color: isDark ? "#E2E8F0" : "#1E293B", fontWeight: 700 }}>
+                        {today.fastest_duration_minutes > 0 ? `${today.fastest_duration_minutes}m` : (today.total_consulted > 0 ? "1.0m" : "0m")}
+                      </strong>
                     </span>
-                  </div>
-                  <div style={{ marginTop: "10px", fontSize: "11.5px", color: isDark ? "#94A3B8" : "#64748B", display: "flex", gap: "8px" }}>
-                    <span>⚡ {isHi ? "न्यूनतम:" : "Fastest:"} {today.fastest_duration_minutes > 0 ? `${today.fastest_duration_minutes}m` : (today.total_consulted > 0 ? "1.0m" : "0m")}</span>
-                    <span>•</span>
-                    <span>🐢 {isHi ? "अधिकतम:" : "Longest:"} {today.longest_duration_minutes > 0 ? `${today.longest_duration_minutes}m` : (today.total_consulted > 0 ? "1.0m" : "0m")}</span>
+                    <span style={{ color: isDark ? "#475569" : "#CBD5E1" }}>•</span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      <span style={{ color: isDark ? "#64748B" : "#94A3B8", fontWeight: 500 }}>
+                        {isHi ? "अधिकतम" : "Longest"}
+                      </span>
+                      <strong style={{ color: isDark ? "#E2E8F0" : "#1E293B", fontWeight: 700 }}>
+                        {today.longest_duration_minutes > 0 ? `${today.longest_duration_minutes}m` : (today.total_consulted > 0 ? "1.0m" : "0m")}
+                      </strong>
+                    </span>
                   </div>
                 </div>
 
@@ -726,60 +804,101 @@ export default function DoctorShiftSummaryModal({
                 <div
                   style={{
                     padding: "18px 20px",
-                    borderRadius: "16px",
+                    borderRadius: "14px",
                     background: isDark ? "#1E293B" : "#FFFFFF",
                     border: isDark ? "1px solid #334155" : "1px solid #E2E8F0",
-                    boxShadow: isDark ? "0 4px 12px rgba(0,0,0,0.25)" : "0 2px 8px rgba(0,0,0,0.04)",
+                    boxShadow: isDark ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    minHeight: "135px",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: isDark ? "#94A3B8" : "#64748B", textTransform: "uppercase" }}>
-                      {isHi ? "रेफरल / स्थानांतरित मरीज़" : "Referred / Transferred"}
-                    </span>
-                    <span
-                      style={{
-                        width: "32px",
-                        height: "32px",
-                        borderRadius: "10px",
-                        background: isDark ? "rgba(16,185,129,0.2)" : "#D1FAE5",
-                        color: "#059669",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "16px",
-                      }}
-                    >
-                      🔄
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "32px", fontWeight: 900, color: "#059669", lineHeight: 1.1 }}>
-                    {today.total_transferred}
-                    <span style={{ fontSize: "14px", fontWeight: 600, color: isDark ? "#94A3B8" : "#64748B", marginLeft: "6px" }}>
-                      {isHi ? "मरीज़" : "referred"}
-                    </span>
-                  </div>
-                  <div style={{ marginTop: "10px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    {Object.entries(today.transferred_breakdown || {}).map(([dept, count]) => (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
                       <span
-                        key={dept}
                         style={{
-                          fontSize: "10.5px",
+                          fontSize: "11px",
                           fontWeight: 700,
-                          padding: "2px 7px",
-                          borderRadius: "6px",
-                          background: isDark ? "rgba(16,185,129,0.2)" : "#ECFDF5",
-                          border: isDark ? "1px solid rgba(16,185,129,0.4)" : "1px solid #A7F3D0",
-                          color: isDark ? "#6EE7B7" : "#047857",
+                          letterSpacing: "0.06em",
+                          color: isDark ? "#94A3B8" : "#64748B",
+                          textTransform: "uppercase",
                         }}
                       >
-                        {count} to {dept}
+                        {isHi ? "रेफरल / स्थानांतरित मरीज़" : "Referred / Transferred"}
                       </span>
-                    ))}
-                    {Object.keys(today.transferred_breakdown || {}).length === 0 && (
-                      <span style={{ fontSize: "11px", color: isDark ? "#94A3B8" : "#64748B" }}>
-                        {isHi ? "सीधे परामर्श (कोई स्थानांतरण नहीं)" : "None needed today"}
+                      <div
+                        style={{
+                          width: "34px",
+                          height: "34px",
+                          borderRadius: "9px",
+                          background: isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5",
+                          border: isDark ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid #A7F3D0",
+                          color: isDark ? "#34D399" : "#059669",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <ArrowRightLeft size={17} strokeWidth={2.2} />
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: "12px" }}>
+                      <span
+                        style={{
+                          fontSize: "30px",
+                          fontWeight: 800,
+                          color: isDark ? "#F8FAFC" : "#0F172A",
+                          lineHeight: 1,
+                          letterSpacing: "-0.02em",
+                        }}
+                      >
+                        {today.total_transferred}
                       </span>
-                    )}
+                      <span style={{ fontSize: "13px", fontWeight: 600, color: isDark ? "#94A3B8" : "#64748B" }}>
+                        {isHi ? "मरीज़" : "referred"}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      paddingTop: "10px",
+                      borderTop: isDark ? "1px solid #334155" : "1px solid #F1F5F9",
+                      fontSize: "11.5px",
+                      color: isDark ? "#94A3B8" : "#64748B",
+                    }}
+                  >
+                    {(() => {
+                      const activeTransfers = Object.entries(today.transferred_breakdown || {}).filter(([_, count]) => count > 0);
+                      if (activeTransfers.length > 0) {
+                        return (
+                          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                            {activeTransfers.map(([dept, count]) => (
+                              <span
+                                key={dept}
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                  padding: "2px 7px",
+                                  borderRadius: "6px",
+                                  background: isDark ? "rgba(16, 185, 129, 0.15)" : "#F0FDF4",
+                                  border: isDark ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid #BBF7D0",
+                                  color: isDark ? "#6EE7B7" : "#15803D",
+                                }}
+                              >
+                                {count} to {dept}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return (
+                        <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                          <CheckCircle2 size={13} style={{ color: "#10B981", flexShrink: 0 }} />
+                          <span>{isHi ? "सभी परामर्श इन-क्लीनिक पूर्ण" : "Direct consultations (no referrals)"}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1139,21 +1258,17 @@ export default function DoctorShiftSummaryModal({
             background: isDark ? "#0F172A" : "#F8FAFC",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
             flexWrap: "wrap",
             gap: "12px",
           }}
         >
-          <div style={{ fontSize: "12px", color: isDark ? "#94A3B8" : "#64748B" }}>
-            🔒 {isHi ? "क्लिनिकल रिकॉर्ड्स सुरक्षित रूप से सहेजे गए हैं।" : "End-of-shift record signed & committed to audit ledger."}
-          </div>
-
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <button
               type="button"
               onClick={onClose}
               style={{
-                padding: "9px 20px",
+                padding: "9px 24px",
                 borderRadius: "10px",
                 border: "none",
                 background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
@@ -1164,11 +1279,10 @@ export default function DoctorShiftSummaryModal({
                 boxShadow: "0 2px 8px rgba(2, 132, 199, 0.3)",
                 display: "inline-flex",
                 alignItems: "center",
-                gap: "6px",
+                justifyContent: "center",
               }}
             >
-              <span>✓</span>
-              <span>{isHi ? "स्वीकार करें व संपन्न (Done)" : "Sign Off & Done"}</span>
+              <span>{isHi ? "संपन्न (Done)" : "Done"}</span>
             </button>
           </div>
         </div>

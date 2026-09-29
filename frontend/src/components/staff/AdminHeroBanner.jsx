@@ -65,12 +65,16 @@ export default function AdminHeroBanner({
   }, [language]);
 
   const activeServing = myServingTicket || servingTicket;
+  const liveServingCount =
+    (typeof servingCount === "number" ? servingCount : null) ??
+    analytics?.serving_count ??
+    analytics?.currently_serving ??
+    0;
+
   const displayServing = activeServing
     ? `#${activeServing.ticket_id}`
-    : typeof servingCount === "number" && servingCount > 0
-    ? `${servingCount} Active`
-    : analytics && typeof analytics.currently_serving === "number" && analytics.currently_serving > 0
-    ? `${analytics.currently_serving} Active`
+    : liveServingCount > 0
+    ? `${liveServingCount} Active`
     : isHi
     ? "डेस्क खाली"
     : "Desk Ready";
@@ -80,9 +84,13 @@ export default function AdminHeroBanner({
     : 2;
 
   const doctorName = currentUser?.name || currentUser?.full_name || (isHi ? "डॉक्टर" : "Doctor");
-  const patientsServed = analytics 
-    ? `${(analytics.total_completed || 0) + (analytics.currently_serving || 0)}` 
-    : "0";
+  const completedCount =
+    analytics?.completed_today ??
+    analytics?.total_completed ??
+    0;
+  const patientsServed = analytics
+    ? `${completedCount + liveServingCount}`
+    : (liveServingCount > 0 ? `${liveServingCount}` : "0");
 
   const userRole = (currentUser?.role || "").toLowerCase();
   const isStaffOrDoctor = ["doctor", "staff", "nurse", "receptionist"].includes(userRole);

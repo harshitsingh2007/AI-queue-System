@@ -186,7 +186,10 @@ export default function App() {
     return () => window.removeEventListener("theme_changed", handleThemeChange);
   }, []);
 
-  const tenantId = currentHospitalTenant || HOSPITAL_CONFIG.tenantId;
+  const tenantId =
+    (currentUser && ["admin", "doctor", "staff", "receptionist"].includes((currentUser.role || "").toLowerCase()) && (currentUser.hospital_code || currentUser.primary_hospital_code) && (currentUser.hospital_code || currentUser.primary_hospital_code) !== "all")
+      ? (currentUser.hospital_code || currentUser.primary_hospital_code)
+      : (currentHospitalTenant || HOSPITAL_CONFIG.tenantId || "city-hospital-01");
 
   // Global White-Label Hospital Branding State
   const [hospitalBranding, setHospitalBranding] = useState(null);

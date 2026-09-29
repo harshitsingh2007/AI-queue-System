@@ -396,14 +396,10 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
     }
   });
 
-  // Ensure departmental transfer counts has defaults if empty
+  // Ensure departmental transfer counts has fallback distribution only if transfers occurred
   if (Object.keys(departmentTransferCounts).length === 0 && todayTransferredCount > 0) {
     departmentTransferCounts["Laboratory"] = Math.ceil(todayTransferredCount / 2);
     departmentTransferCounts["Radiology"] = Math.floor(todayTransferredCount / 2);
-  } else if (Object.keys(departmentTransferCounts).length === 0) {
-    departmentTransferCounts["Laboratory"] = 0;
-    departmentTransferCounts["Radiology"] = 0;
-    departmentTransferCounts["Pharmacy"] = 0;
   }
 
   return {

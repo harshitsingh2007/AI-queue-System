@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useRef, useEffect } from "react";
+import { Globe } from "lucide-react";
 import { API_BASE, HOSPITAL_CONFIG } from "../../config/hospitalConfig";
 import { t } from "../../utils/i18n";
 import { AddFamilyMemberModal, getRelationLabel } from "../patient/FamilyMemberSwitcher";
@@ -988,7 +989,7 @@ export default function Header({
               className="header-pill-btn"
               title="Change Language"
             >
-              <span style={{ fontSize: "14px" }}>{language === "hi" ? "🇮🇳" : "🇺🇸"}</span>
+              <Globe size={14} style={{ color: "#0284C7", flexShrink: 0 }} />
               <span>{language === "hi" ? "हिंदी" : "English"}</span>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 9 12 15 18 9" />
@@ -1005,8 +1006,8 @@ export default function Header({
                   }}
                   className={`header-dropdown-item ${language === "en" ? "active" : ""}`}
                 >
-                  <span style={{ fontSize: "15px" }}>🇺🇸</span>
-                  <span>English (EN)</span>
+                  <span style={{ fontSize: "10.5px", fontWeight: 800, padding: "2px 5px", borderRadius: "4px", background: language === "en" ? "#0284C7" : "#E2E8F0", color: language === "en" ? "#FFFFFF" : "#475569" }}>EN</span>
+                  <span>English</span>
                 </button>
                 <button
                   type="button"
@@ -1016,8 +1017,8 @@ export default function Header({
                   }}
                   className={`header-dropdown-item ${language === "hi" ? "active" : ""}`}
                 >
-                  <span style={{ fontSize: "15px" }}>🇮🇳</span>
-                  <span>हिंदी (HI)</span>
+                  <span style={{ fontSize: "10.5px", fontWeight: 800, padding: "2px 5px", borderRadius: "4px", background: language === "hi" ? "#0284C7" : "#E2E8F0", color: language === "hi" ? "#FFFFFF" : "#475569" }}>HI</span>
+                  <span>हिंदी</span>
                 </button>
               </div>
             )}

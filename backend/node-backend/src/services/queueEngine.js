@@ -865,10 +865,20 @@ class NodeQueueEngine {
       select: { service_duration_minutes: true },
     });
 
-    const totalServed = logs.length;
+    const whereTickets = {
+      hospital_id: hid,
+      queue_date: queueDateToPrismaDate(targetDate),
+      status: { in: ["completed", "transferred"] },
+    };
+    if (deptFilter && deptFilter !== "all") {
+      whereTickets.service_category = { equals: deptFilter, mode: "insensitive" };
+    }
+    const completedTicketsCount = await prisma.tickets.count({ where: whereTickets }).catch(() => 0);
+
+    const totalServed = Math.max(logs.length, completedTicketsCount);
     const avgService =
-      totalServed > 0
-        ? logs.reduce((acc, l) => acc + l.service_duration_minutes, 0) / totalServed
+      logs.length > 0
+        ? logs.reduce((acc, l) => acc + l.service_duration_minutes, 0) / logs.length
         : 12.0;
 
     return {
@@ -878,7 +888,9 @@ class NodeQueueEngine {
       active_counters: tenant.active_counters || 2,
       waiting_count: waiting.length,
       serving_count: serving.length,
+      currently_serving: serving.length,
       completed_today: totalServed,
+      total_completed: totalServed,
       avg_wait_minutes: Math.round(avgWait * 10) / 10,
       avg_service_minutes: Math.round(avgService * 10) / 10,
     };
