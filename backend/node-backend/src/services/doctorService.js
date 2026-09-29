@@ -10,6 +10,11 @@ const engine = require("./queueEngine");
 const { getCurrentQueueDate, parseQueueDate, formatQueueDate } = require("../utils/timezone");
 const { getDoctorDutyStatus } = require("./ticketService");
 
+function cleanDoc(name) {
+  if (!name) return "";
+  return String(name).toLowerCase().replace(/^dr\.?\s*/i, "").trim();
+}
+
 /**
  * Matches a ticket to a doctor by ID, email, or name.
  */
@@ -21,7 +26,33 @@ function matchesDoctor(ticket, docId, docEmail, docName) {
 
   if (docId && sId && String(sId) === String(docId)) return true;
   if (docEmail && sEmail && String(sEmail).trim().toLowerCase() === String(docEmail).trim().toLowerCase()) return true;
-  if (docName && sName && String(sName).trim().toLowerCase() === String(docName).trim().toLowerCase()) return true;
+
+  const cTargetName = cleanDoc(docName);
+  if (cTargetName && sName) {
+    const cSName = cleanDoc(sName);
+    if (cSName === cTargetName || cSName.includes(cTargetName) || cTargetName.includes(cSName)) return true;
+  }
+
+  // Also inspect ticket.prescription_notes if doctor details were saved in Rx
+  if (ticket.prescription_notes) {
+    try {
+      const rx = typeof ticket.prescription_notes === "object" ? ticket.prescription_notes : JSON.parse(ticket.prescription_notes);
+      if (rx) {
+        if (cTargetName && rx.doctor_name) {
+          const cRxDoc = cleanDoc(rx.doctor_name);
+          if (cRxDoc === cTargetName || cRxDoc.includes(cTargetName) || cTargetName.includes(cRxDoc)) return true;
+          if (cRxDoc.includes("staff desk") || cRxDoc.includes("attending doctor")) return true;
+        }
+        if (docId && rx.doctor_id && String(rx.doctor_id) === String(docId)) return true;
+        if (docId && rx.doctor_employee_id && String(rx.doctor_employee_id) === String(docId)) return true;
+        if (docEmail && rx.doctor_email && String(rx.doctor_email).trim().toLowerCase() === String(docEmail).trim().toLowerCase()) return true;
+      }
+    } catch (e) {
+      if (cTargetName && typeof ticket.prescription_notes === "string" && ticket.prescription_notes.toLowerCase().includes(cTargetName)) {
+        return true;
+      }
+    }
+  }
 
   return false;
 }
@@ -50,10 +81,33 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
   const docIdentifier = doctorId || doctorEmail || doctorName || "doctor";
   const dutyInfo = getDoctorDutyStatus(docIdentifier, docIdentifier) || { status: "OFF_DUTY", status_changed_at: Date.now() };
 
-  // 1. Gather Today's In-Memory Data
+  // Collect candidate hospital IDs where this doctor worked or is registered
+  const candidateHids = new Set();
+  if (hid) candidateHids.add(hid);
+
+  try {
+    const doctorTicketHids = await prisma.tickets.findMany({
+      where: {
+        queue_date: new Date(`${todayStr}T00:00:00.000Z`),
+        status: { in: ["completed", "transferred"] },
+        OR: [
+          ...(doctorName ? [{ prescription_notes: { contains: doctorName, mode: "insensitive" } }] : []),
+          { prescription_notes: { contains: "Staff Desk", mode: "insensitive" } },
+        ],
+      },
+      select: { hospital_id: true },
+      distinct: ["hospital_id"],
+    });
+    doctorTicketHids.forEach((t) => candidateHids.add(t.hospital_id));
+  } catch (e) {}
+
+  const hidList = Array.from(candidateHids);
+
+  // 1. Gather Today's In-Memory and DB Data
   const todayConsultedTickets = [];
   const todayTransferredTickets = [];
   const departmentTransferCounts = {};
+  const seenTicketIds = new Set();
 
   if (tenant && tenant.tickets) {
     for (const ticket of tenant.tickets.values()) {
@@ -63,6 +117,7 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
       const isMine = matchesDoctor(ticket, doctorId, doctorEmail, doctorName);
       if (!isMine) continue;
 
+      seenTicketIds.add(ticket.ticket_id);
       if (ticket.status === "completed") {
         todayConsultedTickets.push(ticket);
       } else if (ticket.status === "transferred") {
@@ -74,15 +129,56 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
     }
   }
 
+  // Also query persistent database tickets for today so server restarts or persisted tickets are never lost
+  try {
+    const todayDbTickets = await prisma.tickets.findMany({
+      where: {
+        hospital_id: { in: hidList },
+        queue_date: new Date(`${todayStr}T00:00:00.000Z`),
+        status: { in: ["completed", "transferred"] },
+      },
+      orderBy: { updated_at: "desc" },
+    });
+
+    for (const dbTicket of todayDbTickets) {
+      if (seenTicketIds.has(dbTicket.ticket_id)) continue;
+
+      const isMine = matchesDoctor(dbTicket, doctorId, doctorEmail, doctorName);
+      if (!isMine) continue;
+
+      seenTicketIds.add(dbTicket.ticket_id);
+      const startMs = dbTicket.serve_start_time ? new Date(dbTicket.serve_start_time).getTime() / 1000 : null;
+      const endMs = dbTicket.serve_end_time ? new Date(dbTicket.serve_end_time).getTime() / 1000 : null;
+
+      const normalizedTicket = {
+        ...dbTicket,
+        serve_start_time: startMs,
+        serve_end_time: endMs,
+        actual_service_minutes: dbTicket.actual_service_minutes || (startMs && endMs ? Math.max(0.5, Math.round(((endMs - startMs) / 60) * 10) / 10) : 1.0),
+      };
+
+      if (dbTicket.status === "completed") {
+        todayConsultedTickets.push(normalizedTicket);
+      } else if (dbTicket.status === "transferred") {
+        todayTransferredTickets.push(normalizedTicket);
+        const targetDept = dbTicket.transferred_to_dept || dbTicket.service_category || "Other Department";
+        const cleanDept = targetDept.charAt(0).toUpperCase() + targetDept.slice(1).toLowerCase();
+        departmentTransferCounts[cleanDept] = (departmentTransferCounts[cleanDept] || 0) + 1;
+      }
+    }
+  } catch (dbErr) {
+    console.warn("[getDoctorShiftSummary] Error querying today's DB tickets:", dbErr.message);
+  }
+
   // Calculate Today's Durations
   const completedDurations = todayConsultedTickets.map((t) => {
     if (typeof t.actual_service_minutes === "number" && t.actual_service_minutes > 0) {
       return t.actual_service_minutes;
     }
     if (t.serve_start_time && t.serve_end_time) {
-      return Math.max(1, Math.round(((t.serve_end_time - t.serve_start_time) / 60) * 10) / 10);
+      return Math.max(0.5, Math.round(((t.serve_end_time - t.serve_start_time) / 60) * 10) / 10);
     }
-    return 5.5; // fallback realistic consultation minutes
+    return 1.0;
   });
 
   const todayCount = todayConsultedTickets.length;
@@ -95,15 +191,19 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
   // Format today's patient consultation list
   const recentConsultations = todayConsultedTickets.map((t) => {
     const parsed = parseNotes(t.prescription_notes);
-    const endTime = t.serve_end_time
-      ? new Date(t.serve_end_time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      : "Just now";
+    let endTime = "Just now";
+    if (t.serve_end_time) {
+      const ms = t.serve_end_time > 1e11 ? t.serve_end_time : t.serve_end_time * 1000;
+      endTime = new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } else if (t.updated_at) {
+      endTime = new Date(t.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
     return {
       ticket_id: t.ticket_id,
       patient_name: t.name || "Patient",
       medical_condition: (t.medical_condition || "general_checkup").replace(/_/g, " "),
       diagnosis: parsed.diagnosis || t.medical_condition || "Consultation complete",
-      duration_minutes: t.actual_service_minutes || 5.0,
+      duration_minutes: t.actual_service_minutes || 1.0,
       completed_at: endTime,
       status: "completed",
     };
@@ -112,15 +212,19 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
   // Include transferred patients in the list
   todayTransferredTickets.forEach((t) => {
     const targetDept = t.transferred_to_dept || "Other";
-    const endTime = t.serve_end_time
-      ? new Date(t.serve_end_time * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      : "Recent";
+    let endTime = "Recent";
+    if (t.serve_end_time) {
+      const ms = t.serve_end_time > 1e11 ? t.serve_end_time : t.serve_end_time * 1000;
+      endTime = new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } else if (t.updated_at) {
+      endTime = new Date(t.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
     recentConsultations.unshift({
       ticket_id: t.ticket_id,
       patient_name: t.name || "Patient",
       medical_condition: (t.medical_condition || "general_checkup").replace(/_/g, " "),
       diagnosis: `Transferred to ${targetDept}`,
-      duration_minutes: t.actual_service_minutes || 3.0,
+      duration_minutes: t.actual_service_minutes || 1.0,
       completed_at: endTime,
       status: "transferred",
       transferred_to: targetDept,
@@ -170,7 +274,7 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
 
     // Get ticket_ids associated with this doctor via prescriptions table
     const prescriptionFilter = {
-      hospital_id: hid,
+      hospital_id: { in: hidList },
       created_at: { gte: startDate },
       OR: [
         ...(isNaN(docIdNum) ? [] : [{ doctor_id: docIdNum }]),
@@ -198,13 +302,13 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
          ROUND(COALESCE(AVG(actual_service_minutes) FILTER (WHERE actual_service_minutes > 0), 0)::numeric, 1)::float AS avg_mins
        FROM tickets
        WHERE
-         hospital_id = $1
+         hospital_id = ANY($1::int[])
          AND queue_date >= $2::date
          AND queue_date < $3::date
          AND status IN ('completed', 'transferred')
        GROUP BY queue_date, status
        ORDER BY queue_date DESC`,
-      hid,
+      hidList,
       startDate.toISOString().split("T")[0],
       todayStr
     );
@@ -280,11 +384,11 @@ async function getDoctorShiftSummary({ tenantId = "city-hospital-01", doctorId, 
   const totalWeeklyTransfers = daysList.reduce((acc, curr) => acc + curr.total_transferred, 0);
   const totalWeeklyMinutes = daysList.reduce((acc, curr) => acc + curr.total_minutes, 0);
   const overallAvgDuration =
-    totalWeeklyPatients > 0 ? Math.round((totalWeeklyMinutes / totalWeeklyPatients) * 10) / 10 : 5.2;
+    totalWeeklyPatients > 0 ? Math.round((totalWeeklyMinutes / totalWeeklyPatients) * 10) / 10 : 0.0;
 
   // Find peak / busiest day
-  let maxConsulted = -1;
-  let busiestDay = "Thursday";
+  let maxConsulted = 0;
+  let busiestDay = "No consultations yet";
   daysList.forEach((d) => {
     if (d.total_consulted > maxConsulted) {
       maxConsulted = d.total_consulted;

@@ -547,6 +547,8 @@ export default function PatientPage({
         lab_tests: parsed.lab_tests || "",
         advice: parsed.advice || "",
         follow_up: parsed.follow_up || "",
+        transfer_notes: parsed.transfer_notes || "",
+        target_department: parsed.target_department || "",
         prescribed_at: safeISODate(parsed.prescribed_at || fallbackTicket?.serve_end_time || fallbackTicket?.created_at),
         patient_name: fallbackTicket?.name || fallbackTicket?.patient_name || parsed.patient_name || (currentUser ? (currentUser.username || currentUser.name) : "Patient"),
         ticket_id: fallbackTicket?.ticket_id || parsed.ticket_id || "",
@@ -5129,6 +5131,19 @@ export default function PatientPage({
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 <strong>Follow-Up:</strong>
                 <span>{viewingPrescriptionData.follow_up}</span>
+              </div>
+            )}
+
+            {/* Department Referral Notes / Instructions */}
+            {viewingPrescriptionData.transfer_notes && (
+              <div style={{ marginBottom: "14px", padding: "10px 14px", background: "#FEF3C7", borderRadius: "10px", border: "1px solid #FCD34D" }}>
+                <span style={{ fontSize: "11px", fontWeight: 800, color: "#92400E", display: "inline-flex", alignItems: "center", gap: "5px", marginBottom: "3px", textTransform: "uppercase" }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+                  <span>{language === "hi" ? "विभाग रेफरल निर्देश:" : "Department Referral Instructions:"}</span>
+                </span>
+                <p style={{ margin: 0, fontSize: "12px", color: "#78350F", fontWeight: 600 }}>
+                  {viewingPrescriptionData.transfer_notes}
+                </p>
               </div>
             )}
 

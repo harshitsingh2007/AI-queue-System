@@ -31,18 +31,26 @@ export default function PatientHistoryTimeline({
   const [searchQuery, setSearchQuery] = useState("");
   const isHi = language === "hi";
 
+  // Filter out any cancelled, no-show, or expired visits (e.g. cancelled tickets)
+  const validVisits = useMemo(() => {
+    return (visits || []).filter((v) => {
+      const st = (v.status || "").toLowerCase();
+      return !["cancelled", "no_show", "expired"].includes(st);
+    });
+  }, [visits]);
+
   // Filtered visits
   const filteredVisits = useMemo(() => {
-    if (!searchQuery.trim()) return visits;
+    if (!searchQuery.trim()) return validVisits;
     const q = searchQuery.toLowerCase();
-    return visits.filter((v) => {
+    return validVisits.filter((v) => {
       const matchDiag = v.diagnosis && v.diagnosis.toLowerCase().includes(q);
       const matchDoc = v.doctor_name && v.doctor_name.toLowerCase().includes(q);
       const matchDept = v.department && v.department.toLowerCase().includes(q);
       const matchMeds = v.prescription?.medicines?.some((m) => m.name && m.name.toLowerCase().includes(q));
       return matchDiag || matchDoc || matchDept || matchMeds;
     });
-  }, [visits, searchQuery]);
+  }, [validVisits, searchQuery]);
 
   // Filtered prescriptions
   const filteredPrescriptions = useMemo(() => {
@@ -157,7 +165,7 @@ export default function PatientHistoryTimeline({
           </div>
 
           {/* 2. Sub-Tabs & Search Controls (Only if returning patient or records exist) */}
-          {(visits.length > 0 || prescriptions.length > 0 || reports.length > 0) && (
+          {(validVisits.length > 0 || prescriptions.length > 0 || reports.length > 0) && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
                 {/* Tabs */}
@@ -184,7 +192,7 @@ export default function PatientHistoryTimeline({
                       transition: "all 0.15s ease",
                     }}
                   >
-                    📅 {isHi ? "विज़िट इतिहास" : "Visits"} ({visits.length})
+                    📅 {isHi ? "विज़िट इतिहास" : "Visits"} ({validVisits.length})
                   </button>
                   <button
                     type="button"

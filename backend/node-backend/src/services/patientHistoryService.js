@@ -270,6 +270,7 @@ async function getPatientVisitHistory(patientId, hospitalId = null, options = {}
 
   const whereScope = {
     patient_id: pId,
+    status: { notIn: ["cancelled", "no_show", "expired"] },
     ...(targetHid ? { hospital_id: targetHid } : {}),
   };
 
@@ -343,6 +344,7 @@ async function getPatientPrescriptions(patientId, hospitalId = null, options = {
   const whereScope = {
     patient_id: pId,
     prescription_notes: { not: "" },
+    status: { notIn: ["cancelled", "no_show", "expired"] },
     ...(targetHid ? { hospital_id: targetHid } : {}),
   };
 
@@ -397,6 +399,7 @@ async function getPatientReports(patientId, hospitalId = null, options = {}) {
   const ticketsWithTests = await prisma.tickets.findMany({
     where: {
       patient_id: pId,
+      status: { notIn: ["cancelled", "no_show", "expired"] },
       ...(targetHid ? { hospital_id: targetHid } : {}),
     },
     orderBy: { created_at: "desc" },

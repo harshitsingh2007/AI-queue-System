@@ -425,11 +425,7 @@ export default function AdminHeroBanner({
               </>
             )}
           </h1>
-          <p className="hero-subtitle">
-            {branding?.tagline || (isHi
-              ? "रीयल-टाइम मरीज़ कॉलिंग, सक्रिय डेस्क नियंत्रण एवं त्वरित कतार प्रबंधन सुविधा।"
-              : "Real-time patient calling, counter management & smart queue routing.")}
-          </p>
+
 
           {/* Dynamic Daily Health Quote / Clinical Insight (matching Patient Portal) */}
           <div
@@ -670,36 +666,6 @@ export default function AdminHeroBanner({
           <span>{isHi ? "लाइव स्टाफ कंसोल" : "Live Staff Console"}</span>
         </div>
 
-        {/* Active Serving Patient Status Badge (if serving) */}
-        {activeServing && (
-          <div
-            style={{
-              position: "absolute",
-              bottom: "16px",
-              left: "16px",
-              background: "rgba(15, 23, 42, 0.8)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              border: "1px solid rgba(52, 211, 153, 0.4)",
-              borderRadius: "12px",
-              padding: "6px 12px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              color: "#FFFFFF",
-              fontSize: "11.5px",
-              fontWeight: 600,
-              zIndex: 3,
-            }}
-          >
-            <span style={{ color: "#34D399" }}>🩺</span>
-            <span>
-              {isHi ? "परामर्श जारी:" : "Serving:"}{" "}
-              <strong style={{ color: "#38BDF8" }}>#{activeServing.ticket_id}</strong>
-              {activeServing.name ? ` • ${activeServing.name}` : ""}
-            </span>
-          </div>
-        )}
 
         <HospitalAmbulanceIllustration />
         {branding?.logo_url && (

@@ -15,7 +15,7 @@
  * - Full Dark Mode & Bilingual (English / Hindi) support
  */
 
-import React, { useState, useEffect, useRef, useId } from "react";
+import React, { useState, useEffect, useCallback, useRef, useId } from "react";
 import {
   IconDoctor,
   IconHospital,
@@ -43,6 +43,7 @@ export default function DoctorShiftSummaryModal({
   const isHi = language === "hi";
   const [activeTab, setActiveTab] = useState("today"); // "today" | "trend"
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
   const [selectedDayIdx, setSelectedDayIdx] = useState(6); // default to today (last index)
   const [hoveredDayIdx, setHoveredDayIdx] = useState(null);
@@ -56,12 +57,11 @@ export default function DoctorShiftSummaryModal({
   const docEmail = currentUser?.email || null;
   const docName = currentUser?.name || currentUser?.username || "Doctor";
 
-  // Fetch shift summary data on open
-  useEffect(() => {
+  // Reusable live fetch
+  const fetchShiftSummary = useCallback((silent = false) => {
     if (!isOpen) return;
-
-    let isMounted = true;
-    setLoading(true);
+    if (!silent) setLoading(true);
+    else setIsRefreshing(true);
 
     const queryParams = new URLSearchParams({
       tenant_id: hospCode,
@@ -74,24 +74,46 @@ export default function DoctorShiftSummaryModal({
     fetch(`${API_BASE}/api/v1/doctor/shift-summary?${queryParams.toString()}`)
       .then((res) => res.json())
       .then((data) => {
-        if (!isMounted) return;
         if (data.status === "success" && data.summary) {
           setSummaryData(data.summary);
           if (data.summary.last_7_days && data.summary.last_7_days.length > 0) {
-            setSelectedDayIdx(data.summary.last_7_days.length - 1);
+            setSelectedDayIdx((prev) => (prev !== null && prev !== undefined ? prev : data.summary.last_7_days.length - 1));
           }
         }
-        setLoading(false);
+        if (!silent) setLoading(false);
+        setIsRefreshing(false);
       })
       .catch((err) => {
         console.warn("[DoctorShiftSummary] Error fetching data:", err);
-        if (isMounted) setLoading(false);
+        if (!silent) setLoading(false);
+        setIsRefreshing(false);
       });
+  }, [isOpen, hospCode, docId, docEmail, docName]);
+
+  // Initial fetch on modal open + 6s auto-refresh polling for live real-time sync
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchShiftSummary(false);
+
+    // Live continuous polling so consultations and transfers update in real-time
+    const interval = setInterval(() => {
+      fetchShiftSummary(true);
+    }, 3000);
+
+    const handleSync = () => fetchShiftSummary(true);
+    window.addEventListener("queue_updated", handleSync);
+    window.addEventListener("ticket_completed", handleSync);
+    window.addEventListener("ticket_transferred", handleSync);
+    window.addEventListener("doctor_duty_status_changed", handleSync);
 
     return () => {
-      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener("queue_updated", handleSync);
+      window.removeEventListener("ticket_completed", handleSync);
+      window.removeEventListener("ticket_transferred", handleSync);
+      window.removeEventListener("doctor_duty_status_changed", handleSync);
     };
-  }, [isOpen, hospCode, docId, docEmail, docName]);
+  }, [isOpen, fetchShiftSummary]);
 
   // Handle ESC key to close modal
   useEffect(() => {
@@ -123,11 +145,11 @@ export default function DoctorShiftSummaryModal({
   const weekly = summaryData?.weekly_overview || {
     total_patients: 0,
     avg_daily_patients: 0,
-    overall_avg_duration: 5.2,
+    overall_avg_duration: 0.0,
     total_transfers: 0,
     total_hours: "0.0",
     busiest_day: "N/A",
-    completion_rate: "99.2%",
+    completion_rate: "100%",
   };
 
   const selectedDay = last7Days[selectedDayIdx] || (last7Days.length > 0 ? last7Days[last7Days.length - 1] : null);
@@ -305,15 +327,40 @@ export default function DoctorShiftSummaryModal({
                   style={{
                     padding: "3px 9px",
                     borderRadius: "20px",
-                    background: isDark ? "rgba(148, 163, 184, 0.2)" : "#E2E8F0",
-                    color: isDark ? "#CBD5E1" : "#475569",
+                    background: (doctorDutyStatus === "ACTIVE")
+                      ? (isDark ? "rgba(16, 185, 129, 0.2)" : "#DCFCE7")
+                      : (doctorDutyStatus === "ON_BREAK" || doctorDutyStatus === "EMERGENCY_ROUND")
+                      ? (isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7")
+                      : (isDark ? "rgba(148, 163, 184, 0.2)" : "#E2E8F0"),
+                    color: (doctorDutyStatus === "ACTIVE")
+                      ? (isDark ? "#34D399" : "#15803D")
+                      : (doctorDutyStatus === "ON_BREAK" || doctorDutyStatus === "EMERGENCY_ROUND")
+                      ? (isDark ? "#FBBF24" : "#B45309")
+                      : (isDark ? "#CBD5E1" : "#475569"),
                     fontSize: "11px",
                     fontWeight: 800,
                     textTransform: "uppercase",
                     letterSpacing: "0.5px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
                   }}
                 >
-                  {isHi ? "ऑफ ड्यूटी" : "Off Duty"}
+                  <span
+                    style={{
+                      width: "6px",
+                      height: "6px",
+                      borderRadius: "50%",
+                      background: (doctorDutyStatus === "ACTIVE") ? "#10B981" : "#94A3B8",
+                    }}
+                  />
+                  {doctorDutyStatus === "ACTIVE"
+                    ? (isHi ? "ऑन ड्यूटी" : "On Duty")
+                    : doctorDutyStatus === "ON_BREAK"
+                    ? (isHi ? "विश्राम (ब्रेक)" : "On Break")
+                    : doctorDutyStatus === "EMERGENCY_ROUND"
+                    ? (isHi ? "आपातकालीन राउंड" : "Emergency Round")
+                    : (isHi ? "ऑफ ड्यूटी" : "Off Duty")}
                 </span>
               </div>
               <p style={{ margin: "3px 0 0 0", fontSize: "12.5px", color: isDark ? "#94A3B8" : "#64748B" }}>
@@ -435,8 +482,36 @@ export default function DoctorShiftSummaryModal({
             </button>
           </div>
 
-          {/* Quick Actions (CSV) */}
+          {/* Quick Actions (Auto-Sync Badge + CSV) */}
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div
+              style={{
+                padding: "6px 12px",
+                borderRadius: "8px",
+                background: isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5",
+                border: isDark ? "1px solid rgba(16, 185, 129, 0.35)" : "1px solid #A7F3D0",
+                color: isDark ? "#34D399" : "#059669",
+                fontSize: "12px",
+                fontWeight: 800,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                userSelect: "none",
+              }}
+              title={isHi ? "रीयल-टाइम ऑटो-सिंक सक्रिय है" : "Live telemetry automatically updated in real-time"}
+            >
+              <span
+                style={{
+                  width: "7px",
+                  height: "7px",
+                  borderRadius: "50%",
+                  background: isRefreshing ? "#3B82F6" : "#10B981",
+                  display: "inline-block",
+                  boxShadow: "0 0 8px rgba(16, 185, 129, 0.6)",
+                }}
+              />
+              <span>{isRefreshing ? (isHi ? "ऑटो-सिंक..." : "Syncing...") : (isHi ? "लाइव ऑटो-सिंक" : "Live Auto-Synced")}</span>
+            </div>
 
             <button
               type="button"
@@ -633,15 +708,17 @@ export default function DoctorShiftSummaryModal({
                     </span>
                   </div>
                   <div style={{ fontSize: "32px", fontWeight: 900, color: "#D97706", lineHeight: 1.1 }}>
-                    {today.avg_duration_minutes > 0 ? today.avg_duration_minutes : "5.4"}
+                    {today.avg_duration_minutes > 0
+                      ? today.avg_duration_minutes
+                      : (today.total_consulted > 0 ? "1.0" : "0.0")}
                     <span style={{ fontSize: "14px", fontWeight: 600, color: isDark ? "#94A3B8" : "#64748B", marginLeft: "6px" }}>
                       {isHi ? "मिनट / मरीज़" : "mins/patient"}
                     </span>
                   </div>
                   <div style={{ marginTop: "10px", fontSize: "11.5px", color: isDark ? "#94A3B8" : "#64748B", display: "flex", gap: "8px" }}>
-                    <span>⚡ {isHi ? "न्यूनतम:" : "Fastest:"} {today.fastest_duration_minutes > 0 ? `${today.fastest_duration_minutes}m` : "2.5m"}</span>
+                    <span>⚡ {isHi ? "न्यूनतम:" : "Fastest:"} {today.fastest_duration_minutes > 0 ? `${today.fastest_duration_minutes}m` : (today.total_consulted > 0 ? "1.0m" : "0m")}</span>
                     <span>•</span>
-                    <span>🐢 {isHi ? "अधिकतम:" : "Longest:"} {today.longest_duration_minutes > 0 ? `${today.longest_duration_minutes}m` : "9.8m"}</span>
+                    <span>🐢 {isHi ? "अधिकतम:" : "Longest:"} {today.longest_duration_minutes > 0 ? `${today.longest_duration_minutes}m` : (today.total_consulted > 0 ? "1.0m" : "0m")}</span>
                   </div>
                 </div>
 

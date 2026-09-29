@@ -85,7 +85,9 @@ export function usePatientHistory({
     historyData,
     patient: historyData?.patient || null,
     summary: historyData?.summary || null,
-    visits: historyData?.visits || [],
+    visits: (historyData?.visits || []).filter(
+      (v) => !["cancelled", "no_show", "expired"].includes((v.status || "").toLowerCase())
+    ),
     prescriptions: historyData?.prescriptions || [],
     reports: historyData?.reports || [],
     isReturningPatient: !!historyData?.is_returning_patient,

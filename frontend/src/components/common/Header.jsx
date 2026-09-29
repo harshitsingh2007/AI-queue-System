@@ -858,10 +858,6 @@ export default function Header({
               </span>
             </div>
             <div style={{ fontSize: "11px", color: isDarkHeader ? "#94A3B8" : "#64748B", fontWeight: 600, marginTop: "2px", display: "flex", alignItems: "center", gap: "5px", flexWrap: "nowrap" }}>
-              <span className="header-hospital-tagline" style={{ maxWidth: "130px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {displayTagline}
-              </span>
-              <span className="header-hospital-tagline">•</span>
               <span style={{ color: socketConnected ? brandPrimary : "#D97706", display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 700, whiteSpace: "nowrap" }}>
                 <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: socketConnected ? "#0EA5E9" : "#F59E0B", display: "inline-block" }} />
                 {socketConnected
