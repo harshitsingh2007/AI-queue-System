@@ -4,6 +4,9 @@
  * Appointment Scheduling & Daily Check-in Controllers.
  */
 
+const prisma = require("../config/prisma");
+const engine = require("../services/queueEngine");
+const { getCurrentQueueDate, queueDateToPrismaDate } = require("../utils/timezone");
 const {
   bookAppointment,
   checkInAppointment,
@@ -27,25 +30,122 @@ async function bookAppointmentEndpoint(req, res, next) {
       family_member_id = null,
     } = req.body;
 
+    const cleanName = String(patient_name || "").trim();
+    const emailToCheck = String(user_email || req.user?.email || "").trim().toLowerCase();
+
     let patientId = null;
-    if (family_member_id && (user_email || req.user?.email)) {
-      const emailToCheck = user_email || req.user?.email;
+    if (family_member_id && (emailToCheck || req.user?.email)) {
       const fm = await resolveOrCreateFamilyMember({
         userEmailOrId: emailToCheck,
         memberId: family_member_id,
-        name: patient_name,
+        name: cleanName,
       });
       if (fm) {
         patientId = fm.patient_id;
       }
     }
 
+    if (!patientId) {
+      patientId = await engine.resolvePatientId(emailToCheck, cleanName);
+    }
+
+    // 1. Enforce 1 active ticket per profile policy
+    const tenant = engine._getTenant(tenant_id);
+    let existingActiveTicket = null;
+
+    if (tenant && tenant.tickets) {
+      for (const t of tenant.tickets.values()) {
+        const isLive = ["waiting", "serving", "on_hold", "hold"].includes(String(t.status || "").toLowerCase());
+        if (!isLive) continue;
+
+        const tEmail = String(t.user_email || "").trim().toLowerCase();
+        const tName = String(t.name || "").trim().toLowerCase();
+
+        if (family_member_id && family_member_id !== "self") {
+          if (t.family_member_id === family_member_id) {
+            existingActiveTicket = t;
+            break;
+          }
+          if (emailToCheck && tEmail === emailToCheck && tName === cleanName.toLowerCase()) {
+            existingActiveTicket = t;
+            break;
+          }
+        } else {
+          if (tName === cleanName.toLowerCase()) {
+            if (!t.family_member_id || t.family_member_id === "self") {
+              existingActiveTicket = t;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!existingActiveTicket) {
+      const todayPrisma = queueDateToPrismaDate(getCurrentQueueDate());
+      const hid = await engine.resolveHospitalId(tenant_id);
+
+      const dbTicket = await prisma.tickets.findFirst({
+        where: {
+          hospital_id: hid,
+          queue_date: todayPrisma,
+          status: { in: ["waiting", "serving", "on_hold", "hold"] },
+          name: { equals: cleanName, mode: "insensitive" },
+          ...(patientId ? { patient_id: patientId } : {}),
+        },
+        orderBy: { id: "desc" },
+      });
+
+      if (dbTicket) {
+        existingActiveTicket = dbTicket;
+      }
+    }
+
+    if (existingActiveTicket) {
+      const deptName = existingActiveTicket.service_category || "Consultation";
+      const ticketNum = existingActiveTicket.ticket_id;
+      return res.status(409).json({
+        status: "error",
+        code: "ACTIVE_TICKET_EXISTS",
+        detail: `An active ticket (#${ticketNum}) is already in progress for ${cleanName} in ${deptName}. In accordance with hospital policy, each profile can hold only 1 active ticket at a time. Please wait for your turn or cancel this ticket before booking a new appointment.`,
+        message: `An active ticket (#${ticketNum}) is already in progress for ${cleanName} in ${deptName}. Hospital policy allows 1 active ticket per patient profile.`,
+        ticket: existingActiveTicket,
+      });
+    }
+
+    // 2. Enforce 1 active scheduled appointment per profile policy
+    const hid = await engine.resolveHospitalId(tenant_id);
+    const existingApt = await prisma.appointments.findFirst({
+      where: {
+        hospital_id: hid,
+        status: "scheduled",
+        ...(patientId
+          ? { patient_id: patientId }
+          : {
+              patient_id: { in: (await prisma.patients.findMany({ where: { name: { equals: cleanName, mode: "insensitive" } }, select: { id: true } })).map((p) => p.id) },
+            }),
+      },
+      include: { departments: true },
+      orderBy: { id: "desc" },
+    });
+
+    if (existingApt) {
+      const deptName = existingApt.departments?.name || existingApt.service_category || "Consultation";
+      return res.status(409).json({
+        status: "error",
+        code: "ACTIVE_APPOINTMENT_EXISTS",
+        detail: `An active appointment (${existingApt.appointment_id}) is already scheduled for ${cleanName} in ${deptName}. In accordance with hospital policy, each profile can hold only 1 active booking at a time. Please complete or cancel your current appointment before reserving another slot.`,
+        message: `An active appointment (${existingApt.appointment_id}) is already scheduled for ${cleanName}. Hospital policy allows 1 active booking per patient profile.`,
+        appointment: existingApt,
+      });
+    }
+
     const appointment = await bookAppointment({
       tenantId: tenant_id,
       consumerType: consumer_type,
       serviceCategory: service_category,
-      patientName: patient_name,
-      userEmail: user_email || req.user?.email || "",
+      patientName: cleanName,
+      userEmail: emailToCheck,
       appointmentDate: appointment_date,
       timeSlot: time_slot,
       patientId,
