@@ -10,11 +10,10 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
 import { t, getCategoryLabel, getStatusLabel, SYMPTOM_OPTIONS, RISK_OPTIONS, formatSymptomLabel, formatRiskLabel } from "../utils/i18n";
 import { printTokenPass, printAppointmentRecord, printPrescriptionSlip } from "../utils/printPassHelper";
-import QueueStepper from "../components/patient/QueueStepper";
 import HeroBanner from "../components/patient/HeroBanner";
 import Footer from "../components/common/Footer";
 import FamilyMemberSwitcher, { AddFamilyMemberModal, EditFamilyMemberModal, getRelationLabel } from "../components/patient/FamilyMemberSwitcher";
-import PatientHistoryTimeline from "../components/patient-history/PatientHistoryTimeline";
+import HistorySummary from "../components/patient-history/HistorySummary";
 import { usePatientHistory } from "../hooks/usePatientHistory";
 
 export default function PatientPage({
@@ -599,10 +598,11 @@ export default function PatientPage({
   const [aptTimeSlot, setAptTimeSlot] = useState("");
   const [bookedAppointment, setBookedAppointment] = useState(null);
   const [userAppointments, setUserAppointments] = useState([]);
-  const [checkInCode, setCheckInCode] = useState("");
-  const [aptSearchName, setAptSearchName] = useState("");
-  const [aptSearchLoading, setAptSearchLoading] = useState(false);
+  const [aptFilterQuery, setAptFilterQuery] = useState("");
   const [userTicketHistory, setUserTicketHistory] = useState([]);
+  const [historyFilterType, setHistoryFilterType] = useState("all");
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [showCancelledHistory, setShowCancelledHistory] = useState(false);
 
   // ── Booking date window: today → today + 2 days (3 days max) ──────────────
   const bookingDateBounds = useMemo(() => {
@@ -906,55 +906,105 @@ export default function PatientPage({
     return true;
   });
 
-  const historyAppointments = userAppointments.filter((apt) => {
-    const s = (apt.status || "").toLowerCase();
-    const isHistoric = s === "completed" || s === "transferred" || s === "cancelled" || s === "no_show" || s === "expired";
-    if (isHistoric) return true;
-    const tId = apt.ticket_id;
-    if (tId && userTicketHistory.some((t) => t.ticket_id === tId && ["cancelled", "completed", "expired", "no_show"].includes((t.status || "").toLowerCase()))) {
-      return true;
+  const handleBookFollowUp = useCallback((record) => {
+    if (record) {
+      if (record.patient_name || record.name) {
+        setName(record.patient_name || record.name);
+      }
+      const targetDept = record.service_category || record.department_name || record.department || "consultation";
+      if (targetDept) {
+        setCategory(targetDept);
+      }
+      if (record.age) setAge(record.age);
+      if (record.gender) setGender(record.gender.toLowerCase());
     }
-    return false;
-  });
+    handleTabChange("book");
+  }, []);
 
-  // Walk-in tickets that are completed, cancelled, expired, or no_show — these are NOT in appointments table
-  const historyTickets = userTicketHistory.filter((t) => {
-    const s = (t.status || "").toLowerCase();
-    return s === "completed" || s === "cancelled" || s === "transferred" || s === "no_show" || s === "expired";
-  });
+  const historyAppointments = useMemo(() => {
+    return userAppointments.filter((apt) => {
+      const s = (apt.status || "").toLowerCase();
+      const isCompleted = s === "completed" || s === "transferred";
+      const isCancelled = s === "cancelled" || s === "no_show" || s === "expired";
+      const tId = apt.ticket_id;
+      const tMatch = tId && userTicketHistory.find((t) => t.ticket_id === tId);
+      const isTicketCompleted = tMatch && ["completed", "transferred"].includes((tMatch.status || "").toLowerCase());
+      const isTicketCancelled = tMatch && ["cancelled", "expired", "no_show"].includes((tMatch.status || "").toLowerCase());
 
-  const searchFilter = (aptSearchName || "").trim().toLowerCase();
+      if (isCompleted || isTicketCompleted) return true;
+      if (showCancelledHistory && (isCancelled || isTicketCancelled)) return true;
+      return false;
+    });
+  }, [userAppointments, userTicketHistory, showCancelledHistory]);
 
-  const filterRecordBySearch = (item, type = "ticket") => {
-    if (!searchFilter) return true;
-    if (type === "ticket") {
-      const nameMatch = (item.name || "").toLowerCase().includes(searchFilter);
-      const ticketIdMatch = (item.ticket_id || "").toLowerCase().includes(searchFilter);
-      const aptIdMatch = (item.appointment_id || "").toLowerCase().includes(searchFilter);
-      const hospMatch = (item.hospital_name || "").toLowerCase().includes(searchFilter);
-      const deptMatch = (item.department_name || item.service_category || "").toLowerCase().includes(searchFilter);
-      const reasonMatch = (item.cancellation_reason || "").toLowerCase().includes(searchFilter);
-      return nameMatch || ticketIdMatch || aptIdMatch || hospMatch || deptMatch || reasonMatch;
-    } else {
-      const nameMatch = (item.patient_name || "").toLowerCase().includes(searchFilter);
-      const aptIdMatch = (item.appointment_id || "").toLowerCase().includes(searchFilter);
-      const ticketIdMatch = (item.ticket_id || "").toLowerCase().includes(searchFilter);
-      const hospMatch = (item.hospital_name || "").toLowerCase().includes(searchFilter);
-      const deptMatch = (item.service_category || "").toLowerCase().includes(searchFilter);
-      const timeMatch = (item.time_slot || "").toLowerCase().includes(searchFilter);
-      return nameMatch || aptIdMatch || ticketIdMatch || hospMatch || deptMatch || timeMatch;
+  // Walk-in tickets: completed, or cancelled/expired only if toggle is enabled
+  const historyTickets = useMemo(() => {
+    return userTicketHistory.filter((t) => {
+      const s = (t.status || "").toLowerCase();
+      const isCompleted = s === "completed" || s === "transferred";
+      const isCancelled = s === "cancelled" || s === "no_show" || s === "expired";
+      if (isCompleted) return true;
+      if (showCancelledHistory && isCancelled) return true;
+      return false;
+    });
+  }, [userTicketHistory, showCancelledHistory]);
+
+  const displayedActiveAppointments = useMemo(() => {
+    if (!aptFilterQuery.trim()) return activeAppointments;
+    const q = aptFilterQuery.trim().toLowerCase();
+    return activeAppointments.filter((apt) => {
+      const idMatch = (apt.appointment_id || "").toLowerCase().includes(q);
+      const ticketMatch = (apt.ticket_id || "").toLowerCase().includes(q);
+      const docMatch = (apt.doctor_name || apt.served_by_doctor_name || "").toLowerCase().includes(q);
+      const deptMatch = (apt.department_name || apt.service_category || "").toLowerCase().includes(q);
+      const patientMatch = (apt.patient_name || "").toLowerCase().includes(q);
+      const dateMatch = (apt.appointment_date || "").toLowerCase().includes(q);
+      const slotMatch = (apt.time_slot || "").toLowerCase().includes(q);
+      const hospMatch = (apt.hospital_name || "").toLowerCase().includes(q);
+      return idMatch || ticketMatch || docMatch || deptMatch || patientMatch || dateMatch || slotMatch || hospMatch;
+    });
+  }, [activeAppointments, aptFilterQuery]);
+
+  const displayedHistoryAppointments = useMemo(() => {
+    if (historyFilterType === "walkin") return [];
+    let list = historyAppointments;
+    if (historyFilterType === "rx") {
+      list = list.filter((apt) => {
+        const effRx = apt.prescription_notes || (apt.ticket_id && userTicketHistory.find((t) => t.ticket_id === apt.ticket_id)?.prescription_notes);
+        return !!effRx;
+      });
     }
-  };
+    if (!historySearchQuery.trim()) return list;
+    const q = historySearchQuery.trim().toLowerCase();
+    return list.filter((apt) => {
+      const idMatch = (apt.appointment_id || "").toLowerCase().includes(q);
+      const docMatch = (apt.doctor_name || apt.served_by_doctor_name || "").toLowerCase().includes(q);
+      const deptMatch = (apt.department_name || apt.service_category || "").toLowerCase().includes(q);
+      const patientMatch = (apt.patient_name || "").toLowerCase().includes(q);
+      const diagMatch = (apt.prescription_notes || "").toLowerCase().includes(q);
+      const dateMatch = (apt.appointment_date || "").toLowerCase().includes(q);
+      return idMatch || docMatch || deptMatch || patientMatch || diagMatch || dateMatch;
+    });
+  }, [historyAppointments, historyFilterType, historySearchQuery, userTicketHistory]);
 
-  const displayedActiveAppointments = activeAppointments.filter((apt) => filterRecordBySearch(apt, "appointment"));
-  const displayedHistoryAppointments = historyAppointments.filter((apt) => filterRecordBySearch(apt, "appointment"));
-  const displayedHistoryTickets = historyTickets.filter((tk) => filterRecordBySearch(tk, "ticket"));
-
-  const handleClearSearch = () => {
-    setAptSearchName("");
-    fetchUserAppointments();
-    fetchUserTicketHistory();
-  };
+  const displayedHistoryTickets = useMemo(() => {
+    if (historyFilterType === "appointments") return [];
+    let list = historyTickets;
+    if (historyFilterType === "rx") {
+      list = list.filter((tk) => !!tk.prescription_notes);
+    }
+    if (!historySearchQuery.trim()) return list;
+    const q = historySearchQuery.trim().toLowerCase();
+    return list.filter((tk) => {
+      const idMatch = String(tk.ticket_id || "").toLowerCase().includes(q);
+      const docMatch = (tk.doctor_name || tk.served_by_doctor_name || "").toLowerCase().includes(q);
+      const deptMatch = (tk.department_name || tk.service_category || "").toLowerCase().includes(q);
+      const patientMatch = (tk.name || "").toLowerCase().includes(q);
+      const diagMatch = (tk.prescription_notes || "").toLowerCase().includes(q);
+      const dateMatch = tk.created_at ? new Date(tk.created_at).toLocaleDateString().toLowerCase().includes(q) : false;
+      return idMatch || docMatch || deptMatch || patientMatch || diagMatch || dateMatch;
+    });
+  }, [historyTickets, historyFilterType, historySearchQuery]);
 
   // Initial fetch on mount / user change to populate badge counts and data immediately
   useEffect(() => {
@@ -965,17 +1015,15 @@ export default function PatientPage({
   // Live polling for "My Appointments", "History", and "Book" tabs so cancellations/progress update live
   useEffect(() => {
     if (activeTab === "my_apts" || activeTab === "history" || activeTab === "book") {
-      const currentQuery = (aptSearchName || "").trim();
-      fetchUserAppointments(currentQuery || undefined);
-      if (activeTab === "history") fetchUserTicketHistory(currentQuery || undefined);
+      fetchUserAppointments();
+      if (activeTab === "history") fetchUserTicketHistory();
       const interval = setInterval(() => {
-        const liveQuery = (aptSearchName || "").trim();
-        fetchUserAppointments(liveQuery || undefined);
-        if (activeTab === "history") fetchUserTicketHistory(liveQuery || undefined);
+        fetchUserAppointments();
+        if (activeTab === "history") fetchUserTicketHistory();
       }, 3500);
       return () => clearInterval(interval);
     }
-  }, [activeTab, fetchUserAppointments, fetchUserTicketHistory, aptSearchName]);
+  }, [activeTab, fetchUserAppointments, fetchUserTicketHistory]);
 
   // Keep bookedAppointment in sync with the live userAppointments list.
   // If the booked appointment gets cancelled or checked-in via another route,
@@ -1369,7 +1417,7 @@ export default function PatientPage({
 
   // 3. Hybrid Merge Check-In (Converts Scheduled Appointment -> Live Priority Queue Ticket)
   const handleAppointmentCheckIn = async (aptId) => {
-    const targetId = aptId || checkInCode;
+    const targetId = aptId || "";
     if (!targetId.trim()) return;
 
     // OPD status gate: Check-in only allowed when OPD is open
@@ -1892,34 +1940,6 @@ export default function PatientPage({
           gap: 4px;
         }
 
-        .patient-nav-status-badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          font-size: 11.5px;
-          font-weight: 700;
-          color: #047857;
-          background: rgba(16, 185, 129, 0.08);
-          padding: 6px 12px;
-          border-radius: 10px;
-          border: 1px solid rgba(16, 185, 129, 0.25);
-          box-shadow: 0 1px 3px rgba(16, 185, 129, 0.08);
-        }
-
-        .status-dot-pulse {
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: #10B981;
-          box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25);
-          animation: pulseDot 2s infinite ease-in-out;
-        }
-
-        @keyframes pulseDot {
-          0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35); }
-          50% { transform: scale(1.25); opacity: 0.85; box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.08); }
-        }
-
         .patient-tabs-bar {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
@@ -2416,11 +2436,6 @@ export default function PatientPage({
                 {language === "hi" ? "बदलें" : "Change"}
               </span>
             </button>
-
-            <div className="patient-nav-status-badge">
-              <span className="status-dot-pulse" />
-              <span>{language === "hi" ? "एआई स्मार्ट डिस्पैच सक्रिय" : "AI Orchestration Active"}</span>
-            </div>
           </div>
         </div>
 
@@ -2527,7 +2542,7 @@ export default function PatientPage({
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span className="tab-title-text">
-                  {t("appointmentHistory", language)}
+                  {t("medicalVisitHistory", language)}
                 </span>
                 <span
                   className="tab-count-badge"
@@ -2540,7 +2555,7 @@ export default function PatientPage({
                 </span>
               </div>
               <span className="tab-sub-text" style={{ color: activeTab === "history" ? "#BAE6FD" : "#64748B" }}>
-                {t("pastRecords", language)}
+                {t("medicalVisitHistorySubtitle", language)}
               </span>
             </div>
           </button>
@@ -2594,7 +2609,7 @@ export default function PatientPage({
               members={familyMembers}
               selectedMemberId={selectedMemberId}
               onSelectMember={handleSelectMember}
-              onAddMember={handleAddMember}
+              onAddMember={() => handleTabChange("family")}
               onDeleteMember={handleDeleteMember}
               language={language}
               familyTickets={familyTickets}
@@ -3290,7 +3305,7 @@ export default function PatientPage({
                   if (targetMember) {
                     handleSelectMember(targetMember);
                   } else {
-                    setShowAddMemberModal(true);
+                    handleTabChange("family");
                   }
                 }}
                 members={familyMembers}
@@ -3344,126 +3359,99 @@ export default function PatientPage({
                 {t("activeAptsSubtitle", language)}
               </span>
             </div>
-            <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            <div style={{ position: "relative", minWidth: "260px", maxWidth: "360px", flex: 1 }}>
               <input
+                id="my-appointments-filter-input"
                 type="text"
-                placeholder={t("enterCodePlaceholder", language)}
-                value={checkInCode}
-                onChange={(e) => setCheckInCode(e.target.value)}
-                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #0F172A)", fontSize: "12px", width: "180px" }}
-              />
-              <button
-                onClick={() => handleAppointmentCheckIn(checkInCode)}
-                disabled={registrationStatus.isClosed}
+                value={aptFilterQuery}
+                onChange={(e) => setAptFilterQuery(e.target.value)}
+                placeholder={language === "hi" ? "आईडी, डॉक्टर, या विभाग द्वारा खोजें..." : "Search by ID, Doctor, or Dept..."}
                 style={{
-                  ...quickCheckInBtnStyle,
-                  ...(registrationStatus.isClosed ? { opacity: 0.55, cursor: "not-allowed", background: "#94A3B8" } : {}),
+                  width: "100%",
+                  padding: "9px 34px 9px 36px",
+                  borderRadius: "10px",
+                  border: "1.5px solid var(--patient-card-border, #CBD5E1)",
+                  background: "var(--patient-card-bg, #FFFFFF)",
+                  color: "var(--patient-text-main, #0F172A)",
+                  fontSize: "12.5px",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  transition: "all 0.15s ease",
                 }}
-                title={registrationStatus.isClosed ? (registrationStatus.reason || "Check-in only works when OPD is open") : ""}
-              >
-                {t("checkInBtn", language)}
-              </button>
-            </div>
-          </div>
-
-          {/* Name lookup for guests / unmatched users */}
-          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "var(--patient-tag-bg, #F0F9FF)", borderRadius: "12px", border: "1px solid var(--patient-tag-border, #BAE6FD)", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              <span>Look up by name:</span>
-            </span>
-            <div style={{ flex: 1, minWidth: "180px", position: "relative", display: "flex", alignItems: "center" }}>
-              <input
-                id="apt-search-name"
-                type="text"
-                value={aptSearchName}
-                onChange={(e) => setAptSearchName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    setAptSearchLoading(true);
-                    fetchUserAppointments(aptSearchName.trim());
-                    setTimeout(() => setAptSearchLoading(false), 800);
-                  }
-                }}
-                placeholder="Enter patient name or appointment/ticket ID (e.g. Kartik)"
-                style={{ width: "100%", padding: "8px 32px 8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #BAE6FD)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #0F172A)", fontSize: "13px", outline: "none" }}
+                onFocus={(e) => { e.target.style.borderColor = "#0284C7"; }}
+                onBlur={(e) => { e.target.style.borderColor = "var(--patient-card-border, #CBD5E1)"; }}
               />
-              {aptSearchName && (
+              <span style={{ position: "absolute", left: "11px", top: "50%", transform: "translateY(-50%)", color: "#64748B", pointerEvents: "none", display: "flex", alignItems: "center" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              </span>
+              {aptFilterQuery && (
                 <button
                   type="button"
-                  onClick={handleClearSearch}
-                  style={{ position: "absolute", right: "8px", background: "none", border: "none", color: "var(--patient-text-sub, #94A3B8)", cursor: "pointer", fontSize: "14px", fontWeight: "bold", padding: "2px" }}
-                  title="Clear search"
-                >✕</button>
+                  onClick={() => setAptFilterQuery("")}
+                  style={{
+                    position: "absolute",
+                    right: "8px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "#94A3B8",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: "bold",
+                    padding: "4px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                  title={language === "hi" ? "फ़िल्टर हटाएं" : "Clear filter"}
+                >
+                  ✕
+                </button>
               )}
             </div>
-            <button
-              id="apt-search-btn"
-              type="button"
-              onClick={() => {
-                setAptSearchLoading(true);
-                fetchUserAppointments(aptSearchName.trim());
-                setTimeout(() => setAptSearchLoading(false), 800);
-              }}
-              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#0284C7", color: "#fff", fontWeight: 700, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
-            >
-              {aptSearchLoading ? "Searching..." : "Search"}
-            </button>
-            {aptSearchName.trim() && (
-              <button
-                type="button"
-                onClick={handleClearSearch}
-                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #64748B)", fontWeight: 600, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
-              >
-                Clear
-              </button>
-            )}
           </div>
-
-          {/* Active Search Result Pill */}
-          {aptSearchName.trim() && (
-            <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "var(--patient-sub-card, #F0FDF4)", border: "1px solid #BBF7D0", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12.5px", color: "#166534" }}>
-              <span>
-                Found <strong>{displayedActiveAppointments.length}</strong> active appointment{displayedActiveAppointments.length === 1 ? "" : "s"} for "<strong>{aptSearchName.trim()}</strong>"
-              </span>
-              <button
-                type="button"
-                onClick={handleClearSearch}
-                style={{ background: "none", border: "none", color: "#166534", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontSize: "12px" }}
-              >
-                Clear filter
-              </button>
-            </div>
-          )}
 
           {displayedActiveAppointments.length === 0 ? (
             <div style={{ padding: "40px 24px", textAlign: "center", background: "var(--patient-sub-card, #F8FAFC)", borderRadius: "16px", border: "1px solid var(--patient-card-border, #E2E8F0)", color: "var(--patient-text-sub, #94A3B8)" }}>
-              <p style={{ margin: "0 0 6px 0", color: "var(--patient-text-main, #64748B)", fontWeight: 600, fontSize: "14px" }}>
-                {aptSearchName.trim()
-                  ? `No active appointments found matching "${aptSearchName.trim()}"`
-                  : t("noActiveAptsMsg", language)}
-              </p>
-              <p style={{ margin: "0 0 14px 0", color: "var(--patient-text-sub, #94A3B8)", fontSize: "12px" }}>
-                {aptSearchName.trim()
-                  ? "Check spelling, try searching by appointment ID or person's first name."
-                  : "Search by your name above or reserve a new slot below."}
-              </p>
-              {aptSearchName.trim() ? (
-                <button
-                  type="button"
-                  onClick={handleClearSearch}
-                  style={{ padding: "8px 16px", borderRadius: "8px", border: "none", background: "#0284C7", color: "#FFFFFF", fontWeight: 700, fontSize: "12.5px", cursor: "pointer" }}
-                >
-                  Clear Search
-                </button>
+              {aptFilterQuery.trim() ? (
+                <>
+                  <p style={{ margin: "0 0 6px 0", color: "var(--patient-text-main, #64748B)", fontWeight: 600, fontSize: "14px" }}>
+                    {language === "hi"
+                      ? `"${aptFilterQuery.trim()}" से मेल खाता कोई अपॉइंटमेंट नहीं मिला`
+                      : `No appointments found matching "${aptFilterQuery.trim()}"`}
+                  </p>
+                  <p style={{ margin: "0 0 14px 0", color: "var(--patient-text-sub, #94A3B8)", fontSize: "12px" }}>
+                    {language === "hi"
+                      ? "कृपया वर्तनी जांचें या अपॉइंटमेंट आईडी, डॉक्टर का नाम या विभाग से खोजें।"
+                      : "Check the spelling or try searching by appointment ID, doctor's name, or department."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setAptFilterQuery("")}
+                    style={{ padding: "8px 18px", borderRadius: "8px", border: "none", background: "#0284C7", color: "#FFFFFF", fontWeight: 700, fontSize: "12.5px", cursor: "pointer" }}
+                  >
+                    {language === "hi" ? "फ़िल्टर हटाएं" : "Clear Filter"}
+                  </button>
+                </>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => handleTabChange("book")}
-                  style={{ padding: "10px 20px", borderRadius: "10px", border: "none", background: "#0284C7", color: "#FFFFFF", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
-                >
-                  Reserve Time Slot Now
-                </button>
+                <>
+                  <p style={{ margin: "0 0 6px 0", color: "var(--patient-text-main, #64748B)", fontWeight: 600, fontSize: "14px" }}>
+                    {t("noActiveAptsMsg", language)}
+                  </p>
+                  <p style={{ margin: "0 0 14px 0", color: "var(--patient-text-sub, #94A3B8)", fontSize: "12px" }}>
+                    {language === "hi"
+                      ? "आपके पास कोई सक्रिय अपॉइंटमेंट नहीं है। नीचे नया स्लॉट बुक करें।"
+                      : "You have no active appointments scheduled. Reserve a new slot below."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("book")}
+                    style={{ padding: "10px 20px", borderRadius: "10px", border: "none", background: "#0284C7", color: "#FFFFFF", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+                  >
+                    {t("bookAppointmentBtn", language)}
+                  </button>
+                </>
               )}
             </div>
           ) : (
@@ -3674,125 +3662,198 @@ export default function PatientPage({
       ) : activeTab === "history" ? (
         /* VISIT HISTORY FULL VIEW */
         <div style={standaloneCardStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div>
               <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, letterSpacing: "-0.4px" }}>
-                {language === "hi" ? "मेरा मेडिकल इतिहास एवं पूर्व पर्चियां" : "My Medical History & Past Consultations"}
+                {t("medicalVisitHistory", language)}
               </h3>
               <span style={{ fontSize: "13px", color: "var(--patient-text-sub, #64748B)", fontWeight: 500, lineHeight: 1.55 }}>
-                {language === "hi" ? "आपकी सभी पुरानी ओपीडी विज़िट्स, डिजिटल दवा पर्चियां और नैदानिक जांच रिपोर्ट।" : "Chronological archive of all your past clinical visits, e-prescriptions, and laboratory reports."}
+                {language === "hi"
+                  ? "आपकी सभी पुरानी ओपीडी विज़िट्स, डिजिटल दवा पर्चियां और फॉलो-अप परामर्श रिकॉर्ड।"
+                  : "Chronological archive of all your past clinical visits, e-prescriptions, and follow-up consultations."}
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{
+                fontSize: "12px",
+                fontWeight: 800,
+                color: "#0284C7",
+                background: "var(--patient-tag-bg, #E0F2FE)",
+                border: "1px solid var(--patient-tag-border, #BAE6FD)",
+                padding: "4px 12px",
+                borderRadius: "20px",
+              }}>
+                {displayedHistoryAppointments.length + displayedHistoryTickets.length} {t("allRecords", language)}
               </span>
             </div>
           </div>
 
-          {/* Master Patient Medical History Timeline */}
+          {/* Metric Summary Header */}
           <div style={{ marginBottom: "20px" }}>
-            <PatientHistoryTimeline
+            <HistorySummary
               patient={myMedicalPatient}
               summary={myMedicalSummary}
-              visits={myMedicalVisits}
-              prescriptions={myMedicalPrescriptions}
-              reports={myMedicalReports}
               isReturningPatient={isMyReturningPatient}
               totalVisits={myMedicalTotalVisits}
-              loading={myMedicalHistoryLoading}
               language={language}
-              collapsible={false}
-              defaultExpanded={true}
             />
           </div>
 
-          {/* Name lookup for guests / unmatched users */}
-          <div style={{ marginBottom: "18px", padding: "14px 16px", background: "var(--patient-tag-bg, #F0F9FF)", borderRadius: "12px", border: "1px solid var(--patient-tag-border, #BAE6FD)", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              <span>Look up by name:</span>
-            </span>
-            <div style={{ flex: 1, minWidth: "180px", position: "relative", display: "flex", alignItems: "center" }}>
+          {/* Sub-Tabs / Filter Pills + Search & Toggle Bar */}
+          <div style={{
+            background: "var(--patient-sub-card, #F8FAFC)",
+            border: "1px solid var(--patient-card-border, #E2E8F0)",
+            borderRadius: "14px",
+            padding: "12px 14px",
+            marginBottom: "20px",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
+          }}>
+            {/* Filter Pills */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                {[
+                  { id: "all", label: t("allRecords", language), count: historyAppointments.length + historyTickets.length, icon: "📋" },
+                  { id: "appointments", label: t("prescheduledApts", language), count: historyAppointments.length, icon: "📅" },
+                  { id: "walkin", label: t("walkinVisits", language), count: historyTickets.length, icon: "🎫" },
+                  {
+                    id: "rx",
+                    label: t("ePrescriptions", language),
+                    count: (
+                      historyTickets.filter((t) => !!t.prescription_notes).length +
+                      historyAppointments.filter((a) => !!(a.prescription_notes || (a.ticket_id && userTicketHistory.find((t) => t.ticket_id === a.ticket_id)?.prescription_notes))).length
+                    ),
+                    icon: "💊"
+                  },
+                ].map((pill) => {
+                  const isActive = historyFilterType === pill.id;
+                  return (
+                    <button
+                      key={pill.id}
+                      type="button"
+                      onClick={() => setHistoryFilterType(pill.id)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "6px 12px",
+                        borderRadius: "8px",
+                        border: isActive ? "1.5px solid #0284C7" : "1px solid var(--patient-card-border, #E2E8F0)",
+                        background: isActive ? "#0284C7" : "var(--patient-card-bg, #FFFFFF)",
+                        color: isActive ? "#FFFFFF" : "var(--patient-text-main, #334155)",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <span>{pill.icon}</span>
+                      <span>{pill.label}</span>
+                      <span style={{
+                        padding: "1px 6px",
+                        borderRadius: "9999px",
+                        fontSize: "11px",
+                        fontWeight: 800,
+                        background: isActive ? "rgba(255,255,255,0.25)" : "var(--patient-sub-card, #F1F5F9)",
+                        color: isActive ? "#FFFFFF" : "var(--patient-text-sub, #64748B)",
+                      }}>
+                        {pill.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Show Cancelled / Incomplete Toggle */}
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "7px", cursor: "pointer", fontSize: "12px", fontWeight: 600, color: "var(--patient-text-sub, #64748B)", userSelect: "none" }}>
+                <input
+                  type="checkbox"
+                  id="toggle-show-cancelled-history"
+                  checked={showCancelledHistory}
+                  onChange={(e) => setShowCancelledHistory(e.target.checked)}
+                  style={{ accentColor: "#0284C7", width: "15px", height: "15px", cursor: "pointer" }}
+                />
+                <span>{t("showCancelledToggle", language)}</span>
+              </label>
+            </div>
+
+            {/* History Search Bar */}
+            <div style={{ position: "relative", width: "100%" }}>
               <input
-                id="history-search-name"
                 type="text"
-                value={aptSearchName}
-                onChange={(e) => setAptSearchName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    setAptSearchLoading(true);
-                    fetchUserAppointments(aptSearchName.trim());
-                    fetchUserTicketHistory(aptSearchName.trim());
-                    setTimeout(() => setAptSearchLoading(false), 800);
-                  }
+                id="search-patient-history"
+                value={historySearchQuery}
+                onChange={(e) => setHistorySearchQuery(e.target.value)}
+                placeholder={
+                  language === "hi"
+                    ? "🔍 आईडी, डॉक्टर, विभाग, बीमारी या दिनांक से इतिहास खोजें..."
+                    : "🔍 Search history by Ticket/Apt ID, Doctor, Department, Diagnosis, or Date..."
+                }
+                style={{
+                  width: "100%",
+                  padding: "9px 36px 9px 12px",
+                  borderRadius: "8px",
+                  border: "1.5px solid var(--patient-card-border, #CBD5E1)",
+                  background: "var(--patient-card-bg, #FFFFFF)",
+                  color: "var(--patient-text-main, #0F172A)",
+                  fontSize: "12.5px",
+                  boxSizing: "border-box",
+                  outline: "none",
                 }}
-                placeholder="Enter patient name or ticket/apt ID (e.g. Kartik)"
-                style={{ width: "100%", padding: "8px 32px 8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #BAE6FD)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #0F172A)", fontSize: "13px", outline: "none" }}
               />
-              {aptSearchName && (
+              {historySearchQuery && (
                 <button
                   type="button"
-                  onClick={handleClearSearch}
-                  style={{ position: "absolute", right: "8px", background: "none", border: "none", color: "var(--patient-text-sub, #94A3B8)", cursor: "pointer", fontSize: "14px", fontWeight: "bold", padding: "2px" }}
-                  title="Clear search"
-                >✕</button>
+                  onClick={() => setHistorySearchQuery("")}
+                  style={{
+                    position: "absolute",
+                    right: "10px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--patient-text-sub, #94A3B8)",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    fontWeight: 700,
+                  }}
+                >
+                  ✕
+                </button>
               )}
             </div>
-            <button
-              id="history-search-btn"
-              type="button"
-              onClick={() => {
-                setAptSearchLoading(true);
-                fetchUserAppointments(aptSearchName.trim());
-                fetchUserTicketHistory(aptSearchName.trim());
-                setTimeout(() => setAptSearchLoading(false), 800);
-              }}
-              style={{ padding: "8px 14px", borderRadius: "8px", border: "none", background: "#0284C7", color: "#fff", fontWeight: 700, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
-            >
-              {aptSearchLoading ? "Searching..." : "Search"}
-            </button>
-            {aptSearchName.trim() && (
-              <button
-                type="button"
-                onClick={handleClearSearch}
-                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #CBD5E1)", background: "var(--patient-card-bg, #FFFFFF)", color: "var(--patient-text-main, #64748B)", fontWeight: 600, fontSize: "12px", cursor: "pointer", whiteSpace: "nowrap" }}
-              >
-                Clear
-              </button>
-            )}
           </div>
-
-          {/* Active Search Result Pill */}
-          {aptSearchName.trim() && (
-            <div style={{ marginBottom: "14px", padding: "10px 14px", borderRadius: "10px", background: "var(--patient-sub-card, #F0FDF4)", border: "1px solid #BBF7D0", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12.5px", color: "#166534" }}>
-              <span>
-                Found <strong>{displayedHistoryAppointments.length + displayedHistoryTickets.length}</strong> record{displayedHistoryAppointments.length + displayedHistoryTickets.length === 1 ? "" : "s"} for "<strong>{aptSearchName.trim()}</strong>"
-              </span>
-              <button
-                type="button"
-                onClick={handleClearSearch}
-                style={{ background: "none", border: "none", color: "#166534", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontSize: "12px" }}
-              >
-                Clear filter
-              </button>
-            </div>
-          )}
 
           {displayedHistoryAppointments.length === 0 && displayedHistoryTickets.length === 0 ? (
             <div style={{ padding: "48px 24px", textAlign: "center", background: "var(--patient-sub-card, #F8FAFC)", borderRadius: "16px", border: "1px solid var(--patient-card-border, #E2E8F0)", color: "var(--patient-text-sub, #94A3B8)", fontSize: "13.5px" }}>
               <p style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: 700, color: "var(--patient-text-main, #0F172A)" }}>
-                {aptSearchName.trim()
-                  ? `No visits found matching "${aptSearchName.trim()}"`
-                  : t("noHistoryMsg", language)}
+                {t("noHistoryMsg", language)}
               </p>
               <p style={{ margin: "0 0 14px 0", fontSize: "12px", color: "var(--patient-text-sub, #94A3B8)" }}>
-                {aptSearchName.trim()
-                  ? "Check spelling, try searching by ticket ID or person's first name."
-                  : "Search by your name above to find past visits."}
+                {language === "hi"
+                  ? "चयनित फ़िल्टर के लिए कोई पूर्व परामर्श या विज़िट रिकॉर्ड नहीं मिला।"
+                  : "No prior consultation or clinical visit records match your selected filters."}
               </p>
-              {aptSearchName.trim() && (
+              {(historyFilterType !== "all" || historySearchQuery || showCancelledHistory) && (
                 <button
                   type="button"
-                  onClick={handleClearSearch}
-                  style={{ padding: "8px 16px", borderRadius: "8px", border: "none", background: "#0284C7", color: "#FFFFFF", fontWeight: 700, fontSize: "12.5px", cursor: "pointer" }}
+                  onClick={() => {
+                    setHistoryFilterType("all");
+                    setHistorySearchQuery("");
+                  }}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: "8px",
+                    border: "1px solid #0284C7",
+                    background: "transparent",
+                    color: "#0284C7",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
                 >
-                  Clear Search
+                  {language === "hi" ? "फ़िल्टर रीसेट करें" : "Reset Filters"}
                 </button>
               )}
             </div>
@@ -3882,6 +3943,38 @@ export default function PatientPage({
                             Reason: {tk.cancellation_reason}
                           </p>
                         )}
+
+                        {/* Card Actions: Book Follow-Up */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleBookFollowUp(tk)}
+                            style={{
+                              padding: "6px 14px",
+                              borderRadius: "8px",
+                              border: "1.5px solid #0284C7",
+                              background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                              color: "#FFFFFF",
+                              fontSize: "12px",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              boxShadow: "0 2px 6px rgba(2, 132, 199, 0.2)",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                              <line x1="16" y1="2" x2="16" y2="6"/>
+                              <line x1="8" y1="2" x2="8" y2="6"/>
+                              <line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                            <span>{t("bookFollowUpBtn", language)}</span>
+                          </button>
+                        </div>
+
                         {/* Digital Rx Slip section if notes present or visit completed */}
                         {(() => {
                           const canShowRx = tk.prescription_notes || (tk.status || "").toLowerCase() === "completed";
@@ -4087,6 +4180,37 @@ export default function PatientPage({
                           )}
                         </span>
 
+                        {/* Card Actions: Book Follow-Up */}
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleBookFollowUp(apt)}
+                            style={{
+                              padding: "6px 14px",
+                              borderRadius: "8px",
+                              border: "1.5px solid #0284C7",
+                              background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                              color: "#FFFFFF",
+                              fontSize: "12px",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              boxShadow: "0 2px 6px rgba(2, 132, 199, 0.2)",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                              <line x1="16" y1="2" x2="16" y2="6"/>
+                              <line x1="8" y1="2" x2="8" y2="6"/>
+                              <line x1="3" y1="10" x2="21" y2="10"/>
+                            </svg>
+                            <span>{t("bookFollowUpBtn", language)}</span>
+                          </button>
+                        </div>
+
                         {/* Digital Rx Slip section if notes present or appointment completed */}
                         {(() => {
                           const effectiveRxNotes = apt.prescription_notes || (apt.ticket_id && Array.isArray(userTicketHistory) && userTicketHistory.find((t) => String(t.ticket_id) === String(apt.ticket_id))?.prescription_notes) || "";
@@ -4261,18 +4385,6 @@ export default function PatientPage({
               <span style={{ fontSize: "16px", lineHeight: 1 }}>+</span>
               <span>{language === "hi" ? "नया सदस्य जोड़ें" : "Add Family Member"}</span>
             </button>
-          </div>
-
-          {/* Member Switcher Quick Selector */}
-          <div style={{ marginBottom: "24px" }}>
-            <FamilyMemberSwitcher
-              members={familyMembers}
-              selectedMemberId={selectedMemberId}
-              onSelectMember={handleSelectMember}
-              onAddMember={handleAddMember}
-              onDeleteMember={handleDeleteMember}
-              language={language}
-            />
           </div>
 
           {/* Cards Grid */}
@@ -5410,10 +5522,7 @@ function QueueTelemetrySidebar({
               <div style={{ fontSize: "32px", fontWeight: 900, color: "#38BDF8", lineHeight: 1.1 }}>
                 #{primaryServing.ticket_id}
               </div>
-              <div style={{ fontSize: "14px", fontWeight: 700, marginTop: "2px" }}>
-                {primaryServing.name}
-              </div>
-              <div style={{ fontSize: "11.5px", color: "rgba(255,255,255,0.75)", marginTop: "2px" }}>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.85)", marginTop: "2px" }}>
                 {language === "hi" ? "विभाग:" : "Dept:"} {getCategoryLabel(primaryServing.service_category || "consultation", language)}
               </div>
             </div>
@@ -5459,7 +5568,11 @@ function QueueTelemetrySidebar({
                   <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--patient-text-sub, #64748B)" }}>#{item.position}</span>
                   <div>
                     <strong style={{ fontSize: "12.5px", color: "var(--patient-text-main, #0F172A)" }}>#{item.ticket_id}</strong>
-                    <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>{item.name}</span>
+                    {item.service_category && (
+                      <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>
+                        {getCategoryLabel(item.service_category, language)}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>

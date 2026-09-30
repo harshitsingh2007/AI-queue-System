@@ -13,10 +13,7 @@ export { default as ErrorBoundary } from "./common/ErrorBoundary";
 
 // Patient
 export { default as HeroBanner } from "./patient/HeroBanner";
-export { default as QueueStepper } from "./patient/QueueStepper";
 export { default as FamilyMemberSwitcher, AddFamilyMemberModal, EditFamilyMemberModal, getRelationLabel } from "./patient/FamilyMemberSwitcher";
-export { default as FeatureCards } from "./patient/FeatureCards";
-export { default as QueuePluginWidget } from "./patient/QueuePluginWidget";
 
 // Staff / Doctor
 export { default as AdminHeroBanner } from "./staff/AdminHeroBanner";

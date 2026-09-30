@@ -247,31 +247,6 @@ export default function HeroBanner({
       {/* LEFT COLUMN: Texts & Stats Cards */}
       <div className="hero-left-col">
         <div>
-          <div
-            onClick={onOpenHospitalModal}
-            role={onOpenHospitalModal ? "button" : undefined}
-            tabIndex={onOpenHospitalModal ? 0 : undefined}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "7px",
-              padding: "4px 10px",
-              borderRadius: "8px",
-              background: "rgba(56, 189, 248, 0.15)",
-              border: "1px solid rgba(56, 189, 248, 0.35)",
-              color: "#38BDF8",
-              fontSize: "11px",
-              fontWeight: 800,
-              marginBottom: "10px",
-              cursor: onOpenHospitalModal ? "pointer" : "default",
-            }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9h1"/><path d="M9 13h1"/><path d="M9 17h1"/>
-            </svg>
-            <span>{displayHospName}</span>
-            {onOpenHospitalModal && <span style={{ opacity: 0.7, fontSize: "10px", marginLeft: "2px" }}>▼</span>}
-          </div>
           <h1 className="hero-title">
             {isHi ? (
               <>

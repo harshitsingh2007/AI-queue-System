@@ -6,7 +6,6 @@
  * - Dynamic Hospital shield / logo with white medical cross
  * - Dynamic Hospital Name & localized tagline ("Care you can trust")
  * - Dynamic Copyright: "© {currentYear} {hospitalName}. All rights reserved."
- * - Healthcare heartbeat graphic (ECG pulse waveform)
  * - Automatic reactivity to selected hospital, logged-in user hospital, or global config.
  */
 
@@ -61,16 +60,6 @@ export default function Footer({ language = "en", hospitalName, currentUser }) {
           border-top-color: #1E293B;
         }
 
-        .footer-heartbeat-svg {
-          filter: drop-shadow(0 2px 4px rgba(2, 132, 199, 0.25));
-          transition: transform 0.3s ease;
-          max-width: 100%;
-        }
-
-        .footer-heartbeat-svg:hover {
-          transform: scale(1.05);
-        }
-
         @media (max-width: 720px) {
           .user-dashboard-footer {
             flex-direction: column;
@@ -114,28 +103,11 @@ export default function Footer({ language = "en", hospitalName, currentUser }) {
         </div>
       </div>
 
-      {/* 2. Center: Dynamic Copyright with Hospital Name */}
+      {/* 2. Right: Dynamic Copyright with Hospital Name */}
       <div style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)", fontWeight: 500 }}>
         {language === "hi"
           ? `© ${currentYear} ${effectiveHospitalName}. सर्वाधिकार सुरक्षित.`
           : `© ${currentYear} ${effectiveHospitalName}. All rights reserved.`}
-      </div>
-
-      {/* 3. Right: Healthcare Heartbeat Graphic (ECG Pulse Waveform) */}
-      <div style={{ display: "flex", alignItems: "center" }}>
-        <svg
-          className="footer-heartbeat-svg"
-          width="115"
-          height="26"
-          viewBox="0 0 115 26"
-          fill="none"
-          stroke="#0284C7"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <polyline points="0,13 28,13 36,13 42,3 48,23 54,8 60,18 66,13 115,13" />
-        </svg>
       </div>
     </footer>
   );

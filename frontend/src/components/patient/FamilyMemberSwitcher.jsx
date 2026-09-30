@@ -356,7 +356,6 @@ export default function FamilyMemberSwitcher({
   language = "en",
   familyTickets = {},
 }) {
-  const [showAddModal, setShowAddModal] = useState(false);
   const activeTicketCount = Object.keys(familyTickets || {}).length;
 
   return (
@@ -395,7 +394,9 @@ export default function FamilyMemberSwitcher({
 
         <button
           type="button"
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            if (onAddMember) onAddMember();
+          }}
           style={addTriggerBtnStyle}
           title={t("addMemberTitle", language)}
         >
@@ -485,14 +486,6 @@ export default function FamilyMemberSwitcher({
           );
         })}
       </div>
-
-      {/* Add Family Member Modal */}
-      <AddFamilyMemberModal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        onAddMember={onAddMember}
-        language={language}
-      />
     </div>
   );
 }
