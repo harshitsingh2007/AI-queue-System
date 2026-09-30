@@ -185,6 +185,13 @@ export const TRANSLATIONS = {
     selectTimeSlotLabel: "Select Available Time Slot",
     appointmentConfirmed: "APPOINTMENT CONFIRMED",
     checkInJoinLiveNow: "Check In & Join Live Line Now",
+    slotPassed: "PAST",
+    slotPassedTitle: "This time slot has already passed",
+    slotSelected: "Selected",
+    chooseSlotHint: "Choose a slot manually",
+    clickSlotHint: "Click any available time slot above to select your preferred appointment slot.",
+    selectSlotFirst: "Please select a time slot first",
+    patientNamePlaceholder: "e.g. Rahul Sharma",
 
     // My Appointments Section
     myActiveAppointments: "My Active Appointments",
@@ -281,6 +288,13 @@ export const TRANSLATIONS = {
     no_show: "No-Show",
     scheduled: "Scheduled",
     waiting: "Waiting",
+    activeTicketInProgress: "Active Ticket In Progress",
+    oneTicketPerProfilePolicy: "Hospital Policy: 1 active ticket per patient profile at a time.",
+    cancelToChangeDept: "This patient is already in the live queue. To change department or take a new token, please cancel this ticket first.",
+    cancelCurrentTicketBtn: "Cancel This Ticket",
+    viewPassBtn: "View & Track Token Pass",
+    bookForAnotherMember: "Need a ticket for another family member?",
+    ticketAlreadyActiveForUser: "Active ticket already in progress for this profile.",
   },
   hi: {
     systemTitle: "अस्पताल कतार प्रणाली",
@@ -461,6 +475,13 @@ export const TRANSLATIONS = {
     selectTimeSlotLabel: "उपलब्ध समय स्लॉट चुनें",
     appointmentConfirmed: "अपॉइंटमेंट कन्फ़र्म",
     checkInJoinLiveNow: "चेक इन करें एवं लाइव कतार में शामिल हों",
+    slotPassed: "समाप्त",
+    slotPassedTitle: "यह समय स्लॉट समाप्त हो चुका है",
+    slotSelected: "चयनित",
+    chooseSlotHint: "स्लॉट चुनें (अनिवार्य)",
+    clickSlotHint: "कृपया ऊपर दिए गए उपलब्ध समय स्लॉट्स में से अपनी पसंद का स्लॉट चुनें।",
+    selectSlotFirst: "कृपया पहले एक समय स्लॉट चुनें",
+    patientNamePlaceholder: "उदा. राहुल शर्मा",
 
     // My Appointments Section
     myActiveAppointments: "मेरे सक्रिय अपॉइंटमेंट्स",
@@ -557,6 +578,13 @@ export const TRANSLATIONS = {
     no_show: "अनुपस्थित",
     scheduled: "निर्धारित",
     waiting: "प्रतीक्षारत",
+    activeTicketInProgress: "सक्रिय टोकन प्रगति पर है",
+    oneTicketPerProfilePolicy: "अस्पताल नीति: प्रति मरीज़ प्रोफ़ाइल एक समय पर केवल 1 सक्रिय टोकन मान्य है।",
+    cancelToChangeDept: "यह मरीज़ पहले से ही लाइव कतार में है। विभाग बदलने या नया टोकन लेने के लिए, कृपया पहले यह टोकन रद्द करें।",
+    cancelCurrentTicketBtn: "यह टोकन रद्द करें",
+    viewPassBtn: "टोकन पास देखें और ट्रैक करें",
+    bookForAnotherMember: "क्या परिवार के किसी अन्य सदस्य के लिए टोकन चाहिए?",
+    ticketAlreadyActiveForUser: "इस प्रोफ़ाइल के लिए सक्रिय टोकन पहले से मौजूद है।",
   }
 };
 

@@ -214,68 +214,70 @@ async function joinQueue({
   gender = "other",
   medicalCondition = "general_checkup",
   preExistingCondition = "none",
-  patientId = null,
-  queueDate = null,
-  appointmentId = null,
-  status = "waiting",
-}) {
-  const tenant = engine._getTenant(tenantId);
-  const now = Date.now() / 1000.0;
-  const ticketId = engine.generateTicketId();
-  const qDateStr = parseQueueDate(queueDate);
-  const today = getCurrentQueueDate();
-  const isTodayActive = qDateStr === today && status === "waiting";
+    patientId = null,
+    familyMemberId = null,
+    queueDate = null,
+    appointmentId = null,
+    status = "waiting",
+  }) {
+    const tenant = engine._getTenant(tenantId);
+    const now = Date.now() / 1000.0;
+    const ticketId = engine.generateTicketId();
+    const qDateStr = parseQueueDate(queueDate);
+    const today = getCurrentQueueDate();
+    const isTodayActive = qDateStr === today && status === "waiting";
 
-  const complexity = computeClinicalComplexity(
-    age,
-    gender,
-    medicalCondition,
-    preExistingCondition,
-    priorityLevel
-  );
+    const complexity = computeClinicalComplexity(
+      age,
+      gender,
+      medicalCondition,
+      preExistingCondition,
+      priorityLevel
+    );
 
-  const dtNow = new Date();
-  const predictedService = await predictServiceDuration({
-    tenantId,
-    consumerType,
-    serviceCategory,
-    queueLength: isTodayActive ? tenant.queue.size() + 1 : 1,
-    activeStaffCounters: tenant.active_counters || 2,
-    complexityScore: complexity,
-    hourOfDay: dtNow.getHours(),
-    dayOfWeek: dtNow.getDay(),
-  });
+    const dtNow = new Date();
+    const predictedService = await predictServiceDuration({
+      tenantId,
+      consumerType,
+      serviceCategory,
+      queueLength: isTodayActive ? tenant.queue.size() + 1 : 1,
+      activeStaffCounters: tenant.active_counters || 2,
+      complexityScore: complexity,
+      hourOfDay: dtNow.getHours(),
+      dayOfWeek: dtNow.getDay(),
+    });
 
-  const initialPos = isTodayActive ? tenant.queue.size() + 1 : 0;
+    const initialPos = isTodayActive ? tenant.queue.size() + 1 : 0;
 
-  const ticket = {
-    ticket_id: ticketId,
-    tenant_id: tenantId,
-    consumer_type: consumerType,
-    service_category: serviceCategory,
-    name: name,
-    priority_level: priorityLevel,
-    join_timestamp: now,
-    queue_date: qDateStr,
-    appointment_id: appointmentId,
-    effective_timestamp: now,
-    user_email: userEmail,
-    age: parseInt(age, 10) || 30,
-    gender: gender || "other",
-    medical_condition: medicalCondition || "general_checkup",
-    pre_existing_condition: preExistingCondition || "none",
-    complexity_score: complexity,
-    predicted_service_minutes: predictedService,
-    estimated_wait_minutes: 0.0,
-    status: status,
-    position: isTodayActive ? initialPos : 0,
-    explicit_patient_id: patientId,
-    adjustment_count: 0,
-    cancellation_reason: "",
-    serve_start_time: null,
-    serve_end_time: null,
-    actual_service_minutes: null,
-  };
+    const ticket = {
+      ticket_id: ticketId,
+      tenant_id: tenantId,
+      consumer_type: consumerType,
+      service_category: serviceCategory,
+      name: name,
+      priority_level: priorityLevel,
+      join_timestamp: now,
+      queue_date: qDateStr,
+      appointment_id: appointmentId,
+      effective_timestamp: now,
+      user_email: userEmail,
+      family_member_id: familyMemberId || null,
+      age: parseInt(age, 10) || 30,
+      gender: gender || "other",
+      medical_condition: medicalCondition || "general_checkup",
+      pre_existing_condition: preExistingCondition || "none",
+      complexity_score: complexity,
+      predicted_service_minutes: predictedService,
+      estimated_wait_minutes: 0.0,
+      status: status,
+      position: isTodayActive ? initialPos : 0,
+      explicit_patient_id: patientId,
+      adjustment_count: 0,
+      cancellation_reason: "",
+      serve_start_time: null,
+      serve_end_time: null,
+      actual_service_minutes: null,
+    };
 
   if (isTodayActive) {
     tenant.tickets.set(ticketId, ticket);

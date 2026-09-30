@@ -893,18 +893,65 @@ export default function PatientPage({
 
   const selectedMember = (familyMembers || []).find((m) => String(m.id) === String(selectedMemberId)) || familyMembers[0] || selfObj;
 
-  const activeAppointments = userAppointments.filter((apt) => {
-    const s = (apt.status || "").toLowerCase();
-    const isActive = s === "scheduled" || s === "checked_in" || s === "serving" || s === "waiting";
-    if (!isActive) return false;
-    const tId = apt.ticket_id;
-    if (tId) {
-      if (userTicketHistory.some((t) => t.ticket_id === tId && ["cancelled", "completed", "expired", "no_show"].includes((t.status || "").toLowerCase()))) {
-        return false;
+  // Helper: Matches a record (ticket or appointment) strictly to a specific family profile / member
+  const doesRecordMatchMember = useCallback((record, member) => {
+    if (!record || !member) return false;
+    const memId = String(member.id || "self");
+    const memName = String(member.name || "").trim().toLowerCase();
+
+    // 1. Direct family_member_id matching
+    const recordFamId = record.family_member_id ? String(record.family_member_id) : null;
+    if (recordFamId) {
+      if (memId === "self") {
+        return recordFamId === "self";
+      }
+      return recordFamId === memId;
+    }
+
+    // 2. Direct patient name matching
+    const recName = String(record.patient_name || record.name || "").trim().toLowerCase();
+    if (memName && recName) {
+      if (recName === memName) return true;
+      // If member is self, also allow matching currentUser email or username
+      if (memId === "self") {
+        const uName = String(currentUser?.username || "").trim().toLowerCase();
+        const uEmail = String(currentUser?.email || "").trim().toLowerCase();
+        if ((uName && recName === uName) || (uEmail && recName === uEmail)) {
+          return true;
+        }
       }
     }
-    return true;
-  });
+
+    // 3. Fallback for legacy records with no family_member_id:
+    // If viewing 'self', make sure the record DOES NOT belong to another registered dependent
+    if (memId === "self") {
+      const otherDepNames = (familyMembers || [])
+        .filter((m) => m && m.id !== "self" && m.name)
+        .map((m) => String(m.name).trim().toLowerCase());
+      if (recName && otherDepNames.includes(recName)) {
+        return false;
+      }
+      return true;
+    }
+
+    return false;
+  }, [currentUser, familyMembers]);
+
+  const activeAppointments = useMemo(() => {
+    return userAppointments.filter((apt) => {
+      const s = (apt.status || "").toLowerCase();
+      const isActive = s === "scheduled" || s === "checked_in" || s === "serving" || s === "waiting";
+      if (!isActive) return false;
+      const tId = apt.ticket_id;
+      if (tId) {
+        if (userTicketHistory.some((t) => t.ticket_id === tId && ["cancelled", "completed", "expired", "no_show"].includes((t.status || "").toLowerCase()))) {
+          return false;
+        }
+      }
+      // Strictly scope active appointments to selected profile
+      return doesRecordMatchMember(apt, selectedMember);
+    });
+  }, [userAppointments, userTicketHistory, doesRecordMatchMember, selectedMember]);
 
   const handleBookFollowUp = useCallback((record) => {
     if (record) {
@@ -931,23 +978,96 @@ export default function PatientPage({
       const isTicketCompleted = tMatch && ["completed", "transferred"].includes((tMatch.status || "").toLowerCase());
       const isTicketCancelled = tMatch && ["cancelled", "expired", "no_show"].includes((tMatch.status || "").toLowerCase());
 
-      if (isCompleted || isTicketCompleted) return true;
-      if (showCancelledHistory && (isCancelled || isTicketCancelled)) return true;
-      return false;
+      if (!isCompleted && !isTicketCompleted && (!showCancelledHistory || (!isCancelled && !isTicketCancelled))) {
+        return false;
+      }
+      // Strictly scope history appointments to selected profile
+      return doesRecordMatchMember(apt, selectedMember);
     });
-  }, [userAppointments, userTicketHistory, showCancelledHistory]);
+  }, [userAppointments, userTicketHistory, showCancelledHistory, doesRecordMatchMember, selectedMember]);
 
-  // Walk-in tickets: completed, or cancelled/expired only if toggle is enabled
+  // Walk-in tickets: completed, or cancelled/expired only if toggle is enabled, scoped to selected profile
   const historyTickets = useMemo(() => {
     return userTicketHistory.filter((t) => {
       const s = (t.status || "").toLowerCase();
       const isCompleted = s === "completed" || s === "transferred";
       const isCancelled = s === "cancelled" || s === "no_show" || s === "expired";
-      if (isCompleted) return true;
-      if (showCancelledHistory && isCancelled) return true;
-      return false;
+      if (!isCompleted && (!showCancelledHistory || !isCancelled)) {
+        return false;
+      }
+      // Strictly scope history tickets to selected profile
+      return doesRecordMatchMember(t, selectedMember);
     });
-  }, [userTicketHistory, showCancelledHistory]);
+  }, [userTicketHistory, showCancelledHistory, doesRecordMatchMember, selectedMember]);
+
+  // Dynamically calculate accurate clinical summary metrics for the selected profile
+  const selectedMemberHistoryStats = useMemo(() => {
+    const allVisits = [];
+
+    historyTickets.forEach((t) => {
+      allVisits.push({
+        date: t.created_at || t.join_timestamp || t.serve_end_time,
+        department: t.department_name || t.service_category,
+        doctor: t.doctor_name || t.served_by_doctor_name,
+        diagnosis: t.medical_condition,
+        prescription_notes: t.prescription_notes,
+      });
+    });
+
+    historyAppointments.forEach((a) => {
+      allVisits.push({
+        date: a.appointment_date,
+        department: a.department_name || a.service_category,
+        doctor: a.doctor_name || a.served_by_doctor_name,
+        diagnosis: a.reason || a.medical_condition,
+        prescription_notes: a.prescription_notes,
+      });
+    });
+
+    allVisits.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+    const totalVisitsCount = allVisits.length;
+    const isReturning = totalVisitsCount > 0;
+    const latest = allVisits[0] || null;
+
+    const diagnosesSet = new Set();
+    allVisits.forEach((v) => {
+      if (v.diagnosis && v.diagnosis !== "general_checkup" && v.diagnosis !== "Clinical Consultation") {
+        diagnosesSet.add(v.diagnosis);
+      }
+      if (v.prescription_notes) {
+        try {
+          const rx = typeof v.prescription_notes === "object" ? v.prescription_notes : JSON.parse(v.prescription_notes);
+          if (rx?.diagnosis && rx.diagnosis !== "Clinical Consultation") {
+            diagnosesSet.add(rx.diagnosis);
+          }
+        } catch (e) {}
+      }
+    });
+
+    const summaryObj = {
+      total_visits: totalVisitsCount,
+      last_visit: latest?.date ? new Date(latest.date).toLocaleDateString() : (selectedMemberId === "self" ? myMedicalSummary?.last_visit : null),
+      last_department: latest?.department || (selectedMemberId === "self" ? myMedicalSummary?.last_department : null),
+      last_doctor: latest?.doctor || (selectedMemberId === "self" ? myMedicalSummary?.last_doctor : null),
+      past_diagnoses: diagnosesSet.size > 0 ? Array.from(diagnosesSet).slice(0, 5) : (selectedMemberId === "self" ? (myMedicalSummary?.past_diagnoses || []) : []),
+    };
+
+    const patientObj = {
+      name: selectedMember.name,
+      age: selectedMember.age,
+      gender: selectedMember.gender,
+      relation: selectedMember.relation,
+      total_visits: totalVisitsCount,
+    };
+
+    return {
+      totalVisits: totalVisitsCount,
+      isReturningPatient: isReturning,
+      summary: totalVisitsCount > 0 ? summaryObj : null,
+      patient: totalVisitsCount > 0 ? patientObj : null,
+    };
+  }, [historyTickets, historyAppointments, selectedMember, selectedMemberId, myMedicalSummary]);
 
   const displayedActiveAppointments = useMemo(() => {
     if (!aptFilterQuery.trim()) return activeAppointments;
@@ -1077,6 +1197,11 @@ export default function PatientPage({
 
     if (setActiveFamilyMemberProp) {
       setActiveFamilyMemberProp(memId === "self" ? null : member);
+    }
+
+    if (member.name && member.name !== "Self") {
+      fetchUserAppointments(member.name);
+      fetchUserTicketHistory(member.name);
     }
 
     // If this family member already has a live active ticket in familyTickets, switch activeTicket to it
@@ -1282,6 +1407,18 @@ export default function PatientPage({
     e.preventDefault();
     if (!name.trim()) return;
 
+    // 1 Ticket Per Profile Policy guard
+    if (isLiveTicket) {
+      const activeT = activeTicket;
+      const memName = selectedMember ? selectedMember.name : (name || "Patient");
+      setStatusMsg(
+        language === "hi"
+          ? `आपके पास पहले से ही ${memName} के लिए सक्रिय टोकन #${activeT.ticket_id} मौजूद है। अस्पताल नीति के अनुसार 1 मरीज़ के लिए 1 समय पर केवल 1 सक्रिय टोकन मान्य है। नया टोकन लेने के लिए कृपया मौजूदा टोकन पूरा होने की प्रतीक्षा करें या इसे रद्द करें।`
+          : `Active ticket #${activeT.ticket_id} is already in progress for ${memName}. Hospital policy permits only 1 active ticket per patient profile at a time. Please wait for your turn or cancel your current ticket to switch departments.`
+      );
+      return;
+    }
+
     // OPD status gate: Walk-in registration only allowed when OPD is open (Emergency priority can bypass 24/7)
     const isEmergency = Number(priority) === 1;
     if (registrationStatus.isClosed && !isEmergency) {
@@ -1351,8 +1488,27 @@ export default function PatientPage({
         refreshData();
       } else {
         const err = await res.json();
+        if (res.status === 409 && (err.ticket || err.existing_ticket)) {
+          const exist = err.ticket || err.existing_ticket;
+          setActiveTicket(exist);
+          setFamilyTickets((prev) => {
+            const updated = { ...prev, [selectedMemberId]: exist };
+            try {
+              const ticketStorageKey = `family_tickets_${currentUser ? (currentUser.username || currentUser.email) : "guest"}`;
+              localStorage.setItem(ticketStorageKey, JSON.stringify(updated));
+            } catch (e) {}
+            window.dispatchEvent(new CustomEvent("family_tickets_updated", { detail: updated }));
+            return updated;
+          });
+          if (setTicketQrData) {
+            fetch(`${API_BASE}/api/v1/plugin/ticket-qr/${exist.ticket_id}`)
+              .then((rqr) => rqr.json())
+              .then((qr) => setTicketQrData(qr))
+              .catch(() => {});
+          }
+        }
         const msg = typeof err.detail === "string" ? err.detail : Array.isArray(err.detail) ? err.detail.map((d) => d.msg || JSON.stringify(d)).join(", ") : (err.message || "Failed to issue ticket.");
-        setStatusMsg(`Error: ${msg}`);
+        setStatusMsg(res.status === 409 ? `Notice: ${msg}` : `Error: ${msg}`);
       }
     } catch (err) {
       setStatusMsg(`Join failed: ${err.message}`);
@@ -1419,6 +1575,16 @@ export default function PatientPage({
   const handleAppointmentCheckIn = async (aptId) => {
     const targetId = aptId || "";
     if (!targetId.trim()) return;
+
+    // 1 Ticket Per Profile Policy guard for appointment check-in
+    if (isLiveTicket && activeTicket.appointment_id !== targetId && activeTicket.ticket_id !== targetId) {
+      setStatusMsg(
+        language === "hi"
+          ? `आपके पास पहले से ही सक्रिय टोकन #${activeTicket.ticket_id} मौजूद है। कृपया इस अपॉइंटमेंट में चेक-इन करने से पहले पिछला टोकन पूरा होने की प्रतीक्षा करें या उसे रद्द करें।`
+          : `You already have an active ticket (#${activeTicket.ticket_id}) in progress. Please complete or cancel your existing ticket before checking into another appointment.`
+      );
+      return;
+    }
 
     // OPD status gate: Check-in only allowed when OPD is open
     if (registrationStatus.isClosed) {
@@ -2661,8 +2827,188 @@ export default function PatientPage({
                     </div>
                   )}
 
-                  {/* Operating Hours & Cutoff Status Banner */}
-                  {registrationStatus.isClosed ? (
+                  {isLiveTicket ? (
+                    /* ACTIVE TICKET IN PROGRESS CARD (1 Ticket Per Profile Policy) */
+                    <div
+                      style={{
+                        padding: "24px",
+                        borderRadius: "16px",
+                        background: "var(--patient-card-bg, #FFFFFF)",
+                        border: "1.5px solid var(--patient-card-border, #E2E8F0)",
+                        boxShadow: "0 4px 20px rgba(0, 0, 0, 0.05)",
+                        marginBottom: "20px",
+                      }}
+                    >
+                      {/* Header Status Row */}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              width: "10px",
+                              height: "10px",
+                              borderRadius: "50%",
+                              background: activeTicket.status === "serving" ? "#10B981" : "#0284C7",
+                              boxShadow: activeTicket.status === "serving" ? "0 0 0 4px rgba(16, 185, 129, 0.2)" : "0 0 0 4px rgba(2, 132, 199, 0.2)",
+                            }}
+                          />
+                          <span style={{ fontSize: "14px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
+                            {t("activeTicketInProgress", language)}
+                          </span>
+                        </div>
+                        <span
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: "999px",
+                            background: activeTicket.status === "serving" ? "#DCFCE7" : "#E0F2FE",
+                            color: activeTicket.status === "serving" ? "#15803D" : "#0284C7",
+                            fontSize: "12px",
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          {getStatusLabel(activeTicket.status, language)}
+                        </span>
+                      </div>
+
+                      {/* Big Ticket Highlight Box */}
+                      <div
+                        style={{
+                          padding: "18px 20px",
+                          borderRadius: "14px",
+                          background: "linear-gradient(135deg, rgba(2, 132, 199, 0.06) 0%, rgba(14, 165, 233, 0.02) 100%)",
+                          border: "1.5px solid #BAE6FD",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          flexWrap: "wrap",
+                          gap: "16px",
+                          marginBottom: "16px",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "12px", fontWeight: 700, color: "#0284C7", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+                            {selectedMember?.name || activeTicket.name} • {getCategoryLabel(activeTicket.service_category, language)}
+                          </div>
+                          <div style={{ fontSize: "32px", fontWeight: 900, color: "#0369A1", letterSpacing: "-0.5px", margin: "4px 0" }}>
+                            #{activeTicket.ticket_id}
+                          </div>
+                          <div style={{ fontSize: "13px", color: "var(--patient-text-sub, #64748B)", fontWeight: 500 }}>
+                            {activeTicket.status === "serving" ? (
+                              language === "hi" ? "वर्तमान में काउंटर पर डॉक्टर द्वारा देखा जा रहा है" : "Currently being served at consultation desk"
+                            ) : (
+                              <>
+                                {language === "hi" ? "कतार स्थिति:" : "Queue Position:"}{" "}
+                                <strong style={{ color: "var(--patient-text-main, #0F172A)" }}>#{activeTicket.position || 1}</strong>
+                                {" • "}
+                                {language === "hi" ? "अनुमानित प्रतीक्षा:" : "Est. Wait:"}{" "}
+                                <strong style={{ color: "#0284C7" }}>~{Math.round(activeTicket.estimated_wait_minutes || activeTicket.predicted_service_minutes || 10)} min</strong>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById("digital-ticket-pass");
+                              if (el) el.scrollIntoView({ behavior: "smooth" });
+                            }}
+                            style={{
+                              padding: "10px 18px",
+                              borderRadius: "10px",
+                              background: "#0284C7",
+                              color: "#FFFFFF",
+                              border: "none",
+                              fontSize: "13px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              boxShadow: "0 2px 8px rgba(2, 132, 199, 0.3)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "8px",
+                            }}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h10"/><path d="M7 16h10"/></svg>
+                            <span>{t("viewPassBtn", language)}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCancelError("");
+                              setShowCancelModal(true);
+                            }}
+                            style={{
+                              padding: "8px 16px",
+                              borderRadius: "10px",
+                              background: "#FFF1F2",
+                              color: "#DC2626",
+                              border: "1px solid #FECACA",
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                            <span>{t("cancelCurrentTicketBtn", language)}</span>
+                          </button>
+                        </div>
+                      </div>
+
+
+
+                      {/* Book for Another Family Member Quick Switcher */}
+                      {Array.isArray(familyMembers) && familyMembers.filter((m) => m && m.id !== selectedMemberId).length > 0 && (
+                        <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px dashed var(--patient-card-border, #E2E8F0)" }}>
+                          <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--patient-text-sub, #64748B)", marginBottom: "8px" }}>
+                            {t("bookForAnotherMember", language)}
+                          </div>
+                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                            {familyMembers.filter((m) => m && m.id !== selectedMemberId).map((m) => {
+                              const memTkt = familyTickets[m.id];
+                              const hasLive = memTkt && isLiveTicketStatus(memTkt);
+                              return (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => handleSelectMember(m)}
+                                  style={{
+                                    padding: "7px 12px",
+                                    borderRadius: "8px",
+                                    border: hasLive ? "1px solid #BBF7D0" : "1px solid var(--patient-card-border, #CBD5E1)",
+                                    background: hasLive ? "#F0FDF4" : "var(--patient-sub-card, #F8FAFC)",
+                                    color: hasLive ? "#15803D" : "var(--patient-text-main, #0F172A)",
+                                    fontSize: "12px",
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    transition: "all 0.15s ease",
+                                  }}
+                                >
+                                  <span>{hasLive ? "🎫" : "👤"} {m.name}</span>
+                                  <span style={{ fontSize: "11px", color: hasLive ? "#16A34A" : "#64748B" }}>
+                                    ({hasLive ? `#${memTkt.ticket_id}` : (m.relation === "self" ? (language === "hi" ? "स्वयं" : "Self") : (t(`relation_${m.relation}`, language) || m.relation))})
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Operating Hours & Cutoff Status Banner */}
+                      {registrationStatus.isClosed ? (
                     <div
                       style={{
                         marginBottom: "18px",
@@ -2732,7 +3078,7 @@ export default function PatientPage({
                         </label>
                         <input
                           type="text"
-                          placeholder="user"
+                          placeholder={t("patientNamePlaceholder", language)}
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           required
@@ -3015,6 +3361,8 @@ export default function PatientPage({
                       </button>
                     )}
                   </form>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -3054,11 +3402,11 @@ export default function PatientPage({
                           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                           <circle cx="12" cy="7" r="4" />
                         </svg>
-                        Patient Full Name
+                        {t("patientNameLabel", language)}
                       </label>
                       <input
                         type="text"
-                        placeholder="e.g. Rahul Verma"
+                        placeholder={t("patientNamePlaceholder", language)}
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         required
@@ -3073,7 +3421,7 @@ export default function PatientPage({
                             <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
                             <path d="M9 22v-4h6v4" />
                           </svg>
-                          Department
+                          {t("medicalDeptLabel", language)}
                         </label>
                         <select
                           value={category}
@@ -3095,7 +3443,7 @@ export default function PatientPage({
                             <line x1="8" y1="2" x2="8" y2="6" />
                             <line x1="3" y1="10" x2="21" y2="10" />
                           </svg>
-                          Appointment Date
+                          {t("appointmentDateLabel", language)}
                         </label>
                         <input
                           type="date"
@@ -3116,15 +3464,15 @@ export default function PatientPage({
                             <circle cx="12" cy="12" r="10" />
                             <polyline points="12 6 12 12 16 14" />
                           </svg>
-                          Select Available Time Slot <span style={{ color: "#EF4444", fontSize: "11px" }}>*</span>
+                          {t("selectTimeSlotLabel", language)} <span style={{ color: "#EF4444", fontSize: "11px" }}>*</span>
                         </span>
                         {aptTimeSlot ? (
                           <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "#E0F2FE", padding: "2px 8px", borderRadius: "12px" }}>
-                            Selected: {aptTimeSlot}
+                            {t("slotSelected", language)}: {aptTimeSlot}
                           </span>
                         ) : (
                           <span style={{ fontSize: "11px", fontWeight: 600, color: "#D97706", background: "#FEF3C7", padding: "2px 8px", borderRadius: "12px" }}>
-                            {language === "hi" ? "स्लॉट चुनें (अनिवार्य)" : "Choose a slot manually"}
+                            {t("chooseSlotHint", language)}
                           </span>
                         )}
                       </label>
@@ -3138,7 +3486,7 @@ export default function PatientPage({
                               type="button"
                               disabled={past}
                               onClick={() => !past && setAptTimeSlot(slot)}
-                              title={past ? "This time slot has already passed" : `Select ${slot}`}
+                              title={past ? t("slotPassedTitle", language) : `Select ${slot}`}
                               style={{
                                 padding: "10px 4px",
                                 borderRadius: "8px",
@@ -3162,7 +3510,7 @@ export default function PatientPage({
                                   fontSize: "8px", background: "#94A3B8", color: "#fff",
                                   borderRadius: "4px", padding: "1px 3px", fontWeight: 800,
                                   lineHeight: 1.2, letterSpacing: "0.3px",
-                                }}>PAST</span>
+                                }}>{t("slotPassed", language)}</span>
                               )}
                             </button>
                           );
@@ -3170,9 +3518,7 @@ export default function PatientPage({
                       </div>
                       {!aptTimeSlot && (
                         <p style={{ margin: "8px 0 0 0", fontSize: "11.5px", color: "#64748B", fontStyle: "italic" }}>
-                          {language === "hi"
-                            ? "कृपया ऊपर दिए गए उपलब्ध समय स्लॉट्स में से अपनी पसंद का स्लॉट चुनें।"
-                            : "Click any available time slot above to select your preferred appointment slot."}
+                          {t("clickSlotHint", language)}
                         </p>
                       )}
                     </div>
@@ -3182,7 +3528,7 @@ export default function PatientPage({
                       disabled={!aptTimeSlot}
                       className="modern-submit-btn"
                       style={!aptTimeSlot ? { opacity: 0.6, cursor: "not-allowed" } : {}}
-                      title={!aptTimeSlot ? (language === "hi" ? "कृपया पहले एक समय स्लॉट चुनें" : "Please select a time slot first") : ""}
+                      title={!aptTimeSlot ? t("selectSlotFirst", language) : ""}
                     >
                       {t("bookSlotBtn", language)}
                     </button>
@@ -3296,42 +3642,44 @@ export default function PatientPage({
 
             {/* Digital Ticket Pass (only if live: waiting, serving, on_hold) */}
             {isLiveTicket && (
-              <DigitalTicketPassCard
-                activeTicket={activeTicket}
-                setActiveTicket={setActiveTicket}
-                familyTickets={familyTickets}
-                onSwitchTicketPass={handleSwitchTicketPass}
-                onTakeTicketForMember={(targetMember) => {
-                  if (targetMember) {
-                    handleSelectMember(targetMember);
-                  } else {
-                    handleTabChange("family");
+              <div id="digital-ticket-pass">
+                <DigitalTicketPassCard
+                  activeTicket={activeTicket}
+                  setActiveTicket={setActiveTicket}
+                  familyTickets={familyTickets}
+                  onSwitchTicketPass={handleSwitchTicketPass}
+                  onTakeTicketForMember={(targetMember) => {
+                    if (targetMember) {
+                      handleSelectMember(targetMember);
+                    } else {
+                      handleTabChange("family");
+                    }
+                  }}
+                  members={familyMembers}
+                  ticketQrData={ticketQrData}
+                  language={language}
+                  onOpenPrescriptionSlip={handleOpenPrescriptionSlip}
+                  parsePrescription={parsePrescription}
+                  onPrint={() =>
+                    printTokenPass(
+                      activeTicket,
+                      ticketQrData?.qr_code_base64 || ticketQrData?.qr_base64,
+                      language,
+                      hospitalBranding
+                    )
                   }
-                }}
-                members={familyMembers}
-                ticketQrData={ticketQrData}
-                language={language}
-                onOpenPrescriptionSlip={handleOpenPrescriptionSlip}
-                parsePrescription={parsePrescription}
-                onPrint={() =>
-                  printTokenPass(
-                    activeTicket,
-                    ticketQrData?.qr_code_base64 || ticketQrData?.qr_base64,
-                    language,
-                    hospitalBranding
-                  )
-                }
-                onOpenAdjustModal={() => {
-                  setAdjustError("");
-                  setAdjustSuccessMsg("");
-                  setSelectedSkipCount(1);
-                  setShowAdjustModal(true);
-                }}
-                onOpenCancelModal={() => {
-                  setCancelError("");
-                  setShowCancelModal(true);
-                }}
-              />
+                  onOpenAdjustModal={() => {
+                    setAdjustError("");
+                    setAdjustSuccessMsg("");
+                    setSelectedSkipCount(1);
+                    setShowAdjustModal(true);
+                  }}
+                  onOpenCancelModal={() => {
+                    setCancelError("");
+                    setShowCancelModal(true);
+                  }}
+                />
+              </div>
             )}
           </div>
 
@@ -3350,11 +3698,44 @@ export default function PatientPage({
       ) : activeTab === "my_apts" ? (
         /* MY APPOINTMENTS FULL VIEW */
         <div style={standaloneCardStyle}>
+          {/* Quick Profile Switcher for Active Appointments */}
+          <div style={{ marginBottom: "18px" }}>
+            <FamilyMemberSwitcher
+              members={familyMembers}
+              selectedMemberId={selectedMemberId}
+              onSelectMember={handleSelectMember}
+              onAddMember={() => handleTabChange("family")}
+              onDeleteMember={handleDeleteMember}
+              language={language}
+              familyTickets={familyTickets}
+            />
+          </div>
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div>
-              <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, letterSpacing: "-0.4px" }}>
-                {t("myActiveAppointments", language)}
-              </h3>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                <h3 style={{ margin: 0, fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, letterSpacing: "-0.4px" }}>
+                  {t("myActiveAppointments", language)}
+                </h3>
+                <span style={{
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  color: "#0369A1",
+                  background: "var(--patient-tag-bg, #E0F2FE)",
+                  border: "1px solid var(--patient-tag-border, #BAE6FD)",
+                  padding: "2px 8px",
+                  borderRadius: "6px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}>
+                  <span>👤</span>
+                  <span>{selectedMember?.name || "Self"}</span>
+                  {selectedMember?.relation && selectedMember.relation !== "self" && (
+                    <span style={{ opacity: 0.85 }}>({t(`relation_${selectedMember.relation}`, language) || selectedMember.relation})</span>
+                  )}
+                </span>
+              </div>
               <span style={{ fontSize: "13px", color: "var(--patient-text-sub, #64748B)", fontWeight: 500, lineHeight: 1.55 }}>
                 {t("activeAptsSubtitle", language)}
               </span>
@@ -3662,15 +4043,48 @@ export default function PatientPage({
       ) : activeTab === "history" ? (
         /* VISIT HISTORY FULL VIEW */
         <div style={standaloneCardStyle}>
+          {/* Quick Profile Switcher for Medical & Visit History */}
+          <div style={{ marginBottom: "18px" }}>
+            <FamilyMemberSwitcher
+              members={familyMembers}
+              selectedMemberId={selectedMemberId}
+              onSelectMember={handleSelectMember}
+              onAddMember={() => handleTabChange("family")}
+              onDeleteMember={handleDeleteMember}
+              language={language}
+              familyTickets={familyTickets}
+            />
+          </div>
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div>
-              <h3 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, letterSpacing: "-0.4px" }}>
-                {t("medicalVisitHistory", language)}
-              </h3>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                <h3 style={{ margin: 0, fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 800, letterSpacing: "-0.4px" }}>
+                  {t("medicalVisitHistory", language)}
+                </h3>
+                <span style={{
+                  fontSize: "11px",
+                  fontWeight: 800,
+                  color: "#0369A1",
+                  background: "var(--patient-tag-bg, #E0F2FE)",
+                  border: "1px solid var(--patient-tag-border, #BAE6FD)",
+                  padding: "2px 8px",
+                  borderRadius: "6px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}>
+                  <span>👤</span>
+                  <span>{selectedMember?.name || "Self"}</span>
+                  {selectedMember?.relation && selectedMember.relation !== "self" && (
+                    <span style={{ opacity: 0.85 }}>({t(`relation_${selectedMember.relation}`, language) || selectedMember.relation})</span>
+                  )}
+                </span>
+              </div>
               <span style={{ fontSize: "13px", color: "var(--patient-text-sub, #64748B)", fontWeight: 500, lineHeight: 1.55 }}>
                 {language === "hi"
-                  ? "आपकी सभी पुरानी ओपीडी विज़िट्स, डिजिटल दवा पर्चियां और फॉलो-अप परामर्श रिकॉर्ड।"
-                  : "Chronological archive of all your past clinical visits, e-prescriptions, and follow-up consultations."}
+                  ? `पुराने परामर्श, ई-प्रिस्क्रिप्शन एवं फॉलो-अप रिकॉर्ड (${selectedMember?.name || "Self"})`
+                  : `Chronological archive of past clinical visits, e-prescriptions, and follow-ups for ${selectedMember?.name || "Self"}.`}
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -3691,10 +4105,10 @@ export default function PatientPage({
           {/* Metric Summary Header */}
           <div style={{ marginBottom: "20px" }}>
             <HistorySummary
-              patient={myMedicalPatient}
-              summary={myMedicalSummary}
-              isReturningPatient={isMyReturningPatient}
-              totalVisits={myMedicalTotalVisits}
+              patient={selectedMemberHistoryStats.patient}
+              summary={selectedMemberHistoryStats.summary}
+              isReturningPatient={selectedMemberHistoryStats.isReturningPatient}
+              totalVisits={selectedMemberHistoryStats.totalVisits}
               language={language}
             />
           </div>
@@ -3827,15 +4241,20 @@ export default function PatientPage({
 
           {displayedHistoryAppointments.length === 0 && displayedHistoryTickets.length === 0 ? (
             <div style={{ padding: "48px 24px", textAlign: "center", background: "var(--patient-sub-card, #F8FAFC)", borderRadius: "16px", border: "1px solid var(--patient-card-border, #E2E8F0)", color: "var(--patient-text-sub, #94A3B8)", fontSize: "13.5px" }}>
-              <p style={{ margin: "0 0 8px 0", fontSize: "15px", fontWeight: 700, color: "var(--patient-text-main, #0F172A)" }}>
-                {t("noHistoryMsg", language)}
-              </p>
-              <p style={{ margin: "0 0 14px 0", fontSize: "12px", color: "var(--patient-text-sub, #94A3B8)" }}>
+              <div style={{ width: "48px", height: "48px", borderRadius: "14px", background: "var(--patient-tag-bg, #F0F9FF)", color: "#0284C7", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "22px", marginBottom: "12px" }}>
+                <span>📋</span>
+              </div>
+              <p style={{ margin: "0 0 8px 0", fontSize: "16px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
                 {language === "hi"
-                  ? "चयनित फ़िल्टर के लिए कोई पूर्व परामर्श या विज़िट रिकॉर्ड नहीं मिला।"
-                  : "No prior consultation or clinical visit records match your selected filters."}
+                  ? `${selectedMember?.name || "इस प्रोफ़ाइल"} का कोई पूर्व परामर्श रिकॉर्ड नहीं मिला`
+                  : `No past clinical consultation records on file for ${selectedMember?.name || "this profile"}`}
               </p>
-              {(historyFilterType !== "all" || historySearchQuery || showCancelledHistory) && (
+              <p style={{ margin: "0 0 16px 0", fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)", maxWidth: "460px", marginInline: "auto", lineHeight: 1.5 }}>
+                {language === "hi"
+                  ? "जब आप इस प्रोफ़ाइल के लिए अपॉइंटमेंट बुक करेंगे या ओपीडी टोकन लेंगे, तो सभी पर्चियां और परामर्श यहाँ सहेजे जाएंगे।"
+                  : `When clinical appointments or walk-in tickets are completed for ${selectedMember?.name || "this patient"}, all consultation notes and digital Rx slips will appear here.`}
+              </p>
+              {(historyFilterType !== "all" || historySearchQuery || showCancelledHistory) ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -3843,9 +4262,9 @@ export default function PatientPage({
                     setHistorySearchQuery("");
                   }}
                   style={{
-                    padding: "6px 14px",
+                    padding: "7px 16px",
                     borderRadius: "8px",
-                    border: "1px solid #0284C7",
+                    border: "1.5px solid #0284C7",
                     background: "transparent",
                     color: "#0284C7",
                     fontSize: "12px",
@@ -3855,6 +4274,42 @@ export default function PatientPage({
                 >
                   {language === "hi" ? "फ़िल्टर रीसेट करें" : "Reset Filters"}
                 </button>
+              ) : (
+                <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("walkin")}
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "#0284C7",
+                      color: "#FFFFFF",
+                      fontSize: "12.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 6px rgba(2, 132, 199, 0.2)",
+                    }}
+                  >
+                    {t("instantWalkin", language)}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTabChange("book")}
+                    style={{
+                      padding: "8px 18px",
+                      borderRadius: "8px",
+                      border: "1.5px solid #0284C7",
+                      background: "transparent",
+                      color: "#0284C7",
+                      fontSize: "12.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {t("bookSlot", language)}
+                  </button>
+                </div>
               )}
             </div>
           ) : (
@@ -5494,10 +5949,95 @@ function QueueTelemetrySidebar({
   language = "en",
   branding = null,
 }) {
-  const primaryServing = servingTickets.length > 0 ? servingTickets[0] : null;
+  const userDept = activeTicket?.service_category ? String(activeTicket.service_category).toLowerCase() : null;
+  const isTransferred = Boolean(activeTicket?.transferred_from_dept || activeTicket?.parent_ticket_id);
+  const transferredFrom = activeTicket?.transferred_from_dept ? String(activeTicket.transferred_from_dept).toLowerCase() : null;
+
+  // View toggle: 'auto' (scoped to patient's active department) vs 'all' (all hospital departments)
+  const [scopeMode, setScopeMode] = useState("auto");
+
+  // Determine active department filter
+  const activeDept = (scopeMode === "auto" && userDept) ? userDept : null;
+
+  // Filter serving tickets by department if scoped
+  const scopedServing = activeDept
+    ? servingTickets.filter((t) => (t.service_category || "").toLowerCase() === activeDept)
+    : servingTickets;
+  const primaryServing = scopedServing.length > 0 ? scopedServing[0] : null;
+
+  // Filter queue snapshot by department if scoped
+  const scopedQueue = activeDept
+    ? queueSnapshot.filter((t) => (t.service_category || "").toLowerCase() === activeDept)
+    : queueSnapshot;
+  const inLineCount = scopedQueue.length;
+
+  // Estimated wait calculation
+  let displayAvgWait = analytics ? analytics.avg_wait_minutes : 12;
+  if (activeDept && activeTicket?.estimated_wait_minutes !== undefined && activeTicket.estimated_wait_minutes !== null) {
+    displayAvgWait = activeTicket.estimated_wait_minutes;
+  } else if (scopedQueue.length > 0 && scopedQueue[0].estimated_wait_minutes !== undefined) {
+    displayAvgWait = scopedQueue[0].estimated_wait_minutes;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Transfer Care Journey Banner (shown when ticket is transferred to another dept) */}
+      {isTransferred && (
+        <div
+          className="telemetry-sidebar-card"
+          style={{
+            background: "linear-gradient(135deg, rgba(14, 165, 233, 0.1) 0%, rgba(99, 102, 241, 0.08) 100%)",
+            border: "1.5px solid #0EA5E9",
+            borderRadius: "14px",
+            padding: "14px 16px",
+            boxShadow: "0 4px 14px rgba(14, 165, 233, 0.12)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "10px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ fontSize: "16px" }}>🔄</span>
+              <span style={{ fontSize: "12px", fontWeight: 800, color: "#0369A1", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                {language === "hi" ? "विभाग स्थानांतरण सक्रिय" : "Department Transfer Active"}
+              </span>
+            </div>
+            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", background: "rgba(14,165,233,0.15)", padding: "2px 8px", borderRadius: "6px" }}>
+              #{activeTicket.ticket_id}
+            </span>
+          </div>
+
+          {/* 2-Step Care Stepper */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ flex: 1, background: "rgba(16, 185, 129, 0.12)", border: "1px solid #10B981", padding: "6px 8px", borderRadius: "8px", textAlign: "center" }}>
+              <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#059669", display: "block" }}>
+                ✓ {language === "hi" ? "परामर्श पूर्ण" : "CONSULTATION COMPLETED"}
+              </span>
+              <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
+                {getCategoryLabel(transferredFrom || "consultation", language)}
+              </span>
+            </div>
+            <span style={{ color: "#0EA5E9", fontWeight: 900, fontSize: "16px" }}>➔</span>
+            <div style={{ flex: 1, background: "rgba(14, 165, 233, 0.15)", border: "1.5px solid #0EA5E9", padding: "6px 8px", borderRadius: "8px", textAlign: "center" }}>
+              <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#0284C7", display: "block" }}>
+                ● {language === "hi" ? "कतार में प्रतीक्षारत" : "NOW IN QUEUE"}
+              </span>
+              <span style={{ fontSize: "12px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
+                {getCategoryLabel(userDept || "pharmacy", language)}
+              </span>
+            </div>
+          </div>
+
+          {/* Guidance Note */}
+          <div style={{ fontSize: "11.5px", color: "var(--patient-text-main, #334155)", lineHeight: 1.45, background: "rgba(255, 255, 255, 0.75)", padding: "8px 10px", borderRadius: "8px", border: "1px solid rgba(14, 165, 233, 0.2)" }}>
+            {language === "hi"
+              ? `डॉक्टर द्वारा आपकी पर्ची ${getCategoryLabel(userDept || "pharmacy", language)} को भेज दी गई है। कृपया ${getCategoryLabel(userDept || "pharmacy", language)} काउंटर की ओर जाएं।`
+              : `Doctor has forwarded your case to ${getCategoryLabel(userDept || "pharmacy", language)}. Please proceed to the ${getCategoryLabel(userDept || "pharmacy", language)} counter.`}
+          </div>
+        </div>
+      )}
+
       {/* 1. Live Queue Counter Pulse Card */}
       <div className="telemetry-sidebar-card">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -5507,28 +6047,86 @@ function QueueTelemetrySidebar({
               {language === "hi" ? "लाइव कतार मॉनिटर" : "Live Queue Monitor"}
             </span>
           </div>
-          <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7", background: "var(--patient-tag-bg, #F0F9FF)", padding: "2px 8px", borderRadius: "6px" }}>
-            {analytics ? `${analytics.active_counters} ${language === "hi" ? "डेस्क सक्रिय" : "Desks Active"}` : (language === "hi" ? "2 डेस्क सक्रिय" : "2 Desks Active")}
-          </span>
         </div>
+
+        {/* Department Scope Selector (My Department vs All Hospital Desks) */}
+        {userDept && (
+          <div style={{ display: "flex", gap: "6px", background: "var(--patient-sub-card, #F1F5F9)", padding: "3px", borderRadius: "8px", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
+            <button
+              type="button"
+              onClick={() => setScopeMode("auto")}
+              style={{
+                flex: 1,
+                padding: "5px 8px",
+                borderRadius: "6px",
+                border: "none",
+                background: scopeMode === "auto" ? "#0284C7" : "transparent",
+                color: scopeMode === "auto" ? "#FFFFFF" : "var(--patient-text-sub, #64748B)",
+                fontWeight: 700,
+                fontSize: "11px",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "4px",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span>📍</span>
+              <span>{getCategoryLabel(userDept, language)}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setScopeMode("all")}
+              style={{
+                flex: 1,
+                padding: "5px 8px",
+                borderRadius: "6px",
+                border: "none",
+                background: scopeMode === "all" ? "#0284C7" : "transparent",
+                color: scopeMode === "all" ? "#FFFFFF" : "var(--patient-text-sub, #64748B)",
+                fontWeight: 700,
+                fontSize: "11px",
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              {language === "hi" ? "सभी डेस्क (अस्पताल)" : "All Desks (Hospital)"}
+            </button>
+          </div>
+        )}
 
         {/* Now Serving Highlight */}
         <div style={{ background: "linear-gradient(135deg, #0F172A 0%, #1E293B 70%, #0C4A6E 100%)", borderRadius: "14px", padding: "16px", color: "#FFFFFF" }}>
-          <div style={{ fontSize: "11px", color: "#38BDF8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            {t("nowServing", language)}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: "11px", color: "#38BDF8", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              {t("nowServing", language)}
+            </div>
+            {activeDept && (
+              <span style={{ fontSize: "10px", color: "#BAE6FD", background: "rgba(56, 189, 248, 0.2)", padding: "2px 6px", borderRadius: "4px", fontWeight: 700 }}>
+                {getCategoryLabel(activeDept, language)}
+              </span>
+            )}
           </div>
           {primaryServing ? (
             <div style={{ marginTop: "4px" }}>
               <div style={{ fontSize: "32px", fontWeight: 900, color: "#38BDF8", lineHeight: 1.1 }}>
                 #{primaryServing.ticket_id}
               </div>
-              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.85)", marginTop: "2px" }}>
-                {language === "hi" ? "विभाग:" : "Dept:"} {getCategoryLabel(primaryServing.service_category || "consultation", language)}
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.85)", marginTop: "2px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span>{language === "hi" ? "विभाग:" : "Dept:"} <strong>{getCategoryLabel(primaryServing.service_category || "consultation", language)}</strong></span>
+                {(primaryServing.assigned_counter || primaryServing.counter) && (
+                  <span style={{ background: "rgba(255,255,255,0.18)", padding: "1px 6px", borderRadius: "4px", fontSize: "11px" }}>
+                    {language === "hi" ? "काउंटर: " : "Counter: "} {primaryServing.assigned_counter || primaryServing.counter}
+                  </span>
+                )}
               </div>
             </div>
           ) : (
             <div style={{ marginTop: "6px", fontSize: "13px", color: "rgba(255,255,255,0.85)", fontWeight: 600 }}>
-              {language === "hi" ? "अगले मरीज़ हेतु सभी डेस्क तैयार हैं" : "All desks ready for next patient"}
+              {activeDept
+                ? (language === "hi" ? `${getCategoryLabel(activeDept, language)} डेस्क अगले मरीज़ हेतु तैयार हैं` : `All ${getCategoryLabel(activeDept, language)} desks ready for next patient`)
+                : (language === "hi" ? "अगले मरीज़ हेतु सभी डेस्क तैयार हैं" : "All desks ready for next patient")}
             </div>
           )}
         </div>
@@ -5540,46 +6138,79 @@ function QueueTelemetrySidebar({
               {language === "hi" ? "औसत प्रतीक्षा" : "Est. Avg Wait"}
             </span>
             <span style={{ fontSize: "16px", fontWeight: 800, color: "#0284C7" }}>
-              {analytics ? analytics.avg_wait_minutes : 12} {language === "hi" ? "मिनट" : "min"}
+              {displayAvgWait} {language === "hi" ? "मिनट" : "min"}
             </span>
           </div>
           <div style={{ background: "var(--patient-sub-card, #F8FAFC)", padding: "10px 12px", borderRadius: "10px", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
             <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>
-              {language === "hi" ? "कतार में" : "In Line"}
+              {activeDept ? (language === "hi" ? `${getCategoryLabel(activeDept, language)} में` : `In ${getCategoryLabel(activeDept, language)}`) : (language === "hi" ? "कतार में" : "In Line")}
             </span>
             <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)" }}>
-              {queueSnapshot.length} {language === "hi" ? "मरीज़" : "patients"}
+              {inLineCount} {language === "hi" ? "मरीज़" : "patients"}
             </span>
           </div>
         </div>
       </div>
 
       {/* 2. Next in Line Preview */}
-      {queueSnapshot.length > 0 && (
+      {scopedQueue.length > 0 && (
         <div className="telemetry-sidebar-card" style={{ padding: "18px" }}>
-          <span style={{ fontSize: "12.5px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)", display: "flex", alignItems: "center", gap: "6px" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="16" x2="12" y2="16"/></svg>
-            <span>{language === "hi" ? "कतार में अगले टोकन" : "Next Up in Queue"}</span>
-          </span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "12.5px", fontWeight: 800, color: "var(--patient-text-main, #0F172A)", display: "flex", alignItems: "center", gap: "6px" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="16" x2="12" y2="16"/></svg>
+              <span>{language === "hi" ? "कतार में अगले टोकन" : "Next Up in Queue"}</span>
+            </span>
+            {activeDept && (
+              <span style={{ fontSize: "10px", fontWeight: 700, color: "#0284C7" }}>
+                {getCategoryLabel(activeDept, language)}
+              </span>
+            )}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "10px" }}>
-            {queueSnapshot.slice(0, 3).map((item) => (
-              <div key={item.ticket_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", borderRadius: "8px", background: "var(--patient-sub-card, #F8FAFC)", border: "1px solid var(--patient-card-border, #E2E8F0)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--patient-text-sub, #64748B)" }}>#{item.position}</span>
-                  <div>
-                    <strong style={{ fontSize: "12.5px", color: "var(--patient-text-main, #0F172A)" }}>#{item.ticket_id}</strong>
-                    {item.service_category && (
-                      <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>
-                        {getCategoryLabel(item.service_category, language)}
-                      </span>
-                    )}
+            {scopedQueue.slice(0, 4).map((item) => {
+              const isSelf = activeTicket && String(item.ticket_id) === String(activeTicket.ticket_id);
+              return (
+                <div
+                  key={item.ticket_id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "8px 10px",
+                    borderRadius: "8px",
+                    background: isSelf ? "rgba(14, 165, 233, 0.1)" : "var(--patient-sub-card, #F8FAFC)",
+                    border: isSelf ? "1.5px solid #0EA5E9" : "1px solid var(--patient-card-border, #E2E8F0)",
+                    boxShadow: isSelf ? "0 2px 8px rgba(14, 165, 233, 0.15)" : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: isSelf ? "#0284C7" : "var(--patient-text-sub, #64748B)" }}>
+                      #{item.position}
+                    </span>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <strong style={{ fontSize: "12.5px", color: isSelf ? "#0284C7" : "var(--patient-text-main, #0F172A)" }}>
+                          #{item.ticket_id}
+                        </strong>
+                        {isSelf && (
+                          <span style={{ fontSize: "9.5px", fontWeight: 800, color: "#FFFFFF", background: "#0284C7", padding: "1px 5px", borderRadius: "4px" }}>
+                            {language === "hi" ? "आप" : "YOU"}
+                          </span>
+                        )}
+                      </div>
+                      {item.service_category && (
+                        <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>
+                          {getCategoryLabel(item.service_category, language)}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>
+                    ~{item.estimated_wait_minutes}{language === "hi" ? "मि" : "m"}
+                  </span>
                 </div>
-                <span style={{ fontSize: "11px", fontWeight: 700, color: "#0284C7" }}>
-                  ~{item.estimated_wait_minutes}{language === "hi" ? "मि" : "m"}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -5659,6 +6290,16 @@ function DigitalTicketPassCard({
           <h2 style={{ margin: 0, fontSize: "32px", color: "#0284C7", fontWeight: 800 }}>
             #{activeTicket.ticket_id}
           </h2>
+          {activeTicket.transferred_from_dept && (
+            <div style={{ marginTop: "4px", display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(14, 165, 233, 0.1)", border: "1px solid #0EA5E9", borderRadius: "6px", padding: "2px 8px" }}>
+              <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
+                🔄 {language === "hi" ? "स्थानांतरित:" : "Transferred from:"} {getCategoryLabel(activeTicket.transferred_from_dept, language)}
+              </span>
+              {activeTicket.parent_ticket_id && (
+                <span style={{ fontSize: "10px", color: "var(--patient-text-sub, #64748B)" }}>(#{activeTicket.parent_ticket_id})</span>
+              )}
+            </div>
+          )}
         </div>
         <div style={{ textAlign: "right" }}>
           <span style={{ fontSize: "11px", color: "var(--patient-text-sub, #64748B)", display: "block" }}>{t("currentStatus", language)}</span>

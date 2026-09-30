@@ -18,8 +18,9 @@ const { verifyFamilyMemberOwnership, resolveOrCreateFamilyMember } = require("..
 const { closeAndExpirePreviousDayQueues } = require("../services/dailyClosureService");
 const { getIo, broadcastQueueUpdate } = require("../socket");
 const { PRIORITY_EMERGENCY, PRIORITY_ROUTINE, PRIORITY_STANDARD } = require("../utils/clinicalComplexity");
-const { getCurrentQueueDate, parseQueueDate } = require("../utils/timezone");
+const { getCurrentQueueDate, parseQueueDate, queueDateToPrismaDate } = require("../utils/timezone");
 const { getHospitalBranding } = require("../services/hospitalService");
+const prisma = require("../config/prisma");
 
 function urgencyToPriority(consumerType, urgency, priorityVal) {
   if (priorityVal === 1 || priorityVal === "1" || priorityVal === PRIORITY_EMERGENCY) return PRIORITY_EMERGENCY;
@@ -93,12 +94,14 @@ async function joinQueueEndpoint(req, res, next) {
     }
 
     let patientId = null;
-    if (family_member_id && (user_email || req.user?.email)) {
-      const emailToCheck = user_email || req.user?.email;
+    const emailToCheck = String(user_email || req.user?.email || "").trim().toLowerCase();
+    const cleanName = String(name || "Patient").trim();
+
+    if (family_member_id && family_member_id !== "self" && emailToCheck) {
       const fm = await resolveOrCreateFamilyMember({
         userEmailOrId: emailToCheck,
         memberId: family_member_id,
-        name,
+        name: cleanName,
         age,
         gender,
       });
@@ -107,13 +110,92 @@ async function joinQueueEndpoint(req, res, next) {
       }
     }
 
+    if (!patientId) {
+      // Resolve patientId for the primary profile ("self" or guest walk-in)
+      patientId = await engine.resolvePatientId(
+        emailToCheck,
+        cleanName,
+        "",
+        gender,
+        age
+      );
+    }
+
+    // Enforce 1 active ticket per profile policy
+    const tenant = engine._getTenant(tenant_id);
+    let existingActiveTicket = null;
+
+    if (tenant && tenant.tickets) {
+      for (const t of tenant.tickets.values()) {
+        const isLive = ["waiting", "serving", "on_hold", "hold"].includes(String(t.status || "").toLowerCase());
+        if (!isLive) continue;
+
+        const tEmail = String(t.user_email || "").trim().toLowerCase();
+        const tName = String(t.name || "").trim().toLowerCase();
+
+        // 1. If explicit dependent family_member_id is provided, match by member ID or exact name
+        if (family_member_id && family_member_id !== "self") {
+          if (t.family_member_id === family_member_id) {
+            existingActiveTicket = t;
+            break;
+          }
+          if (emailToCheck && tEmail === emailToCheck && tName === cleanName.toLowerCase()) {
+            existingActiveTicket = t;
+            break;
+          }
+        } else {
+          // 2. Primary account holder ("self" or guest walk-in)
+          if (tName === cleanName.toLowerCase()) {
+            if (!t.family_member_id || t.family_member_id === "self") {
+              existingActiveTicket = t;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!existingActiveTicket) {
+      const todayPrisma = queueDateToPrismaDate(getCurrentQueueDate());
+      const hid = await engine.resolveHospitalId(tenant_id);
+
+      const dbTicket = await prisma.tickets.findFirst({
+        where: {
+          hospital_id: hid,
+          queue_date: todayPrisma,
+          status: { in: ["waiting", "serving", "on_hold", "hold"] },
+          name: { equals: cleanName, mode: "insensitive" },
+          ...(patientId ? { patient_id: patientId } : {}),
+        },
+        orderBy: { id: "desc" },
+      });
+
+      if (dbTicket) {
+        existingActiveTicket = dbTicket;
+      }
+    }
+
+    if (existingActiveTicket) {
+      const deptName = existingActiveTicket.service_category || "Consultation";
+      const ticketNum = existingActiveTicket.ticket_id;
+      return res.status(409).json({
+        status: "error",
+        code: "ACTIVE_TICKET_EXISTS",
+        detail: `An active ticket (#${ticketNum}) is already in progress for ${cleanName} in ${deptName}. In accordance with hospital policy, each profile can hold only 1 active ticket at a time. Please wait for your turn or cancel this ticket before taking a new one.`,
+        message: `An active ticket (#${ticketNum}) is already in progress for ${cleanName} in ${deptName}. Hospital policy allows 1 active ticket per patient profile.`,
+        ticket: existingActiveTicket,
+        existing_ticket: existingActiveTicket,
+      });
+    }
+
     const ticket = await joinQueue({
       tenantId: tenant_id,
       consumerType: consumer_type,
       serviceCategory: service_category,
-      name,
+      name: cleanName,
       priorityLevel: priority,
-      userEmail: user_email || req.user?.email || "",
+      userEmail: emailToCheck,
+      familyMemberId: family_member_id,
       age,
       gender,
       medicalCondition: medical_condition,
