@@ -58,6 +58,30 @@ async function setDoctorDutyStatus(docIdentifier, statusData = {}) {
   if (statusData.userId) doctorDutyStatusStore.set(String(statusData.userId), record);
   if (statusData.email) doctorDutyStatusStore.set(String(statusData.email).trim().toLowerCase(), record);
 
+  // Persist status to employees table in DB so all services and restarts stay in sync
+  try {
+    const targetEmail = statusData.email || (String(docIdentifier).includes("@") ? String(docIdentifier).trim().toLowerCase() : null);
+    const targetUserId = statusData.userId || (!isNaN(Number(docIdentifier)) ? Number(docIdentifier) : null);
+
+    const empStatus = finalStatus === "OFF_DUTY" ? "inactive" : (finalStatus === "ACTIVE" ? "active" : finalStatus.toLowerCase());
+
+    const orClauses = [];
+    if (targetEmail) orClauses.push({ email: targetEmail });
+    if (targetUserId) orClauses.push({ user_id: targetUserId });
+
+    if (orClauses.length > 0) {
+      await prisma.employees.updateMany({
+        where: { OR: orClauses },
+        data: {
+          status: empStatus,
+          updated_at: new Date(),
+        },
+      });
+    }
+  } catch (err) {
+    console.error("[setDoctorDutyStatus] DB persistence warning:", err.message);
+  }
+
   return record;
 }
 

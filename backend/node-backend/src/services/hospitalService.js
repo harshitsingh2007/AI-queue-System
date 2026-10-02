@@ -8,6 +8,7 @@
 const prisma = require("../config/prisma");
 const { hashPassword } = require("../utils/password");
 const { getCurrentQueueDate, queueDateToPrismaDate } = require("../utils/timezone");
+const { getDoctorDutyStatus } = require("./ticketService");
 
 const STANDARD_DEPARTMENTS = [
   ["consultation", "General Consultation (OPD)", "General outpatient doctor examinations"],
@@ -52,28 +53,43 @@ const DEFAULT_BRANDING = {
  */
 async function getSuperAdminOverview(requesterUser = null) {
   let ownerUid = null;
-  const primaryCode = requesterUser?.primary_hospital_code || null;
+  const primaryCode = requesterUser?.primary_hospital_code || requesterUser?.hospital_code || null;
   const role = requesterUser ? (requesterUser.role || "").toLowerCase() : "";
-  if (role === "hospital_owner" || role === "superadmin" || role === "super_admin") {
-    if (requesterUser.email !== "superadmin@hospital.com" && !requesterUser.is_superadmin) {
-      ownerUid = requesterUser.id;
-    }
+  if (role === "hospital_owner" || role === "superadmin" || role === "super_admin" || ["admin", "doctor", "staff"].includes(role)) {
+    ownerUid = requesterUser.id;
   }
 
   const todayStr = getCurrentQueueDate();
   const todayDateObj = queueDateToPrismaDate(todayStr);
 
+  const filterConditions = [];
   if (ownerUid) {
-    const hospitals = await prisma.hospitals.findMany({
-      where: {
-        OR: [
-          { owner_user_id: ownerUid },
-          ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
-          { employees: { some: { user_id: ownerUid } } },
-        ],
-      },
+    filterConditions.push({ owner_user_id: ownerUid });
+    filterConditions.push({ employees: { some: { user_id: ownerUid } } });
+  }
+  if (primaryCode && primaryCode !== "all") {
+    filterConditions.push({ hospital_code: primaryCode });
+  }
+  if (requesterUser?.email && requesterUser.email !== "superadmin@hospital.com") {
+    filterConditions.push({ email: { equals: requesterUser.email, mode: "insensitive" } });
+  }
+
+  let hospitals = [];
+  if (filterConditions.length > 0) {
+    hospitals = await prisma.hospitals.findMany({
+      where: { OR: filterConditions },
       select: { id: true, hospital_code: true, status: true },
     });
+  }
+
+  if (hospitals.length === 0) {
+    hospitals = await prisma.hospitals.findMany({
+      where: { status: "active" },
+      select: { id: true, hospital_code: true, status: true },
+    });
+  }
+
+  if (hospitals.length > 0) {
 
     const totalH = hospitals.length;
     const activeH = hospitals.filter((h) => h.status === "active").length;
@@ -127,11 +143,15 @@ async function getSuperAdminOverview(requesterUser = null) {
         where: { hospital_id: { in: hIds } },
       });
 
+
+      const usersOrConditions = [{ employees: { some: { hospital_id: { in: hIds } } } }];
+      if (ownerUid != null) {
+        usersOrConditions.push({ id: ownerUid });
+      }
       const totalUsers = await prisma.users.count({
-        where: {
-          OR: [{ employees: { some: { hospital_id: { in: hIds } } } }, { id: ownerUid }],
-        },
+        where: { OR: usersOrConditions },
       });
+
 
       return {
         total_hospitals: totalH,
@@ -211,43 +231,34 @@ async function getAllHospitals(requesterUser = null) {
   let list = [];
   if (requesterUser) {
     const role = (requesterUser.role || "").toLowerCase();
-    if (requesterUser.email === "superadmin@hospital.com" || requesterUser.is_superadmin) {
-      list = await prisma.hospitals.findMany({
+    const primaryCode = requesterUser.primary_hospital_code || requesterUser.hospital_code || null;
+
+    const conditions = [];
+    if (requesterUser.id) {
+      conditions.push({ owner_user_id: requesterUser.id });
+      conditions.push({ employees: { some: { user_id: requesterUser.id } } });
+    }
+    if (primaryCode && primaryCode !== "all") {
+      conditions.push({ hospital_code: primaryCode });
+    }
+    if (requesterUser.email && requesterUser.email !== "superadmin@hospital.com") {
+      conditions.push({ email: { equals: requesterUser.email, mode: "insensitive" } });
+    }
+
+    if (conditions.length > 0) {
+      const owned = await prisma.hospitals.findMany({
+        where: { OR: conditions },
         orderBy: { id: "asc" },
       });
-    } else {
-      const primaryCode = requesterUser.primary_hospital_code || null;
-
-      if (role === "hospital_owner" || role === "superadmin" || role === "super_admin") {
-        const owned = await prisma.hospitals.findMany({
-          where: {
-            OR: [
-              { owner_user_id: requesterUser.id },
-              ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
-              { employees: { some: { user_id: requesterUser.id } } },
-            ],
-          },
-          orderBy: { id: "asc" },
-        });
-        if (owned.length > 0) {
-          list = owned;
-        }
-      } else if (["admin", "doctor", "staff"].includes(role)) {
-        list = await prisma.hospitals.findMany({
-          where: {
-            OR: [
-              { employees: { some: { user_id: requesterUser.id } } },
-              ...(primaryCode ? [{ hospital_code: primaryCode }] : []),
-            ],
-          },
-          orderBy: { id: "asc" },
-        });
+      if (owned && owned.length > 0) {
+        list = owned;
       }
     }
   }
 
   if (!list || list.length === 0) {
     list = await prisma.hospitals.findMany({
+      where: { status: "active" },
       orderBy: { id: "asc" },
     });
   }
@@ -305,15 +316,24 @@ async function getAllHospitals(requesterUser = null) {
   const todayTicketMap = new Map(todayTicketCounts.map((t) => [t.hospital_id, t._count.id]));
   const allTicketMap = new Map(allTicketCounts.map((t) => [t.hospital_id, t._count.id]));
 
-  return list.map((h) => ({
-    ...h,
-    employee_count: empMap.get(h.id) ?? 0,
-    doctor_count: docMap.get(h.id) ?? 0,
-    total_desks: deskMap.get(h.id) ?? 0,
-    active_desks: activeDeskMap.get(h.id) ?? 0,
-    patients_today: todayTicketMap.get(h.id) || allTicketMap.get(h.id) || 0,
-    total_visits: allTicketMap.get(h.id) ?? 0,
-  }));
+  return list.map((h) => {
+    let parsedBranding = {};
+    if (h.branding_json) {
+      parsedBranding = typeof h.branding_json === "string" ? (() => { try { return JSON.parse(h.branding_json); } catch (e) { return {}; } })() : (h.branding_json || {});
+    }
+    return {
+      ...h,
+      branding: parsedBranding,
+      about_us_hi: parsedBranding.about_us_hi || null,
+      description_hi: parsedBranding.about_us_hi || null,
+      employee_count: empMap.get(h.id) ?? 0,
+      doctor_count: docMap.get(h.id) ?? 0,
+      total_desks: deskMap.get(h.id) ?? 0,
+      active_desks: activeDeskMap.get(h.id) ?? 0,
+      patients_today: todayTicketMap.get(h.id) || allTicketMap.get(h.id) || 0,
+      total_visits: allTicketMap.get(h.id) ?? 0,
+    };
+  });
 }
 
 /**
@@ -603,9 +623,29 @@ async function getHospitalEmployees(hospitalCode) {
   const now = Date.now();
 
   return employees.map((e) => {
-    const lastLoginTime = e.users?.last_login_at ? new Date(e.users.last_login_at).getTime() : null;
-    const isStale = !lastLoginTime || (now - lastLoginTime > SESSION_MAX_AGE_MS);
-    const effectiveStatus = (e.status === "active" && e.users?.status === "active" && !isStale) ? "active" : "inactive";
+    let dutyInfo = null;
+    try {
+      dutyInfo = getDoctorDutyStatus(e.user_id, e.email);
+    } catch (_) {}
+
+    const isDutyOff = dutyInfo?.status === "OFF_DUTY" || e.status === "inactive" || e.status === "off_duty";
+    const isDutyBreak = dutyInfo?.status === "ON_BREAK" || e.status === "on_break";
+    const isDutyEmergency = dutyInfo?.status === "EMERGENCY_ROUND" || e.status === "emergency_round";
+
+    let effectiveStatus = "active";
+    if (isDutyOff) {
+      effectiveStatus = "inactive";
+    } else if (isDutyBreak) {
+      effectiveStatus = "on_break";
+    } else if (isDutyEmergency) {
+      effectiveStatus = "emergency_round";
+    } else {
+      const lastLoginTime = e.users?.last_login_at ? new Date(e.users.last_login_at).getTime() : null;
+      const isStale = !lastLoginTime || (now - lastLoginTime > SESSION_MAX_AGE_MS);
+      effectiveStatus = (e.status === "active" && e.users?.status === "active" && !isStale) ? "active" : "inactive";
+    }
+
+    const dutyStatusLabel = isDutyOff ? "OFF_DUTY" : isDutyBreak ? "ON_BREAK" : isDutyEmergency ? "EMERGENCY_ROUND" : "ACTIVE";
 
     return {
       id: e.user_id,
@@ -619,6 +659,7 @@ async function getHospitalEmployees(hospitalCode) {
       department: e.departments?.dept_code || "all",
       department_name: e.departments?.name || "All Departments",
       status: effectiveStatus,
+      duty_status: dutyStatusLabel,
       last_login_at: e.users?.last_login_at ? e.users.last_login_at.toISOString() : null,
       user_id: e.user_id,
     };

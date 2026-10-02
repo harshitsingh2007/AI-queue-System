@@ -61,7 +61,9 @@ async function authenticate(req, res, next) {
         patient: user.patients[0] || null,
         employee: user.employees[0] || null,
         ownedHospital: user.hospitals[0] || null,
+        primary_hospital_code: user.primary_hospital_code || null,
         hospital_code:
+          user.primary_hospital_code ||
           user.employees[0]?.hospitals?.hospital_code ||
           user.hospitals[0]?.hospital_code ||
           (user.role !== "user" ? "city-hospital-01" : null),
@@ -103,7 +105,9 @@ async function authenticate(req, res, next) {
           patient: user.patients[0] || null,
           employee: user.employees[0] || null,
           ownedHospital: user.hospitals[0] || null,
+          primary_hospital_code: user.primary_hospital_code || null,
           hospital_code:
+            user.primary_hospital_code ||
             user.employees[0]?.hospitals?.hospital_code ||
             user.hospitals[0]?.hospital_code ||
             (user.role !== "user" ? "city-hospital-01" : null),
@@ -166,7 +170,9 @@ async function optionalAuth(req, res, next) {
             patient: user.patients[0] || null,
             employee: user.employees[0] || null,
             ownedHospital: user.hospitals[0] || null,
+            primary_hospital_code: user.primary_hospital_code || null,
             hospital_code:
+              user.primary_hospital_code ||
               user.employees[0]?.hospitals?.hospital_code ||
               user.hospitals[0]?.hospital_code ||
               (user.role !== "user" ? "city-hospital-01" : null),
@@ -202,7 +208,9 @@ async function optionalAuth(req, res, next) {
           patient: user.patients[0] || null,
           employee: user.employees[0] || null,
           ownedHospital: user.hospitals[0] || null,
+          primary_hospital_code: user.primary_hospital_code || null,
           hospital_code:
+            user.primary_hospital_code ||
             user.employees[0]?.hospitals?.hospital_code ||
             user.hospitals[0]?.hospital_code ||
             (user.role !== "user" ? "city-hospital-01" : null),

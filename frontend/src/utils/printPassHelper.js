@@ -102,6 +102,11 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
   const brandPrimary = (branding && branding.primary_color) || "#047857";
   const brandTagline = (branding && branding.tagline) || (lang === "hi" ? "भरोसेमंद स्वास्थ्य सेवा • एनएबीएच मान्यता प्राप्त" : "Care you can trust • Official Clinical Pass");
   const emergencyHelpline = (branding && branding.emergency_helpline) || "";
+  const opdHelpline = (branding && (branding.opd_helpdesk_phone || branding.phone)) || "";
+  const helplineDisplay = [
+    emergencyHelpline,
+    opdHelpline ? (String(opdHelpline).startsWith("OPD") ? opdHelpline : `OPD No: ${opdHelpline}`) : ""
+  ].filter(Boolean).join(" • ");
   const customFooter = (branding && branding.slip_footer_text) || (lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड • कृपया परामर्श समाप्ति तक संभाल कर रखें" : "Non-transferable official patient record • Retain until consultation is complete");
   const logoUrl = (branding && branding.logo_url) || "";
 
@@ -132,7 +137,7 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
   <style>
     @page {
       size: 80mm auto;
-      margin: 6mm;
+      margin: 5mm;
     }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -144,29 +149,36 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
       max-width: 360px;
       color: #0f172a;
       background: #ffffff;
-      padding: 16px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
+      padding: 14px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .top-accent-bar {
+      height: 4px;
+      background: ${brandPrimary};
+      border-radius: 3px;
+      margin-bottom: 10px;
     }
     .header {
       text-align: center;
-      border-bottom: 2px solid ${brandPrimary};
+      border-bottom: 1.5px solid #e2e8f0;
       padding-bottom: 10px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
     .logo-img {
-      max-height: 48px;
-      max-width: 140px;
+      max-height: 42px;
+      max-width: 130px;
       object-fit: contain;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
       display: block;
       margin-left: auto;
       margin-right: auto;
     }
     .hospital-title {
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 900;
-      color: ${brandPrimary};
+      color: #0f172a;
       letter-spacing: -0.2px;
       margin: 0;
       text-transform: uppercase;
@@ -174,88 +186,106 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
     .slip-subtitle {
       font-size: 10px;
       font-weight: 700;
-      color: #475569;
-      margin-top: 3px;
-      letter-spacing: 0.6px;
-      text-transform: uppercase;
+      color: ${brandPrimary};
+      margin-top: 2px;
+      letter-spacing: 0.4px;
     }
     .issue-time {
       font-size: 10px;
       color: #64748b;
-      margin-top: 2px;
+      margin-top: 3px;
+      font-weight: 600;
     }
     .helpline-box {
-      margin: 8px 0;
-      padding: 5px 8px;
+      margin: 6px 0 2px 0;
+      padding: 4px 8px;
       border-radius: 6px;
       background: #FEF2F2;
       border: 1px solid #FECACA;
       color: #DC2626;
-      font-size: 10.5px;
+      font-size: 9.5px;
       font-weight: 800;
       text-align: center;
     }
-    .token-banner {
+    .token-hero {
       text-align: center;
-      background: #F8FAFC;
+      background: #f8fafc;
       border: 2px solid ${brandPrimary};
-      border-radius: 8px;
-      padding: 14px 10px;
-      margin: 12px 0;
+      border-radius: 12px;
+      padding: 12px 8px;
+      margin: 10px 0;
     }
-    .token-label {
-      font-size: 10px;
+    .token-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 9px;
       font-weight: 800;
-      color: #475569;
+      color: #0f172a;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      padding: 2px 8px;
+      border-radius: 20px;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 0.6px;
     }
     .token-num {
-      font-size: 42px;
+      font-size: 40px;
       font-weight: 900;
       color: ${brandPrimary};
-      line-height: 1;
-      margin: 4px 0 6px 0;
+      line-height: 1.05;
+      margin: 4px 0 2px 0;
+      letter-spacing: -0.5px;
     }
-    .token-dept {
-      font-size: 13px;
+    .token-dept-pill {
+      display: inline-block;
+      font-size: 12px;
       font-weight: 800;
       color: #0f172a;
+      background: #ffffff;
+      padding: 3px 10px;
+      border-radius: 6px;
+      border: 1px solid #e2e8f0;
+      margin-top: 4px;
     }
-    .info-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 12px 0;
-      font-size: 12px;
+    .tiles-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 10px 0;
     }
-    .info-table tr {
-      border-bottom: 1px dotted #cbd5e1;
+    .tile {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 6px 8px;
     }
-    .info-table td {
-      padding: 5px 0;
-    }
-    .info-table td.label {
+    .tile-label {
+      font-size: 9px;
       color: #64748b;
-      font-weight: 600;
-      width: 44%;
-    }
-    .info-table td.val {
       font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 2px;
+    }
+    .tile-val {
+      font-size: 11.5px;
+      font-weight: 800;
       color: #0f172a;
-      text-align: right;
+      line-height: 1.3;
     }
     .rx-card {
-      margin: 12px 0;
-      padding: 10px 12px;
-      background: #f8fafc;
-      border: 1px solid #94a3b8;
-      border-radius: 6px;
+      margin: 10px 0;
+      padding: 8px 10px;
+      background: #F0FDF4;
+      border: 1.5px solid #86EFAC;
+      border-radius: 8px;
     }
     .rx-badge {
       display: inline-block;
       padding: 1px 6px;
       border-radius: 3px;
-      background: #047857;
+      background: #15803D;
       color: #ffffff;
       font-size: 9px;
       font-weight: 800;
@@ -265,110 +295,142 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
     .rx-header {
       font-size: 11px;
       font-weight: 800;
-      color: #064e3b;
+      color: #15803D;
       text-transform: uppercase;
       margin-bottom: 4px;
     }
-    .rx-text {
-      font-size: 12px;
-      font-weight: 600;
-      color: #1e293b;
-      font-style: italic;
-      margin: 0;
-      line-height: 1.35;
-    }
-    .qr-box {
+    .qr-container {
       text-align: center;
-      margin: 14px 0 8px 0;
+      margin: 12px 0 6px 0;
+      padding: 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
     }
     .qr-img {
-      width: 120px;
-      height: 120px;
-      border: 1px solid #cbd5e1;
+      width: 110px;
+      height: 110px;
+      border: 1.5px solid #cbd5e1;
       padding: 4px;
-      border-radius: 6px;
+      border-radius: 8px;
       background: #ffffff;
+      display: block;
+      margin: 0 auto;
     }
-    .notice {
-      font-size: 10px;
+    .scan-hint {
+      font-size: 9.5px;
       color: #475569;
+      font-weight: 700;
+      margin: 6px 0 0 0;
+    }
+    .tear-line {
+      border-top: 1.5px dashed #cbd5e1;
+      margin: 12px 0 8px 0;
+      position: relative;
       text-align: center;
-      margin: 8px 0 0 0;
-      line-height: 1.35;
+    }
+    .tear-badge {
+      display: inline-block;
+      position: relative;
+      top: -8px;
+      background: #ffffff;
+      padding: 0 8px;
+      font-size: 8.5px;
+      color: #94a3b8;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
     }
     .footer {
       text-align: center;
-      font-size: 9px;
+      font-size: 8.5px;
+      color: #64748b;
+      line-height: 1.4;
+      margin-top: 4px;
+      font-weight: 600;
+    }
+    .security-badge {
+      font-size: 8px;
       color: #94a3b8;
-      border-top: 1px dashed #cbd5e1;
-      padding-top: 8px;
-      margin-top: 12px;
+      text-align: center;
+      margin-top: 4px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
   </style>
 </head>
 <body>
+  <div class="top-accent-bar"></div>
   <div class="header">
     ${logoUrl ? `<img src="${logoUrl}" class="logo-img" alt="Logo" />` : ""}
     <h1 class="hospital-title">${hospitalName}</h1>
     <div class="slip-subtitle">${brandTagline}</div>
-    <div class="issue-time">${formattedDateTime}</div>
-    ${emergencyHelpline ? `<div class="helpline-box">📞 ${emergencyHelpline}</div>` : ""}
+    <div class="issue-time">🕒 ${formattedDateTime}</div>
+    ${helplineDisplay ? `<div class="helpline-box">🚨 ${helplineDisplay}</div>` : ""}
   </div>
 
-  <div class="token-banner">
-    <div class="token-label">${t("tokenId", lang)}</div>
+  <div class="token-hero">
+    <div class="token-badge">● ${t("tokenId", lang)}</div>
     <div class="token-num">#${ticket.ticket_id}</div>
-    <div class="token-dept">${deptName}</div>
+    <div class="token-dept-pill">🏥 ${deptName}</div>
   </div>
 
-  <table class="info-table">
-    <tr>
-      <td class="label">${t("patientDemographics", lang)}</td>
-      <td class="val">${ticket.name} (${ticket.age || 30} ${yrsStr}, ${genderStr})</td>
-    </tr>
-    <tr>
-      <td class="label">${t("currentStatus", lang)}</td>
-      <td class="val">${statusName}</td>
-    </tr>
-    <tr>
-      <td class="label">${t("pos", lang)}</td>
-      <td class="val">#${ticket.position || 1}</td>
-    </tr>
-    <tr>
-      <td class="label">${t("estWait", lang)}</td>
-      <td class="val">${ticket.estimated_wait_minutes || 5} ${minStr}</td>
-    </tr>
-    <tr>
-      <td class="label">${t("symptomRisk", lang)}</td>
-      <td class="val">${formatSymptomLabel(ticket.medical_condition, lang)}</td>
-    </tr>
-    ${ticket.pre_existing_condition && ticket.pre_existing_condition !== "none" ? `
-    <tr>
-      <td class="label">${t("preExistingLabel", lang) || "Risk Factor"}</td>
-      <td class="val">${formatRiskLabel(ticket.pre_existing_condition, lang)}</td>
-    </tr>` : ""}
-  </table>
+  <div class="tiles-grid">
+    <div class="tile">
+      <div class="tile-label">👤 ${t("patientDemographics", lang)}</div>
+      <div class="tile-val">${ticket.name} (${ticket.age || 30} ${yrsStr}, ${genderStr})</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">📌 ${t("currentStatus", lang)}</div>
+      <div class="tile-val">${statusName}</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">🔢 ${t("pos", lang)}</div>
+      <div class="tile-val" style="color: ${brandPrimary};">#${ticket.position || 1} in line</div>
+    </div>
+    <div class="tile">
+      <div class="tile-label">⏱️ ${t("estWait", lang)}</div>
+      <div class="tile-val" style="color: #D97706;">~${ticket.estimated_wait_minutes || 5} ${minStr}</div>
+    </div>
+  </div>
+
+  ${ticket.medical_condition ? `
+  <div class="tile" style="margin-bottom: 8px;">
+    <div class="tile-label">🩺 ${t("symptomRisk", lang)}</div>
+    <div class="tile-val">${formatSymptomLabel(ticket.medical_condition, lang)}</div>
+  </div>` : ""}
+
+  ${ticket.pre_existing_condition && ticket.pre_existing_condition !== "none" ? `
+  <div class="tile" style="margin-bottom: 8px;">
+    <div class="tile-label">⚠️ ${t("preExistingLabel", lang) || "Risk Factor"}</div>
+    <div class="tile-val">${formatRiskLabel(ticket.pre_existing_condition, lang)}</div>
+  </div>` : ""}
 
   ${ticket.prescription_notes ? `
-  <div class="rx-card" style="background: #F0FDF4; border: 1px solid #86EFAC;">
-    <div class="rx-header" style="color: #15803D;">
-      <span class="rx-badge" style="background: #15803D;">Rx</span>
+  <div class="rx-card">
+    <div class="rx-header">
+      <span class="rx-badge">Rx</span>
       ${t("ePrescriptionAttached", lang)} ${ticket.transferred_from_dept ? `(${t("transferredFrom", lang)} ${getCategoryLabel(ticket.transferred_from_dept, lang)})` : ""}
     </div>
     ${formatRxHtml(ticket.prescription_notes, lang)}
   </div>` : ""}
 
   ${qrBase64 ? `
-  <div class="qr-box">
+  <div class="qr-container">
     <img src="${qrBase64}" class="qr-img" alt="Pass QR Code" />
-    <p class="notice">${noticeStr}</p>
+    <p class="scan-hint">📲 ${noticeStr}</p>
   </div>` : `
-  <p class="notice">${noticeStr}</p>`}
+  <p style="font-size: 10px; color: #475569; text-align: center; margin: 8px 0;">${noticeStr}</p>`}
+
+  <div class="tear-line">
+    <span class="tear-badge">✂ Official Ticket Pass</span>
+  </div>
 
   <div class="footer">
     ${footerStr}
+  </div>
+  <div class="security-badge">
+    🔒 Digitally Encrypted Token • Valid on Date of Issue
   </div>
 </body>
 </html>`;
@@ -387,11 +449,16 @@ export function printAppointmentRecord(apt, lang = "en", branding = null) {
   const brandSecondary = (branding && branding.secondary_color) || "#0369a1";
   const brandAccent = (branding && branding.accent_color) || "#f1f5f9";
   const emergencyHelpline = (branding && branding.emergency_helpline) || "";
+  const opdHelpline = (branding && (branding.opd_helpdesk_phone || branding.phone)) || "";
+  const helplineDisplay = [
+    emergencyHelpline,
+    opdHelpline ? (String(opdHelpline).startsWith("OPD") ? opdHelpline : `OPD No: ${opdHelpline}`) : ""
+  ].filter(Boolean).join(" • ");
   const logoUrl = (branding && branding.logo_url) || "";
   const deptName = getCategoryLabel(apt.service_category, lang);
   const statusName = getStatusLabel(apt.status, lang);
   const slipTitle = (branding && branding.tagline) || t("officialRxSlip", lang);
-  const footerStr = `${hospitalName} • ${(branding && branding.slip_footer_text) || (lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड" : "Non-transferable official patient record")}`;
+  const footerStr = `${hospitalName} • ${(branding && branding.slip_footer_text) || (lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड • कृपया परामर्श समाप्ति तक संभाल कर रखें" : "Non-transferable official patient record • Retain until consultation is complete")}`;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -515,9 +582,9 @@ export function printAppointmentRecord(apt, lang = "en", branding = null) {
     <div class="slip-subtitle">${slipTitle}</div>
   </div>
 
-  ${emergencyHelpline ? `
+  ${helplineDisplay ? `
   <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 4px 8px; margin-bottom: 10px; color: #dc2626; font-size: 10px; font-weight: 800; text-align: center;">
-    🚨 ${emergencyHelpline}
+    🚨 ${helplineDisplay}
   </div>` : ""}
 
   <div class="banner">

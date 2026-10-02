@@ -104,9 +104,9 @@ const updateDutyStatusHandler = async (req, res) => {
       };
       if (tenant_id) {
         io.to(tenant_id).emit("doctor_duty_status_changed", payload);
-      } else {
-        io.emit("doctor_duty_status_changed", payload);
       }
+      io.emit("doctor_duty_status_changed", payload);
+      io.emit("hospital_data_changed", { tenant_id: tenant_id || "all", type: "duty_status_update" });
     }
 
     return res.json({

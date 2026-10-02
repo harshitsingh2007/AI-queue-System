@@ -15,6 +15,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Globe } from "lucide-react";
 import { API_BASE, HOSPITAL_CONFIG } from "../../config/hospitalConfig";
 import { t } from "../../utils/i18n";
+import { generateOperatingHoursText } from "../../utils/operatingHoursHelper";
 import { AddFamilyMemberModal, getRelationLabel } from "../patient/FamilyMemberSwitcher";
 
 export default function Header({
@@ -173,12 +174,14 @@ export default function Header({
 
   // Derived white-label branding variables
   const displayHospitalName =
+    (language === "hi" && (hospitalBranding?.name_hi || hospitalBranding?.hospital_name_hi)) ||
     hospitalBranding?.hospital_name ||
     hospitalBranding?.name ||
     currentHospitalObj?.name ||
     HOSPITAL_CONFIG.name;
 
   const displayTagline =
+    (language === "hi" && hospitalBranding?.tagline_hi) ||
     hospitalBranding?.tagline ||
     (language === "hi" ? "भरोसेमंद स्वास्थ्य सेवा • एनएबीएच मान्यता प्राप्त" : "Care you can trust • NABH Accredited");
 
@@ -197,6 +200,7 @@ export default function Header({
     (language === "hi" ? `${displayHospitalName} के बारे में` : `About ${displayHospitalName}`);
 
   const displayAboutSubtitle =
+    (language === "hi" && (hospitalBranding?.about_us_subtitle_hi || hospitalBranding?.tagline_hi)) ||
     hospitalBranding?.about_us_subtitle ||
     displayTagline;
 
@@ -207,13 +211,14 @@ export default function Header({
       ? `${displayHospitalName} मरीज़-प्रथम सेवा हेतु समर्पित एक अग्रणी चिकित्सा संस्थान है। हमारा एआई-संचालित बुद्धिमान कतार प्रबंधन प्रतीक्षा समय को कम करता है और गंभीर मामलों को प्राथमिकता देता है।`
       : `${displayHospitalName} is a premier medical institution dedicated to patient-first care. Our AI-driven intelligent queue orchestration minimizes waiting times and prioritizes critical medical needs dynamically.`);
 
-  const displayService1 = hospitalBranding?.about_service_1 || (language === "hi" ? "24/7 आपातकालीन ट्राइएज • प्राथमिकता एम्बुलेंस एवं आईसीयू" : "24/7 Emergency Triage • Priority ambulance & ICU care");
-  const displayService2 = hospitalBranding?.about_service_2 || (language === "hi" ? "AI प्रतीक्षा भविष्यवाणी • लाइव कतार सिंक्रोनाइज़ेशन" : "AI Wait Prediction • Live queue synchronization");
-  const displayService3 = hospitalBranding?.about_service_3 || (language === "hi" ? "बहु-विशेषज्ञता ओपीडी • सामान्य, हृदय, न्यूरो, ऑर्थो" : "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho");
-  const displayService4 = hospitalBranding?.about_service_4 || (language === "hi" ? "डिजिटल ई-प्रिस्क्रिप्शन • सहज फार्मेसी रीफिल" : "Digital E-Prescriptions • Seamless pharmacy refills");
+  const displayService1 = (language === "hi" && hospitalBranding?.about_service_1_hi) || hospitalBranding?.about_service_1 || (language === "hi" ? "24/7 आपातकालीन ट्राइएज • प्राथमिकता एम्बुलेंस एवं आईसीयू" : "24/7 Emergency Triage • Priority ambulance & ICU care");
+  const displayService2 = (language === "hi" && hospitalBranding?.about_service_2_hi) || hospitalBranding?.about_service_2 || (language === "hi" ? "AI प्रतीक्षा भविष्यवाणी • लाइव कतार सिंक्रोनाइज़ेशन" : "AI Wait Prediction • Live queue synchronization");
+  const displayService3 = (language === "hi" && hospitalBranding?.about_service_3_hi) || hospitalBranding?.about_service_3 || (language === "hi" ? "बहु-विशेषज्ञता ओपीडी • सामान्य, हृदय, न्यूरो, ऑर्थो" : "Multi-Specialty OPD • General, Cardiac, Neuro, Ortho");
+  const displayService4 = (language === "hi" && hospitalBranding?.about_service_4_hi) || hospitalBranding?.about_service_4 || (language === "hi" ? "डिजिटल ई-प्रिस्क्रिप्शन • सहज फार्मेसी रीफिल" : "Digital E-Prescriptions • Seamless pharmacy refills");
 
   // Dynamic Contact & Help Desk Info
   const displayAddress =
+    (language === "hi" && hospitalBranding?.address_hi) ||
     hospitalBranding?.address ||
     currentHospitalObj?.address ||
     "742 Evergreen Healthcare Ave, Medical District, Suite 100";
@@ -224,9 +229,18 @@ export default function Header({
     "+1 (800) 456-7890 (Ext: 101)";
 
   const displayHelpdeskHours =
-    (language === "hi" ? hospitalBranding?.opd_helpdesk_hours_hi : null) ||
-    hospitalBranding?.opd_helpdesk_hours ||
-    (language === "hi" ? "सोम – शनि: सुबह 8:00 – रात 8:00" : "Mon – Sat: 8:00 AM – 8:00 PM");
+    (hospitalBranding?.opd_start_time && hospitalBranding?.opd_end_time)
+      ? generateOperatingHoursText(
+          hospitalBranding.operating_days,
+          hospitalBranding.opd_start_time,
+          hospitalBranding.opd_end_time,
+          language === "hi"
+        )
+      : (
+          (language === "hi" ? hospitalBranding?.opd_helpdesk_hours_hi : null) ||
+          hospitalBranding?.opd_helpdesk_hours ||
+          (language === "hi" ? "सोम – शनि: सुबह 8:00 – रात 8:00" : "Mon – Sat: 8:00 AM – 8:00 PM")
+        );
 
   const displayEmail =
     hospitalBranding?.support_email ||
@@ -1294,10 +1308,10 @@ export default function Header({
             {/* Live Stats Row */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "10px", marginBottom: "18px" }}>
               {[
-                { value: "15,000+", label: language === "hi" ? "मासिक मरीज़" : "Monthly Patients", icon: "👥" },
-                { value: "98%", label: language === "hi" ? "संतुष्टि दर" : "Satisfaction Rate", icon: "⭐" },
-                { value: "< 8 min", label: language === "hi" ? "औसत प्रतीक्षा" : "Avg. Wait Time", icon: "⚡" },
-                { value: "24 / 7", label: language === "hi" ? "हमेशा उपलब्ध" : "Always Available", icon: "🕐" },
+                { value: hospitalBranding?.about_stat_1_val || "15,000+", label: (language === "hi" && hospitalBranding?.about_stat_1_lbl_hi) || hospitalBranding?.about_stat_1_lbl || (language === "hi" ? "मासिक मरीज़" : "Monthly Patients"), icon: "👥" },
+                { value: hospitalBranding?.about_stat_2_val || "98%", label: (language === "hi" && hospitalBranding?.about_stat_2_lbl_hi) || hospitalBranding?.about_stat_2_lbl || (language === "hi" ? "संतुष्टि दर" : "Satisfaction Rate"), icon: "⭐" },
+                { value: hospitalBranding?.about_stat_3_val || "< 8 min", label: (language === "hi" && hospitalBranding?.about_stat_3_lbl_hi) || hospitalBranding?.about_stat_3_lbl || (language === "hi" ? "औसत प्रतीक्षा" : "Avg. Wait Time"), icon: "⚡" },
+                { value: hospitalBranding?.about_stat_4_val || "24 / 7", label: (language === "hi" && hospitalBranding?.about_stat_4_lbl_hi) || hospitalBranding?.about_stat_4_lbl || (language === "hi" ? "हमेशा उपलब्ध" : "Always Available"), icon: "🕐" },
               ].map((stat, i) => (
                 <div key={i} style={{
                   background: isDarkHeader ? "#1E293B" : "#F8FAFC",
@@ -1377,10 +1391,13 @@ export default function Header({
                 ⚙️ {language === "hi" ? "प्रौद्योगिकी एवं नवाचार" : "Technology & Innovation"}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                {[
-                  "AI Queue Orchestration", "Real-Time Socket Sync", "Digital Prescriptions",
-                  "QR Check-In", "Priority Escalation", "Multi-Language", "Family Profiles", "Live Analytics",
-                ].map((tech, i) => (
+                {(hospitalBranding?.about_tech_highlights
+                  ? hospitalBranding.about_tech_highlights.split(",").map((s) => s.trim()).filter(Boolean)
+                  : [
+                      "AI Queue Orchestration", "Real-Time Socket Sync", "Digital Prescriptions",
+                      "QR Check-In", "Priority Escalation", "Multi-Language", "Family Profiles", "Live Analytics",
+                    ]
+                ).map((tech, i) => (
                   <span key={i} style={{
                     background: isDarkHeader ? "rgba(2,132,199,0.15)" : "#EFF6FF",
                     color: brandPrimary,
@@ -1397,9 +1414,21 @@ export default function Header({
             {/* Accreditations */}
             <div style={{ display: "flex", gap: "10px", marginBottom: "18px", flexWrap: "wrap" }}>
               {[
-                { icon: "🏅", label: language === "hi" ? "NABH मान्यता" : "NABH Accredited", sub: language === "hi" ? "राष्ट्रीय मानक" : "National Standards" },
-                { icon: "🛡️", label: language === "hi" ? "ISO 27001" : "ISO 27001 Certified", sub: language === "hi" ? "डेटा सुरक्षा" : "Data Security" },
-                { icon: "🤝", label: language === "hi" ? "आयुष्मान भारत" : "Ayushman Bharat", sub: language === "hi" ? "सरकारी योजना" : "Govt. Empanelled" },
+                {
+                  icon: "🏅",
+                  label: (language === "hi" && hospitalBranding?.about_badge_1_hi) || hospitalBranding?.about_badge_1 || (language === "hi" ? "NABH मान्यता" : "NABH Accredited"),
+                  sub: (language === "hi" && hospitalBranding?.about_badge_1_sub_hi) || hospitalBranding?.about_badge_1_sub || (language === "hi" ? "राष्ट्रीय मानक" : "National Standards"),
+                },
+                {
+                  icon: "🛡️",
+                  label: (language === "hi" && hospitalBranding?.about_badge_2_hi) || hospitalBranding?.about_badge_2 || (language === "hi" ? "ISO 27001" : "ISO 27001 Certified"),
+                  sub: (language === "hi" && hospitalBranding?.about_badge_2_sub_hi) || hospitalBranding?.about_badge_2_sub || (language === "hi" ? "डेटा सुरक्षा" : "Data Security"),
+                },
+                {
+                  icon: "🤝",
+                  label: (language === "hi" && hospitalBranding?.about_badge_3_hi) || hospitalBranding?.about_badge_3 || (language === "hi" ? "आयुष्मान भारत" : "Ayushman Bharat"),
+                  sub: (language === "hi" && hospitalBranding?.about_badge_3_sub_hi) || hospitalBranding?.about_badge_3_sub || (language === "hi" ? "सरकारी योजना" : "Govt. Empanelled"),
+                },
               ].map((award, i) => (
                 <div key={i} style={{
                   flex: "1 1 140px",
@@ -1422,19 +1451,22 @@ export default function Header({
                 💡 {language === "hi" ? "हमें क्यों चुनें?" : "Why Choose Us?"}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
-                {(language === "hi" ? [
-                  "टोकन सिस्टम से लाइन में खड़े होने की ज़रूरत नहीं",
-                  "AI द्वारा गंभीर मरीज़ों को स्वचालित प्राथमिकता",
-                  "परिवार के सभी सदस्यों के लिए एक ही खाते से बुकिंग",
-                  "मोबाइल पर लाइव कतार स्थिति, SMS अलर्ट",
-                  "डिजिटल ई-पर्ची — कागज़ की ज़रूरत नहीं",
-                ] : [
-                  "No physical queue — get your token digitally from anywhere",
-                  "AI auto-escalates critical/emergency cases instantly",
-                  "Book for all family members from a single account",
-                  "Live queue status on mobile + real-time alerts",
-                  "Digital e-prescriptions — zero paperwork needed",
-                ]).map((reason, i) => (
+                {(((language === "hi" && hospitalBranding?.about_why_choose_hi) || hospitalBranding?.about_why_choose)
+                  ? ((language === "hi" && hospitalBranding?.about_why_choose_hi) || hospitalBranding?.about_why_choose).split("\n").map((s) => s.trim()).filter(Boolean)
+                  : (language === "hi" ? [
+                      "टोकन सिस्टम से लाइन में खड़े होने की ज़रूरत नहीं",
+                      "AI द्वारा गंभीर मरीज़ों को स्वचालित प्राथमिकता",
+                      "परिवार के सभी सदस्यों के लिए एक ही खाते से बुकिंग",
+                      "मोबाइल पर लाइव कतार स्थिति, SMS अलर्ट",
+                      "डिजिटल ई-पर्ची — कागज़ की ज़रूरत नहीं",
+                    ] : [
+                      "No physical queue — get your token digitally from anywhere",
+                      "AI auto-escalates critical/emergency cases instantly",
+                      "Book for all family members from a single account",
+                      "Live queue status on mobile + real-time alerts",
+                      "Digital e-prescriptions — zero paperwork needed",
+                    ])
+                ).map((reason, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12.5px", color: isDarkHeader ? "#CBD5E1" : "#334155" }}>
                     <span style={{ color: "#10B981", fontWeight: 800, flexShrink: 0 }}>✓</span>
                     <span>{reason}</span>
@@ -1468,7 +1500,7 @@ export default function Header({
                 </div>
               </div>
               <a
-                href="tel:108"
+                href={`tel:${(hospitalBranding?.emergency_helpline || "108").replace(/[^0-9+]/g, "") || "108"}`}
                 style={{
                   background: "#DC2626",
                   color: "#FFFFFF",
@@ -1481,7 +1513,7 @@ export default function Header({
                   boxShadow: "0 2px 8px rgba(220,38,38,0.35)",
                 }}
               >
-                📞 108
+                📞 {(hospitalBranding?.emergency_helpline || "108").replace(/^Emergency Helpline:\s*/i, "").split("/")[0].trim() || "108"}
               </a>
             </div>
 

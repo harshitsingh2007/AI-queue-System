@@ -1,0 +1,6 @@
+export { default as Hospital360Overview } from "./Hospital360Overview";
+export { default as HospitalsDirectoryTab } from "./HospitalsDirectoryTab";
+export { default as StaffRosterTab } from "./StaffRosterTab";
+export { default as DesksManagementTab } from "./DesksManagementTab";
+export { default as DepartmentsTab } from "./DepartmentsTab";
+export { default as BrandingStudioTab } from "./BrandingStudioTab";

@@ -331,6 +331,8 @@ function initSocket(server, corsOrigin = "*") {
         };
 
         io.to(tenantId).emit("doctor_duty_status_changed", broadcastPayload);
+        io.emit("doctor_duty_status_changed", broadcastPayload);
+        io.emit("hospital_data_changed", { tenant_id: tenantId || "all", type: "duty_status_update" });
         socket.emit("doctor_duty_status_confirmed", broadcastPayload);
       } catch (err) {
         socket.emit("error", { message: `Duty status update failed: ${err.message}` });

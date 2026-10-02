@@ -952,10 +952,12 @@ export default function App() {
   }, [tenantId, adminDepartment]);
 
   useEffect(() => {
+    // When on superadmin, SuperAdminPage manages its own scoped telemetry; avoid 4s root App re-renders
+    if (activePage === "superadmin") return;
     refreshData();
     const timer = setInterval(refreshData, 4000);
     return () => clearInterval(timer);
-  }, [refreshData]);
+  }, [refreshData, activePage]);
 
   // Handle hospital facility switch from Header or Patient portal
   const handleSwitchHospital = useCallback((hospitalCode, hospitalName = null) => {
@@ -1225,8 +1227,11 @@ export default function App() {
           width: 100%;
           box-sizing: border-box;
         }
+        .app-main-layout-inner.superadmin-wide {
+          max-width: 1680px;
+        }
       `}</style>
-      <div className="app-main-layout-inner">
+      <div className={`app-main-layout-inner ${activePage === "superadmin" ? "superadmin-wide" : ""}`}>
         {/* Top Navigation Header Bar */}
         <Header
           currentUser={currentUser}
