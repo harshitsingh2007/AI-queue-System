@@ -1758,6 +1758,9 @@ export default function PatientPage({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(localStorage.getItem("token") || localStorage.getItem("ai_queue_token")
+            ? { Authorization: `Bearer ${localStorage.getItem("token") || localStorage.getItem("ai_queue_token")}` }
+            : {}),
           ...(currentUser?.email ? { "X-User-Email": currentUser.email } : {}),
         },
         body: JSON.stringify({
@@ -2637,8 +2640,8 @@ export default function PatientPage({
             ? `${analytics ? Math.round(analytics.avg_wait_minutes || 0) : 0} मिनट`
             : `${analytics ? Math.round(analytics.avg_wait_minutes || 0) : 0} min`,
           activeDesks: language === "hi"
-            ? `${analytics ? analytics.active_counters || 0 : 0} डेस्क`
-            : `${analytics ? analytics.active_counters || 0 : 0} Active Desks`,
+            ? `${analytics ? analytics.active_counters || 1 : 1} डेस्क`
+            : `${analytics ? analytics.active_counters || 1 : 1} ${(analytics?.active_counters || 1) === 1 ? "Desk" : "Desks"}`,
           currentlyWaiting: language === "hi"
             ? `${analytics ? analytics.currently_waiting || 0 : queueSnapshot.length || 0} प्रतीक्षारत`
             : `${analytics ? analytics.currently_waiting || 0 : queueSnapshot.length || 0} Waiting`,

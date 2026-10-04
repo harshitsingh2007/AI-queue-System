@@ -54,17 +54,18 @@ export default function HeroBanner({
           border: 1px solid rgba(56, 189, 248, 0.25);
           margin-bottom: 22px;
           position: relative;
-          min-height: 260px;
+          min-height: 220px;
           width: 100%;
           box-sizing: border-box;
         }
 
         .hero-left-col {
           flex: 1.15;
-          padding: 28px 30px;
+          padding: 22px 28px;
           display: flex;
           flex-direction: column;
-          justify-content: space-between;
+          justify-content: center;
+          gap: 10px;
           z-index: 2;
           background: transparent;
           position: relative;
@@ -89,7 +90,7 @@ export default function HeroBanner({
           justify-content: center;
           position: relative;
           overflow: hidden;
-          min-height: 240px;
+          min-height: 200px;
           box-sizing: border-box;
         }
 
@@ -271,8 +272,8 @@ export default function HeroBanner({
               border: "1px solid rgba(56, 189, 248, 0.22)",
               borderRadius: "14px",
               padding: "10px 14px",
-              marginTop: "12px",
-              marginBottom: "20px",
+              marginTop: "8px",
+              marginBottom: "8px",
               display: "flex",
               alignItems: "flex-start",
               gap: "10px",
@@ -369,7 +370,7 @@ export default function HeroBanner({
             </div>
             <div>
               <div className="hero-stat-value" style={{ color: "#38BDF8" }}>
-                {stats.activeDesks || "4 Desks"}
+                {stats.activeDesks || (isHi ? "1 डेस्क" : "1 Desk")}
               </div>
               <div className="hero-stat-label">
                 {isHi ? "सक्रिय डॉक्टर डेस्क" : "Active Desks"}
@@ -473,7 +474,7 @@ function HospitalAmbulanceIllustration() {
       style={{
         width: "100%",
         height: "100%",
-        maxHeight: "320px",
+        maxHeight: "260px",
         display: "block",
       }}
       preserveAspectRatio="xMidYMid meet"

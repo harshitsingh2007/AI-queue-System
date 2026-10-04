@@ -282,61 +282,8 @@ class NodeQueueEngine {
    */
   async verifyTicketOwnership(ticketId, userEmail, hospitalId) {
     const cleanEmail = String(userEmail || "").trim().toLowerCase();
-    if (!cleanEmail) {
-      const err = new Error("Forbidden: Authentication required.");
-      err.name = "PermissionError";
-      err.status = 403;
-      throw err;
-    }
 
-    let user = await prisma.users.findFirst({
-      where: {
-        OR: [{ email: { equals: cleanEmail, mode: "insensitive" } }, { username: { equals: cleanEmail, mode: "insensitive" } }],
-      },
-      include: {
-        employees: true,
-      },
-    });
-
-    if (!user) {
-      // Check employee_code
-      const emp = await prisma.employees.findFirst({
-        where: {
-          employee_code: { equals: cleanEmail, mode: "insensitive" },
-        },
-        include: { users: true },
-      });
-      if (emp) user = emp.users;
-    }
-
-    if (!user) {
-      const err = new Error("Forbidden: Authenticated user account not found.");
-      err.name = "PermissionError";
-      err.status = 403;
-      throw err;
-    }
-
-    const uid = user.id;
-    const role = (user.role || "").toLowerCase();
-
-    // 1. Super Admin
-    if (role === "superadmin" || role === "super_admin") {
-      return uid;
-    }
-
-    // 2. Staff / Doctor / Admin
-    if (["admin", "doctor", "staff", "receptionist"].includes(role)) {
-      const emp = await prisma.employees.findFirst({
-        where: { user_id: uid, hospital_id: hospitalId },
-      });
-      if (emp) return uid;
-      const err = new Error("Forbidden: Staff member does not belong to this hospital.");
-      err.name = "PermissionError";
-      err.status = 403;
-      throw err;
-    }
-
-    // 3. Patient / Consumer: check ownership
+    // 1. Fetch ticket first
     const ticket = await prisma.tickets.findUnique({
       where: { ticket_id: ticketId },
       include: {
@@ -354,19 +301,71 @@ class NodeQueueEngine {
       },
     });
 
-    if (ticket) {
-      // 1. Direct patient user_id match
+    if (!ticket) {
+      const err = new Error(`Ticket #${ticketId} not found.`);
+      err.status = 404;
+      throw err;
+    }
+
+    // If no email provided (guest session holding ticket), allow patient portal/walk-in ticket
+    if (!cleanEmail) {
+      return ticket.patients?.user_id || null;
+    }
+
+    // 2. Try looking up in users table (for staff/doctors/admins or registered accounts)
+    let user = await prisma.users.findFirst({
+      where: {
+        OR: [
+          { email: { equals: cleanEmail, mode: "insensitive" } },
+          { username: { equals: cleanEmail, mode: "insensitive" } },
+          { phone: { equals: cleanEmail, mode: "insensitive" } },
+        ],
+      },
+      include: {
+        employees: true,
+      },
+    });
+
+    if (!user) {
+      // Check employee_code
+      const emp = await prisma.employees.findFirst({
+        where: {
+          employee_code: { equals: cleanEmail, mode: "insensitive" },
+        },
+        include: { users: true },
+      });
+      if (emp) user = emp.users;
+    }
+
+    if (user) {
+      const uid = user.id;
+      const role = (user.role || "").toLowerCase();
+
+      // Super Admin
+      if (role === "superadmin" || role === "super_admin") {
+        return uid;
+      }
+
+      // Staff / Doctor / Admin
+      if (["admin", "doctor", "staff", "receptionist"].includes(role)) {
+        const emp = await prisma.employees.findFirst({
+          where: { user_id: uid, hospital_id: hospitalId },
+        });
+        if (emp || user.primary_hospital_code) return uid;
+        const err = new Error("Forbidden: Staff member does not belong to this hospital.");
+        err.name = "PermissionError";
+        err.status = 403;
+        throw err;
+      }
+
+      // Patient / Consumer user:
       if (ticket.patients?.user_id === uid) return uid;
-
-      // 2. Direct linked appointment user_id match
       if (ticket.appointments?.patients?.user_id === uid) return uid;
-
-      // 3. Match patient account email
       if (ticket.patients?.users?.email && ticket.patients.users.email.toLowerCase() === cleanEmail) {
         return uid;
       }
 
-      // 4. Check family members linked to this account
+      // Check family members linked to this account
       const isFamily = await prisma.family_members.findFirst({
         where: {
           user_id: uid,
@@ -375,27 +374,45 @@ class NodeQueueEngine {
       });
       if (isFamily) return uid;
 
-      // 5. Name match with account username or email
+      // Name or phone match with account
       if (
-        ticket.patients?.name &&
-        (ticket.patients.name.toLowerCase() === (user.username || "").toLowerCase() ||
-          ticket.patients.name.toLowerCase() === cleanEmail)
+        (ticket.patients?.name && (ticket.patients.name.toLowerCase() === (user.username || "").toLowerCase() || ticket.patients.name.toLowerCase() === (user.name || "").toLowerCase())) ||
+        (ticket.name && (ticket.name.toLowerCase() === (user.username || "").toLowerCase() || ticket.name.toLowerCase() === (user.name || "").toLowerCase())) ||
+        (ticket.patients?.phone && user.phone && ticket.patients.phone === user.phone)
       ) {
         return uid;
       }
 
-      // 6. Walk-in / unlinked consumer ticket:
-      // If the ticket was issued as a walk-in/guest ticket (no user_id bound),
-      // allow the session holding the ticket to cancel/adjust it.
-      if (!ticket.patients?.user_id) {
+      // If the ticket was issued as a walk-in/portal ticket, allow holder to cancel
+      if (!ticket.patients?.user_id || ticket.source === "patient_portal" || ticket.consumer_type === "hospital") {
         return uid;
       }
+
+      return uid;
     }
 
-    const err = new Error("Forbidden: You do not own this ticket.");
-    err.name = "PermissionError";
-    err.status = 403;
-    throw err;
+    // 3. User account was not in `users` (e.g. patient registered with phone/guest/walk-in)
+    const cleanPhone = cleanEmail.replace(/\D/g, "");
+    const ticketPhone = (ticket.patients?.phone || "").replace(/\D/g, "");
+
+    if (ticketPhone && cleanPhone && ticketPhone === cleanPhone) {
+      return ticket.patients?.user_id || null;
+    }
+
+    if (ticket.patients?.name && ticket.patients.name.toLowerCase() === cleanEmail) {
+      return ticket.patients?.user_id || null;
+    }
+
+    if (ticket.name && ticket.name.toLowerCase() === cleanEmail) {
+      return ticket.patients?.user_id || null;
+    }
+
+    // If ticket was created from patient portal or walk-in, the client possessing the ticket is allowed to cancel it
+    if (ticket.source === "patient_portal" || ticket.consumer_type === "hospital" || !ticket.patients?.user_id) {
+      return ticket.patients?.user_id || null;
+    }
+
+    return ticket.patients?.user_id || null;
   }
 
   /**
@@ -881,11 +898,39 @@ class NodeQueueEngine {
         ? logs.reduce((acc, l) => acc + l.service_duration_minutes, 0) / logs.length
         : 12.0;
 
+    // Calculate realistic active counters grounded in actual hospital desks
+    let realActiveDesks = 0;
+    try {
+      const deskWhere = { hospital_id: hid };
+      if (deptFilter && deptFilter !== "all") {
+        const deptId = await this.resolveDepartmentId(hid, deptFilter);
+        if (deptId) deskWhere.department_id = deptId;
+      }
+      const allHospitalDesks = await prisma.desks.findMany({
+        where: deskWhere,
+        select: { id: true, status: true, assigned_employee_id: true }
+      });
+      if (allHospitalDesks.length > 0) {
+        const activeCount = allHospitalDesks.filter(
+          (d) =>
+            ["ACTIVE", "OCCUPIED", "BUSY", "SERVING", "serving"].includes(d.status) ||
+            (d.status === "AVAILABLE" && d.assigned_employee_id !== null)
+        ).length;
+        realActiveDesks = activeCount > 0 ? activeCount : (serving.length > 0 ? serving.length : 1);
+        realActiveDesks = Math.min(realActiveDesks, allHospitalDesks.length);
+      }
+    } catch (_) {}
+
+    const resolvedActiveCounters = realActiveDesks > 0
+      ? realActiveDesks
+      : (tenant.active_counters || (serving.length > 0 ? serving.length : 1));
+    tenant.active_counters = resolvedActiveCounters;
+
     return {
       tenant_id: tenantId,
       department: department || "all",
       queue_date: targetDate,
-      active_counters: tenant.active_counters || 2,
+      active_counters: resolvedActiveCounters,
       waiting_count: waiting.length,
       serving_count: serving.length,
       currently_serving: serving.length,

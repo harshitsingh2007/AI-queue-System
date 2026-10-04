@@ -85,7 +85,7 @@
         .superadmin-hero-stats-row,
         .superadmin-hero-stats-strip {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
+          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
           gap: 10px;
           width: 100%;
         }
@@ -1224,4 +1224,38 @@
           background: #1E293B !important;
           border-color: #334155 !important;
           color: #F8FAFC !important;
+        }
+
+        /* Live Real-time Telemetry Graph Enhancements */
+        @keyframes liveRadarPing {
+          0% { transform: scale(0.9); opacity: 0.9; }
+          70% { transform: scale(2.2); opacity: 0; }
+          100% { transform: scale(2.2); opacity: 0; }
+        }
+
+        @keyframes liveScanBeam {
+          0%, 100% { opacity: 0.9; filter: drop-shadow(0 0 6px #38BDF8); }
+          50% { opacity: 0.5; filter: drop-shadow(0 0 2px #0284C7); }
+        }
+
+        @keyframes livePulseBar {
+          0%, 100% { filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.7)); }
+          50% { filter: drop-shadow(0 0 2px rgba(56, 189, 248, 0.2)); }
+        }
+
+        .live-telemetry-ping {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .live-telemetry-ping::before {
+          content: '';
+          position: absolute;
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background: #10B981;
+          animation: liveRadarPing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
         }

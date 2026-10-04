@@ -2,11 +2,9 @@ import React from "react";
 import {
     IconHospital,
     IconPlus,
-    IconPalette,
     IconSearch,
     IconEdit,
     IconTrash,
-    IconCopy,
     IconKey,
 } from "../SuperAdminIcons";
 import {
@@ -18,7 +16,6 @@ import {
     tableTdStyle,
     editSmallBtnStyle,
     deleteSmallBtnStyle,
-    copySmallBtnStyle,
     roleBadgeStyle,
 } from "../superAdminStyles";
 import { getCategoryLabel } from "../../../utils/i18n";
@@ -41,7 +38,6 @@ export default function StaffRosterTab({
     onChangePassword,
     onDeleteEmployee,
     onAddEmployee,
-    onGoToBranding,
     getEmployeeCurrentDesk,
     formatRelativeLogin,
     notify,
@@ -77,9 +73,9 @@ export default function StaffRosterTab({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "12px" }}>
                 <div>
                     <h2 style={{ margin: "0 0 4px 0", fontSize: "20px", color: "var(--superadmin-text-main, #0F172A)", fontWeight: 800 }}>
-                        {isHi ? "डॉक्टर एवं कर्मचारी रोस्टर" : "Doctor & Employee Roster"}
+                        {isHi ? "स्टाफ" : "Staff"}
                     </h2>
-                    {hospitals && hospitals.length > 1 ? (
+                    {hospitals && hospitals.length > 1 && (
                         <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "var(--superadmin-sub-card, #F1F5F9)", padding: "4px 10px", borderRadius: "10px", border: "1px solid var(--superadmin-card-border, #CBD5E1)", marginTop: "2px" }}>
                             <IconHospital size={14} color="#0284C7" />
                             <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)" }}>
@@ -111,35 +107,10 @@ export default function StaffRosterTab({
                                 • {hospitalEmployees.length} {isHi ? "कार्मिक" : "Staff"}
                             </span>
                         </div>
-                    ) : (
-                        <span style={{ fontSize: "12px", color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                            <IconHospital size={14} color="#0284C7" />
-                            <span>{selectedHospital ? selectedHospital.name : "Select a Hospital"} ({hospitalEmployees.length} Staff Members)</span>
-                        </span>
                     )}
                 </div>
 
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    {selectedHospital && onGoToBranding && (
-                        <button
-                            type="button"
-                            onClick={onGoToBranding}
-                            style={{
-                                ...secondarySmallBtnStyle,
-                                background: "#F5F3FF",
-                                color: "#7C3AED",
-                                borderColor: "#DDD6FE",
-                                padding: "8px 14px",
-                                fontWeight: 800,
-                            }}
-                            title={isHi ? "ब्रांडिंग पेज पर जाएं" : "Go to Branding Page"}
-                        >
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                <IconPalette size={16} color="#7C3AED" />
-                                <span>{isHi ? "ब्रांडिंग" : "Branding"}</span>
-                            </span>
-                        </button>
-                    )}
                     <button
                         type="button"
                         onClick={onAddEmployee}
@@ -480,19 +451,6 @@ export default function StaffRosterTab({
                                                     {isActive
                                                         ? (isHi ? "ऑफलाइन करें" : "Set Offline")
                                                         : (isHi ? "सक्रिय करें" : "Set Active")}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        navigator.clipboard.writeText(`Name: ${emp.name || emp.username}\nEmail ID: ${emp.email}\nRole: ${(emp.role || "").toUpperCase()}\nDepartment: ${emp.department}`);
-                                                        if (notify) {
-                                                            notify(isHi ? `'${emp.name || emp.username}' के लॉगिन क्रेडेंशियल कॉपी किए गए!` : `Login ID for '${emp.name || emp.username}' copied to clipboard!`);
-                                                        }
-                                                    }}
-                                                    style={copySmallBtnStyle}
-                                                    title={isHi ? "लॉगिन आईडी कॉपी करें" : "Copy Login ID"}
-                                                >
-                                                    <IconCopy size={13} color="#38BDF8" />
                                                 </button>
                                                 <button
                                                     type="button"

@@ -55,7 +55,8 @@ async function getSuperAdminOverview(requesterUser = null) {
   let ownerUid = null;
   const primaryCode = requesterUser?.primary_hospital_code || requesterUser?.hospital_code || null;
   const role = requesterUser ? (requesterUser.role || "").toLowerCase() : "";
-  if (role === "hospital_owner" || role === "superadmin" || role === "super_admin" || ["admin", "doctor", "staff"].includes(role)) {
+  const isGlobalSuperAdmin = role === "superadmin" || role === "super_admin";
+  if (!isGlobalSuperAdmin && (role === "hospital_owner" || ["admin", "doctor", "staff"].includes(role))) {
     ownerUid = requesterUser.id;
   }
 
@@ -63,15 +64,17 @@ async function getSuperAdminOverview(requesterUser = null) {
   const todayDateObj = queueDateToPrismaDate(todayStr);
 
   const filterConditions = [];
-  if (ownerUid) {
-    filterConditions.push({ owner_user_id: ownerUid });
-    filterConditions.push({ employees: { some: { user_id: ownerUid } } });
-  }
-  if (primaryCode && primaryCode !== "all") {
-    filterConditions.push({ hospital_code: primaryCode });
-  }
-  if (requesterUser?.email && requesterUser.email !== "superadmin@hospital.com") {
-    filterConditions.push({ email: { equals: requesterUser.email, mode: "insensitive" } });
+  if (!isGlobalSuperAdmin) {
+    if (ownerUid) {
+      filterConditions.push({ owner_user_id: ownerUid });
+      filterConditions.push({ employees: { some: { user_id: ownerUid } } });
+    }
+    if (primaryCode && primaryCode !== "all") {
+      filterConditions.push({ hospital_code: primaryCode });
+    }
+    if (requesterUser?.email && requesterUser.email !== "superadmin@hospital.com") {
+      filterConditions.push({ email: { equals: requesterUser.email, mode: "insensitive" } });
+    }
   }
 
   let hospitals = [];
@@ -95,7 +98,6 @@ async function getSuperAdminOverview(requesterUser = null) {
     const activeH = hospitals.filter((h) => h.status === "active").length;
     const hIds = hospitals.map((h) => h.id);
     if (hIds.length > 0) {
-      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
       const totalEmp = await prisma.employees.count({
         where: {
           hospital_id: { in: hIds },
@@ -103,16 +105,23 @@ async function getSuperAdminOverview(requesterUser = null) {
         },
       });
 
-      const activeDocs = await prisma.employees.count({
+      let activeDocs = await prisma.employees.count({
         where: {
           hospital_id: { in: hIds },
           status: "active",
           users: {
-            role: { in: ["doctor", "admin"] },
-            last_login_at: { gte: twelveHoursAgo },
+            role: { in: ["doctor", "admin", "physician"] },
           },
         },
       });
+      if (activeDocs === 0) {
+        activeDocs = await prisma.users.count({
+          where: {
+            role: { in: ["doctor", "admin"] },
+            status: "active",
+          },
+        });
+      }
 
       const totalDesks = await prisma.desks.count({
         where: { hospital_id: { in: hIds } },
@@ -121,14 +130,20 @@ async function getSuperAdminOverview(requesterUser = null) {
       const activeDesks = await prisma.desks.count({
         where: {
           hospital_id: { in: hIds },
-          status: { in: ["AVAILABLE", "OCCUPIED", "BUSY"] },
+          OR: [
+            { status: { in: ["OCCUPIED", "BUSY", "SERVING", "serving", "ACTIVE"] } },
+            { AND: [{ status: "AVAILABLE" }, { assigned_employee_id: { not: null } }] },
+          ],
         },
       });
 
       const todayTickets = await prisma.tickets.count({
         where: {
           hospital_id: { in: hIds },
-          queue_date: todayDateObj,
+          OR: [
+            { queue_date: todayDateObj },
+            { created_at: { gte: todayDateObj } },
+          ],
         },
       });
 
@@ -184,25 +199,38 @@ async function getSuperAdminOverview(requesterUser = null) {
   // Global aggregate
   const totalH = await prisma.hospitals.count();
   const activeH = await prisma.hospitals.count({ where: { status: "active" } });
-  const twelveHoursAgoGlobal = new Date(Date.now() - 12 * 60 * 60 * 1000);
-  const totalEmp = await prisma.employees.count({
-    where: { status: { notIn: ["deactivated", "suspended", "blocked"] } },
-  });
-  const activeDocs = await prisma.employees.count({
+  let activeDocs = await prisma.employees.count({
     where: {
       status: "active",
       users: {
-        role: { in: ["doctor", "admin"] },
-        last_login_at: { gte: twelveHoursAgoGlobal },
+        role: { in: ["doctor", "admin", "physician"] },
       },
     },
   });
+  if (activeDocs === 0) {
+    activeDocs = await prisma.users.count({
+      where: {
+        role: { in: ["doctor", "admin"] },
+        status: "active",
+      },
+    });
+  }
   const totalDesks = await prisma.desks.count();
   const activeDesks = await prisma.desks.count({
-    where: { status: { in: ["AVAILABLE", "OCCUPIED", "BUSY"] } },
+    where: {
+      OR: [
+        { status: { in: ["OCCUPIED", "BUSY", "SERVING", "serving", "ACTIVE"] } },
+        { AND: [{ status: "AVAILABLE" }, { assigned_employee_id: { not: null } }] },
+      ],
+    },
   });
   const todayTickets = await prisma.tickets.count({
-    where: { queue_date: todayDateObj },
+    where: {
+      OR: [
+        { queue_date: todayDateObj },
+        { created_at: { gte: todayDateObj } },
+      ],
+    },
   });
   const activeQueues = await prisma.tickets.count({
     where: { status: { in: ["waiting", "called", "serving", "WAITING", "CALLED", "SERVING"] } },

@@ -81,7 +81,7 @@ export default function AdminHeroBanner({
 
   const activeCounters = analytics && typeof analytics.active_counters === "number" 
     ? analytics.active_counters 
-    : 2;
+    : 1;
 
   const doctorName = currentUser?.name || currentUser?.full_name || (isHi ? "डॉक्टर" : "Doctor");
   const completedCount =
@@ -142,10 +142,11 @@ export default function AdminHeroBanner({
 
         .hero-left-col {
           flex: 1.15;
-          padding: 38px 36px;
+          padding: 24px 30px;
           display: flex;
           flex-direction: column;
-          justify-content: space-between;
+          justify-content: center;
+          gap: 10px;
           z-index: 2;
           background: linear-gradient(135deg, #0F172A 0%, #1E293B 70%, ${secondaryBrandColor} 100%);
           position: relative;
@@ -444,8 +445,8 @@ export default function AdminHeroBanner({
               border: "1px solid rgba(56, 189, 248, 0.22)",
               borderRadius: "14px",
               padding: "10px 14px",
-              marginTop: "12px",
-              marginBottom: "20px",
+              marginTop: "8px",
+              marginBottom: "8px",
               display: "flex",
               alignItems: "flex-start",
               gap: "10px",
@@ -561,7 +562,7 @@ export default function AdminHeroBanner({
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                 <span className="hero-stat-value" style={{ color: "#38BDF8" }}>
-                  {activeCounters} {isHi ? "डेस्क" : "Desks"}
+                  {activeCounters} {isHi ? "डेस्क" : (activeCounters === 1 ? "Desk" : "Desks")}
                 </span>
                 {canModifyDesks && handleCounterChange && (
                   <div style={{ display: "inline-flex", gap: "3px", marginLeft: "2px" }}>

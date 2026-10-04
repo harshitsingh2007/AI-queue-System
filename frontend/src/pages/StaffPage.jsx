@@ -1032,7 +1032,7 @@ export default function StaffPage({
   const scheduledBookedSlots = appointments.filter(
     (a) => (a.status || "").toLowerCase() === "scheduled" && !a.ticket_id
   );
-  const displayedAppointments = bookedSlotsViewMode === "pending" ? scheduledBookedSlots : appointments;
+  const displayedAppointments = scheduledBookedSlots;
 
   return (
     <div
@@ -2781,62 +2781,6 @@ export default function StaffPage({
                       : "Pre-scheduled appointment slots awaiting arrival. Once checked in, patients move to the live Waiting Queue."}
                   </p>
                 </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                  {/* View Mode Toggle: Pending Slots vs All */}
-                  <div style={{ display: "inline-flex", background: isDark ? "#1E293B" : "#F1F5F9", padding: "3px", borderRadius: "10px", border: `1px solid ${isDark ? "#334155" : "#E2E8F0"}` }}>
-                    <button
-                      type="button"
-                      onClick={() => setBookedSlotsViewMode("pending")}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: "7px",
-                        border: "none",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        background: bookedSlotsViewMode === "pending" ? (isDark ? "#0284C7" : "#FFFFFF") : "transparent",
-                        color: bookedSlotsViewMode === "pending" ? (isDark ? "#FFFFFF" : "#0284C7") : (isDark ? "#94A3B8" : "#64748B"),
-                        boxShadow: bookedSlotsViewMode === "pending" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                      }}
-                      title={language === "hi" ? "केवल वे स्लॉट जो अभी कतार में नहीं आए हैं" : "Only pending pre-booked slots awaiting arrival"}
-                    >
-                      {language === "hi" ? `लंबित स्लॉट (${scheduledBookedSlots.length})` : `Pending Arrival (${scheduledBookedSlots.length})`}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBookedSlotsViewMode("all")}
-                      style={{
-                        padding: "5px 12px",
-                        borderRadius: "7px",
-                        border: "none",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        background: bookedSlotsViewMode === "all" ? (isDark ? "#0284C7" : "#FFFFFF") : "transparent",
-                        color: bookedSlotsViewMode === "all" ? (isDark ? "#FFFFFF" : "#0284C7") : (isDark ? "#94A3B8" : "#64748B"),
-                        boxShadow: bookedSlotsViewMode === "all" ? "0 1px 3px rgba(0,0,0,0.1)" : "none",
-                      }}
-                      title={language === "hi" ? "सभी अपॉइंटमेंट्स (चेक-इन और पूर्ण सहित)" : "All appointments including checked-in & completed"}
-                    >
-                      {language === "hi" ? `सभी बुकिंग (${appointments.length})` : `All Bookings (${appointments.length})`}
-                    </button>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={fetchTenantAppointments}
-                    style={refreshBtnStyle}
-                    title="Refresh Appointments"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="23 4 23 10 17 10" />
-                      <polyline points="1 20 1 14 7 14" />
-                      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                    </svg>
-                    <span>{language === "hi" ? "ताज़ा करें" : "Refresh"}</span>
-                  </button>
-                </div>
               </div>
 
               {displayedAppointments.length === 0 ? (
@@ -2855,9 +2799,7 @@ export default function StaffPage({
                     <IconCalendar size={26} color="#0284C7" />
                   </div>
                   <h4 style={{ margin: "0 0 6px 0", fontSize: "16px", color: isDark ? "#F8FAFC" : "var(--staff-card-text, #0F172A)" }}>
-                    {bookedSlotsViewMode === "pending"
-                      ? (language === "hi" ? "कोई लंबित बुक किया गया स्लॉट नहीं है" : "No Pending Booked Slots Awaiting Arrival")
-                      : t("noActiveAptsMsg", language)}
+                    {language === "hi" ? "कोई लंबित बुक किया गया स्लॉट नहीं है" : "No Pending Booked Slots Awaiting Arrival"}
                   </h4>
                   <p style={{ margin: 0, fontSize: "12.5px", color: isDark ? "#94A3B8" : "var(--staff-muted-text, #64748B)" }}>
                     {language === "hi"
@@ -3056,7 +2998,9 @@ export default function StaffPage({
                 </span>
               </div>
               <span style={{ fontSize: "11px", fontWeight: 700, color: "#0369A1", background: "#F0F9FF", padding: "2px 8px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
-                {analytics ? `${analytics.active_counters} ${language === "hi" ? "डेस्क सक्रिय" : "Desks Active"}` : (language === "hi" ? "2 डेस्क सक्रिय" : "2 Desks Active")}
+                {analytics
+                  ? `${analytics.active_counters || 1} ${language === "hi" ? "डेस्क सक्रिय" : ((analytics.active_counters || 1) === 1 ? "Desk Active" : "Desks Active")}`
+                  : (language === "hi" ? "1 डेस्क सक्रिय" : "1 Desk Active")}
               </span>
             </div>
 

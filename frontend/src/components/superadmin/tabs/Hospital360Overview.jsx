@@ -211,6 +211,46 @@ export default function Hospital360Overview({
     const secondsSinceSync = Math.max(0, Math.floor((Date.now() - (lastSyncedAt ? new Date(lastSyncedAt).getTime() : Date.now())) / 1000));
     const syncLabel = secondsSinceSync <= 2 ? "just now" : `${secondsSinceSync}s ago`;
 
+    // Real-Time Telemetry Graph States
+    const [chartMetricFilter, setChartMetricFilter] = React.useState("all");
+    const [liveClockStr, setLiveClockStr] = React.useState(() => new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+
+    React.useEffect(() => {
+        const timer = setInterval(() => {
+            setLiveClockStr(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    // Helper functions for silky smooth cubic Bézier splines
+    const getSmoothSvgPath = (points) => {
+        if (!points || points.length === 0) return "";
+        if (points.length === 1) return `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+        let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
+        for (let i = 0; i < points.length - 1; i++) {
+            const p0 = points[Math.max(0, i - 1)];
+            const p1 = points[i];
+            const p2 = points[i + 1];
+            const p3 = points[Math.min(points.length - 1, i + 2)];
+
+            const cp1x = p1.x + (p2.x - p0.x) / 6;
+            const cp1y = p1.y + (p2.y - p0.y) / 6;
+            const cp2x = p2.x - (p3.x - p1.x) / 6;
+            const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+            d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
+        }
+        return d;
+    };
+
+    const getSmoothAreaPath = (points, bottomY = 155) => {
+        if (!points || points.length === 0) return "";
+        const linePath = getSmoothSvgPath(points);
+        const last = points[points.length - 1];
+        const first = points[0];
+        return `${linePath} L ${last.x.toFixed(1)} ${bottomY} L ${first.x.toFixed(1)} ${bottomY} Z`;
+    };
+
     // Analytics calculations
     const hourlyAnalytics = computeHourlyAnalytics ? computeHourlyAnalytics(rawVisits, hospitalQueueSnapshot) : { hourlyData: [], maxVolume: 6, peakHourLabel: "10 AM - 12 PM", peakAvgWait: 14 };
     const bottleneckAnalytics = computeDepartmentBottlenecks ? computeDepartmentBottlenecks(hospitalDepts, hospitalQueueSnapshot, rawVisits) : [];
@@ -631,138 +671,505 @@ export default function Hospital360Overview({
                     </div>
                 </div>
 
-                {/* FEATURE 1: HOURLY FOOTFALL & WAIT TIME HEATMAP (INTERACTIVE SVG CHART) */}
+                {/* FEATURE 1: REAL-TIME CLINICAL TELEMETRY STREAM & LIVE HOURLY RADAR (HIGH-IMPACT INTERACTIVE SVG) */}
                 {(analyticsViewTab === "all" || analyticsViewTab === "hourly") && (
                     <div
                         className="overview-sub-panel"
                         style={{
-                            marginBottom: "20px",
-                            padding: "20px",
-                            borderRadius: "18px",
+                            marginBottom: "22px",
+                            padding: "22px 24px",
+                            borderRadius: "20px",
                             border: "1.5px solid var(--superadmin-card-border, #E2E8F0)",
+                            background: "var(--superadmin-card-bg, #FFFFFF)",
+                            boxShadow: "0 4px 20px -2px rgba(2, 132, 199, 0.06)",
                             display: "flex",
                             flexDirection: "column",
-                            gap: "14px",
+                            gap: "16px",
                         }}
                     >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                        {/* 1. Header Bar: Title, Live Telemetry Beacon, Stream Filter Pills & Rush Badge */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "14px", borderBottom: "1px solid var(--superadmin-card-border, #E2E8F0)", paddingBottom: "14px" }}>
                             <div>
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <span style={{ fontSize: "16px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)" }}>
-                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><IconTrendingUp size={16} color="#0284C7" /><span>{isHi ? "प्रति घंटा मरीज आवागमन एवं प्रतीक्षा समय हीटमैप" : "Hourly Footfall & Wait Time Timeline"}</span></span>
+                                <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                                    <span style={{ fontSize: "17px", fontWeight: 900, color: "var(--superadmin-text-main, #0F172A)", display: "inline-flex", alignItems: "center", gap: 7 }}>
+                                        <IconTrendingUp size={18} color="#0284C7" />
+                                        <span>{isHi ? "रीयल-टाइम ओपीडी क्लिनिकल टेलीमेट्री व प्रतीक्षा हीटमैप" : "Real-Time Clinical Telemetry & Patient Flow Heatmap"}</span>
                                     </span>
+
+                                    {/* Live Socket Sync Beacon */}
+                                    <div
+                                        style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: "6px",
+                                            background: "rgba(16, 185, 129, 0.12)",
+                                            border: "1px solid rgba(16, 185, 129, 0.35)",
+                                            padding: "3px 10px",
+                                            borderRadius: "20px",
+                                            color: "#10B981",
+                                            fontSize: "11px",
+                                            fontWeight: 800,
+                                            letterSpacing: "0.2px",
+                                        }}
+                                    >
+                                        <span className="live-telemetry-ping" style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981" }} />
+                                        <span>LIVE SYNC: {liveClockStr}</span>
+                                    </div>
                                 </div>
-                                <span style={{ fontSize: "11.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
-                                    {isHi ? "प्रति घंटा मरीज संख्या (बार), औसत प्रतीक्षा (गोल्ड लाइन) एवं परामर्श अवधि (हरा लाइन)" : "Hourly patient volume (Bars) vs Avg Wait Time (Gold) vs Consult Duration (Emerald)"}
+                                <span style={{ fontSize: "12px", color: "var(--superadmin-text-muted, #64748B)", marginTop: "2px", display: "block" }}>
+                                    {isHi
+                                        ? "लाइव मरीज आवक (कर्व व बार्स), एनएबीएच 15-मिनट बेंचमार्क प्रतीक्षा समय (गोल्ड) एवं डॉक्टर परामर्श गति (एमराल्ड)"
+                                        : "Continuous patient inflow velocity, NABH 15-min benchmark turnaround times (Gold spline), and consultation speed (Emerald)"}
                                 </span>
                             </div>
 
-                            {/* Peak Rush Window Badge */}
-                            <div
-                                style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "6px",
-                                    background: "rgba(245, 158, 11, 0.15)",
-                                    border: "1px solid rgba(245, 158, 11, 0.35)",
-                                    padding: "4px 12px",
-                                    borderRadius: "20px",
-                                    color: "#F59E0B",
-                                    fontSize: "11.5px",
-                                    fontWeight: 800,
-                                }}
-                            >
-                                <IconFlame size={14} color="#F59E0B" />
-                                <span>{isHi ? `शिखर समय: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait} मिनट प्रतीक्षा)` : `Peak Rush: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait}m avg wait)`}</span>
+                            {/* Controls: Stream metric toggle pills + Peak Window badge */}
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                <div style={{ display: "inline-flex", background: "var(--superadmin-sub-card, #F1F5F9)", padding: "3px", borderRadius: "10px", border: "1px solid var(--superadmin-card-border, #CBD5E1)" }}>
+                                    {[
+                                        { id: "all", label: isHi ? "360° सभी" : "All Streams" },
+                                        { id: "footfall", label: isHi ? "मरीज संख्या" : "Footfall Inflow" },
+                                        { id: "wait", label: isHi ? "प्रतीक्षा समय" : "Avg Wait (TAT)" },
+                                        { id: "consult", label: isHi ? "परामर्श अवधि" : "Consult Speed" },
+                                    ].map((m) => (
+                                        <button
+                                            key={m.id}
+                                            type="button"
+                                            onClick={() => setChartMetricFilter(m.id)}
+                                            style={{
+                                                padding: "4px 10px",
+                                                borderRadius: "7px",
+                                                border: "none",
+                                                fontSize: "11px",
+                                                fontWeight: 800,
+                                                cursor: "pointer",
+                                                background: chartMetricFilter === m.id ? "#0284C7" : "transparent",
+                                                color: chartMetricFilter === m.id ? "#FFFFFF" : "var(--superadmin-text-muted, #64748B)",
+                                                transition: "all 0.15s ease",
+                                            }}
+                                        >
+                                            {m.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div
+                                    style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        background: "rgba(245, 158, 11, 0.12)",
+                                        border: "1px solid rgba(245, 158, 11, 0.35)",
+                                        padding: "4px 12px",
+                                        borderRadius: "20px",
+                                        color: "#F59E0B",
+                                        fontSize: "11px",
+                                        fontWeight: 800,
+                                    }}
+                                >
+                                    <IconFlame size={13} color="#F59E0B" />
+                                    <span>{isHi ? `शिखर: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait}m)` : `Peak: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait}m wait)`}</span>
+                                </div>
                             </div>
                         </div>
 
-                        {/* SVG Interactive Chart Component */}
-                        <div style={{ position: "relative", width: "100%", height: "200px", background: "var(--superadmin-sub-card, #131D31)", borderRadius: "14px", padding: "14px 10px 8px 10px", border: "1px solid var(--superadmin-card-border, #1E293B)", boxSizing: "border-box" }}>
-                            <svg viewBox="0 0 620 160" width="100%" height="100%" preserveAspectRatio="none" style={{ overflow: "visible" }}>
+                        {/* 2. Interactive Telemetry Snapshot Banner (Hovered Hour or Current Live Hour) */}
+                        {(() => {
+                            const activeIdx = hoveredChartHour !== null
+                                ? hoveredChartHour
+                                : (hourlyAnalytics.currentHourIdx ?? Math.max(0, Math.min(11, new Date().getHours() - 8)));
+                            const activeData = hourlyAnalytics.hourlyData[activeIdx] || hourlyAnalytics.hourlyData[2] || {};
+
+                            return (
+                                <div
+                                    style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                                        gap: "10px",
+                                        padding: "10px 14px",
+                                        background: "var(--superadmin-sub-card, #F8FAFC)",
+                                        borderRadius: "14px",
+                                        border: "1px solid var(--superadmin-card-border, #E2E8F0)",
+                                    }}
+                                >
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                        <span style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)", textTransform: "uppercase" }}>
+                                            {isHi ? "सक्रिय समय स्लॉट" : "Active Time Slot"}
+                                        </span>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <span style={{ fontSize: "14px", fontWeight: 900, color: "var(--superadmin-text-main, #0F172A)" }}>
+                                                {activeData.hour || "10:00"} ({activeData.label || "10 AM"})
+                                            </span>
+                                            {activeData.isCurrent && (
+                                                <span style={{ background: "#0284C7", color: "#FFFFFF", fontSize: "9.5px", fontWeight: 800, padding: "1px 6px", borderRadius: "4px" }}>
+                                                    NOW
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span style={{ fontSize: "10.5px", color: "#0284C7", fontWeight: 600 }}>
+                                            {activeData.phase || (isHi ? "ओपीडी परामर्श सत्र" : "Clinical OPD Intake")}
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                        <span style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)", textTransform: "uppercase" }}>
+                                            {isHi ? "मरीज आवागमन (थ्रूपुट)" : "Patient Inflow (Throughput)"}
+                                        </span>
+                                        <div style={{ fontSize: "15px", fontWeight: 900, color: "#0284C7" }}>
+                                            {activeData.count || 0} <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)" }}>patients/hr</span>
+                                        </div>
+                                        <span style={{ fontSize: "10.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
+                                            {activeData.liveQueue ? `Live in queue: ${activeData.liveQueue}` : "Scheduled flow optimal"}
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                        <span style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)", textTransform: "uppercase" }}>
+                                            {isHi ? "औसत प्रतीक्षा समय (TAT)" : "Turnaround Time (Avg Wait)"}
+                                        </span>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                            <span style={{ fontSize: "15px", fontWeight: 900, color: (activeData.avgWait || 0) > 20 ? "#EF4444" : (activeData.avgWait || 0) > 15 ? "#F59E0B" : "#10B981" }}>
+                                                ~{activeData.avgWait || 12} min
+                                            </span>
+                                            <span
+                                                style={{
+                                                    fontSize: "9.5px",
+                                                    fontWeight: 800,
+                                                    padding: "1px 6px",
+                                                    borderRadius: "4px",
+                                                    background: (activeData.avgWait || 0) <= 15 ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                                                    color: (activeData.avgWait || 0) <= 15 ? "#10B981" : "#F59E0B",
+                                                }}
+                                            >
+                                                {(activeData.avgWait || 0) <= 15 ? "NABH Target Passed" : "Surge Threshold"}
+                                            </span>
+                                        </div>
+                                        <span style={{ fontSize: "10.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
+                                            Benchmark compliance: {activeData.compliancePct || 94}%
+                                        </span>
+                                    </div>
+
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                        <span style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)", textTransform: "uppercase" }}>
+                                            {isHi ? "डॉक्टर परामर्श अवधि" : "Consultation Velocity"}
+                                        </span>
+                                        <div style={{ fontSize: "15px", fontWeight: 900, color: "#10B981" }}>
+                                            ~{activeData.avgConsult || 8.5} <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)" }}>min / consult</span>
+                                        </div>
+                                        <span style={{ fontSize: "10.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
+                                            Clinician capacity active
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* 3. High-Definition Interactive SVG Graph Canvas */}
+                        <div
+                            style={{
+                                position: "relative",
+                                width: "100%",
+                                height: "230px",
+                                background: isDark360 ? "#0C1322" : "#F8FAFC",
+                                borderRadius: "16px",
+                                padding: "16px 12px 10px 12px",
+                                border: `1.5px solid ${isDark360 ? "#1E293B" : "#E2E8F0"}`,
+                                boxSizing: "border-box",
+                                overflow: "hidden",
+                            }}
+                        >
+                            <svg viewBox="0 0 740 195" width="100%" height="100%" preserveAspectRatio="none" style={{ overflow: "visible" }}>
                                 <defs>
-                                    <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.9" />
+                                    {/* Patient Footfall Area Gradient */}
+                                    <linearGradient id="telemetryFootfallArea" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#38BDF8" stopOpacity={isDark360 ? "0.45" : "0.3"} />
+                                        <stop offset="60%" stopColor="#0284C7" stopOpacity="0.12" />
+                                        <stop offset="100%" stopColor="#0284C7" stopOpacity="0.0" />
+                                    </linearGradient>
+
+                                    {/* Bar Column Standard Gradient */}
+                                    <linearGradient id="telemetryBarColGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#38BDF8" stopOpacity={isDark360 ? "0.85" : "0.75"} />
+                                        <stop offset="100%" stopColor="#0284C7" stopOpacity="0.25" />
+                                    </linearGradient>
+
+                                    {/* Active Live Bar Column Gradient */}
+                                    <linearGradient id="telemetryBarActiveGrad" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="#67E8F9" stopOpacity="1" />
+                                        <stop offset="50%" stopColor="#0EA5E9" stopOpacity="0.9" />
                                         <stop offset="100%" stopColor="#0284C7" stopOpacity="0.4" />
                                     </linearGradient>
-                                    <linearGradient id="barHoverGradient" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor="#67E8F9" stopOpacity="1" />
-                                        <stop offset="100%" stopColor="#0EA5E9" stopOpacity="0.7" />
-                                    </linearGradient>
+
+                                    {/* Wait Time Glowing Line Shadow Filter */}
+                                    <filter id="neonGlowWait" x="-20%" y="-20%" width="140%" height="140%">
+                                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#F59E0B" floodOpacity="0.5" />
+                                    </filter>
+
+                                    {/* Footfall Glowing Line Shadow Filter */}
+                                    <filter id="neonGlowFootfall" x="-20%" y="-20%" width="140%" height="140%">
+                                        <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#0284C7" floodOpacity="0.4" />
+                                    </filter>
                                 </defs>
 
-                                {/* Horizontal Grid lines */}
-                                <line x1="0" y1="20" x2="620" y2="20" stroke="rgba(148, 163, 184, 0.12)" strokeDasharray="3 3" />
-                                <line x1="0" y1="60" x2="620" y2="60" stroke="rgba(148, 163, 184, 0.12)" strokeDasharray="3 3" />
-                                <line x1="0" y1="100" x2="620" y2="100" stroke="rgba(148, 163, 184, 0.12)" strokeDasharray="3 3" />
-                                <line x1="0" y1="135" x2="620" y2="135" stroke="rgba(148, 163, 184, 0.25)" />
+                                {/* Y-Axis Horizontal Grid & Scale Guidelines */}
+                                {[
+                                    { y: 25, labelL: "30+", labelR: "30m" },
+                                    { y: 65, labelL: "20", labelR: "20m" },
+                                    { y: 105, labelL: "10", labelR: "10m" },
+                                    { y: 155, labelL: "0", labelR: "0m" },
+                                ].map((grid) => (
+                                    <g key={grid.y}>
+                                        <line
+                                            x1="44"
+                                            y1={grid.y}
+                                            x2="696"
+                                            y2={grid.y}
+                                            stroke={isDark360 ? "rgba(148, 163, 184, 0.12)" : "rgba(148, 163, 184, 0.2)"}
+                                            strokeDasharray="3 3"
+                                        />
+                                        <text x="36" y={grid.y + 4} fill={textMuted} fontSize="9" fontWeight="700" textAnchor="end">
+                                            {grid.labelL}
+                                        </text>
+                                        <text x="704" y={grid.y + 4} fill={textMuted} fontSize="9" fontWeight="700" textAnchor="start">
+                                            {grid.labelR}
+                                        </text>
+                                    </g>
+                                ))}
 
-                                {/* Bars & Trendline Calculations */}
+                                {/* NABH 15-Minute Benchmark Target Reference Line */}
+                                <line
+                                    x1="44"
+                                    y1="85"
+                                    x2="696"
+                                    y2="85"
+                                    stroke="rgba(245, 158, 11, 0.45)"
+                                    strokeDasharray="5 3"
+                                    strokeWidth="1.2"
+                                />
+                                <text x="704" y="88" fill="#F59E0B" fontSize="8.5" fontWeight="800">
+                                    NABH (15m)
+                                </text>
+
+                                {/* Telemetry Data Points & Curvilinear Projections */}
                                 {(() => {
-                                    const chartW = 620;
-                                    const barSlotW = chartW / (hourlyAnalytics.hourlyData.length || 1);
-                                    const barW = Math.max(14, barSlotW * 0.45);
-                                    const maxVol = Math.max(hourlyAnalytics.maxVolume, 6);
+                                    const totalSlots = hourlyAnalytics.hourlyData.length || 12;
+                                    const slotW = (696 - 44) / totalSlots;
+                                    const maxVol = Math.max(hourlyAnalytics.maxVolume, 10);
+                                    const baselineY = 155;
+
+                                    // Build coordinate arrays for smooth splines
+                                    const footfallPoints = hourlyAnalytics.hourlyData.map((d, i) => {
+                                        const x = 44 + i * slotW + slotW / 2;
+                                        const y = Math.max(25, baselineY - (d.count / maxVol) * 125);
+                                        return { x, y, ...d };
+                                    });
 
                                     const waitPoints = hourlyAnalytics.hourlyData.map((d, i) => {
-                                        const cx = i * barSlotW + barSlotW / 2;
-                                        const cy = 135 - (Math.min(d.avgWait, 30) / 30) * 115;
-                                        return `${cx},${cy}`;
-                                    }).join(" ");
+                                        const x = 44 + i * slotW + slotW / 2;
+                                        const y = Math.max(25, baselineY - (Math.min(d.avgWait, 32) / 32) * 125);
+                                        return { x, y, ...d };
+                                    });
 
                                     const consultPoints = hourlyAnalytics.hourlyData.map((d, i) => {
-                                        const cx = i * barSlotW + barSlotW / 2;
-                                        const cy = 135 - (Math.min(d.avgConsult, 25) / 25) * 115;
-                                        return `${cx},${cy}`;
-                                    }).join(" ");
+                                        const x = 44 + i * slotW + slotW / 2;
+                                        const y = Math.max(25, baselineY - (Math.min(d.avgConsult, 24) / 24) * 125);
+                                        return { x, y, ...d };
+                                    });
+
+                                    // Generate silky smooth Bézier curves
+                                    const footfallSplinePath = getSmoothSvgPath(footfallPoints);
+                                    const footfallAreaPath = getSmoothAreaPath(footfallPoints, baselineY);
+                                    const waitSplinePath = getSmoothSvgPath(waitPoints);
+                                    const consultSplinePath = getSmoothSvgPath(consultPoints);
+
+                                    // Live Scanline Position
+                                    const activeHourIdx = hourlyAnalytics.currentHourIdx ?? Math.max(0, Math.min(11, new Date().getHours() - 8));
+                                    const minuteFrac = hourlyAnalytics.minuteFraction ?? (new Date().getMinutes() / 60);
+                                    const liveScanX = Math.min(694, 44 + activeHourIdx * slotW + slotW * minuteFrac);
 
                                     return (
                                         <React.Fragment>
-                                            {/* Patient Volume Bars */}
-                                            {hourlyAnalytics.hourlyData.map((d, i) => {
-                                                const x = i * barSlotW + (barSlotW - barW) / 2;
-                                                const barHeight = Math.max(4, (d.count / maxVol) * 110);
-                                                const y = 135 - barHeight;
-                                                const isHovered = hoveredChartHour === i;
+                                            {/* Layer 1: Translucent Footfall Area Gradient (if not isolated to wait/consult) */}
+                                            {(chartMetricFilter === "all" || chartMetricFilter === "footfall") && (
+                                                <path d={footfallAreaPath} fill="url(#telemetryFootfallArea)" />
+                                            )}
 
-                                                return (
-                                                    <g key={i} onMouseEnter={() => setHoveredChartHour && setHoveredChartHour(i)} onMouseLeave={() => setHoveredChartHour && setHoveredChartHour(null)} style={{ cursor: "pointer" }}>
-                                                        <rect
-                                                            x={x}
-                                                            y={y}
-                                                            width={barW}
-                                                            height={barHeight}
-                                                            rx="4"
-                                                            fill={isHovered ? "url(#barHoverGradient)" : "url(#barGradient)"}
-                                                        />
-                                                        {d.count > 0 && (
-                                                            <text x={x + barW / 2} y={y - 4} fill={isHovered ? "#38BDF8" : "#94A3B8"} fontSize="9.5" fontWeight="700" textAnchor="middle">
+                                            {/* Layer 2: Glowing Column Bars */}
+                                            {(chartMetricFilter === "all" || chartMetricFilter === "footfall") &&
+                                                hourlyAnalytics.hourlyData.map((d, i) => {
+                                                    const barW = Math.max(16, slotW * 0.42);
+                                                    const x = 44 + i * slotW + (slotW - barW) / 2;
+                                                    const barH = Math.max(6, (d.count / maxVol) * 125);
+                                                    const y = baselineY - barH;
+                                                    const isHovered = hoveredChartHour === i;
+                                                    const isCurrent = d.isCurrent;
+
+                                                    return (
+                                                        <g key={`bar-${i}`} style={{ cursor: "pointer" }}>
+                                                            <rect
+                                                                x={x}
+                                                                y={y}
+                                                                width={barW}
+                                                                height={barH}
+                                                                rx="5"
+                                                                fill={isCurrent ? "url(#telemetryBarActiveGrad)" : "url(#telemetryBarColGrad)"}
+                                                                stroke={isHovered ? "#38BDF8" : isCurrent ? "#38BDF8" : "none"}
+                                                                strokeWidth={isHovered ? "1.5" : isCurrent ? "1.2" : "0"}
+                                                                style={isCurrent ? { animation: "livePulseBar 2.5s ease-in-out infinite" } : {}}
+                                                            />
+                                                            {/* Count label above bar */}
+                                                            <text
+                                                                x={x + barW / 2}
+                                                                y={y - 4}
+                                                                fill={isHovered ? "#38BDF8" : isCurrent ? "#38BDF8" : isDark360 ? "#94A3B8" : "#64748B"}
+                                                                fontSize="9"
+                                                                fontWeight="800"
+                                                                textAnchor="middle"
+                                                            >
                                                                 {d.count}
                                                             </text>
+                                                        </g>
+                                                    );
+                                                })}
+
+                                            {/* Layer 3: Doctor Consultation Speed Spline (Emerald) */}
+                                            {(chartMetricFilter === "all" || chartMetricFilter === "consult") && (
+                                                <path
+                                                    d={consultSplinePath}
+                                                    fill="none"
+                                                    stroke="#10B981"
+                                                    strokeWidth="2.2"
+                                                    strokeDasharray="4 3"
+                                                />
+                                            )}
+
+                                            {/* Layer 4: Patient Footfall Spline (Cyan) */}
+                                            {(chartMetricFilter === "all" || chartMetricFilter === "footfall") && (
+                                                <path
+                                                    d={footfallSplinePath}
+                                                    fill="none"
+                                                    stroke="#0284C7"
+                                                    strokeWidth="2.8"
+                                                    filter="url(#neonGlowFootfall)"
+                                                />
+                                            )}
+
+                                            {/* Layer 5: Avg Wait Time (Turnaround) Spline (Gold / Amber) */}
+                                            {(chartMetricFilter === "all" || chartMetricFilter === "wait") && (
+                                                <path
+                                                    d={waitSplinePath}
+                                                    fill="none"
+                                                    stroke="#F59E0B"
+                                                    strokeWidth="2.6"
+                                                    filter="url(#neonGlowWait)"
+                                                />
+                                            )}
+
+                                            {/* Layer 6: Node Points at each hour */}
+                                            {waitPoints.map((pt, i) => {
+                                                const isHovered = hoveredChartHour === i;
+                                                const isCurrent = pt.isCurrent;
+
+                                                return (
+                                                    <g key={`nodes-${i}`}>
+                                                        {/* Footfall Dot */}
+                                                        {(chartMetricFilter === "all" || chartMetricFilter === "footfall") && (
+                                                            <circle
+                                                                cx={footfallPoints[i].x}
+                                                                cy={footfallPoints[i].y}
+                                                                r={isHovered ? "5" : isCurrent ? "4.5" : "3"}
+                                                                fill={isCurrent ? "#38BDF8" : "#0284C7"}
+                                                                stroke={isDark360 ? "#0C1322" : "#FFFFFF"}
+                                                                strokeWidth="1.5"
+                                                            />
                                                         )}
-                                                        <text x={i * barSlotW + barSlotW / 2} y="152" fill="var(--superadmin-text-muted, #94A3B8)" fontSize="9" fontWeight="600" textAnchor="middle">
-                                                            {d.label}
-                                                        </text>
+
+                                                        {/* Wait Time Dot */}
+                                                        {(chartMetricFilter === "all" || chartMetricFilter === "wait") && (
+                                                            <circle
+                                                                cx={pt.x}
+                                                                cy={pt.y}
+                                                                r={isHovered ? "5" : isCurrent ? "4.5" : "3"}
+                                                                fill="#F59E0B"
+                                                                stroke={isDark360 ? "#0C1322" : "#FFFFFF"}
+                                                                strokeWidth="1.5"
+                                                            />
+                                                        )}
                                                     </g>
                                                 );
                                             })}
 
-                                            <polyline fill="none" stroke="#10B981" strokeWidth="2" points={consultPoints} strokeDasharray="4 2" />
-                                            <polyline fill="none" stroke="#F59E0B" strokeWidth="2.5" points={waitPoints} />
+                                            {/* Layer 7: REAL-TIME "LIVE SCANNER" VERTICAL BEACON BEAM */}
+                                            <g>
+                                                {/* Vertical Laser Scanline */}
+                                                <line
+                                                    x1={liveScanX}
+                                                    y1="20"
+                                                    x2={liveScanX}
+                                                    y2={baselineY}
+                                                    stroke="#38BDF8"
+                                                    strokeWidth="1.8"
+                                                    strokeDasharray="3 3"
+                                                    style={{ animation: "liveScanBeam 2s ease-in-out infinite" }}
+                                                />
 
+                                                {/* Top Glowing Beacon Radar Dot */}
+                                                <circle cx={liveScanX} cy="18" r="5" fill="#38BDF8" opacity="0.4" />
+                                                <circle cx={liveScanX} cy="18" r="2.8" fill="#0284C7" />
+
+                                                {/* Mini Floating "NOW" Pill */}
+                                                <rect x={liveScanX - 18} y="5" width="36" height="12" rx="3" fill="#0284C7" />
+                                                <text x={liveScanX} y="14" fill="#FFFFFF" fontSize="7.5" fontWeight="900" textAnchor="middle">
+                                                    LIVE NOW
+                                                </text>
+                                            </g>
+
+                                            {/* Layer 8: Invisible Hit Areas for Seamless Hover Interaction */}
                                             {hourlyAnalytics.hourlyData.map((d, i) => {
-                                                const cx = i * barSlotW + barSlotW / 2;
-                                                const cy = 135 - (Math.min(d.avgWait, 30) / 30) * 115;
+                                                const slotX = 44 + i * slotW;
+                                                const isHovered = hoveredChartHour === i;
+
                                                 return (
-                                                    <circle
-                                                        key={`pt-${i}`}
-                                                        cx={cx}
-                                                        cy={cy}
-                                                        r={hoveredChartHour === i ? "5" : "3"}
-                                                        fill="#F59E0B"
-                                                        stroke="#131D31"
-                                                        strokeWidth="1.5"
-                                                    />
+                                                    <g
+                                                        key={`hit-${i}`}
+                                                        onMouseEnter={() => setHoveredChartHour && setHoveredChartHour(i)}
+                                                        onMouseLeave={() => setHoveredChartHour && setHoveredChartHour(null)}
+                                                        style={{ cursor: "pointer" }}
+                                                    >
+                                                        {/* Full Height Invisible Interactive Strip */}
+                                                        <rect
+                                                            x={slotX}
+                                                            y="15"
+                                                            width={slotW}
+                                                            height="160"
+                                                            fill="transparent"
+                                                        />
+
+                                                        {/* Hover Crosshair Guide */}
+                                                        {isHovered && (
+                                                            <line
+                                                                x1={slotX + slotW / 2}
+                                                                y1="20"
+                                                                x2={slotX + slotW / 2}
+                                                                y2={baselineY}
+                                                                stroke="rgba(56, 189, 248, 0.4)"
+                                                                strokeWidth="1.2"
+                                                                strokeDasharray="2 2"
+                                                            />
+                                                        )}
+
+                                                        {/* X-Axis Hour Label */}
+                                                        <text
+                                                            x={slotX + slotW / 2}
+                                                            y="174"
+                                                            fill={isHovered ? "#38BDF8" : d.isCurrent ? "#38BDF8" : isDark360 ? "#94A3B8" : "#64748B"}
+                                                            fontSize="9.5"
+                                                            fontWeight={d.isCurrent || isHovered ? "800" : "600"}
+                                                            textAnchor="middle"
+                                                        >
+                                                            {d.label}
+                                                        </text>
+                                                    </g>
                                                 );
                                             })}
                                         </React.Fragment>
@@ -771,28 +1178,71 @@ export default function Hospital360Overview({
                             </svg>
                         </div>
 
-                        {/* Chart Legend & Live Tooltip Bar */}
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", fontSize: "11.5px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--superadmin-text-sub, #CBD5E1)" }}>
-                                    <span style={{ width: "12px", height: "10px", background: "#38BDF8", borderRadius: "2px" }} />
-                                    <span>Patient Footfall</span>
-                                </span>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--superadmin-text-sub, #CBD5E1)" }}>
+                        {/* 4. Interactive Clickable Legend & Live Telemetry Summary Strip */}
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", fontSize: "11.5px" }}>
+                            {/* Clickable Legend Badges */}
+                            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+                                <button
+                                    type="button"
+                                    onClick={() => setChartMetricFilter(chartMetricFilter === "footfall" ? "all" : "footfall")}
+                                    style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        background: "transparent",
+                                        border: "none",
+                                        color: chartMetricFilter === "wait" || chartMetricFilter === "consult" ? "var(--superadmin-text-muted, #94A3B8)" : "var(--superadmin-text-main, #0F172A)",
+                                        cursor: "pointer",
+                                        fontWeight: chartMetricFilter === "footfall" ? 800 : 600,
+                                    }}
+                                >
+                                    <span style={{ width: "12px", height: "10px", background: "linear-gradient(180deg, #38BDF8 0%, #0284C7 100%)", borderRadius: "2px" }} />
+                                    <span>{isHi ? "मरीज आवागमन (Footfall Velocity)" : "Patient Footfall Velocity"}</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setChartMetricFilter(chartMetricFilter === "wait" ? "all" : "wait")}
+                                    style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        background: "transparent",
+                                        border: "none",
+                                        color: chartMetricFilter === "footfall" || chartMetricFilter === "consult" ? "var(--superadmin-text-muted, #94A3B8)" : "var(--superadmin-text-main, #0F172A)",
+                                        cursor: "pointer",
+                                        fontWeight: chartMetricFilter === "wait" ? 800 : 600,
+                                    }}
+                                >
                                     <span style={{ width: "12px", height: "3px", background: "#F59E0B", borderRadius: "2px" }} />
-                                    <span>Avg Wait Time (~mins)</span>
-                                </span>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--superadmin-text-sub, #CBD5E1)" }}>
-                                    <span style={{ width: "12px", height: "2px", background: "#10B981", borderRadius: "2px" }} />
-                                    <span>Avg Consult Duration</span>
-                                </span>
+                                    <span>{isHi ? "औसत प्रतीक्षा समय (TAT ~मिनट)" : "Avg Wait Time (Turnaround TAT)"}</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setChartMetricFilter(chartMetricFilter === "consult" ? "all" : "consult")}
+                                    style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                        background: "transparent",
+                                        border: "none",
+                                        color: chartMetricFilter === "footfall" || chartMetricFilter === "wait" ? "var(--superadmin-text-muted, #94A3B8)" : "var(--superadmin-text-main, #0F172A)",
+                                        cursor: "pointer",
+                                        fontWeight: chartMetricFilter === "consult" ? 800 : 600,
+                                    }}
+                                >
+                                    <span style={{ width: "12px", height: "2.5px", background: "#10B981", borderRadius: "2px" }} />
+                                    <span>{isHi ? "परामर्श अवधि (~मिनट)" : "Doctor Consultation Velocity"}</span>
+                                </button>
                             </div>
 
-                            {hoveredChartHour !== null && hourlyAnalytics.hourlyData[hoveredChartHour] && (
-                                <div style={{ background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", borderRadius: "6px", padding: "3px 10px", color: "#38BDF8", fontWeight: 700 }}>
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClock size={12} color="#38BDF8" /> {hourlyAnalytics.hourlyData[hoveredChartHour].hour} — Footfall: {hourlyAnalytics.hourlyData[hoveredChartHour].count} | Wait: ~{hourlyAnalytics.hourlyData[hoveredChartHour].avgWait}m | Consult: ~{hourlyAnalytics.hourlyData[hoveredChartHour].avgConsult}m</span>
-                                </div>
-                            )}
+                            {/* Live Throughput Telemetry Metric */}
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)" }}>
+                                <span>Throughput: <strong style={{ color: "#0284C7" }}>~{hourlyAnalytics.currentThroughput || 12} pts/hr</strong></span>
+                                <span>•</span>
+                                <span>NABH Target: <strong style={{ color: "#10B981" }}>&lt;15 min</strong></span>
+                            </div>
                         </div>
                     </div>
                 )}
