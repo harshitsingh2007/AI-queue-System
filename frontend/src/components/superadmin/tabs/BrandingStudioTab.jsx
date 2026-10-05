@@ -12,6 +12,10 @@ import {
     IconBuilding,
     IconSmartphone,
     IconAlertTriangle,
+    IconCalendar,
+    IconPlus,
+    IconX,
+    IconTrash,
 } from "../SuperAdminIcons";
 import {
     fieldLabelStyle,
@@ -138,6 +142,136 @@ export default function BrandingStudioTab({
                 opd_helpdesk_hours_hi: hi,
             };
         });
+    };
+
+    const DEFAULT_BRANDING_TIME_SLOTS = React.useMemo(() => [
+        "09:00 AM", "09:45 AM", "10:30 AM", "11:15 AM", "12:00 PM",
+        "02:00 PM", "02:45 PM", "03:30 PM", "04:15 PM", "05:00 PM"
+    ], []);
+
+    const [slotHour, setSlotHour] = React.useState("09");
+    const [slotMinute, setSlotMinute] = React.useState("00");
+    const [slotPeriod, setSlotPeriod] = React.useState("AM");
+    const [slotGenInterval, setSlotGenInterval] = React.useState(45);
+
+    const format24To12 = (time24) => {
+        if (!time24) return "";
+        let [h, m] = time24.split(":").map(Number);
+        if (isNaN(h)) return time24;
+        m = isNaN(m) ? 0 : m;
+        const period = h >= 12 ? "PM" : "AM";
+        let hour12 = h % 12;
+        if (hour12 === 0) hour12 = 12;
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${pad(hour12)}:${pad(m)} ${period}`;
+    };
+
+    const slotToMinutes = (slot) => {
+        if (!slot || typeof slot !== "string") return 0;
+        const trimmed = slot.trim();
+        const parts = trimmed.split(" ");
+        if (parts.length >= 2) {
+            const [time, period] = parts;
+            let [h, m] = time.split(":").map(Number);
+            h = h || 0;
+            m = m || 0;
+            if (period?.toUpperCase() === "PM" && h !== 12) h += 12;
+            if (period?.toUpperCase() === "AM" && h === 12) h = 0;
+            return h * 60 + m;
+        }
+        const [h, m] = trimmed.split(":").map(Number);
+        return (h || 0) * 60 + (m || 0);
+    };
+
+    const sortSlots = (slots) => {
+        return [...slots].sort((a, b) => slotToMinutes(a) - slotToMinutes(b));
+    };
+
+    const currentSlots = Array.isArray(brandingForm.available_time_slots) && brandingForm.available_time_slots.length > 0
+        ? brandingForm.available_time_slots
+        : (Array.isArray(brandingForm.time_slots) && brandingForm.time_slots.length > 0
+            ? brandingForm.time_slots
+            : DEFAULT_BRANDING_TIME_SLOTS);
+
+    const handleAddSlot = (overrideSlot) => {
+        let slotFormatted = "";
+        if (typeof overrideSlot === "string" && overrideSlot.trim()) {
+            slotFormatted = overrideSlot.includes("AM") || overrideSlot.includes("PM") ? overrideSlot.trim() : format24To12(overrideSlot);
+        } else {
+            const pad = (n) => String(n).padStart(2, "0");
+            slotFormatted = `${pad(slotHour)}:${pad(slotMinute)} ${slotPeriod}`;
+        }
+        if (!slotFormatted) return;
+        if (currentSlots.includes(slotFormatted)) {
+            if (notify) notify(isHi ? `स्लॉट '${slotFormatted}' पहले से मौजूद है` : `Slot '${slotFormatted}' already exists in list`);
+            return;
+        }
+        const updated = sortSlots([...currentSlots, slotFormatted]);
+        setBrandingForm((prev) => ({
+            ...prev,
+            available_time_slots: updated,
+        }));
+        if (notify) notify(isHi ? `स्लॉट '${slotFormatted}' जोड़ा गया` : `Added slot '${slotFormatted}'`);
+    };
+
+    const handleRemoveSlot = (slotToRemove) => {
+        const updated = currentSlots.filter((s) => s !== slotToRemove);
+        setBrandingForm((prev) => ({
+            ...prev,
+            available_time_slots: updated,
+        }));
+        if (notify) notify(isHi ? `स्लॉट '${slotToRemove}' हटाया गया` : `Removed slot '${slotToRemove}'`);
+    };
+
+    const handleAutoGenerateSlots = () => {
+        const start = brandingForm.opd_start_time || "08:00";
+        const end = brandingForm.registration_cutoff_time || brandingForm.opd_end_time || "20:00";
+        const startM = slotToMinutes(start);
+        const endM = slotToMinutes(end);
+        const interval = Number(slotGenInterval) || 45;
+
+        if (endM <= startM) {
+            if (notify) notify(isHi ? "प्रारंभ समय समाप्ति समय से पहले होना चाहिए" : "OPD start time must be earlier than cutoff/closing time");
+            return;
+        }
+
+        const generated = [];
+        for (let m = startM; m < endM; m += interval) {
+            const h = Math.floor(m / 60);
+            const min = m % 60;
+            const period = h >= 12 ? "PM" : "AM";
+            let hour12 = h % 12;
+            if (hour12 === 0) hour12 = 12;
+            const pad = (n) => String(n).padStart(2, "0");
+            generated.push(`${pad(hour12)}:${pad(min)} ${period}`);
+        }
+
+        if (generated.length === 0) {
+            if (notify) notify(isHi ? "कोई स्लॉट जनरेट नहीं हुआ" : "No slots generated for current hours");
+            return;
+        }
+
+        setBrandingForm((prev) => ({
+            ...prev,
+            available_time_slots: generated,
+        }));
+        if (notify) notify(isHi ? `${generated.length} स्लॉट ओपीडी घंटों से बनाए गए` : `Generated ${generated.length} slots from OPD hours (${start} to ${end})`);
+    };
+
+    const handleResetSlotsToDefault = () => {
+        setBrandingForm((prev) => ({
+            ...prev,
+            available_time_slots: [...DEFAULT_BRANDING_TIME_SLOTS],
+        }));
+        if (notify) notify(isHi ? "डिफ़ॉल्ट 10 समय स्लॉट लोड किए गए" : "Reset to standard 10 time slots");
+    };
+
+    const handleClearAllSlots = () => {
+        setBrandingForm((prev) => ({
+            ...prev,
+            available_time_slots: [],
+        }));
+        if (notify) notify(isHi ? "सभी स्लॉट हटा दिए गए" : "Cleared all booking slots");
     };
 
     return (
@@ -1052,7 +1186,12 @@ export default function BrandingStudioTab({
 
                             <div className="branding-inset-box" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "14px" }}>
                                 <div>
-                                    <label style={fieldLabelStyle}>{isHi ? "ओपीडी प्रारंभ (Start)" : "OPD Opening Time"}</label>
+                                    <label style={fieldLabelStyle}>
+                                        {isHi ? "ओपीडी प्रारंभ (Start)" : "OPD Opening Time"}
+                                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", marginLeft: "6px" }}>
+                                            ({format24To12(brandingForm.opd_start_time || "08:00")})
+                                        </span>
+                                    </label>
                                     <input
                                         type="time"
                                         value={brandingForm.opd_start_time || "08:00"}
@@ -1062,7 +1201,12 @@ export default function BrandingStudioTab({
                                 </div>
 
                                 <div>
-                                    <label style={fieldLabelStyle}>{isHi ? "ओपीडी समाप्ति (Close)" : "OPD Closing Time"}</label>
+                                    <label style={fieldLabelStyle}>
+                                        {isHi ? "ओपीडी समाप्ति (Close)" : "OPD Closing Time"}
+                                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", marginLeft: "6px" }}>
+                                            ({format24To12(brandingForm.opd_end_time || "20:00")})
+                                        </span>
+                                    </label>
                                     <input
                                         type="time"
                                         value={brandingForm.opd_end_time || "20:00"}
@@ -1081,6 +1225,9 @@ export default function BrandingStudioTab({
                                 <div>
                                     <label style={{ ...fieldLabelStyle, color: "#EF4444" }}>
                                         {isHi ? "दैनिक कटऑफ समय *" : "Registration Cutoff *"}
+                                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#EF4444", marginLeft: "6px" }}>
+                                            ({format24To12(brandingForm.registration_cutoff_time || "19:00")})
+                                        </span>
                                     </label>
                                     <input
                                         type="time"
@@ -1144,6 +1291,345 @@ export default function BrandingStudioTab({
                                     onChange={(e) => setBrandingForm({ ...brandingForm, closed_notice: e.target.value })}
                                     style={{ ...fieldInputStyle, resize: "vertical" }}
                                 />
+                            </div>
+
+                            {/* SECTION: PATIENT PORTAL AVAILABLE TIME SLOTS */}
+                            <div style={{
+                                marginTop: "10px",
+                                paddingTop: "18px",
+                                borderTop: "1.5px solid var(--superadmin-card-border, #E2E8F0)",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "16px",
+                            }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+                                    <div>
+                                        <h4 style={{ margin: "0 0 4px 0", fontSize: "16px", fontWeight: 800, display: "flex", alignItems: "center", gap: "8px", color: "var(--superadmin-text-main, #0F172A)" }}>
+                                            <IconCalendar size={18} color="#0284C7" />
+                                            <span>{isHi ? "मरीज़ पोर्टल: उपलब्ध समय स्लॉट (Select Available Time Slot)" : "Patient Portal: Select Available Time Slot"}</span>
+                                        </h4>
+                                        <p style={{ margin: 0, fontSize: "12px", color: "var(--superadmin-text-muted, #64748B)" }}>
+                                            {isHi
+                                                ? "मरीज़ पोर्टल के 'बुक स्लॉट' में दिखने वाले समय स्लॉट संपादित करें। मरीज इन्हीं स्लॉट्स में से अपॉइंटमेंट बुक कर सकते हैं।"
+                                                : "Configure the available appointment booking time slots displayed in the Patient Portal under 'Select Available Time Slot'."}
+                                        </p>
+                                    </div>
+                                    <span style={{
+                                        fontSize: "12px",
+                                        fontWeight: 800,
+                                        color: currentSlots.length > 0 ? "#0284C7" : "#EF4444",
+                                        background: currentSlots.length > 0 ? "rgba(2, 132, 199, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                                        border: `1px solid ${currentSlots.length > 0 ? "rgba(2, 132, 199, 0.25)" : "rgba(239, 68, 68, 0.25)"}`,
+                                        padding: "4px 12px",
+                                        borderRadius: "20px",
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "6px",
+                                    }}>
+                                        <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: currentSlots.length > 0 ? "#0284C7" : "#EF4444" }} />
+                                        {currentSlots.length} {isHi ? "सक्रिय स्लॉट" : "Active Slots"}
+                                    </span>
+                                </div>
+
+                                {/* Smart Slot Builder / Add Controls */}
+                                <div className="branding-inset-box" style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                                    gap: "14px",
+                                    alignItems: "end",
+                                    background: "var(--superadmin-sub-card, #F8FAFC)",
+                                }}>
+                                    {/* 12-Hour Manual Add Slot */}
+                                    <div>
+                                        <label style={{ ...fieldLabelStyle, marginBottom: "6px" }}>
+                                            {isHi ? "नया समय स्लॉट जोड़ें (12-घंटे चयन)" : "Add Custom Time Slot (12-Hour Format)"}
+                                        </label>
+                                        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                                            {/* 12-Hour Dropdown (01 to 12) */}
+                                            <select
+                                                value={slotHour}
+                                                onChange={(e) => setSlotHour(e.target.value)}
+                                                style={{
+                                                    ...fieldInputStyle,
+                                                    width: "68px",
+                                                    padding: "8px 6px",
+                                                    fontWeight: 800,
+                                                    fontSize: "13px",
+                                                    textAlign: "center",
+                                                    cursor: "pointer",
+                                                }}
+                                                title="Select Hour (1-12)"
+                                            >
+                                                {["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"].map((h) => (
+                                                    <option key={h} value={h}>{h}</option>
+                                                ))}
+                                            </select>
+
+                                            <span style={{ fontWeight: 900, fontSize: "16px", color: "var(--superadmin-text-main, #0F172A)" }}>:</span>
+
+                                            {/* Minute Dropdown */}
+                                            <select
+                                                value={slotMinute}
+                                                onChange={(e) => setSlotMinute(e.target.value)}
+                                                style={{
+                                                    ...fieldInputStyle,
+                                                    width: "68px",
+                                                    padding: "8px 6px",
+                                                    fontWeight: 800,
+                                                    fontSize: "13px",
+                                                    textAlign: "center",
+                                                    cursor: "pointer",
+                                                }}
+                                                title="Select Minute"
+                                            >
+                                                {["00", "05", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55"].map((m) => (
+                                                    <option key={m} value={m}>{m}</option>
+                                                ))}
+                                            </select>
+
+                                            {/* AM / PM Toggle Buttons */}
+                                            <div style={{
+                                                display: "inline-flex",
+                                                background: "var(--superadmin-sub-card, #E2E8F0)",
+                                                border: "1px solid var(--superadmin-card-border, #CBD5E1)",
+                                                borderRadius: "10px",
+                                                padding: "2px",
+                                                gap: "2px",
+                                            }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSlotPeriod("AM")}
+                                                    style={{
+                                                        padding: "6px 11px",
+                                                        borderRadius: "7px",
+                                                        border: "none",
+                                                        fontSize: "11.5px",
+                                                        fontWeight: 900,
+                                                        cursor: "pointer",
+                                                        background: slotPeriod === "AM" ? "#0284C7" : "transparent",
+                                                        color: slotPeriod === "AM" ? "#FFFFFF" : "var(--superadmin-text-sub, #475569)",
+                                                        boxShadow: slotPeriod === "AM" ? "0 2px 6px rgba(2, 132, 199, 0.3)" : "none",
+                                                        transition: "all 0.15s ease",
+                                                    }}
+                                                >
+                                                    AM
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSlotPeriod("PM")}
+                                                    style={{
+                                                        padding: "6px 11px",
+                                                        borderRadius: "7px",
+                                                        border: "none",
+                                                        fontSize: "11.5px",
+                                                        fontWeight: 900,
+                                                        cursor: "pointer",
+                                                        background: slotPeriod === "PM" ? "#0284C7" : "transparent",
+                                                        color: slotPeriod === "PM" ? "#FFFFFF" : "var(--superadmin-text-sub, #475569)",
+                                                        boxShadow: slotPeriod === "PM" ? "0 2px 6px rgba(2, 132, 199, 0.3)" : "none",
+                                                        transition: "all 0.15s ease",
+                                                    }}
+                                                >
+                                                    PM
+                                                </button>
+                                            </div>
+
+                                            {/* Add Slot Button */}
+                                            <button
+                                                type="button"
+                                                onClick={() => handleAddSlot()}
+                                                style={{
+                                                    padding: "9px 15px",
+                                                    borderRadius: "10px",
+                                                    background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                                                    color: "#FFFFFF",
+                                                    border: "none",
+                                                    fontSize: "12px",
+                                                    fontWeight: 800,
+                                                    cursor: "pointer",
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    gap: "6px",
+                                                    boxShadow: "0 2px 8px rgba(2, 132, 199, 0.3)",
+                                                    whiteSpace: "nowrap",
+                                                }}
+                                            >
+                                                <IconPlus size={14} />
+                                                <span>{isHi ? "स्लॉट जोड़ें" : "Add Slot"}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Auto-Generate from OPD Hours */}
+                                    <div>
+                                        <label style={{ ...fieldLabelStyle, marginBottom: "6px" }}>
+                                            {isHi ? "ओपीडी समय से स्वतः जनरेट करें (Auto-Generate)" : "Auto-Generate from OPD Hours"}
+                                        </label>
+                                        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                            <select
+                                                value={slotGenInterval}
+                                                onChange={(e) => setSlotGenInterval(Number(e.target.value))}
+                                                style={{ ...fieldInputStyle, flex: 1 }}
+                                            >
+                                                <option value={15}>Every 15 mins</option>
+                                                <option value={30}>Every 30 mins</option>
+                                                <option value={45}>Every 45 mins (Standard)</option>
+                                                <option value={60}>Every 60 mins (Hourly)</option>
+                                            </select>
+                                            <button
+                                                type="button"
+                                                onClick={handleAutoGenerateSlots}
+                                                style={{
+                                                    padding: "9px 14px",
+                                                    borderRadius: "10px",
+                                                    background: "rgba(2, 132, 199, 0.12)",
+                                                    color: "#0284C7",
+                                                    border: "1.5px solid rgba(2, 132, 199, 0.35)",
+                                                    fontSize: "12px",
+                                                    fontWeight: 800,
+                                                    cursor: "pointer",
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    gap: "6px",
+                                                    whiteSpace: "nowrap",
+                                                }}
+                                                title={`Generate slots between ${brandingForm.opd_start_time || "08:00"} and ${brandingForm.registration_cutoff_time || brandingForm.opd_end_time || "20:00"}`}
+                                            >
+                                                <span>⚡ {isHi ? "स्वतः बनाएं" : "Generate"}</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Active Slots Visual Chips Grid */}
+                                <div>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--superadmin-text-main, #0F172A)" }}>
+                                            {isHi ? "वर्तमान में उपलब्ध स्लॉट्स (मरीज़ पोर्टल दृश्य)" : "Current Available Slots (Live Patient Portal Order)"}
+                                        </span>
+                                        <div style={{ display: "flex", gap: "8px" }}>
+                                            <button
+                                                type="button"
+                                                onClick={handleResetSlotsToDefault}
+                                                style={{
+                                                    background: "none",
+                                                    border: "none",
+                                                    color: "#0284C7",
+                                                    fontSize: "11px",
+                                                    fontWeight: 700,
+                                                    cursor: "pointer",
+                                                    padding: "2px 6px",
+                                                    textDecoration: "underline",
+                                                }}
+                                            >
+                                                {isHi ? "डिफ़ॉल्ट 10 स्लॉट रीसेट करें" : "Reset Standard 10 Slots"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleClearAllSlots}
+                                                style={{
+                                                    background: "none",
+                                                    border: "none",
+                                                    color: "#EF4444",
+                                                    fontSize: "11px",
+                                                    fontWeight: 700,
+                                                    cursor: "pointer",
+                                                    padding: "2px 6px",
+                                                    textDecoration: "underline",
+                                                }}
+                                            >
+                                                {isHi ? "सभी स्लॉट हटाएं" : "Clear All"}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {currentSlots.length === 0 ? (
+                                        <div style={{
+                                            padding: "20px",
+                                            borderRadius: "12px",
+                                            border: "1.5px dashed #FCA5A5",
+                                            background: "#FEF2F2",
+                                            textAlign: "center",
+                                            color: "#DC2626",
+                                            fontSize: "12.5px",
+                                            fontWeight: 700,
+                                        }}>
+                                            ⚠️ {isHi ? "कोई समय स्लॉट कॉन्फ़िगर नहीं है! मरीज अपॉइंटमेंट बुक नहीं कर पाएंगे। कृपया स्लॉट जोड़ें या 'स्वतः बनाएं' पर क्लिक करें।" : "No booking slots configured! Patients will be unable to reserve appointment slots. Please add slots or click 'Auto-Generate'."}
+                                        </div>
+                                    ) : (
+                                        <div style={{
+                                            display: "grid",
+                                            gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))",
+                                            gap: "8px",
+                                            maxHeight: "220px",
+                                            overflowY: "auto",
+                                            padding: "4px",
+                                        }}>
+                                            {currentSlots.map((slot) => (
+                                                <div
+                                                    key={slot}
+                                                    style={{
+                                                        padding: "8px 10px",
+                                                        borderRadius: "8px",
+                                                        border: "1.5px solid var(--superadmin-card-border, #CBD5E1)",
+                                                        background: "var(--superadmin-card-bg, #FFFFFF)",
+                                                        color: "var(--superadmin-text-main, #0F172A)",
+                                                        fontSize: "12px",
+                                                        fontWeight: 800,
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        justifyContent: "space-between",
+                                                        boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+                                                        transition: "all 0.15s ease",
+                                                    }}
+                                                >
+                                                    <span style={{ letterSpacing: "-0.2px" }}>{slot}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveSlot(slot)}
+                                                        title={`Remove ${slot}`}
+                                                        style={{
+                                                            background: "rgba(239, 68, 68, 0.1)",
+                                                            border: "none",
+                                                            color: "#DC2626",
+                                                            borderRadius: "4px",
+                                                            width: "20px",
+                                                            height: "20px",
+                                                            display: "inline-flex",
+                                                            alignItems: "center",
+                                                            justifyContent: "center",
+                                                            cursor: "pointer",
+                                                            fontSize: "12px",
+                                                            fontWeight: 900,
+                                                            padding: 0,
+                                                            marginLeft: "6px",
+                                                        }}
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Patient Experience Notice */}
+                                <div style={{
+                                    background: "rgba(2, 132, 199, 0.08)",
+                                    border: "1px solid rgba(2, 132, 199, 0.25)",
+                                    borderRadius: "12px",
+                                    padding: "10px 14px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "10px",
+                                }}>
+                                    <span style={{ fontSize: "16px" }}>ℹ️</span>
+                                    <span style={{ fontSize: "11.5px", color: "var(--superadmin-text-main, #0F172A)", lineHeight: 1.45 }}>
+                                        {isHi
+                                            ? "सहेजे गए समय स्लॉट मरीज पोर्टल के 'अपॉइंटमेंट स्लॉट बुक करें' में तुरंत लाइव दिखेंगे। निर्धारित स्लॉट से 30 मिनट पहले चेक-इन स्वतः सक्रिय हो जाता है।"
+                                            : "Saved slots instantly reflect in the Patient Portal under 'Select Available Time Slot'. The arrival check-in window automatically activates 30 minutes before each slot."}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1374,6 +1860,57 @@ export default function BrandingStudioTab({
                                             <span>{isHi ? "कतार में शामिल हों" : "Join Live Queue"}</span>
                                             <span>→</span>
                                         </div>
+                                    </div>
+
+                                    {/* Simulated Available Time Slot Picker in Simulator */}
+                                    <div style={{
+                                        background: "var(--superadmin-sub-card, #F8FAFC)",
+                                        border: "1px solid var(--superadmin-card-border, #E2E8F0)",
+                                        borderRadius: "14px",
+                                        padding: "11px 12px",
+                                        textAlign: "left",
+                                    }}>
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "7px" }}>
+                                            <span style={{ fontSize: "10.5px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)", display: "flex", alignItems: "center", gap: "5px" }}>
+                                                <IconCalendar size={12} color={primaryClr} />
+                                                <span>{isHi ? "उपलब्ध समय स्लॉट" : "Select Available Time Slot"}</span>
+                                            </span>
+                                            <span style={{ fontSize: "9px", fontWeight: 800, color: primaryClr, background: `${primaryClr}15`, padding: "1px 6px", borderRadius: "10px" }}>
+                                                {currentSlots.length} slots
+                                            </span>
+                                        </div>
+                                        {currentSlots.length === 0 ? (
+                                            <div style={{ fontSize: "9.5px", color: "#DC2626", textAlign: "center", padding: "6px" }}>
+                                                {isHi ? "कोई स्लॉट कॉन्फ़िगर नहीं है" : "No slots configured"}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "5px" }}>
+                                                    {currentSlots.slice(0, 6).map((slot, idx) => (
+                                                        <div
+                                                            key={slot + idx}
+                                                            style={{
+                                                                padding: "5px 2px",
+                                                                borderRadius: "6px",
+                                                                fontSize: "9px",
+                                                                fontWeight: 700,
+                                                                textAlign: "center",
+                                                                border: idx === 0 ? `1.5px solid ${primaryClr}` : "1px solid var(--superadmin-card-border, #CBD5E1)",
+                                                                background: idx === 0 ? `${primaryClr}12` : "var(--superadmin-card-bg, #FFFFFF)",
+                                                                color: idx === 0 ? primaryClr : "var(--superadmin-text-sub, #475569)",
+                                                            }}
+                                                        >
+                                                            {slot}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {currentSlots.length > 6 && (
+                                                    <div style={{ fontSize: "8.5px", color: "var(--superadmin-text-muted, #64748B)", textAlign: "center", marginTop: "5px", fontWeight: 600 }}>
+                                                        +{currentSlots.length - 6} more slots in patient portal
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
                                     </div>
 
                                     {/* Help Desk Footer */}

@@ -5,7 +5,7 @@
  * Opens the native browser print / "Save as PDF" dialog with zero external dependencies.
  */
 
-import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel, formatRiskLabel } from "./i18n";
+import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel, formatRiskLabel, formatCleanText } from "./i18n";
 
 /**
  * Triggers the browser print/PDF dialog using a dedicated hidden iframe.
@@ -70,26 +70,33 @@ function formatRxHtml(rxNotes, lang = "en") {
   if (parsed && typeof parsed === "object") {
     let html = `<div style="text-align: left; margin-top: 4px;">`;
     if (parsed.diagnosis) {
-      html += `<div style="font-size: 11.5px; font-weight: 800; color: #166534; margin-bottom: 3px;"><strong>Diagnosis:</strong> ${parsed.diagnosis}</div>`;
+      const cleanDiag = formatCleanText(parsed.diagnosis, lang);
+      html += `<div style="font-size: 11.5px; font-weight: 800; color: #166534; margin-bottom: 3px;"><strong>Diagnosis:</strong> ${cleanDiag}</div>`;
     }
     if (Array.isArray(parsed.medicines) && parsed.medicines.length > 0) {
       html += `<div style="font-size: 11px; font-weight: 800; color: #15803D; margin-top: 4px;">Rx Medicines:</div>`;
       html += `<ul style="margin: 3px 0 4px 16px; padding: 0; font-size: 11px; color: #1e293b;">`;
       parsed.medicines.forEach((m) => {
         if (m.name) {
-          html += `<li><strong>${m.name}</strong> ${m.dosage || ""} ${m.frequency ? `(${m.frequency})` : ""} ${m.duration ? `[${m.duration}]` : ""}</li>`;
+          const medName = formatCleanText(m.name, lang);
+          const medDosage = m.dosage ? formatCleanText(m.dosage, lang) : "";
+          const medFreq = m.frequency ? `(${formatCleanText(m.frequency, lang)})` : "";
+          const medDur = m.duration ? `[${formatCleanText(m.duration, lang)}]` : "";
+          html += `<li><strong>${medName}</strong> ${medDosage} ${medFreq} ${medDur}</li>`;
         }
       });
       html += `</ul>`;
     }
     if (parsed.advice) {
-      html += `<div style="font-size: 11px; color: #15803D; margin-top: 3px; font-style: italic;"><strong>Advice:</strong> ${parsed.advice}</div>`;
+      const cleanAdvice = String(parsed.advice).replace(/_/g, " ");
+      html += `<div style="font-size: 11px; color: #15803D; margin-top: 3px; font-style: italic;"><strong>Advice:</strong> ${cleanAdvice}</div>`;
     }
     html += `</div>`;
     return html;
   }
 
-  return `<p class="rx-text">"${typeof rxNotes === "string" ? rxNotes : JSON.stringify(rxNotes)}"</p>`;
+  const rawClean = typeof rxNotes === "string" ? rxNotes.replace(/_/g, " ") : JSON.stringify(rxNotes);
+  return `<p class="rx-text">"${rawClean}"</p>`;
 }
 
 /**
@@ -108,7 +115,7 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
     opdHelpline ? (String(opdHelpline).startsWith("OPD") ? opdHelpline : `OPD No: ${opdHelpline}`) : ""
   ].filter(Boolean).join(" • ");
   const customFooter = (branding && branding.slip_footer_text) || (lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड • कृपया परामर्श समाप्ति तक संभाल कर रखें" : "Non-transferable official patient record • Retain until consultation is complete");
-  const logoUrl = (branding && branding.logo_url) || "";
+  const logoUrl = (branding && (branding.logo_url || branding.hospital_logo)) || ticket.logo_url || "";
 
   const now = new Date();
   const formattedDateTime = now.toLocaleDateString(lang === "hi" ? "hi-IN" : "en-US", {
@@ -122,7 +129,8 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
 
   const deptName = getCategoryLabel(ticket.service_category, lang);
   const statusName = getStatusLabel(ticket.status, lang);
-  const genderStr = t(ticket.gender || "male", lang);
+  const patientName = formatCleanText(ticket.name, lang);
+  const genderStr = formatCleanText(t(ticket.gender || "male", lang), lang);
   const yrsStr = t("unit_yrs", lang);
   const minStr = t("unit_min", lang);
   const passTitle = t("officialQueuePass", lang);
@@ -378,7 +386,7 @@ export function printTokenPass(ticket, qrBase64, lang = "en", branding = null) {
   <div class="tiles-grid">
     <div class="tile">
       <div class="tile-label">👤 ${t("patientDemographics", lang)}</div>
-      <div class="tile-val">${ticket.name} (${ticket.age || 30} ${yrsStr}, ${genderStr})</div>
+      <div class="tile-val">${patientName} (${ticket.age || 30} ${yrsStr}, ${genderStr})</div>
     </div>
     <div class="tile">
       <div class="tile-label">📌 ${t("currentStatus", lang)}</div>
@@ -454,9 +462,11 @@ export function printAppointmentRecord(apt, lang = "en", branding = null) {
     emergencyHelpline,
     opdHelpline ? (String(opdHelpline).startsWith("OPD") ? opdHelpline : `OPD No: ${opdHelpline}`) : ""
   ].filter(Boolean).join(" • ");
-  const logoUrl = (branding && branding.logo_url) || "";
+  const logoUrl = (branding && (branding.logo_url || branding.hospital_logo)) || apt.logo_url || "";
   const deptName = getCategoryLabel(apt.service_category, lang);
   const statusName = getStatusLabel(apt.status, lang);
+  const patientName = formatCleanText(apt.patient_name, lang);
+  const timeSlot = formatCleanText(apt.time_slot, lang);
   const slipTitle = (branding && branding.tagline) || t("officialRxSlip", lang);
   const footerStr = `${hospitalName} • ${(branding && branding.slip_footer_text) || (lang === "hi" ? "अहस्तांतरणीय आधिकारिक मरीज़ रिकॉर्ड • कृपया परामर्श समाप्ति तक संभाल कर रखें" : "Non-transferable official patient record • Retain until consultation is complete")}`;
 
@@ -596,11 +606,11 @@ export function printAppointmentRecord(apt, lang = "en", branding = null) {
   <table class="info-table">
     <tr>
       <td class="label">${t("patientDemographics", lang)}</td>
-      <td class="val">${apt.patient_name}</td>
+      <td class="val">${patientName}</td>
     </tr>
     <tr>
       <td class="label">${t("dateLabel", lang)} & ${t("timeLabel", lang)}</td>
-      <td class="val">${apt.appointment_date} @ ${apt.time_slot}</td>
+      <td class="val">${apt.appointment_date} @ ${timeSlot}</td>
     </tr>
     <tr>
       <td class="label">${t("currentStatus", lang)}</td>
@@ -637,7 +647,10 @@ export function printAppointmentRecord(apt, lang = "en", branding = null) {
 /**
  * Normalize prescription data from various shape inputs (raw notes string, parsed object, or ticket)
  */
-export function normalizeRxData(rxData) {
+/**
+ * Normalize prescription data from various shape inputs (raw notes string, parsed object, or ticket)
+ */
+export function normalizeRxData(rxData, lang = "en") {
   if (!rxData) return null;
   let parsed = rxData;
   if (typeof rxData === "string") {
@@ -652,23 +665,36 @@ export function normalizeRxData(rxData) {
     }
   }
 
-  const patientName = parsed.patient_name || parsed.name || "Patient";
+  const patientName = formatCleanText(parsed.patient_name || parsed.name || "Patient", lang);
   const age = parsed.age || 30;
-  const gender = parsed.gender || "male";
+  const gender = formatCleanText(parsed.gender || "male", lang);
   const ticketId = parsed.ticket_id || "";
   const appointmentId = parsed.appointment_id || "";
-  const doctorName = (parsed.doctor_name && parsed.doctor_name !== "Dr. Staff Desk")
+  const rawDoctor = (parsed.doctor_name && parsed.doctor_name !== "Dr. Staff Desk")
     ? parsed.doctor_name
     : (parsed.served_by_doctor_name || "Consultant Physician");
-  const doctorDept = parsed.doctor_department || parsed.service_category || parsed.department_name || "General OPD";
+  const doctorName = formatCleanText(rawDoctor, lang);
+  const rawDept = parsed.doctor_department || parsed.service_category || parsed.department_name || "General OPD";
+  const doctorDept = getCategoryLabel(rawDept, lang);
   const doctorReg = parsed.doctor_employee_id || parsed.doctor_reg_no || "MCI-2024-8842";
-  const diagnosis = parsed.diagnosis || parsed.medical_condition || "Clinical Consultation & General OPD Assessment";
-  const medicines = Array.isArray(parsed.medicines) ? parsed.medicines : [];
-  const labTests = parsed.lab_tests || "";
-  const advice = parsed.advice || "";
-  const followUp = parsed.follow_up || "";
+  const rawDiag = parsed.diagnosis || parsed.medical_condition || "Clinical Consultation & General OPD Assessment";
+  const diagnosis = formatCleanText(rawDiag, lang);
+  const rawMedicines = Array.isArray(parsed.medicines) ? parsed.medicines : [];
+  const medicines = rawMedicines.map((m) => ({
+    ...m,
+    name: formatCleanText(m.name, lang),
+    dosage: m.dosage ? formatCleanText(m.dosage, lang) : "",
+    frequency: m.frequency ? formatCleanText(m.frequency, lang) : "",
+    duration: m.duration ? formatCleanText(m.duration, lang) : "",
+    instructions: m.instructions ? formatCleanText(m.instructions, lang) : "After food",
+  }));
+  const labTests = parsed.lab_tests ? formatCleanText(parsed.lab_tests, lang) : "";
+  const advice = parsed.advice ? String(parsed.advice).replace(/_/g, " ") : "";
+  const followUp = parsed.follow_up ? formatCleanText(parsed.follow_up, lang) : "";
   const prescribedAt = parsed.prescribed_at || new Date().toISOString();
   const phone = parsed.phone || "";
+  const logoUrl = parsed.logo_url || "";
+  const hospitalName = parsed.hospital_name ? formatCleanText(parsed.hospital_name, lang) : "";
 
   return {
     ...parsed,
@@ -687,25 +713,84 @@ export function normalizeRxData(rxData) {
     follow_up: followUp,
     prescribed_at: prescribedAt,
     phone,
+    logo_url: logoUrl,
+    hospital_name: hospitalName,
   };
 }
 
 function escapePdfText(str) {
   if (!str) return "";
   return String(str)
+    .replace(/_/g, " ")
     .replace(/\\/g, "\\\\")
     .replace(/\(/g, "\\(")
     .replace(/\)/g, "\\)");
 }
 
 /**
- * Builds a valid binary PDF Blob (PDF-1.4) with hospital branding, doctor signature stamp, and full medication instructions
+ * Loads a hospital logo image and rasterizes it to JPEG bytes for binary PDF 1.4 embedding
  */
-export function buildPrescriptionPdfBlob(rawRxData, lang = "en", branding = null) {
-  const data = normalizeRxData(rawRxData);
+export function loadLogoForPdf(logoUrl) {
+  if (!logoUrl) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const nw = img.naturalWidth || img.width || 120;
+          const nh = img.naturalHeight || img.height || 40;
+          const maxW = 160;
+          const maxH = 50;
+          const scale = Math.min(maxW / nw, maxH / nh, 1);
+          const targetW = Math.max(1, Math.round(nw * scale));
+          const targetH = Math.max(1, Math.round(nh * scale));
+
+          const canvas = document.createElement("canvas");
+          canvas.width = targetW;
+          canvas.height = targetH;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, targetW, targetH);
+          ctx.drawImage(img, 0, 0, targetW, targetH);
+
+          canvas.toBlob(
+            async (blob) => {
+              if (!blob) return resolve(null);
+              try {
+                const arrayBuffer = await blob.arrayBuffer();
+                resolve({
+                  width: targetW,
+                  height: targetH,
+                  bytes: new Uint8Array(arrayBuffer),
+                });
+              } catch (e) {
+                resolve(null);
+              }
+            },
+            "image/jpeg",
+            0.88
+          );
+        } catch (err) {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = logoUrl;
+    } catch (e) {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Builds a valid binary PDF Blob (PDF-1.4) with hospital branding, logo, doctor signature stamp, and full medication instructions
+ */
+export function buildPrescriptionPdfBlob(rawRxData, lang = "en", branding = null, logoImageMeta = null) {
+  const data = normalizeRxData(rawRxData, lang);
   if (!data) return null;
 
-  const hospitalName = (branding && (branding.hospital_name || branding.name)) || t("hospitalName", lang);
+  const hospitalName = (branding && (branding.hospital_name || branding.name)) || data.hospital_name || t("hospitalName", lang);
   const brandTagline = (branding && branding.tagline) || (lang === "hi" ? "आउटपेशेंट क्लिनिकल ई-प्रिस्क्रिप्शन पर्ची" : "Outpatient Clinical E-Prescription Slip");
   const dateStr = data.prescribed_at ? new Date(data.prescribed_at).toLocaleDateString() : new Date().toLocaleDateString();
   const timeStr = data.prescribed_at ? new Date(data.prescribed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
@@ -720,10 +805,30 @@ export function buildPrescriptionPdfBlob(rawRxData, lang = "en", branding = null
   stream.push("0.008 0.518 0.780 rg"); // #0284C7
   stream.push("0 831.89 595.28 10 re f");
 
-  // 2. Rx Symbol & Hospital Title
-  stream.push("BT /F2 26 Tf 0.008 0.518 0.780 rg 40 788 Td (Rx) Tj ET");
-  stream.push("BT /F2 16 Tf 0.059 0.090 0.165 rg 80 798 Td (" + escapePdfText(hospitalName.toUpperCase()) + ") Tj ET");
-  stream.push("BT /F1 8.5 Tf 0.008 0.518 0.780 rg 80 784 Td (" + escapePdfText(brandTagline.toUpperCase()) + " - NABH ACCREDITED HEALTHCARE) Tj ET");
+  // 2. Hospital Logo & Title
+  let textStartX = 82;
+  if (logoImageMeta && logoImageMeta.bytes) {
+    const aspect = logoImageMeta.width / logoImageMeta.height;
+    let dispW = 95;
+    let dispH = Math.round(95 / aspect);
+    if (dispH > 38) {
+      dispH = 38;
+      dispW = Math.round(38 * aspect);
+    }
+    const imgX = 40;
+    const imgY = 770 + Math.round((42 - dispH) / 2);
+    stream.push("q");
+    stream.push(`${dispW} 0 0 ${dispH} ${imgX} ${imgY} cm`);
+    stream.push("/Im1 Do");
+    stream.push("Q");
+    textStartX = imgX + dispW + 12;
+  } else {
+    stream.push("BT /F2 26 Tf 0.008 0.518 0.780 rg 40 788 Td (Rx) Tj ET");
+    textStartX = 82;
+  }
+
+  stream.push("BT /F2 15 Tf 0.059 0.090 0.165 rg " + textStartX + " 798 Td (" + escapePdfText(hospitalName.toUpperCase()) + ") Tj ET");
+  stream.push("BT /F1 8.5 Tf 0.008 0.518 0.780 rg " + textStartX + " 784 Td (" + escapePdfText(brandTagline.toUpperCase()) + " - NABH ACCREDITED HEALTHCARE) Tj ET");
 
   // Date, Time & Token (Right header)
   stream.push("BT /F2 8.5 Tf 0.28 0.33 0.41 rg 420 800 Td (Date: " + escapePdfText(dateStr) + " " + escapePdfText(timeStr) + ") Tj ET");
@@ -853,53 +958,107 @@ export function buildPrescriptionPdfBlob(rawRxData, lang = "en", branding = null
   stream.push("BT /F1 7.5 Tf 0.58 0.64 0.72 rg 120 28 Td (" + escapePdfText(hospitalName + " - NABH Accredited Healthcare - Generated by AI Queue Health System") + ") Tj ET");
 
   const contentStream = stream.join("\n");
-  const streamLen = new TextEncoder().encode(contentStream).length;
+  const contentStreamLen = new TextEncoder().encode(contentStream).length;
 
-  const pdfLines = [
-    "%PDF-1.4",
-    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj",
-    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj",
-    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 " + width + " " + height + "] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >> endobj",
-    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj",
-    "5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj",
-    "6 0 obj << /Length " + streamLen + " >> stream",
-    contentStream,
-    "endstream endobj",
-  ];
+  const hasImage = Boolean(logoImageMeta && logoImageMeta.bytes);
+  const pageResources = hasImage
+    ? "<< /Font << /F1 4 0 R /F2 5 0 R >> /XObject << /Im1 7 0 R >> >>"
+    : "<< /Font << /F1 4 0 R /F2 5 0 R >> >>";
 
-  let offsets = ["0000000000 65535 f "];
-  let fullDoc = "";
-  for (let i = 0; i < pdfLines.length; i++) {
-    const line = pdfLines[i];
-    if (/^\d+ 0 obj/.test(line)) {
-      const objOffset = new TextEncoder().encode(fullDoc).length;
-      offsets.push(String(objOffset).padStart(10, "0") + " 00000 n ");
-    }
-    fullDoc += line + "\n";
+  const chunks = [];
+  let currentByteOffset = 0;
+  const offsets = ["0000000000 65535 f "];
+
+  function pushTextChunk(text) {
+    const encoded = new TextEncoder().encode(text);
+    chunks.push(encoded);
+    currentByteOffset += encoded.length;
   }
 
-  const startXref = new TextEncoder().encode(fullDoc).length;
-  fullDoc += "xref\n0 " + offsets.length + "\n" + offsets.join("\n") + "\n";
-  fullDoc += "trailer << /Size " + offsets.length + " /Root 1 0 R >>\n";
-  fullDoc += "startxref\n" + startXref + "\n%%EOF";
+  function registerObject(objNum) {
+    offsets[objNum] = String(currentByteOffset).padStart(10, "0") + " 00000 n ";
+  }
 
-  return new Blob([fullDoc], { type: "application/pdf" });
+  // Header
+  pushTextChunk("%PDF-1.4\n");
+
+  // Object 1: Catalog
+  registerObject(1);
+  pushTextChunk("1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n");
+
+  // Object 2: Pages
+  registerObject(2);
+  pushTextChunk("2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n");
+
+  // Object 3: Page
+  registerObject(3);
+  pushTextChunk(
+    `3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] /Resources ${pageResources} /Contents 6 0 R >> endobj\n`
+  );
+
+  // Object 4: Font F1
+  registerObject(4);
+  pushTextChunk("4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n");
+
+  // Object 5: Font F2
+  registerObject(5);
+  pushTextChunk("5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj\n");
+
+  // Object 6: Stream
+  registerObject(6);
+  pushTextChunk(`6 0 obj << /Length ${contentStreamLen} >> stream\n`);
+  pushTextChunk(contentStream);
+  pushTextChunk("\nendstream endobj\n");
+
+  // Object 7: Image if available
+  if (hasImage) {
+    registerObject(7);
+    pushTextChunk(
+      `7 0 obj << /Type /XObject /Subtype /Image /Width ${logoImageMeta.width} /Height ${logoImageMeta.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logoImageMeta.bytes.length} >> stream\n`
+    );
+    chunks.push(logoImageMeta.bytes);
+    currentByteOffset += logoImageMeta.bytes.length;
+    pushTextChunk("\nendstream endobj\n");
+  }
+
+  const startXrefOffset = currentByteOffset;
+  const numObjects = hasImage ? 8 : 7;
+  let xrefTable = `xref\n0 ${numObjects}\n`;
+  for (let i = 0; i < numObjects; i++) {
+    xrefTable += offsets[i] + "\n";
+  }
+  xrefTable += `trailer << /Size ${numObjects} /Root 1 0 R >>\n`;
+  xrefTable += `startxref\n${startXrefOffset}\n%%EOF`;
+  pushTextChunk(xrefTable);
+
+  return new Blob(chunks, { type: "application/pdf" });
 }
 
 /**
- * 1-Click Download Official Clinical Rx PDF with hospital branding & doctor signature stamp
+ * 1-Click Download Official Clinical Rx PDF with hospital branding, logo & doctor signature stamp
  */
-export function downloadPrescriptionPDF(rxData, lang = "en", branding = null) {
-  const data = normalizeRxData(rxData);
+export async function downloadPrescriptionPDF(rxData, lang = "en", branding = null) {
+  const data = normalizeRxData(rxData, lang);
   if (!data) return;
 
-  const hospitalName = (branding && (branding.hospital_name || branding.name)) || t("hospitalName", lang);
-  const patientSafe = (data.patient_name || "Patient").replace(/[^a-zA-Z0-9_-]/g, "_");
-  const ticketSafe = data.ticket_id ? `Token_${data.ticket_id}` : (data.appointment_id || "Rx");
-  const fileName = `${hospitalName.replace(/[^a-zA-Z0-9_-]/g, "_")}_Clinical_Rx_${ticketSafe}_${patientSafe}.pdf`;
+  const hospitalName = (branding && (branding.hospital_name || branding.name)) || data.hospital_name || t("hospitalName", lang);
+  const cleanHosp = String(hospitalName).replace(/_/g, " ").replace(/[^\w\s-]/g, "").trim();
+  const cleanPatient = String(data.patient_name || "Patient").replace(/_/g, " ").replace(/[^\w\s-]/g, "").trim();
+  const cleanTicket = data.ticket_id ? `Token ${data.ticket_id}` : (data.appointment_id ? `Appt ${data.appointment_id}` : "Rx");
+  const fileName = `${cleanHosp} - Clinical Rx - ${cleanTicket} - ${cleanPatient}.pdf`.replace(/\s+/g, " ");
+
+  const logoUrl = (branding && (branding.logo_url || branding.hospital_logo)) || data.logo_url || "";
+  let logoImageMeta = null;
+  if (logoUrl) {
+    try {
+      logoImageMeta = await loadLogoForPdf(logoUrl);
+    } catch (e) {
+      console.warn("Could not load logo for PDF:", e);
+    }
+  }
 
   try {
-    const pdfBlob = buildPrescriptionPdfBlob(data, lang, branding);
+    const pdfBlob = buildPrescriptionPdfBlob(data, lang, branding, logoImageMeta);
     if (pdfBlob) {
       const blobUrl = URL.createObjectURL(pdfBlob);
       const a = document.createElement("a");
@@ -925,16 +1084,17 @@ export function downloadPrescriptionPDF(rxData, lang = "en", branding = null) {
  * Print official A4 / slip clinical prescription with doctor letterhead, medications table, and stamp.
  */
 export function printPrescriptionSlip(rawRxData, lang = "en", branding = null) {
-  const rxData = normalizeRxData(rawRxData);
+  const rxData = normalizeRxData(rawRxData, lang);
   if (!rxData) return;
 
-  const hospitalName = (branding && (branding.hospital_name || branding.name)) || t("hospitalName", lang);
+  const hospitalName = (branding && (branding.hospital_name || branding.name)) || rxData.hospital_name || t("hospitalName", lang);
   const brandPrimary = (branding && branding.primary_color) || "#0284C7";
   const brandTagline = (branding && branding.tagline) || (lang === "hi" ? "आउटपेशेंट क्लिनिकल ई-प्रिस्क्रिप्शन पर्ची" : "Outpatient Clinical E-Prescription Slip");
   const footerStr = `${hospitalName} • ${(branding && branding.slip_footer_text) || "NABH Accredited Healthcare • Digitally Validated Clinical Prescription"}`;
   const deptLabel = getCategoryLabel(rxData.doctor_department, lang);
   const dateStr = rxData.prescribed_at ? new Date(rxData.prescribed_at).toLocaleDateString() : new Date().toLocaleDateString();
   const timeStr = rxData.prescribed_at ? new Date(rxData.prescribed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+  const logoUrl = (branding && (branding.logo_url || branding.hospital_logo)) || rxData.logo_url || "";
 
   const html = `<!DOCTYPE html>
 <html>
@@ -1072,8 +1232,12 @@ export function printPrescriptionSlip(rawRxData, lang = "en", branding = null) {
 </head>
 <body>
   <div class="header">
-    <div style="display: flex; align-items: center;">
-      <span class="rx-symbol">℞</span>
+    <div style="display: flex; align-items: center; gap: 14px;">
+      ${logoUrl ? `
+        <img src="${logoUrl}" alt="Hospital Logo" style="max-height: 52px; max-width: 140px; object-fit: contain; border-radius: 6px;" />
+      ` : `
+        <span class="rx-symbol">℞</span>
+      `}
       <div>
         <h1 class="hosp-name">${hospitalName}</h1>
         <div class="hosp-sub">${brandTagline}</div>
@@ -1091,7 +1255,7 @@ export function printPrescriptionSlip(rawRxData, lang = "en", branding = null) {
       <div class="info-label">${t("patientDemographics", lang)}</div>
       <div class="info-val">${rxData.patient_name}</div>
       <div style="font-size: 11.5px; color: #475569; margin-top: 3px;">
-        ${rxData.age || 30} yrs • ${t(rxData.gender || "male", lang)} ${rxData.ticket_id ? `• Token #${rxData.ticket_id}` : ""} ${rxData.phone ? `• ${rxData.phone}` : ""}
+        ${rxData.age || 30} yrs • ${formatCleanText(t(rxData.gender || "male", lang), lang)} ${rxData.ticket_id ? `• Token #${rxData.ticket_id}` : ""} ${rxData.phone ? `• ${rxData.phone}` : ""}
       </div>
     </div>
     <div>

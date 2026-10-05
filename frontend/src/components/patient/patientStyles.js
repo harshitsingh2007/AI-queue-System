@@ -131,6 +131,8 @@ export const aptStatusBadgeStyle = (status) => {
   if (s === "transferred") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "var(--patient-tag-bg, #E0F2FE)", color: "var(--patient-tag-color, #0284C7)", border: "1px solid var(--patient-tag-border, #BAE6FD)" };
   if (s === "serving") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#FEF3C7", color: "#D97706", border: "1px solid #FDE68A" };
   if (s === "checked_in") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "var(--patient-tag-bg, #F0F9FF)", color: "var(--patient-tag-color, #0284C7)", border: "1px solid var(--patient-tag-border, #BAE6FD)" };
+  if (s === "check_in_available") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#ECFDF5", color: "#059669", border: "1px solid #A7F3D0" };
+  if (s === "booked" || s === "scheduled") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#EFF6FF", color: "#2563EB", border: "1px solid #BFDBFE" };
   if (s === "cancelled" || s === "no_show" || s === "expired") return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "var(--emergency-card-bg, #FEF2F2)", color: "var(--emergency-card-text, #DC2626)", border: "1px solid var(--emergency-card-border, #FECACA)" };
   return { padding: "3px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#7E22CE", border: "1px solid #E9D5FF" };
 };

@@ -1,7 +1,8 @@
-import React from "react";
-import { t } from "../../utils/i18n";
+import React, { useState, useEffect } from "react";
+import { t, getStatusLabel, formatCleanText } from "../../utils/i18n";
 import FamilyMemberSwitcher from "./FamilyMemberSwitcher";
 import { standaloneCardStyle, aptCardRowStyle, aptStatusBadgeStyle, checkInNowBtnStyle } from "./patientStyles";
+import { getAppointmentTiming } from "../../utils/appointmentTiming";
 
 /**
  * MyAppointmentsTab
@@ -36,6 +37,13 @@ export default function MyAppointmentsTab({
   handleAppointmentCheckIn,
   handleCancelAppointment,
 }) {
+  const [nowTime, setNowTime] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNowTime(new Date()), 10000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div style={standaloneCardStyle}>
       {/* Quick Profile Switcher for Active Appointments */}
@@ -179,11 +187,11 @@ export default function MyAppointmentsTab({
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {displayedActiveAppointments.map((apt) => {
             const cleanAptDate = String(apt.appointment_date || "").slice(0, 10);
-            const now = new Date();
+            const now = nowTime || new Date();
             const pad = (n) => String(n).padStart(2, "0");
             const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
             const isFutureAptDate = cleanAptDate && cleanAptDate > todayStr;
-            const isPastAptDate = cleanAptDate && cleanAptDate < todayStr;
+            const timing = getAppointmentTiming(apt, now);
 
             const hasActiveLiveTicket = Boolean(
               (isLiveTicket && activeTicket && activeTicket.appointment_id !== apt.appointment_id && activeTicket.ticket_id !== apt.ticket_id) ||
@@ -194,11 +202,19 @@ export default function MyAppointmentsTab({
               ))
             );
             return (
-            <div key={apt.appointment_id} style={aptCardRowStyle(apt.status)}>
+            <div key={apt.appointment_id} style={aptCardRowStyle(timing?.status ? timing.status.toLowerCase() : apt.status)}>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                   <span style={{ fontSize: "16px", fontWeight: 900, color: "#0284C7" }}>{apt.appointment_id}</span>
-                  <span style={aptStatusBadgeStyle(apt.status)}>{apt.status.toUpperCase()}</span>
+                  <span style={aptStatusBadgeStyle(timing?.status ? timing.status.toLowerCase() : apt.status)}>
+                    {timing?.status === "CHECK_IN_AVAILABLE"
+                      ? (language === "hi" ? "चेक-इन उपलब्ध" : "CHECK-IN AVAILABLE")
+                      : timing?.status === "EXPIRED"
+                      ? (language === "hi" ? "समाप्त" : "EXPIRED")
+                      : timing?.status === "BOOKED"
+                      ? (language === "hi" ? "आरक्षित" : "BOOKED")
+                      : (getStatusLabel(timing?.status || apt.status, language) || String(apt.status).toUpperCase())}
+                  </span>
                   <span style={{
                     fontSize: "11px",
                     fontWeight: 700,
@@ -228,12 +244,12 @@ export default function MyAppointmentsTab({
                       gap: "5px",
                     }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
-                      <span>{apt.doctor_name || apt.served_by_doctor_name}</span>
+                      <span>{formatCleanText(apt.doctor_name || apt.served_by_doctor_name, language)}</span>
                     </span>
                   )}
                 </div>
                 <p style={{ margin: "6px 0 0 0", color: "var(--patient-text-main, #0F172A)", fontWeight: 700, fontSize: "15px" }}>
-                  {apt.patient_name} — {getDeptDisplayName(apt)}
+                  {formatCleanText(apt.patient_name, language)} — {getDeptDisplayName(apt)}
                 </p>
                 <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "2px" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -243,7 +259,19 @@ export default function MyAppointmentsTab({
                   <span>•</span>
                   <span>Date: <strong>{apt.appointment_date}</strong></span>
                   <span>•</span>
-                  <span>Slot: <strong>{apt.time_slot}</strong></span>
+                  <span>{language === "hi" ? "अपॉइंटमेंट समय:" : "Appointment Time:"} <strong style={{ color: "#0284C7" }}>{timing?.formattedAppointmentTime || apt.time_slot}</strong></span>
+                  <span>•</span>
+                  <span style={{ color: timing?.canCheckIn ? "#16A34A" : timing?.isExpired ? "#DC2626" : "#2563EB", fontWeight: 700 }}>
+                    {timing?.canCheckIn
+                      ? (language === "hi" ? `🟢 चेक-इन खुला है (${timing.formattedExpiresAt} तक)` : `🟢 Check-In Open (until ${timing.formattedExpiresAt})`)
+                      : timing?.isExpired
+                      ? (language === "hi" ? `🔴 चेक-इन बंद (${timing.formattedExpiresAt} पर समाप्त)` : `🔴 Check-In Closed (Expired at ${timing.formattedExpiresAt})`)
+                      : (language === "hi" ? `🕒 चेक-इन ${timing?.formattedCheckInOpensAt} पर खुलेगा` : `🕒 Check-In Opens at ${timing?.formattedCheckInOpensAt}`)}
+                  </span>
+                  <span>•</span>
+                  <span style={{ color: "#64748B", fontWeight: 600 }}>
+                    {language === "hi" ? "समाप्ति:" : "Expires:"} <strong>{timing?.formattedExpiresAt}</strong>
+                  </span>
                   <span>•</span>
                   <span style={{ color: "#0284C7", fontWeight: 700 }}>
                     Dept: {getDeptDisplayName(apt)}
@@ -348,174 +376,235 @@ export default function MyAppointmentsTab({
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px" }}>
-                {apt.status === "scheduled" ? (
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {isFutureAptDate ? (
-                      <div
-                        role="status"
-                        data-testid="future-date-checkin-guard"
-                        title={
-                          language === "hi"
-                            ? `चेक-इन अपॉइंटमेंट की तारीख (${cleanAptDate}${apt.time_slot ? ` समय: ${apt.time_slot}` : ""}) को खुलेगा। कृपया अस्पताल पहुंचने पर चेक-इन करें।`
-                            : `Check-in opens on appointment date (${cleanAptDate}${apt.time_slot ? ` at ${apt.time_slot}` : ""}). Please check in when you arrive at the hospital.`
-                        }
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "8px",
-                          background: "var(--patient-tag-bg, #F0F9FF)",
-                          border: "1.5px solid var(--patient-tag-border, #BAE6FD)",
-                          color: "#0369A1",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          cursor: "default",
-                          boxShadow: "0 1px 2px rgba(2, 132, 199, 0.08)",
-                          userSelect: "none",
-                        }}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                          <line x1="16" y1="2" x2="16" y2="6"/>
-                          <line x1="8" y1="2" x2="8" y2="6"/>
-                          <line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                        <span>
-                          {language === "hi"
-                            ? `चेक-इन ${cleanAptDate} को खुलेगा`
-                            : `${t("checkInOpensOnDate", language)} ${cleanAptDate}`}
+                {(() => {
+                  const isQueueTicket = Boolean(apt.ticket_id || (apt.status || "").toLowerCase() === "checked_in");
+                  if (isQueueTicket) {
+                    return (
+                      <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+                        <div>
+                          <span style={{ fontSize: "13px", color: "#0284C7", fontWeight: 800, display: "block" }}>
+                            {t("mergedToken", language)} #{apt.ticket_id}
+                          </span>
+                          <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
+                            {t("activeInLiveQueue", language)}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCancelAppointment(apt.appointment_id, apt.ticket_id)}
+                          style={{
+                            padding: "4px 10px",
+                            borderRadius: "6px",
+                            border: "1px solid #FECACA",
+                            background: "#FEF2F2",
+                            color: "#DC2626",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {language === "hi" ? "टोकन रद्द करें" : "Cancel Token"}
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  // Pre-queue Booked Slot (BOOKED, CHECK_IN_AVAILABLE, or EXPIRED)
+                  return (
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {timing?.isExpired ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px", alignItems: "flex-end" }}>
+                          <span
+                            role="status"
+                            title={language === "hi" ? "अपॉइंटमेंट समय के 1 घंटे बाद टिकट समाप्त हो चुका है" : "Ticket expired 1 hour after scheduled appointment"}
+                            style={{
+                              padding: "6px 12px",
+                              borderRadius: "8px",
+                              background: "#FEF2F2",
+                              border: "1px solid #FECACA",
+                              color: "#DC2626",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                            }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                            <span>{language === "hi" ? `टिकट समाप्त (${timing.formattedExpiresAt})` : `Ticket Expired (${timing.formattedExpiresAt})`}</span>
+                          </span>
+                          <span style={{ fontSize: "10.5px", color: "#B91C1C", fontWeight: 500 }}>
+                            {language === "hi" ? "चेक-इन स्थायी रूप से बंद" : "Check-in permanently closed"}
+                          </span>
+                        </div>
+                      ) : isFutureAptDate ? (
+                        <div
+                          role="status"
+                          data-testid="future-date-checkin-guard"
+                          title={
+                            language === "hi"
+                              ? `चेक-इन अपॉइंटमेंट की तारीख (${cleanAptDate}) को ${timing?.formattedCheckInOpensAt || "30 मिनट पहले"} खुलेगा। कृपया अस्पताल पहुंचने पर चेक-इन करें।`
+                              : `Check-in opens on appointment date (${cleanAptDate}) at ${timing?.formattedCheckInOpensAt || "30 minutes prior"}. Please check in when you arrive at the hospital.`
+                          }
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            background: "var(--patient-tag-bg, #F0F9FF)",
+                            border: "1.5px solid var(--patient-tag-border, #BAE6FD)",
+                            color: "#0369A1",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            cursor: "default",
+                            boxShadow: "0 1px 2px rgba(2, 132, 199, 0.08)",
+                            userSelect: "none",
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                            <line x1="16" y1="2" x2="16" y2="6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"/>
+                            <line x1="3" y1="10" x2="21" y2="10"/>
+                          </svg>
+                          <span>
+                            {language === "hi"
+                              ? `चेक-इन ${cleanAptDate} को खुलेगा`
+                              : `${t("checkInOpensOnDate", language)} ${cleanAptDate}`}
+                          </span>
+                        </div>
+                      ) : timing?.isBooked ? (
+                        <div
+                          role="status"
+                          data-testid="booked-checkin-guard"
+                          title={
+                            language === "hi"
+                              ? `चेक-इन अपॉइंटमेंट से 30 मिनट पहले (${timing.formattedCheckInOpensAt}) पर खुलेगा।`
+                              : `Check-in opens 30 minutes prior to appointment at ${timing.formattedCheckInOpensAt}.`
+                          }
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            background: "#EFF6FF",
+                            border: "1.5px solid #BFDBFE",
+                            color: "#1E40AF",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                          <span>
+                            {language === "hi"
+                              ? `चेक-इन ${timing.formattedCheckInOpensAt} पर खुलेगा`
+                              : `Check-In Opens at ${timing.formattedCheckInOpensAt}`}
+                          </span>
+                          {timing.timeUntilCheckInText && (
+                            <span style={{ fontSize: "10.5px", color: "#3B82F6", fontWeight: 600 }}>
+                              ({timing.timeUntilCheckInText})
+                            </span>
+                          )}
+                        </div>
+                      ) : hasActiveLiveTicket ? (
+                        <div
+                          role="status"
+                          data-testid="active-ticket-checkin-guard"
+                          title={
+                            language === "hi"
+                              ? (activeTicket?.ticket_id
+                                  ? `सक्रिय टोकन #${activeTicket.ticket_id} पहले से प्रगति पर है। चेक-इन करने से पहले कृपया मौजूदा टोकन पूरा करें या रद्द करें।`
+                                  : t("activeTicketInProgressCheckInTooltip", language))
+                              : (activeTicket?.ticket_id
+                                  ? `Active ticket #${activeTicket.ticket_id} is in progress. Complete or cancel your existing ticket before checking in.`
+                                  : t("activeTicketInProgressCheckInTooltip", language))
+                          }
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            background: "#FEF3C7",
+                            border: "1.5px solid #FDE68A",
+                            color: "#B45309",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "5px",
+                            cursor: "not-allowed",
+                            boxShadow: "0 1px 2px rgba(180, 83, 9, 0.08)",
+                            userSelect: "none",
+                          }}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                          </svg>
+                          <span>{t("activeTicketInProgressCheckInGuard", language)}</span>
+                        </div>
+                      ) : registrationStatus.isClosed ? (
+                        <span
+                          title={registrationStatus.reason || "Check-in only works when OPD is open"}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: "8px",
+                            background: "#FEF2F2",
+                            border: "1px solid #FECACA",
+                            color: "#DC2626",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                          <span>{language === "hi" ? "ओपीडी बंद है" : "OPD Closed"}</span>
                         </span>
-                      </div>
-                    ) : isPastAptDate ? (
-                      <span
-                        role="status"
-                        title={language === "hi" ? "अपॉइंटमेंट की तारीख समाप्त हो चुकी है" : "This appointment date has passed"}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "8px",
-                          background: "#FEF2F2",
-                          border: "1px solid #FECACA",
-                          color: "#DC2626",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <span>{t("appointmentDatePassed", language)}</span>
-                      </span>
-                    ) : hasActiveLiveTicket ? (
-                      <div
-                        role="status"
-                        data-testid="active-ticket-checkin-guard"
-                        title={
-                          language === "hi"
-                            ? (activeTicket?.ticket_id
-                                ? `सक्रिय टोकन #${activeTicket.ticket_id} पहले से प्रगति पर है। चेक-इन करने से पहले कृपया मौजूदा टोकन पूरा करें या रद्द करें।`
-                                : t("activeTicketInProgressCheckInTooltip", language))
-                            : (activeTicket?.ticket_id
-                                ? `Active ticket #${activeTicket.ticket_id} is in progress. Complete or cancel your existing ticket before checking in.`
-                                : t("activeTicketInProgressCheckInTooltip", language))
-                        }
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "8px",
-                          background: "#FEF3C7",
-                          border: "1.5px solid #FDE68A",
-                          color: "#B45309",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          cursor: "not-allowed",
-                          boxShadow: "0 1px 2px rgba(180, 83, 9, 0.08)",
-                          userSelect: "none",
-                        }}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <line x1="12" y1="8" x2="12" y2="12" />
-                          <line x1="12" y1="16" x2="12.01" y2="16" />
-                        </svg>
-                        <span>{t("activeTicketInProgressCheckInGuard", language)}</span>
-                      </div>
-                    ) : registrationStatus.isClosed ? (
-                      <span
-                        title={registrationStatus.reason || "Check-in only works when OPD is open"}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "8px",
-                          background: "#FEF2F2",
-                          border: "1px solid #FECACA",
-                          color: "#DC2626",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <span>{language === "hi" ? "ओपीडी बंद है" : "OPD Closed"}</span>
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleAppointmentCheckIn(apt.appointment_id)}
-                        style={checkInNowBtnStyle}
-                      >
-                        {t("checkInJoinLine", language)}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleCancelAppointment(apt.appointment_id, apt.ticket_id)}
-                      style={{
-                        padding: "7px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid #FECACA",
-                        background: "#FEF2F2",
-                        color: "#DC2626",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {language === "hi" ? "रद्द करें" : "Cancel"}
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
-                    <div>
-                      <span style={{ fontSize: "13px", color: "#0284C7", fontWeight: 800, display: "block" }}>
-                        {t("mergedToken", language)} #{apt.ticket_id}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700 }}>
-                        {t("activeInLiveQueue", language)}
-                      </span>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "3px", alignItems: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleAppointmentCheckIn(apt.appointment_id)}
+                            style={{
+                              ...checkInNowBtnStyle,
+                              background: "linear-gradient(135deg, #10B981 0%, #059669 100%)",
+                              boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)",
+                            }}
+                          >
+                            {t("checkInJoinLine", language)}
+                          </button>
+                          {timing?.formattedExpiresAt && (
+                            <span style={{ fontSize: "10.5px", color: "#059669", fontWeight: 600 }}>
+                              {language === "hi" ? `वैध: ${timing.formattedExpiresAt} तक` : `Valid until ${timing.formattedExpiresAt}`}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {!timing?.isExpired && (
+                        <button
+                          type="button"
+                          onClick={() => handleCancelAppointment(apt.appointment_id, apt.ticket_id)}
+                          style={{
+                            padding: "7px 12px",
+                            borderRadius: "8px",
+                            border: "1px solid #FECACA",
+                            background: "#FEF2F2",
+                            color: "#DC2626",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {language === "hi" ? "रद्द करें" : "Cancel"}
+                        </button>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCancelAppointment(apt.appointment_id, apt.ticket_id)}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: "6px",
-                        border: "1px solid #FECACA",
-                        background: "#FEF2F2",
-                        color: "#DC2626",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {language === "hi" ? "टोकन रद्द करें" : "Cancel Token"}
-                    </button>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             </div>
           ); })}

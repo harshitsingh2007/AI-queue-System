@@ -308,6 +308,13 @@ export const TRANSLATIONS = {
     downloadPdfShort: "Download PDF",
     downloadRxPdfSuccess: "Clinical Rx PDF downloaded successfully.",
     doctorSignatureStamp: "Doctor Signature & OPD Stamp",
+    booked: "Booked",
+    check_in_available: "Check-In Available",
+    checkInOpensAt: "Check-in Opens At",
+    ticketExpiresAt: "Ticket Expires At",
+    appointmentTimeLabel: "Appointment Time",
+    ticketExpired: "Ticket Expired",
+    checkInWindowClosed: "Check-in window closed 1 hour after scheduled appointment.",
   },
   hi: {
     systemTitle: "अस्पताल कतार प्रणाली",
@@ -612,6 +619,13 @@ export const TRANSLATIONS = {
     downloadPdfShort: "PDF डाउनलोड",
     downloadRxPdfSuccess: "क्लिनिकल पर्ची PDF सफलतापूर्वक डाउनलोड हो गई।",
     doctorSignatureStamp: "चिकित्सक हस्ताक्षर एवं ओपीडी मुहर",
+    booked: "स्लॉट आरक्षित",
+    check_in_available: "चेक-इन उपलब्ध",
+    checkInOpensAt: "चेक-इन खुलने का समय",
+    ticketExpiresAt: "टिकट समाप्ति समय",
+    appointmentTimeLabel: "अपॉइंटमेंट समय",
+    ticketExpired: "टिकट समाप्त",
+    checkInWindowClosed: "अपॉइंटमेंट के 1 घंटे बाद चेक-इन विंडो बंद हो गई है।",
   }
 };
 
@@ -622,35 +636,69 @@ export const t = (key, lang = "en") => {
 export const getCategoryLabel = (cat, lang = "en") => {
   const map = {
     consultation: lang === "hi" ? "सामान्य परामर्श (OPD)" : "General Consultation (OPD)",
+    general_consultation: lang === "hi" ? "सामान्य परामर्श (OPD)" : "General Consultation (OPD)",
+    general_opd: lang === "hi" ? "सामान्य परामर्श (OPD)" : "General OPD",
+    general_medicine: lang === "hi" ? "सामान्य चिकित्सा" : "General Medicine",
     cardiology: lang === "hi" ? "हृदय रोग विभाग" : "Cardiology OPD",
+    cardiology_opd: lang === "hi" ? "हृदय रोग विभाग" : "Cardiology OPD",
     emergency: lang === "hi" ? "आपातकालीन ट्राइएज" : "Emergency Triage",
+    emergency_triage: lang === "hi" ? "आपातकालीन ट्राइएज" : "Emergency Triage",
     orthopedics: lang === "hi" ? "हड्डी रोग विभाग" : "Orthopedics",
+    orthopedics_opd: lang === "hi" ? "हड्डी रोग विभाग" : "Orthopedics",
     pulmonology: lang === "hi" ? "श्वसन रोग विभाग" : "Pulmonology",
     followup: lang === "hi" ? "फॉलो-अप विज़िट" : "Routine Follow-up",
+    routine_followup: lang === "hi" ? "फॉलो-अप विज़िट" : "Routine Follow-up",
     pathology: lang === "hi" ? "पैथोलॉजी लैब" : "Pathology Lab",
+    pathology_lab: lang === "hi" ? "पैथोलॉजी लैब" : "Pathology Lab",
     pharmacy: lang === "hi" ? "फार्मेसी एवं दवा" : "Pharmacy & Medicine",
     laboratory: lang === "hi" ? "पैथोलॉजी एवं लैब जांच" : "Pathology & Lab Test",
     radiology: lang === "hi" ? "रेडियोलॉजी एवं एक्स-रे" : "Radiology & X-Ray",
     billing: lang === "hi" ? "सेंट्रल बिलिंग काउंटर" : "Central Billing & Cashier",
+    pediatrics: lang === "hi" ? "बाल चिकित्सा विभाग" : "Pediatrics",
+    pediatric_care: lang === "hi" ? "बाल चिकित्सा विभाग" : "Pediatric Care",
+    ent: lang === "hi" ? "कान, नाक एवं गला (ENT)" : "ENT Clinic",
+    ent_specialist: lang === "hi" ? "कान, नाक एवं गला (ENT)" : "ENT Specialist",
+    dermatology: lang === "hi" ? "त्वचा रोग विभाग" : "Dermatology",
+    ophthalmology: lang === "hi" ? "नेत्र रोग विभाग" : "Ophthalmology",
+    dental: lang === "hi" ? "दंत चिकित्सा" : "Dental Care",
+    dental_care: lang === "hi" ? "दंत चिकित्सा" : "Dental Care",
+    gynecology: lang === "hi" ? "स्त्री रोग विभाग" : "Gynecology & Obstetrics",
+    neurology: lang === "hi" ? "न्यूरोलॉजी विभाग" : "Neurology",
+    nephrology: lang === "hi" ? "नेफ्रोलॉजी विभाग" : "Nephrology",
+    urology: lang === "hi" ? "यूरोलॉजी विभाग" : "Urology",
+    oncology: lang === "hi" ? "कैंसर रोग विभाग" : "Oncology",
+    physiotherapy: lang === "hi" ? "फिजियोथेरेपी" : "Physiotherapy",
+    psychiatry: lang === "hi" ? "मनोचिकित्सा" : "Psychiatry",
   };
   if (!cat) return "";
   const key = String(cat).toLowerCase().trim();
-  return map[key] || cat;
+  if (map[key]) return map[key];
+  return String(cat).replace(/_/g, " ").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
 export const getStatusLabel = (status, lang = "en") => {
+  if (!status) return "";
+  const key = String(status).toLowerCase().trim();
   const map = {
     waiting: lang === "hi" ? "कतार में प्रतीक्षारत" : "Waiting in Queue",
     serving: lang === "hi" ? "वर्तमान में सेवारत" : "Currently Serving",
     completed: lang === "hi" ? "विज़िट पूर्ण" : "Visit Completed",
     transferred: lang === "hi" ? "स्थानांतरित" : "Transferred",
     scheduled: lang === "hi" ? "निर्धारित" : "Scheduled",
+    booked: lang === "hi" ? "स्लॉट आरक्षित" : "Booked",
+    check_in_available: lang === "hi" ? "चेक-इन उपलब्ध" : "Check-In Available",
     checked_in: lang === "hi" ? "चेक इन पूर्ण" : "Checked In",
     cancelled: lang === "hi" ? "रद्द" : "Cancelled",
     expired: lang === "hi" ? "समाप्त" : "Expired",
     no_show: lang === "hi" ? "अनुपस्थित" : "No-Show",
+    walk_in: lang === "hi" ? "वॉक-इन" : "Walk-In",
+    in_consultation: lang === "hi" ? "परामर्श में" : "In Consultation",
+    on_hold: lang === "hi" ? "प्रतीक्षारत" : "On Hold",
+    in_progress: lang === "hi" ? "प्रगति पर" : "In Progress",
+    skipped: lang === "hi" ? "छोड़ा गया" : "Skipped",
   };
-  return map[status] || status;
+  if (map[key]) return map[key];
+  return String(status).replace(/_/g, " ").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
 export const SYMPTOM_OPTIONS = [
@@ -718,5 +766,57 @@ export function formatRiskLabel(val, lang = "en") {
     .replace(/^risk_/i, "")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Universal helper to format any field (symptom, department, status, custom text)
+ * cleanly without underscores, using spaces and proper casing.
+ */
+export function formatCleanText(val, lang = "en") {
+  if (!val) return "";
+  if (typeof val !== "string") return String(val);
+  const trimmed = val.trim();
+  if (!trimmed) return "";
+
+  // If it's a JSON string, try to parse
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj.diagnosis) return formatCleanText(obj.diagnosis, lang);
+      if (obj.advice) return formatCleanText(obj.advice, lang);
+    } catch (e) {}
+  }
+
+  // Check known symptoms
+  const optSymptom = SYMPTOM_OPTIONS.find((s) => s.id === trimmed || s.key === trimmed);
+  if (optSymptom) {
+    return lang === "hi" ? optSymptom.labelHi : optSymptom.label;
+  }
+
+  // Check known risk options
+  const optRisk = RISK_OPTIONS.find((r) => r.id === trimmed || r.key === trimmed);
+  if (optRisk) {
+    return lang === "hi" ? optRisk.labelHi : optRisk.label;
+  }
+
+  // Check if it matches category
+  const lower = trimmed.toLowerCase();
+  const catLabel = getCategoryLabel(lower, lang);
+  if (catLabel && catLabel.toLowerCase() !== lower) {
+    return catLabel;
+  }
+
+  // Check if it matches status
+  const statLabel = getStatusLabel(lower, lang);
+  if (statLabel && statLabel.toLowerCase() !== lower) {
+    return statLabel;
+  }
+
+  // Generic underscore cleanup
+  const unescaped = trimmed.replace(/^symptom_/i, "").replace(/^risk_/i, "");
+  if (unescaped.includes("_")) {
+    return unescaped.replace(/_/g, " ").replace(/\s+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return unescaped;
 }
 

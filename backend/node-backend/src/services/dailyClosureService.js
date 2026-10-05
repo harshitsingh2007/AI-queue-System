@@ -100,7 +100,7 @@ async function closeAndExpirePreviousDayQueues(targetDate = null, hospitalCode =
     // 3. Find and expire previous-day unserved appointments
     const aptWhere = {
       appointment_date: { lt: currentTodayDateObj },
-      status: { in: ["scheduled", "checked_in", "waiting"] },
+      status: { in: ["scheduled", "booked", "check_in_available", "BOOKED", "CHECK_IN_AVAILABLE", "checked_in", "waiting"] },
     };
     if (hidFilter) aptWhere.hospital_id = hidFilter;
 

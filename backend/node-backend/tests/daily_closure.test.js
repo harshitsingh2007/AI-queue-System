@@ -49,6 +49,7 @@ async function runDailyClosureTests() {
     patientName: "Past Appointment Patient",
     appointmentDate: pastDateStr,
     timeSlot: "10:00 AM",
+    allowPastDate: true,
   });
 
   // 3. Create a today's active ticket
@@ -84,7 +85,7 @@ async function runDailyClosureTests() {
   const pastAptDb = await prisma.appointments.findUnique({
     where: { appointment_id: pastApt.appointment_id },
   });
-  assert.strictEqual(pastAptDb.status, "expired", "Past appointment must be expired");
+  assert.strictEqual(pastAptDb.status.toLowerCase(), "expired", "Past appointment must be expired");
   console.log(`[PASS] Test 3: Past appointment '${pastApt.appointment_id}' transitioned to EXPIRED.`);
 
   // Verify today's active ticket is untouched

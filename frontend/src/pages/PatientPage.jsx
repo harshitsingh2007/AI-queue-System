@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { API_BASE, HOSPITAL_CONFIG } from "../config/hospitalConfig";
-import { t, getCategoryLabel, getStatusLabel, SYMPTOM_OPTIONS, RISK_OPTIONS, formatSymptomLabel, formatRiskLabel } from "../utils/i18n";
+import { t, getCategoryLabel, getStatusLabel, SYMPTOM_OPTIONS, RISK_OPTIONS, formatSymptomLabel, formatRiskLabel, formatCleanText } from "../utils/i18n";
 import { printTokenPass, printAppointmentRecord, printPrescriptionSlip, downloadPrescriptionPDF } from "../utils/printPassHelper";
 import HeroBanner from "../components/patient/HeroBanner";
 import Footer from "../components/common/Footer";
@@ -22,6 +22,7 @@ import VisitHistoryTab from "../components/patient/VisitHistoryTab";
 import FamilyManagementTab from "../components/patient/FamilyManagementTab";
 import QueueTelemetrySidebar from "../components/patient/QueueTelemetrySidebar";
 import DigitalTicketPassCard from "../components/patient/DigitalTicketPassCard";
+import { getAppointmentTiming } from "../utils/appointmentTiming";
 import {
   standaloneCardStyle,
   modalBackdropStyle,
@@ -372,9 +373,64 @@ export default function PatientPage({
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
   const [viewingPrescriptionData, setViewingPrescriptionData] = useState(null);
 
-  const [activeHospitalCode, setActiveHospitalCode] = useState(
-    tenantId || currentHospitalTenant || currentUser?.hospital_code || "city-hospital-01"
-  );
+  const [activeHospitalCode, setActiveHospitalCode] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const p = new URLSearchParams(window.location.search);
+        const urlHosp = p.get("hospital") || p.get("tenant") || p.get("facility");
+        if (urlHosp) return urlHosp.trim();
+        const saved = localStorage.getItem("ai_queue_current_hospital");
+        if (saved) return saved.trim();
+      }
+    } catch (e) {}
+    return tenantId || currentHospitalTenant || currentUser?.hospital_code || "city-hospital-01";
+  });
+
+  // Facility-scoped live telemetry for the currently selected hospital
+  const [facilityAnalytics, setFacilityAnalytics] = useState(null);
+  const [facilityQueue, setFacilityQueue] = useState([]);
+
+  useEffect(() => {
+    const targetCode = activeHospitalCode || tenantId || currentHospitalTenant || "city-hospital-01";
+    if (!targetCode) return;
+
+    let isMounted = true;
+    const fetchTelemetry = () => {
+      fetch(`${API_BASE}/api/v1/plugin/analytics/${encodeURIComponent(targetCode)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (isMounted && d && !d.error) {
+            setFacilityAnalytics(d);
+          }
+        })
+        .catch(() => {});
+
+      fetch(`${API_BASE}/api/v1/plugin/queue/${encodeURIComponent(targetCode)}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (isMounted && d && Array.isArray(d.snapshot)) {
+            setFacilityQueue(d.snapshot);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [activeHospitalCode, tenantId, currentHospitalTenant]);
+
+  // Tenant Customization & Branding (White-Labeling) State
+  const [hospitalBranding, setHospitalBranding] = useState(hospitalBrandingProp);
+
+  useEffect(() => {
+    if (hospitalBrandingProp) {
+      setHospitalBranding(hospitalBrandingProp);
+    }
+  }, [hospitalBrandingProp]);
 
   useEffect(() => {
     if (tenantId) setActiveHospitalCode(tenantId);
@@ -428,31 +484,51 @@ export default function PatientPage({
   const getDeptDisplayName = useCallback((recordOrCode) => {
     if (!recordOrCode) return language === "hi" ? "सामान्य परामर्श (OPD)" : "General Consultation (OPD)";
     if (typeof recordOrCode === "object") {
-      if (recordOrCode.department_name) return recordOrCode.department_name;
-      if (recordOrCode.department) return recordOrCode.department;
-      if (recordOrCode.departments?.name) return recordOrCode.departments.name;
+      if (recordOrCode.department_name) return formatCleanText(recordOrCode.department_name, language);
+      if (recordOrCode.department) return formatCleanText(recordOrCode.department, language);
+      if (recordOrCode.departments?.name) return formatCleanText(recordOrCode.departments.name, language);
       if (recordOrCode.service_category) return getDeptDisplayName(recordOrCode.service_category);
     }
     const code = String(recordOrCode).toLowerCase().trim();
     const found = availableDepartments.find((d) => String(d.id).toLowerCase() === code || String(d.label).toLowerCase() === code);
     if (found) return found.label;
-    return getCategoryLabel(code, language) || code;
+    return getCategoryLabel(code, language) || formatCleanText(code, language);
   }, [availableDepartments, language]);
 
   const handleSelectHospital = (hospCode, hospName = null) => {
     if (!hospCode) return;
     const cleanCode = String(hospCode).trim();
     setActiveHospitalCode(cleanCode);
-    if (onSwitchHospital) {
-      onSwitchHospital(cleanCode, hospName);
-    } else {
-      try {
+    setFacilityAnalytics(null);
+    setFacilityQueue([]);
+
+    // Immediately fetch new hospital telemetry
+    fetch(`${API_BASE}/api/v1/plugin/analytics/${encodeURIComponent(cleanCode)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && !d.error) setFacilityAnalytics(d);
+      })
+      .catch(() => {});
+
+    fetch(`${API_BASE}/api/v1/plugin/queue/${encodeURIComponent(cleanCode)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && Array.isArray(d.snapshot)) setFacilityQueue(d.snapshot);
+      })
+      .catch(() => {});
+
+    try {
+      if (typeof window !== "undefined") {
         localStorage.setItem("ai_queue_current_hospital", cleanCode);
         const url = new URL(window.location.href);
         url.searchParams.set("hospital", cleanCode);
-        window.history.pushState({}, "", url.toString());
-      } catch (e) {}
+        window.history.replaceState({}, "", url.toString());
+      }
       window.dispatchEvent(new CustomEvent("hospital_changed", { detail: cleanCode }));
+    } catch (e) {}
+
+    if (onSwitchHospital) {
+      onSwitchHospital(cleanCode, hospName);
     }
 
     // Immediately fetch new hospital branding
@@ -552,22 +628,30 @@ export default function PatientPage({
         ? parsed.doctor_name
         : (fallbackTicket?.doctor_name || fallbackTicket?.served_by_doctor_name || (parsed.doctor_name !== "Dr. Staff Desk" ? parsed.doctor_name : "") || "Consultant Physician");
       return {
-        doctor_name: resolvedDoctor,
-        doctor_department: parsed.doctor_department || fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD",
+        doctor_name: formatCleanText(resolvedDoctor, language),
+        doctor_department: formatCleanText(parsed.doctor_department || fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD", language),
         doctor_employee_id: parsed.doctor_employee_id || "",
-        diagnosis: parsed.diagnosis || fallbackTicket?.medical_condition || "Clinical Consultation",
-        medicines: Array.isArray(parsed.medicines) ? parsed.medicines : [],
-        lab_tests: parsed.lab_tests || "",
-        advice: parsed.advice || "",
-        follow_up: parsed.follow_up || "",
-        transfer_notes: parsed.transfer_notes || "",
-        target_department: parsed.target_department || "",
+        diagnosis: formatCleanText(parsed.diagnosis || fallbackTicket?.medical_condition || "Clinical Consultation", language),
+        medicines: (Array.isArray(parsed.medicines) ? parsed.medicines : []).map((m) => ({
+          ...m,
+          name: formatCleanText(m.name, language),
+          dosage: m.dosage ? formatCleanText(m.dosage, language) : "",
+          frequency: m.frequency ? formatCleanText(m.frequency, language) : "",
+          duration: m.duration ? formatCleanText(m.duration, language) : "",
+          instructions: m.instructions ? formatCleanText(m.instructions, language) : "After food",
+        })),
+        lab_tests: parsed.lab_tests ? formatCleanText(parsed.lab_tests, language) : "",
+        advice: parsed.advice ? String(parsed.advice).replace(/_/g, " ") : "",
+        follow_up: parsed.follow_up ? formatCleanText(parsed.follow_up, language) : "",
+        transfer_notes: parsed.transfer_notes ? String(parsed.transfer_notes).replace(/_/g, " ") : "",
+        target_department: parsed.target_department ? formatCleanText(parsed.target_department, language) : "",
         prescribed_at: safeISODate(parsed.prescribed_at || fallbackTicket?.serve_end_time || fallbackTicket?.created_at),
-        patient_name: fallbackTicket?.name || fallbackTicket?.patient_name || parsed.patient_name || (currentUser ? (currentUser.username || currentUser.name) : "Patient"),
+        patient_name: formatCleanText(fallbackTicket?.name || fallbackTicket?.patient_name || parsed.patient_name || (currentUser ? (currentUser.username || currentUser.name) : "Patient"), language),
         ticket_id: fallbackTicket?.ticket_id || parsed.ticket_id || "",
         age: fallbackTicket?.age || 30,
-        gender: fallbackTicket?.gender || "Patient",
+        gender: formatCleanText(fallbackTicket?.gender || "Patient", language),
         hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && Array.isArray(hospitalsList) && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
+        logo_url: fallbackTicket?.logo_url || hospitalBranding?.logo_url || (fallbackTicket?.hospital_code && Array.isArray(hospitalsList) && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.logo_url) || "",
       };
     }
 
@@ -580,19 +664,20 @@ export default function PatientPage({
     const fallbackDoctor = fallbackTicket?.doctor_name || fallbackTicket?.served_by_doctor_name || "Consultant Physician";
 
     return {
-      doctor_name: fallbackDoctor,
-      doctor_department: fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD",
-      diagnosis: fallbackTicket?.medical_condition || "Clinical Consultation",
+      doctor_name: formatCleanText(fallbackDoctor, language),
+      doctor_department: formatCleanText(fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD", language),
+      diagnosis: formatCleanText(fallbackTicket?.medical_condition || "Clinical Consultation", language),
       medicines: [],
       lab_tests: "",
-      advice: rawStr || "Clinical consultation completed. Regular medical review as advised.",
+      advice: rawStr ? rawStr.replace(/_/g, " ") : "Clinical consultation completed. Regular medical review as advised.",
       follow_up: "Review as advised",
       prescribed_at: safeISODate(fallbackTicket?.serve_end_time || fallbackTicket?.created_at),
-      patient_name: fallbackTicket?.name || fallbackTicket?.patient_name || (currentUser ? (currentUser.username || currentUser.name) : "Patient"),
+      patient_name: formatCleanText(fallbackTicket?.name || fallbackTicket?.patient_name || (currentUser ? (currentUser.username || currentUser.name) : "Patient"), language),
       ticket_id: fallbackTicket?.ticket_id || fallbackTicket?.appointment_id || "",
       age: fallbackTicket?.age || 30,
-      gender: fallbackTicket?.gender || "Patient",
+      gender: formatCleanText(fallbackTicket?.gender || "Patient", language),
       hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && Array.isArray(hospitalsList) && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
+      logo_url: fallbackTicket?.logo_url || hospitalBranding?.logo_url || (fallbackTicket?.hospital_code && Array.isArray(hospitalsList) && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.logo_url) || "",
     };
   };
 
@@ -629,19 +714,44 @@ export default function PatientPage({
     return { min: todayStr, max: fmt(maxD), todayStr };
   }, []);
 
-  const timeSlotOptions = [
+  const DEFAULT_TIME_SLOTS = useMemo(() => [
     "09:00 AM", "09:45 AM", "10:30 AM", "11:15 AM", "12:00 PM",
     "02:00 PM", "02:45 PM", "03:30 PM", "04:15 PM", "05:00 PM"
-  ];
+  ], []);
+
+  const timeSlotOptions = useMemo(() => {
+    const customSlots = hospitalBranding?.available_time_slots || hospitalBranding?.time_slots;
+    if (Array.isArray(customSlots) && customSlots.length > 0) {
+      return customSlots
+        .map((s) => (typeof s === "string" ? s.trim() : ""))
+        .filter(Boolean);
+    }
+    return DEFAULT_TIME_SLOTS;
+  }, [hospitalBranding?.available_time_slots, hospitalBranding?.time_slots, DEFAULT_TIME_SLOTS]);
 
   // Parse a "hh:mm AM/PM" slot string into a comparable minute-of-day number
   const slotToMinutes = (slot) => {
-    const [time, period] = slot.split(" ");
+    if (!slot || typeof slot !== "string") return 0;
+    const parts = slot.trim().split(" ");
+    if (parts.length < 2) {
+      const [h, m] = slot.split(":").map(Number);
+      return (h || 0) * 60 + (m || 0);
+    }
+    const [time, period] = parts;
     let [h, m] = time.split(":").map(Number);
-    if (period === "PM" && h !== 12) h += 12;
-    if (period === "AM" && h === 12) h = 0;
+    h = h || 0;
+    m = m || 0;
+    if (period?.toUpperCase() === "PM" && h !== 12) h += 12;
+    if (period?.toUpperCase() === "AM" && h === 12) h = 0;
     return h * 60 + m;
   };
+
+  // If currently selected slot is not in timeSlotOptions, reset it
+  useEffect(() => {
+    if (aptTimeSlot && !timeSlotOptions.includes(aptTimeSlot)) {
+      setAptTimeSlot("");
+    }
+  }, [timeSlotOptions, aptTimeSlot]);
 
   // Returns true if the slot has already passed (only relevant for today)
   const isSlotPast = useCallback((slot) => {
@@ -717,15 +827,6 @@ export default function PatientPage({
       if (mem.gender) setGender(mem.gender.toLowerCase());
     }
   }, [selectedMemberId, familyMembers]);
-
-  // Tenant Customization & Branding (White-Labeling) State
-  const [hospitalBranding, setHospitalBranding] = useState(hospitalBrandingProp);
-
-  useEffect(() => {
-    if (hospitalBrandingProp) {
-      setHospitalBranding(hospitalBrandingProp);
-    }
-  }, [hospitalBrandingProp]);
 
   useEffect(() => {
     const hospCode = activeHospitalCode || tenantId || currentHospitalTenant || "city-hospital-01";
@@ -954,7 +1055,7 @@ export default function PatientPage({
   const activeAppointments = useMemo(() => {
     return userAppointments.filter((apt) => {
       const s = (apt.status || "").toLowerCase();
-      const isActive = s === "scheduled" || s === "checked_in" || s === "serving" || s === "waiting";
+      const isActive = ["scheduled", "booked", "check_in_available", "checked_in", "serving", "waiting", "expired"].includes(s);
       if (!isActive) return false;
       const tId = apt.ticket_id;
       if (tId) {
@@ -968,11 +1069,18 @@ export default function PatientPage({
   }, [userAppointments, userTicketHistory, doesRecordMatchMember, selectedMember]);
 
   const currentActiveScheduledApt = useMemo(() => {
-    const scheduledFromList = activeAppointments.find(
-      (a) => (a.status || "").toLowerCase() === "scheduled"
-    );
+    const isUnexpiredBooking = (a) => {
+      if (!a) return false;
+      const s = (a.status || "").toLowerCase();
+      if (!["scheduled", "booked", "check_in_available"].includes(s)) return false;
+      const timing = getAppointmentTiming(a);
+      if (timing && timing.isExpired) return false;
+      return true;
+    };
+
+    const scheduledFromList = activeAppointments.find(isUnexpiredBooking);
     if (scheduledFromList) return scheduledFromList;
-    if (bookedAppointment && (bookedAppointment.status || "").toLowerCase() === "scheduled") {
+    if (bookedAppointment && isUnexpiredBooking(bookedAppointment)) {
       if (doesRecordMatchMember(bookedAppointment, selectedMember)) {
         return bookedAppointment;
       }
@@ -1639,29 +1747,43 @@ export default function PatientPage({
     const targetId = aptId || "";
     if (!targetId.trim()) return;
 
-    // Appointment Date Window Guard: Cannot check in before appointment date
+    // Check-In Window and Ticket Expiration Validation
     const targetApt = (userAppointments || []).find((a) => a.appointment_id === targetId) ||
                       (activeAppointments || []).find((a) => a.appointment_id === targetId);
-    if (targetApt && targetApt.appointment_date) {
-      const cleanAptDate = String(targetApt.appointment_date).slice(0, 10);
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, "0");
-      const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-      if (cleanAptDate > todayStr) {
-        setStatusMsg(
-          language === "hi"
-            ? `चेक-इन अभी उपलब्ध नहीं है: यह अपॉइंटमेंट ${cleanAptDate}${targetApt.time_slot ? ` (${targetApt.time_slot})` : ""} के लिए निर्धारित है। कृपया अपॉइंटमेंट की तारीख पर चेक-इन करें।`
-            : `Check-in not available yet: Your appointment is scheduled for ${cleanAptDate}${targetApt.time_slot ? ` at ${targetApt.time_slot}` : ""}. Check-in opens on the day of your visit.`
-        );
-        return;
-      }
-      if (cleanAptDate < todayStr) {
-        setStatusMsg(
-          language === "hi"
-            ? `चेक-इन संभव नहीं है: अपॉइंटमेंट की तारीख (${cleanAptDate}) बीत चुकी है।`
-            : `Cannot check in: Your appointment date (${cleanAptDate}) has passed.`
-        );
-        return;
+    if (targetApt) {
+      const timing = getAppointmentTiming(targetApt);
+      if (timing) {
+        if (timing.isExpired) {
+          setStatusMsg(
+            language === "hi"
+              ? `चेक-इन संभव नहीं है: अपॉइंटमेंट टिकट समाप्त हो चुका है (${timing.formattedExpiresAt} पर)। चेक-इन केवल अपॉइंटमेंट समय के 1 घंटे बाद तक ही मान्य था।`
+              : `Cannot check in: Appointment ticket expired at ${timing.formattedExpiresAt}. Check-in closed 1 hour after the scheduled appointment time.`
+          );
+          return;
+        }
+
+        const cleanAptDate = String(targetApt.appointment_date || "").slice(0, 10);
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, "0");
+        const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+        if (cleanAptDate > todayStr) {
+          setStatusMsg(
+            language === "hi"
+              ? `चेक-इन अभी उपलब्ध नहीं है: यह अपॉइंटमेंट ${cleanAptDate} (${timing.formattedAppointmentTime}) के लिए निर्धारित है। चेक-इन ${cleanAptDate} को ${timing.formattedCheckInOpensAt} बजे खुलेगा।`
+              : `Check-in not available yet: Your appointment is scheduled for ${cleanAptDate} at ${timing.formattedAppointmentTime}. Check-in opens on ${cleanAptDate} at ${timing.formattedCheckInOpensAt} (30 mins before appointment).`
+          );
+          return;
+        }
+
+        if (timing.isBooked && !timing.canCheckIn) {
+          setStatusMsg(
+            language === "hi"
+              ? `चेक-इन अभी उपलब्ध नहीं है: चेक-इन ${timing.formattedCheckInOpensAt} बजे (अपॉइंटमेंट से 30 मिनट पहले) खुलेगा।`
+              : `Check-in not available yet: Check-in opens at ${timing.formattedCheckInOpensAt} (30 minutes prior to your ${timing.formattedAppointmentTime} appointment).`
+          );
+          return;
+        }
       }
     }
 
@@ -2629,24 +2751,37 @@ export default function PatientPage({
       `}</style>
 
       {/* 1. HERO SECTION (100% Live Real-Time Telemetry) */}
-      <HeroBanner
-        language={language}
-        hospitalName={currentHospitalDisplayName}
-        branding={hospitalBranding}
-        onOpenHospitalModal={() => setShowHospitalModal(true)}
-        stats={{
-          patientsServed: analytics ? `${(analytics.total_completed || 0) + (analytics.currently_serving || 0)}` : "0",
-          avgWaitTime: language === "hi"
-            ? `${analytics ? Math.round(analytics.avg_wait_minutes || 0) : 0} मिनट`
-            : `${analytics ? Math.round(analytics.avg_wait_minutes || 0) : 0} min`,
-          activeDesks: language === "hi"
-            ? `${analytics ? analytics.active_counters || 1 : 1} डेस्क`
-            : `${analytics ? analytics.active_counters || 1 : 1} ${(analytics?.active_counters || 1) === 1 ? "Desk" : "Desks"}`,
-          currentlyWaiting: language === "hi"
-            ? `${analytics ? analytics.currently_waiting || 0 : queueSnapshot.length || 0} प्रतीक्षारत`
-            : `${analytics ? analytics.currently_waiting || 0 : queueSnapshot.length || 0} Waiting`,
-        }}
-      />
+      {(() => {
+        const effectiveAnalytics = facilityAnalytics || analytics;
+        const effectiveQueue = facilityQueue && facilityQueue.length > 0 ? facilityQueue : queueSnapshot;
+        const waitingCount =
+          effectiveAnalytics?.waiting_count !== undefined
+            ? effectiveAnalytics.waiting_count
+            : effectiveAnalytics?.currently_waiting !== undefined
+            ? effectiveAnalytics.currently_waiting
+            : (effectiveQueue?.length || 0);
+
+        return (
+          <HeroBanner
+            language={language}
+            hospitalName={currentHospitalDisplayName}
+            branding={hospitalBranding}
+            onOpenHospitalModal={() => setShowHospitalModal(true)}
+            stats={{
+              patientsServed: effectiveAnalytics ? `${(effectiveAnalytics.total_completed || 0) + (effectiveAnalytics.currently_serving || 0)}` : "0",
+              avgWaitTime: language === "hi"
+                ? `${effectiveAnalytics ? Math.round(effectiveAnalytics.avg_wait_minutes || 0) : 0} मिनट`
+                : `${effectiveAnalytics ? Math.round(effectiveAnalytics.avg_wait_minutes || 0) : 0} min`,
+              activeDesks: language === "hi"
+                ? `${effectiveAnalytics ? effectiveAnalytics.active_counters || 1 : 1} डेस्क`
+                : `${effectiveAnalytics ? effectiveAnalytics.active_counters || 1 : 1} ${(effectiveAnalytics?.active_counters || 1) === 1 ? "Desk" : "Desks"}`,
+              currentlyWaiting: language === "hi"
+                ? `${waitingCount} प्रतीक्षारत`
+                : `${waitingCount} Waiting`,
+            }}
+          />
+        );
+      })()}
 
       {/* 2. Unified Patient Service Navigation Hub */}
       <section className="patient-nav-section">
@@ -3614,9 +3749,22 @@ export default function PatientPage({
             {/* 1. Hospital Letterhead */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2px solid #0284C7", paddingBottom: "14px", marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "26px", fontWeight: 900 }}>
-                  ℞
-                </div>
+                {(viewingPrescriptionData?.logo_url || hospitalBranding?.logo_url) ? (
+                  <img
+                    src={viewingPrescriptionData?.logo_url || hospitalBranding?.logo_url}
+                    alt="Hospital Logo"
+                    style={{
+                      maxHeight: "48px",
+                      maxWidth: "130px",
+                      objectFit: "contain",
+                      borderRadius: "8px",
+                    }}
+                  />
+                ) : (
+                  <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "26px", fontWeight: 900 }}>
+                    ℞
+                  </div>
+                )}
                 <div>
                   <h2 style={{ margin: 0, fontSize: "20px", color: "var(--patient-text-main, #0F172A)", fontWeight: 900, letterSpacing: "-0.3px" }}>
                     {viewingPrescriptionData?.hospital_name || getHospitalNameForRecord(viewingPrescriptionData) || currentHospitalDisplayName || "City General Hospital"}
@@ -3668,7 +3816,7 @@ export default function PatientPage({
                   Clinical Diagnosis:
                 </span>
                 <span style={{ fontSize: "13px", fontWeight: 700, color: "#0284C7", background: "var(--patient-tag-bg, #F0F9FF)", padding: "2px 8px", borderRadius: "6px", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
-                  {viewingPrescriptionData.diagnosis || "General Consultation & Clinical Checkup"}
+                  {formatCleanText(viewingPrescriptionData.diagnosis, language) || "General Consultation & Clinical Checkup"}
                 </span>
               </div>
               {viewingPrescriptionData.lab_tests && viewingPrescriptionData.lab_tests !== "no" && (
@@ -3678,7 +3826,7 @@ export default function PatientPage({
                   </span>
                   <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #475569)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "5px" }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/></svg>
-                    <span>{viewingPrescriptionData.lab_tests}</span>
+                    <span>{formatCleanText(viewingPrescriptionData.lab_tests, language)}</span>
                   </span>
                 </div>
               )}

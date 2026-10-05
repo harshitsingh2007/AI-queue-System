@@ -480,10 +480,32 @@ async function serveNext(tenantId, department = null, deskId = null, doctorInfo 
         throw err;
       }
     } else {
+      // Check DOCTOR DUTY STATUS ENFORCEMENT first (Active vs On Break / Emergency Round / Off Duty)
+      const dutyDocId = docId || empRec.user_id || empRec.id;
+      const dutyDocEmail = docEmail || empRec.email || empRec.users?.email;
+      const dutyStatusInfo = getDoctorDutyStatus(dutyDocId, dutyDocEmail);
+
+      if (dutyStatusInfo && dutyStatusInfo.status && dutyStatusInfo.status !== "ACTIVE") {
+        const statusLabels = {
+          ON_BREAK: "on Tea / Lunch Break",
+          EMERGENCY_ROUND: "on Emergency / ICU Round",
+          OFF_DUTY: "Off Duty (Shift Ended)",
+        };
+        const label = statusLabels[dutyStatusInfo.status] || dutyStatusInfo.status;
+        const err = new Error(
+          `Cannot assign patient: Doctor '${docName || empRec.name || "Desk Doctor"}' is currently ${label}. Please switch duty status to 'Active' before calling patients.`
+        );
+        err.status = 409;
+        err.code = dutyStatusInfo.status === "OFF_DUTY" ? "DOCTOR_OFF_DUTY" : "DOCTOR_ON_BREAK";
+        err.duty_status = dutyStatusInfo.status;
+        err.status_changed_at = dutyStatusInfo.status_changed_at;
+        throw err;
+      }
+
       const usr = empRec.users;
       const lastLogin = usr?.last_login_at ? new Date(usr.last_login_at).getTime() : null;
       const isStale = !lastLogin || (Date.now() - lastLogin > SESSION_MAX_AGE_MS);
-      const isOnline = empRec.status === "active" && usr?.status === "active" && !isStale;
+      const isOnline = ["active", "on_break", "emergency_round"].includes(empRec.status) && usr?.status === "active" && !isStale;
 
       if (!isOnline) {
         const err = new Error(
@@ -497,28 +519,6 @@ async function serveNext(tenantId, department = null, deskId = null, doctorInfo 
       if (!docName) docName = empRec.name;
       if (!docEmail) docEmail = empRec.email || usr?.email;
     }
-  }
-
-  // 1c. DOCTOR DUTY STATUS ENFORCEMENT (Active vs On Break / Emergency Round / Off Duty)
-  const dutyDocId = docId || (assignedEmp ? (assignedEmp.user_id || assignedEmp.id) : null);
-  const dutyDocEmail = docEmail || (assignedEmp ? (assignedEmp.email || assignedUsr?.email) : null);
-  const dutyStatusInfo = getDoctorDutyStatus(dutyDocId, dutyDocEmail);
-
-  if (dutyStatusInfo && dutyStatusInfo.status && dutyStatusInfo.status !== "ACTIVE") {
-    const statusLabels = {
-      ON_BREAK: "on Tea / Lunch Break",
-      EMERGENCY_ROUND: "on Emergency / ICU Round",
-      OFF_DUTY: "Off Duty (Shift Ended)",
-    };
-    const label = statusLabels[dutyStatusInfo.status] || dutyStatusInfo.status;
-    const err = new Error(
-      `Cannot assign patient: Doctor '${docName || "Desk Doctor"}' is currently ${label}. Please switch duty status to 'Active' before calling patients.`
-    );
-    err.status = 409;
-    err.code = dutyStatusInfo.status === "OFF_DUTY" ? "DOCTOR_OFF_DUTY" : "DOCTOR_ON_BREAK";
-    err.duty_status = dutyStatusInfo.status;
-    err.status_changed_at = dutyStatusInfo.status_changed_at;
-    throw err;
   }
 
   // 2. STRICT ENFORCEMENT: A doctor can only serve ONE patient at a time!

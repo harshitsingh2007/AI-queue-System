@@ -222,6 +222,10 @@ export default function SuperAdminPage({
         opd_end_time: "20:00",
         registration_cutoff_time: "19:00",
         operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+        available_time_slots: [
+            "09:00 AM", "09:45 AM", "10:30 AM", "11:15 AM", "12:00 PM",
+            "02:00 PM", "02:45 PM", "03:30 PM", "04:15 PM", "05:00 PM"
+        ],
         closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
         opd_helpdesk_phone: "+1 (800) 456-7890 (Ext: 101)",
         opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
@@ -1310,6 +1314,10 @@ export default function SuperAdminPage({
             opd_end_time: "20:00",
             registration_cutoff_time: "19:00",
             operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+            available_time_slots: [
+                "09:00 AM", "09:45 AM", "10:30 AM", "11:15 AM", "12:00 PM",
+                "02:00 PM", "02:45 PM", "03:30 PM", "04:15 PM", "05:00 PM"
+            ],
             closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
             opd_helpdesk_phone: hosp.phone || "+1 (800) 456-7890 (Ext: 101)",
             opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
@@ -1367,6 +1375,14 @@ export default function SuperAdminPage({
                     opd_end_time: data.branding.opd_end_time || "20:00",
                     registration_cutoff_time: data.branding.registration_cutoff_time || "19:00",
                     operating_days: Array.isArray(data.branding.operating_days) ? data.branding.operating_days : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+                    available_time_slots: Array.isArray(data.branding.available_time_slots) && data.branding.available_time_slots.length > 0
+                        ? data.branding.available_time_slots
+                        : (Array.isArray(data.branding.time_slots) && data.branding.time_slots.length > 0
+                            ? data.branding.time_slots
+                            : [
+                                "09:00 AM", "09:45 AM", "10:30 AM", "11:15 AM", "12:00 PM",
+                                "02:00 PM", "02:45 PM", "03:30 PM", "04:15 PM", "05:00 PM"
+                              ]),
                     closed_notice: data.branding.closed_notice || "",
                     opd_helpdesk_phone: data.branding.opd_helpdesk_phone || hosp.phone || "",
                     opd_helpdesk_hours: data.branding.opd_helpdesk_hours || "Mon – Sat: 8:00 AM – 8:00 PM",
@@ -1425,6 +1441,10 @@ export default function SuperAdminPage({
             opd_end_time: "20:00",
             registration_cutoff_time: "19:00",
             operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+            available_time_slots: [
+                "09:00 AM", "09:45 AM", "10:30 AM", "11:15 AM", "12:00 PM",
+                "02:00 PM", "02:45 PM", "03:30 PM", "04:15 PM", "05:00 PM"
+            ],
             closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
             opd_helpdesk_phone: targetHosp.phone || "+1 (800) 456-7890 (Ext: 101)",
             opd_helpdesk_hours: "Mon – Sat: 8:00 AM – 8:00 PM",
@@ -1515,6 +1535,12 @@ export default function SuperAdminPage({
                 formToSave.opd_end_time,
                 true
             );
+
+            if (Array.isArray(formToSave.available_time_slots)) {
+                formToSave.available_time_slots = formToSave.available_time_slots
+                    .map((s) => String(s || "").trim())
+                    .filter(Boolean);
+            }
 
             const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${targetHosp.hospital_code}/branding`, {
                 method: "PUT",
@@ -2513,7 +2539,10 @@ export default function SuperAdminPage({
                                 setAssignSearchQuery("");
                                 setShowAssignDeskModal(true);
                             }}
-                            onUnassignDesk={(desk) => handleAssignDesk(desk.id, null)}
+                            onUnassignDesk={(deskOrId) => {
+                                const id = typeof deskOrId === "object" && deskOrId !== null ? deskOrId.id : deskOrId;
+                                if (id) handleAssignDesk(id, null);
+                            }}
                             onDeleteDesk={handleDeleteDesk}
                             formatRelativeLogin={formatRelativeLogin}
                             language={language}

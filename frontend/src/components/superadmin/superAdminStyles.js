@@ -166,33 +166,105 @@ export const deptDeskBoxStyle = {
     color: "var(--superadmin-text-main, #0F172A)",
 };
 
-export const deskCardItemStyle = (status) => ({
-    padding: "12px",
-    borderRadius: "10px",
-    background: status === "ACTIVE" ? "rgba(2, 132, 199, 0.16)" : status === "BUSY" ? "rgba(245, 158, 11, 0.16)" : status === "AVAILABLE" ? "var(--superadmin-sub-card, #F8FAFC)" : "var(--superadmin-card-bg, #FFFFFF)",
-    border: status === "ACTIVE" ? "1.5px solid #0284C7" : status === "BUSY" ? "1.5px solid #F59E0B" : "1px solid var(--superadmin-input-border, #CBD5E1)",
-    display: "flex",
-    flexDirection: "column",
-    gap: "5px",
-    color: "var(--superadmin-text-main, #0F172A)",
-});
+export const deskCardItemStyle = (status) => {
+    const s = (status || "").toUpperCase();
+    const isActive = s === "ACTIVE";
+    const isBusy = s === "BUSY";
+    const isAvailable = s === "AVAILABLE";
+
+    return {
+        padding: "14px 16px",
+        borderRadius: "14px",
+        background: isActive
+            ? "rgba(2, 132, 199, 0.05)"
+            : isBusy
+            ? "rgba(245, 158, 11, 0.05)"
+            : "var(--superadmin-card-bg, #FFFFFF)",
+        border: isActive
+            ? "1.5px solid #0284C7"
+            : isBusy
+            ? "1.5px solid #F59E0B"
+            : isAvailable
+            ? "1.5px solid #BAE6FD"
+            : "1px solid var(--superadmin-card-border, #E2E8F0)",
+        boxShadow: "0 2px 8px -2px rgba(15, 23, 42, 0.06)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        color: "var(--superadmin-text-main, #0F172A)",
+        transition: "all 0.2s ease",
+    };
+};
 
 export const deskStatusPillStyle = (status) => {
-    if (status === "ACTIVE") return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "#0284C7", color: "#FFFFFF" };
-    if (status === "BUSY") return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "#D97706", color: "#FFFFFF" };
-    if (status === "AVAILABLE") return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "rgba(2, 132, 199, 0.18)", color: "#38BDF8", border: "1px solid rgba(2, 132, 199, 0.3)" };
-    return { padding: "1px 5px", borderRadius: "4px", fontSize: "9px", fontWeight: 800, background: "rgba(100, 116, 139, 0.2)", color: "#94A3B8" };
+    const s = (status || "").toUpperCase();
+    if (s === "ACTIVE") {
+        return {
+            padding: "2px 8px",
+            borderRadius: "6px",
+            fontSize: "10px",
+            fontWeight: 800,
+            letterSpacing: "0.4px",
+            background: "#0284C7",
+            color: "#FFFFFF",
+            display: "inline-flex",
+            alignItems: "center",
+        };
+    }
+    if (s === "BUSY") {
+        return {
+            padding: "2px 8px",
+            borderRadius: "6px",
+            fontSize: "10px",
+            fontWeight: 800,
+            letterSpacing: "0.4px",
+            background: "#D97706",
+            color: "#FFFFFF",
+            display: "inline-flex",
+            alignItems: "center",
+        };
+    }
+    if (s === "AVAILABLE") {
+        return {
+            padding: "2px 8px",
+            borderRadius: "6px",
+            fontSize: "10px",
+            fontWeight: 800,
+            letterSpacing: "0.4px",
+            background: "rgba(2, 132, 199, 0.12)",
+            color: "#0284C7",
+            border: "1px solid rgba(2, 132, 199, 0.3)",
+            display: "inline-flex",
+            alignItems: "center",
+        };
+    }
+    return {
+        padding: "2px 8px",
+        borderRadius: "6px",
+        fontSize: "10px",
+        fontWeight: 800,
+        letterSpacing: "0.4px",
+        background: "rgba(100, 116, 139, 0.12)",
+        color: "#475569",
+        border: "1px solid rgba(100, 116, 139, 0.25)",
+        display: "inline-flex",
+        alignItems: "center",
+    };
 };
 
 export const deleteDeskIconBtnStyle = {
-    background: "rgba(239, 68, 68, 0.12)",
-    border: "1px solid rgba(239, 68, 68, 0.3)",
-    borderRadius: "4px",
+    background: "rgba(239, 68, 68, 0.08)",
+    border: "1px solid rgba(239, 68, 68, 0.25)",
+    borderRadius: "7px",
     color: "#EF4444",
-    fontSize: "10px",
-    fontWeight: 800,
     cursor: "pointer",
-    padding: "1px 5px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "28px",
+    height: "28px",
+    padding: 0,
+    transition: "all 0.15s ease",
 };
 
 export const deleteDeptIconBtnStyle = {
@@ -206,15 +278,18 @@ export const deleteDeptIconBtnStyle = {
 };
 
 export const toggleDeskBtnStyle = {
-    marginTop: "4px",
-    padding: "4px 8px",
-    borderRadius: "6px",
-    border: "1px solid var(--superadmin-input-border, #CBD5E1)",
+    padding: "7px 12px",
+    borderRadius: "8px",
+    border: "1px solid var(--superadmin-card-border, #CBD5E1)",
     background: "var(--superadmin-sub-card, #F8FAFC)",
     color: "var(--superadmin-text-sub, #334155)",
-    fontSize: "10.5px",
+    fontSize: "11.5px",
     fontWeight: 700,
     cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "all 0.15s ease",
 };
 
 export const deptCardStyle = {

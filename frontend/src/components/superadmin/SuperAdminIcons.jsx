@@ -266,6 +266,15 @@ export const IconX = ({ size = 16, color = "currentColor" }) => (
     </svg>
 );
 
+export const IconCalendar = ({ size = 16, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+);
+
 export const IconFlame = ({ size = 16, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M8.5 14.5A2.5 2.5 0 0 0 11 17c1.38 0 2.5-1.12 2.5-2.5 0-1.63-1.04-2.58-1.74-3.5C11.16 10.22 11 9.42 11 8.5c0-.85.34-1.7 1-2.5 0 0 1.5 2 2.5 3.5 1.5 2.25 1.5 4.5 1.5 5.5a5 5 0 1 1-10 0c0-2 .5-4 2-5.5.5 1.5 1.5 3 2 4.5z" />

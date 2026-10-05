@@ -6,7 +6,7 @@
 
 const prisma = require("../config/prisma");
 const engine = require("../services/queueEngine");
-const { getCurrentQueueDate, queueDateToPrismaDate } = require("../utils/timezone");
+const { getCurrentQueueDate, queueDateToPrismaDate, parseQueueDate, getAppointmentTimingDetails } = require("../utils/timezone");
 const {
   bookAppointment,
   checkInAppointment,
@@ -118,7 +118,7 @@ async function bookAppointmentEndpoint(req, res, next) {
     const existingApt = await prisma.appointments.findFirst({
       where: {
         hospital_id: hid,
-        status: "scheduled",
+        status: { in: ["scheduled", "booked", "check_in_available", "BOOKED", "CHECK_IN_AVAILABLE"] },
         ...(patientId
           ? { patient_id: patientId }
           : {
@@ -130,14 +130,35 @@ async function bookAppointmentEndpoint(req, res, next) {
     });
 
     if (existingApt) {
-      const deptName = existingApt.departments?.name || existingApt.service_category || "Consultation";
-      return res.status(409).json({
-        status: "error",
-        code: "ACTIVE_APPOINTMENT_EXISTS",
-        detail: `An active appointment (${existingApt.appointment_id}) is already scheduled for ${cleanName} in ${deptName}. In accordance with hospital policy, each profile can hold only 1 active booking at a time. Please complete or cancel your current appointment before reserving another slot.`,
-        message: `An active appointment (${existingApt.appointment_id}) is already scheduled for ${cleanName}. Hospital policy allows 1 active booking per patient profile.`,
-        appointment: existingApt,
-      });
+      const existingTiming = getAppointmentTimingDetails(
+        parseQueueDate(existingApt.appointment_date),
+        existingApt.time_slot
+      );
+
+      if (existingTiming.isExpired) {
+        // Overdue ticket automatically expired, update DB and allow booking new slot
+        await prisma.appointments.update({
+          where: { appointment_id: existingApt.appointment_id },
+          data: { status: "EXPIRED", updated_at: new Date() },
+        });
+        await prisma.appointment_status_history.create({
+          data: {
+            appointment_id: existingApt.appointment_id,
+            old_status: existingApt.status,
+            new_status: "EXPIRED",
+            reason: `Automatically expired 1 hour after scheduled appointment (${existingTiming.formattedExpiresAt})`,
+          },
+        }).catch(() => {});
+      } else {
+        const deptName = existingApt.departments?.name || existingApt.service_category || "Consultation";
+        return res.status(409).json({
+          status: "error",
+          code: "ACTIVE_APPOINTMENT_EXISTS",
+          detail: `An active appointment (${existingApt.appointment_id}) is already scheduled for ${cleanName} in ${deptName} at ${existingApt.time_slot}. In accordance with hospital policy, each profile can hold only 1 active booking at a time. Please complete or cancel your current appointment before reserving another slot.`,
+          message: `An active appointment (${existingApt.appointment_id}) is already scheduled for ${cleanName}. Hospital policy allows 1 active booking per patient profile.`,
+          appointment: existingApt,
+        });
+      }
     }
 
     const appointment = await bookAppointment({

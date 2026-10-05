@@ -1028,9 +1028,9 @@ export default function StaffPage({
     );
   });
 
-  // Only show true booked slots (scheduled appointments not yet checked in / not yet in the active queue)
+  // Only show true booked slots (scheduled/booked appointments not yet merged into the active queue)
   const scheduledBookedSlots = appointments.filter(
-    (a) => (a.status || "").toLowerCase() === "scheduled" && !a.ticket_id
+    (a) => ["scheduled", "booked", "check_in_available", "expired"].includes((a.status || "").toLowerCase()) && !a.ticket_id
   );
   const displayedAppointments = scheduledBookedSlots;
 
@@ -2824,7 +2824,9 @@ export default function StaffPage({
                       {displayedAppointments.map((apt) => {
                         const statusKey = (apt.status || "").toLowerCase();
                         const isCheckedIn = statusKey === "checked_in" || (apt.ticket_id && statusKey !== "completed" && statusKey !== "cancelled" && statusKey !== "no_show");
-                        const isScheduled = statusKey === "scheduled" && !apt.ticket_id;
+                        const isExpired = statusKey === "expired";
+                        const isCheckInAvailable = statusKey === "check_in_available";
+                        const isBooked = statusKey === "booked" || (statusKey === "scheduled" && !apt.ticket_id);
                         const isServing = statusKey === "serving";
                         const isCompleted = statusKey === "completed";
                         const isCancelled = statusKey === "cancelled" || statusKey === "no_show";
@@ -2837,7 +2839,7 @@ export default function StaffPage({
                               {getCategoryLabel(apt.service_category, language)}
                             </td>
                             <td style={{ ...staffTdStyle, fontWeight: 600, color: isDark ? "#E2E8F0" : "#0F172A" }}>
-                              {apt.appointment_date} @ {apt.time_slot}
+                              {apt.appointment_date} @ {apt.formatted_appointment_time || apt.time_slot}
                             </td>
                             <td style={staffTdStyle}>
                               {isCheckedIn ? (
@@ -2859,7 +2861,45 @@ export default function StaffPage({
                                   <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#10B981" }} />
                                   <span>{language === "hi" ? "चेक-इन पूर्ण • प्रतीक्षालय में उपस्थित" : "Checked In & Waiting in Lounge"}</span>
                                 </span>
-                              ) : isScheduled ? (
+                              ) : isExpired ? (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "5px",
+                                    padding: "4px 10px",
+                                    borderRadius: "8px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 800,
+                                    background: isDark ? "rgba(239, 68, 68, 0.15)" : "#FEF2F2",
+                                    color: isDark ? "#FCA5A5" : "#DC2626",
+                                    border: `1px solid ${isDark ? "rgba(239, 68, 68, 0.3)" : "#FECACA"}`,
+                                  }}
+                                  title={language === "hi" ? "अपॉइंटमेंट के 1 घंटे बाद चेक-इन खिड़की समाप्त हो गई है।" : "Ticket expired 1 hour after scheduled appointment slot. Check-in closed."}
+                                >
+                                  <IconUserX size={12} color={isDark ? "#FCA5A5" : "#DC2626"} />
+                                  <span>{language === "hi" ? "स्लॉट समाप्त (खिड़की बंद)" : "Expired (Window Closed)"}</span>
+                                </span>
+                              ) : isCheckInAvailable ? (
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    padding: "4px 10px",
+                                    borderRadius: "8px",
+                                    fontSize: "11.5px",
+                                    fontWeight: 800,
+                                    background: isDark ? "rgba(16, 185, 129, 0.18)" : "#ECFDF5",
+                                    color: isDark ? "#6EE7B7" : "#065F46",
+                                    border: `1px solid ${isDark ? "rgba(16, 185, 129, 0.35)" : "#A7F3D0"}`,
+                                  }}
+                                  title={language === "hi" ? "चेक-इन विंडो खुली है (अपॉइंटमेंट से 30 मिनट पहले)।" : "Check-in window is open (opened 30 minutes prior to slot)."}
+                                >
+                                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#10B981" }} />
+                                  <span>{language === "hi" ? "चेक-इन उपलब्ध • आगमन प्रतीक्षारत" : "Check-In Open (Awaiting Arrival)"}</span>
+                                </span>
+                              ) : isBooked ? (
                                 <span
                                   style={{
                                     display: "inline-flex",
@@ -2873,13 +2913,13 @@ export default function StaffPage({
                                     color: isDark ? "#38BDF8" : "#0284C7",
                                     border: `1px solid ${isDark ? "rgba(56, 189, 248, 0.28)" : "#BAE6FD"}`,
                                   }}
-                                  title={language === "hi" ? "निर्धारित स्लॉट। मरीज़ के आगमन पर स्वागत डेस्क या कियोस्क द्वारा चेक-इन किया जाएगा।" : "Scheduled slot. Front desk or self-service kiosk will check in patient upon arrival."}
+                                  title={language === "hi" ? "आरक्षित स्लॉट। चेक-इन स्लॉट से 30 मिनट पहले खुलेगा।" : "Booked slot. Check-in opens 30 minutes prior to appointment."}
                                 >
                                   <IconClock size={12} color={isDark ? "#38BDF8" : "#0284C7"} />
                                   <span>
                                     {language === "hi"
-                                      ? `निर्धारित समय: ${apt.time_slot || "स्लॉट"}`
-                                      : `Scheduled for ${apt.time_slot || "Slot"}`}
+                                      ? `आरक्षित: ${apt.time_slot || "स्लॉट"}`
+                                      : `Booked for ${apt.time_slot || "Slot"}`}
                                   </span>
                                 </span>
                               ) : isServing ? (

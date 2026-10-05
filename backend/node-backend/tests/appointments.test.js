@@ -50,7 +50,7 @@ async function runAppointmentTests() {
   // 1. Book a Future Appointment (safe offset regardless of UTC midnight boundary)
   const futureDate = new Date();
   futureDate.setDate(futureDate.getDate() + 2);
-  const tomorrowStr = futureDate.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
+  const futureDateStr = futureDate.toLocaleDateString("en-CA"); // YYYY-MM-DD in local time
 
   const futureApt = await bookAppointment({
     tenantId: testTenant,
@@ -58,12 +58,16 @@ async function runAppointmentTests() {
     serviceCategory: "consultation",
     patientName: "Future Patient",
     userEmail: patientEmail,
-    appointmentDate: tomorrowStr,
+    appointmentDate: futureDateStr,
     timeSlot: "10:30 AM",
   });
 
-  assert.strictEqual(futureApt.status, "scheduled", "Future appointment should be scheduled");
-  console.log(`[PASS] Test 1: Future appointment '${futureApt.appointment_id}' booked for ${tomorrowStr}.`);
+  assert.strictEqual(futureApt.status, "BOOKED", "Future appointment status must be BOOKED");
+  assert.ok(futureApt.appointment_time, "Must include appointment_time");
+  assert.ok(futureApt.check_in_opens_at, "Must include check_in_opens_at");
+  assert.ok(futureApt.expires_at, "Must include expires_at");
+  assert.strictEqual(futureApt.can_check_in, false, "can_check_in must be false for future appointment");
+  console.log(`[PASS] Test 1: Future appointment '${futureApt.appointment_id}' booked with status 'BOOKED' (opens at ${futureApt.formatted_check_in_opens_at}).`);
 
   // 2. Attempt Early Check-In for Future Appointment (Must Reject)
   let earlyCheckInRejected = false;
@@ -76,31 +80,69 @@ async function runAppointmentTests() {
   assert.strictEqual(earlyCheckInRejected, true, "Early check-in for future appointment must be rejected");
   console.log("[PASS] Test 2: Early check-in for future appointment strictly rejected.");
 
-  // 3. Book a Today's Appointment
-  const todayApt = await bookAppointment({
+  // 3. Book a Slot within Active Check-In Window (e.g. current time + 10 mins, so check-in is open)
+  const now = new Date();
+  const currentSlotDate = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes in the future
+  let slotH = currentSlotDate.getHours();
+  const slotM = currentSlotDate.getMinutes();
+  const slotMeridian = slotH >= 12 ? "PM" : "AM";
+  const displayH = slotH % 12 === 0 ? 12 : slotH % 12;
+  const activeSlotStr = `${String(displayH).padStart(2, "0")}:${String(slotM).padStart(2, "0")} ${slotMeridian}`;
+
+  const availableApt = await bookAppointment({
     tenantId: testTenant,
     consumerType: "hospital",
     serviceCategory: "consultation",
-    patientName: "Today Patient",
+    patientName: "Active Window Patient",
     userEmail: patientEmail,
     appointmentDate: todayStr,
-    timeSlot: "11:00 AM",
+    timeSlot: activeSlotStr,
   });
-  console.log(`[PASS] Test 3: Today's appointment '${todayApt.appointment_id}' booked for ${todayStr}.`);
 
-  // 4. Valid Check-in for Today's Appointment (Generates Today's Active Queue Ticket)
-  const checkInResult = await checkInAppointment(todayApt.appointment_id);
-  assert.strictEqual(checkInResult.appointment.status, "checked_in", "Status must transition to checked_in");
+  assert.strictEqual(availableApt.status, "CHECK_IN_AVAILABLE", "Status must be CHECK_IN_AVAILABLE when within 30-min window");
+  assert.strictEqual(availableApt.can_check_in, true, "can_check_in must be true within window");
+  console.log(`[PASS] Test 3: Slot booked for ${activeSlotStr} (within 30m window) has status 'CHECK_IN_AVAILABLE'.`);
+
+  // 4. Check-in within Active Window (Transitions to CHECKED_IN and issues live queue ticket)
+  const checkInResult = await checkInAppointment(availableApt.appointment_id);
+  assert.strictEqual(checkInResult.appointment.status, "CHECKED_IN", "Status must transition to CHECKED_IN");
   assert.ok(checkInResult.ticket.ticket_id, "Check-in must generate a valid ticket ID");
   assert.strictEqual(checkInResult.ticket.status, "waiting", "Generated ticket must be waiting");
-  console.log(`[PASS] Test 4: Checked in appointment '${todayApt.appointment_id}' -> Ticket #${checkInResult.ticket.ticket_id}.`);
+  console.log(`[PASS] Test 4: Checked in appointment '${availableApt.appointment_id}' -> Status 'CHECKED_IN' & Ticket #${checkInResult.ticket.ticket_id}.`);
 
-  // 5. Query User Appointments & Tenant Appointments
+  // 5. Expiration Test: An appointment scheduled > 1 hour ago must expire and reject check-in
+  const pastApt = await prisma.appointments.create({
+    data: {
+      appointment_id: `APT-EXPIRED-${Date.now() % 10000}`,
+      hospital_id: (await prisma.hospitals.findFirst({ where: { hospital_code: testTenant } })).id,
+      patient_id: availableApt.patient_id || null,
+      service_category: "consultation",
+      appointment_date: new Date(`${todayStr}T00:00:00.000Z`),
+      time_slot: "08:00 AM", // 8 AM today has expired
+      status: "BOOKED",
+      ticket_id: "",
+    },
+  });
+
+  let expiredCheckInRejected = false;
+  try {
+    await checkInAppointment(pastApt.appointment_id);
+  } catch (err) {
+    expiredCheckInRejected = true;
+    assert.ok(err.message.includes("expired") || err.code === "TICKET_EXPIRED", "Must reject expired ticket check-in");
+  }
+  assert.strictEqual(expiredCheckInRejected, true, "Check-in for expired appointment must be rejected");
+
+  const updatedPastApt = await prisma.appointments.findUnique({ where: { appointment_id: pastApt.appointment_id } });
+  assert.strictEqual(updatedPastApt.status, "EXPIRED", "Database record must be marked as EXPIRED");
+  console.log(`[PASS] Test 5: Overdue ticket '${pastApt.appointment_id}' automatically marked EXPIRED and rejected check-in.`);
+
+  // 6. Query User Appointments & Tenant Appointments
   const userApts = await getUserAppointments(patientEmail);
   assert.ok(userApts.length >= 2, "User should have at least 2 booked appointments");
   const tenantApts = await getTenantAppointments(testTenant);
   assert.ok(tenantApts.length >= 2, "Tenant should have at least 2 booked appointments");
-  console.log(`[PASS] Test 5: Appointments retrieval verified for user '${patientEmail}' and tenant '${testTenant}'.`);
+  console.log(`[PASS] Test 6: Appointments retrieval verified for user '${patientEmail}' and tenant '${testTenant}'.`);
 
   console.log("✅ ALL APPOINTMENT TESTS PASSED!\n");
 }

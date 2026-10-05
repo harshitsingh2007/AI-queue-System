@@ -8,7 +8,14 @@ const crypto = require("crypto");
 const prisma = require("../config/prisma");
 const engine = require("./queueEngine");
 const { joinQueue } = require("./ticketService");
-const { getCurrentQueueDate, parseQueueDate, queueDateToPrismaDate, dtToEpoch } = require("../utils/timezone");
+const {
+  getCurrentQueueDate,
+  parseQueueDate,
+  queueDateToPrismaDate,
+  dtToEpoch,
+  getAppointmentTimingDetails,
+  formatInTimezone,
+} = require("../utils/timezone");
 const { PRIORITY_ROUTINE } = require("../utils/clinicalComplexity");
 const { getHospitalBranding } = require("./hospitalService");
 
@@ -24,11 +31,26 @@ async function bookAppointment({
   appointmentDate,
   timeSlot,
   patientId = null,
+  allowPastDate = false,
 }) {
   const aptId = `APT-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
   const deptCode = String(serviceCategory || "consultation").trim().toLowerCase();
   const qDateStr = parseQueueDate(appointmentDate);
   const qDateObj = queueDateToPrismaDate(qDateStr);
+  const todayStr = getCurrentQueueDate();
+
+  if (!allowPastDate && qDateStr < todayStr) {
+    const err = new Error(`Cannot book appointment: Appointment date (${qDateStr}) is in the past.`);
+    err.status = 400;
+    throw err;
+  }
+
+  const timing = getAppointmentTimingDetails(qDateStr, timeSlot);
+  if (qDateStr === todayStr && timing.isExpired) {
+    const err = new Error(`Cannot book slot: The selected time slot (${timeSlot}) has already passed and expired.`);
+    err.status = 400;
+    throw err;
+  }
 
   const hid = await engine.resolveHospitalId(tenantId);
   const deptId = await engine.resolveDepartmentId(hid, deptCode);
@@ -37,6 +59,8 @@ async function bookAppointment({
   if (!pid) {
     pid = await engine.resolvePatientId(userEmail, patientName);
   }
+
+  const initialStatus = allowPastDate ? "scheduled" : timing.status; // "BOOKED" or "CHECK_IN_AVAILABLE"
 
   const appointment = await prisma.appointments.create({
     data: {
@@ -48,7 +72,7 @@ async function bookAppointment({
       service_category: deptCode,
       appointment_date: qDateObj,
       time_slot: timeSlot,
-      status: "scheduled",
+      status: initialStatus,
       ticket_id: "",
     },
     include: {
@@ -63,7 +87,7 @@ async function bookAppointment({
     data: {
       appointment_id: aptId,
       old_status: null,
-      new_status: "scheduled",
+      new_status: initialStatus,
       reason: "Initial Booking",
     },
   });
@@ -78,12 +102,21 @@ async function bookAppointment({
     department: appointment.departments?.name || deptCode,
     appointment_date: qDateStr,
     time_slot: timeSlot,
-    status: "scheduled",
+    appointment_time: timing.appointmentTime.toISOString(),
+    check_in_opens_at: timing.checkInOpensAt.toISOString(),
+    expires_at: timing.expiresAt.toISOString(),
+    formatted_appointment_time: timing.formattedAppointmentTime,
+    formatted_check_in_opens_at: timing.formattedCheckInOpensAt,
+    formatted_expires_at: timing.formattedExpiresAt,
+    status: initialStatus,
+    can_check_in: timing.canCheckIn,
+    is_expired: timing.isExpired,
   };
 }
 
 /**
- * Check-in Appointment: Validates date, transitions status to checked_in, creates today's active ticket.
+ * Check-in Appointment: Validates exact 30-minute pre-appointment check-in window and 1-hour expiration rule,
+ * transitions status to CHECKED_IN, and creates today's active priority queue ticket.
  */
 async function checkInAppointment(appointmentId) {
   const cleanAptId = String(appointmentId || "").trim();
@@ -144,26 +177,77 @@ async function checkInAppointment(appointmentId) {
     throw err;
   }
 
-  if (apt.status.toLowerCase() === "expired") {
-    const err = new Error("Cannot check in: Appointment has expired.");
-    err.status = 400;
-    throw err;
-  }
-
   const aptDate = parseQueueDate(apt.appointment_date);
   const today = getCurrentQueueDate();
+  const timing = getAppointmentTimingDetails(aptDate, apt.time_slot);
+  const now = new Date();
 
-  if (aptDate > today) {
+  // If already checked in and has an active ticket, return the existing ticket pass directly
+  if (["checked_in", "serving", "waiting"].includes(apt.status.toLowerCase()) && apt.ticket_id) {
+    const existingTicket = await prisma.tickets.findUnique({
+      where: { ticket_id: apt.ticket_id },
+    });
+    if (existingTicket && !["cancelled", "expired"].includes(existingTicket.status.toLowerCase())) {
+      return {
+        appointment: {
+          ...apt,
+          appointment_date: today,
+          time_slot: apt.time_slot,
+          status: "CHECKED_IN",
+          ticket_id: apt.ticket_id,
+          tenant_id: apt.hospitals?.hospital_code || "city-hospital-01",
+          appointment_time: timing.appointmentTime.toISOString(),
+          check_in_opens_at: timing.checkInOpensAt.toISOString(),
+          expires_at: timing.expiresAt.toISOString(),
+          formatted_appointment_time: timing.formattedAppointmentTime,
+          formatted_check_in_opens_at: timing.formattedCheckInOpensAt,
+          formatted_expires_at: timing.formattedExpiresAt,
+          can_check_in: false,
+        },
+        ticket: existingTicket,
+      };
+    }
+  }
+
+  // Check 1: Expiration check (past date or 1 hour after scheduled appointment time)
+  if (apt.status.toLowerCase() === "expired" || aptDate < today || timing.isExpired) {
+    if (apt.status.toLowerCase() !== "expired") {
+      await prisma.appointments.update({
+        where: { appointment_id: apt.appointment_id },
+        data: { status: "EXPIRED", updated_at: new Date() },
+      });
+      await prisma.appointment_status_history.create({
+        data: {
+          appointment_id: apt.appointment_id,
+          old_status: apt.status,
+          new_status: "EXPIRED",
+          reason: `Ticket expired at ${timing.formattedExpiresAt} (1 hour after scheduled appointment time ${apt.time_slot || ""}).`,
+        },
+      }).catch(() => {});
+    }
     const err = new Error(
-      `Check-in not available yet: Your appointment is scheduled for ${aptDate} at ${apt.time_slot || ""}.`
+      `Cannot check in: Ticket expired at ${timing.formattedExpiresAt} (1 hour after scheduled appointment time ${apt.time_slot || ""}). Check-in is permanently disabled.`
     );
     err.status = 400;
+    err.code = "TICKET_EXPIRED";
+    err.appointment_time = timing.appointmentTime.toISOString();
+    err.check_in_opens_at = timing.checkInOpensAt.toISOString();
+    err.expires_at = timing.expiresAt.toISOString();
     throw err;
   }
 
-  if (aptDate < today) {
-    const err = new Error(`Cannot check in: Your appointment date (${aptDate}) has expired.`);
+  // Check 2: Early check-in check (future date or before 30-minute check-in window)
+  if (aptDate > today || !timing.canCheckIn) {
+    const err = new Error(
+      aptDate > today
+        ? `Check-in not available yet: Your appointment is scheduled for ${aptDate} at ${apt.time_slot || ""}. Check-in opens 30 minutes before your appointment (${timing.formattedCheckInOpensAt}).`
+        : `Check-in not available yet: Check-in opens at ${timing.formattedCheckInOpensAt} (30 minutes before appointment at ${apt.time_slot || ""}).`
+    );
     err.status = 400;
+    err.code = "CHECK_IN_NOT_AVAILABLE";
+    err.appointment_time = timing.appointmentTime.toISOString();
+    err.check_in_opens_at = timing.checkInOpensAt.toISOString();
+    err.expires_at = timing.expiresAt.toISOString();
     throw err;
   }
 
@@ -175,18 +259,17 @@ async function checkInAppointment(appointmentId) {
       if (brand) {
         const start = brand.opd_start_time || brand.registration_open_time || "08:00";
         const end = brand.opd_end_time || brand.registration_close_time || "20:00";
-      const now = new Date();
-      const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-      const todayName = days[now.getDay()];
+        const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const todayName = days[now.getDay()];
 
-      // Check operating days if configured
-      if (Array.isArray(brand.operating_days) && brand.operating_days.length > 0 && !brand.operating_days.includes(todayName)) {
-        const notice = brand.closed_notice || `Cannot check in: OPD is closed today (${todayName}). Check-in and joining the live line is only available when the OPD is open.`;
-        const err = new Error(notice);
-        err.status = 403;
-        err.is_registration_closed = true;
-        throw err;
-      }
+        // Check operating days if configured
+        if (Array.isArray(brand.operating_days) && brand.operating_days.length > 0 && !brand.operating_days.includes(todayName)) {
+          const notice = brand.closed_notice || `Cannot check in: OPD is closed today (${todayName}). Check-in and joining the live line is only available when the OPD is open.`;
+          const err = new Error(notice);
+          err.status = 403;
+          err.is_registration_closed = true;
+          throw err;
+        }
 
         const curTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
         if (curTime < start || curTime > end) {
@@ -201,25 +284,6 @@ async function checkInAppointment(appointmentId) {
   } catch (brandErr) {
     if (brandErr.is_registration_closed) throw brandErr;
     console.warn("Could not check OPD operating hours for check-in:", brandErr.message);
-  }
-
-  // If already checked in and has an active ticket, return the existing ticket pass directly
-  if (apt.status.toLowerCase() === "checked_in" && apt.ticket_id) {
-    const existingTicket = await prisma.tickets.findUnique({
-      where: { ticket_id: apt.ticket_id },
-    });
-    if (existingTicket && !["cancelled", "expired"].includes(existingTicket.status.toLowerCase())) {
-      return {
-        appointment: {
-          ...apt,
-          appointment_date: today,
-          status: "checked_in",
-          ticket_id: apt.ticket_id,
-          tenant_id: apt.hospitals?.hospital_code || "city-hospital-01",
-        },
-        ticket: existingTicket,
-      };
-    }
   }
 
   // Generate priority queue ticket for today's active queue
@@ -239,7 +303,7 @@ async function checkInAppointment(appointmentId) {
   await prisma.appointments.update({
     where: { appointment_id: apt.appointment_id },
     data: {
-      status: "checked_in",
+      status: "CHECKED_IN",
       ticket_id: ticket.ticket_id,
       appointment_date: queueDateToPrismaDate(today),
       updated_at: new Date(),
@@ -254,7 +318,7 @@ async function checkInAppointment(appointmentId) {
     data: {
       appointment_id: apt.appointment_id,
       old_status: apt.status,
-      new_status: "checked_in",
+      new_status: "CHECKED_IN",
       reason: checkInNote,
     },
   });
@@ -263,9 +327,17 @@ async function checkInAppointment(appointmentId) {
     appointment: {
       ...apt,
       appointment_date: today,
-      status: "checked_in",
+      time_slot: apt.time_slot,
+      status: "CHECKED_IN",
       ticket_id: ticket.ticket_id,
       tenant_id: apt.hospitals?.hospital_code || "city-hospital-01",
+      appointment_time: timing.appointmentTime.toISOString(),
+      check_in_opens_at: timing.checkInOpensAt.toISOString(),
+      expires_at: timing.expiresAt.toISOString(),
+      formatted_appointment_time: timing.formattedAppointmentTime,
+      formatted_check_in_opens_at: timing.formattedCheckInOpensAt,
+      formatted_expires_at: timing.formattedExpiresAt,
+      can_check_in: false,
     },
     ticket,
   };
@@ -347,17 +419,62 @@ async function getUserAppointments(identifier) {
 
   return appointments.map((a) => {
     const linkedTkt = a.tickets[0] || (a.ticket_id ? ticketsByTicketId.get(a.ticket_id) : null);
+    const cleanDate = parseQueueDate(a.appointment_date);
+    const timing = getAppointmentTimingDetails(cleanDate, a.time_slot);
+
     let effectiveStatus = a.status;
-    if (linkedTkt) {
-      const tktStatus = String(linkedTkt.status || "").toLowerCase();
-      if (["cancelled", "completed", "expired", "no_show"].includes(tktStatus)) {
-        effectiveStatus = tktStatus;
-        if (a.status !== effectiveStatus) {
-          prisma.appointments.update({
-            where: { appointment_id: a.appointment_id },
-            data: { status: effectiveStatus, updated_at: new Date() },
-          }).catch(() => {});
+    const rawLower = String(a.status || "").toLowerCase();
+
+    if (["completed", "cancelled", "no_show"].includes(rawLower)) {
+      effectiveStatus = rawLower.toUpperCase();
+    } else if (rawLower === "checked_in" || Boolean(a.ticket_id)) {
+      if (linkedTkt) {
+        const tktStatus = String(linkedTkt.status || "").toLowerCase();
+        if (["cancelled", "completed", "expired", "no_show"].includes(tktStatus)) {
+          effectiveStatus = tktStatus.toUpperCase();
+          if (a.status !== effectiveStatus) {
+            prisma.appointments.update({
+              where: { appointment_id: a.appointment_id },
+              data: { status: effectiveStatus, updated_at: new Date() },
+            }).catch(() => {});
+          }
+        } else {
+          effectiveStatus = "CHECKED_IN";
         }
+      } else {
+        effectiveStatus = "CHECKED_IN";
+      }
+    } else if (rawLower === "expired" || timing.isExpired) {
+      effectiveStatus = "EXPIRED";
+      if (rawLower !== "expired") {
+        prisma.appointments.update({
+          where: { appointment_id: a.appointment_id },
+          data: { status: "EXPIRED", updated_at: new Date() },
+        }).catch(() => {});
+        prisma.appointment_status_history.create({
+          data: {
+            appointment_id: a.appointment_id,
+            old_status: a.status,
+            new_status: "EXPIRED",
+            reason: `Automatically expired 1 hour after scheduled appointment time (${timing.formattedExpiresAt})`,
+          },
+        }).catch(() => {});
+      }
+    } else if (timing.canCheckIn) {
+      effectiveStatus = "CHECK_IN_AVAILABLE";
+      if (a.status !== "CHECK_IN_AVAILABLE") {
+        prisma.appointments.update({
+          where: { appointment_id: a.appointment_id },
+          data: { status: "CHECK_IN_AVAILABLE", updated_at: new Date() },
+        }).catch(() => {});
+      }
+    } else {
+      effectiveStatus = "BOOKED";
+      if (a.status !== "BOOKED" && a.status === "scheduled") {
+        prisma.appointments.update({
+          where: { appointment_id: a.appointment_id },
+          data: { status: "BOOKED", updated_at: new Date() },
+        }).catch(() => {});
       }
     }
 
@@ -444,7 +561,7 @@ async function getUserAppointments(identifier) {
       department: a.departments?.name || a.service_category,
       patient_name: a.patients?.name || "Patient",
       user_email: a.patients?.users?.email || "",
-      appointment_date: parseQueueDate(a.appointment_date),
+      appointment_date: cleanDate,
       time_slot: a.time_slot,
       status: effectiveStatus,
       ticket_id: a.ticket_id || (linkedTkt ? linkedTkt.ticket_id : ""),
@@ -455,6 +572,14 @@ async function getUserAppointments(identifier) {
       served_by_doctor_name: docName || null,
       transfer_count: transfers.length,
       transfers: transfers,
+      appointment_time: timing.appointmentTime.toISOString(),
+      check_in_opens_at: timing.checkInOpensAt.toISOString(),
+      expires_at: timing.expiresAt.toISOString(),
+      formatted_appointment_time: timing.formattedAppointmentTime,
+      formatted_check_in_opens_at: timing.formattedCheckInOpensAt,
+      formatted_expires_at: timing.formattedExpiresAt,
+      can_check_in: timing.canCheckIn && effectiveStatus === "CHECK_IN_AVAILABLE",
+      is_expired: effectiveStatus === "EXPIRED",
     };
   });
 }
@@ -535,7 +660,7 @@ async function getTenantAppointments(tenantId, department = null, activeOnly = f
   }
 
   if (activeOnly) {
-    where.status = { in: ["scheduled", "checked_in", "waiting", "serving"] };
+    where.status = { in: ["scheduled", "booked", "check_in_available", "checked_in", "waiting", "serving", "BOOKED", "CHECK_IN_AVAILABLE", "CHECKED_IN"] };
   }
 
   const rows = await prisma.appointments.findMany({
@@ -550,21 +675,47 @@ async function getTenantAppointments(tenantId, department = null, activeOnly = f
     orderBy: [{ appointment_date: "asc" }, { time_slot: "asc" }],
   });
 
-  return rows.map((a) => ({
-    appointment_id: a.appointment_id,
-    tenant_id: a.hospitals?.hospital_code || tenantId,
-    consumer_type: a.consumer_type,
-    service_category: a.service_category,
-    department_name: a.departments?.name || a.service_category,
-    department: a.departments?.name || a.service_category,
-    patient_name: a.patients?.name || "Patient",
-    user_email: a.patients?.users?.email || "",
-    appointment_date: parseQueueDate(a.appointment_date),
-    time_slot: a.time_slot,
-    status: a.status,
-    ticket_id: a.ticket_id || "",
-    created_at: a.created_at ? a.created_at.toISOString() : null,
-  }));
+  return rows.map((a) => {
+    const cleanDate = parseQueueDate(a.appointment_date);
+    const timing = getAppointmentTimingDetails(cleanDate, a.time_slot);
+    let effectiveStatus = a.status;
+    const rawLower = String(a.status || "").toLowerCase();
+    if (["completed", "cancelled", "no_show"].includes(rawLower)) {
+      effectiveStatus = rawLower.toUpperCase();
+    } else if (rawLower === "checked_in" || Boolean(a.ticket_id)) {
+      effectiveStatus = "CHECKED_IN";
+    } else if (rawLower === "expired" || timing.isExpired) {
+      effectiveStatus = "EXPIRED";
+    } else if (timing.canCheckIn) {
+      effectiveStatus = "CHECK_IN_AVAILABLE";
+    } else {
+      effectiveStatus = "BOOKED";
+    }
+
+    return {
+      appointment_id: a.appointment_id,
+      tenant_id: a.hospitals?.hospital_code || tenantId,
+      consumer_type: a.consumer_type,
+      service_category: a.service_category,
+      department_name: a.departments?.name || a.service_category,
+      department: a.departments?.name || a.service_category,
+      patient_name: a.patients?.name || "Patient",
+      user_email: a.patients?.users?.email || "",
+      appointment_date: cleanDate,
+      time_slot: a.time_slot,
+      status: effectiveStatus,
+      ticket_id: a.ticket_id || "",
+      created_at: a.created_at ? a.created_at.toISOString() : null,
+      appointment_time: timing.appointmentTime.toISOString(),
+      check_in_opens_at: timing.checkInOpensAt.toISOString(),
+      expires_at: timing.expiresAt.toISOString(),
+      formatted_appointment_time: timing.formattedAppointmentTime,
+      formatted_check_in_opens_at: timing.formattedCheckInOpensAt,
+      formatted_expires_at: timing.formattedExpiresAt,
+      can_check_in: timing.canCheckIn && effectiveStatus === "CHECK_IN_AVAILABLE",
+      is_expired: effectiveStatus === "EXPIRED",
+    };
+  });
 }
 
 module.exports = {

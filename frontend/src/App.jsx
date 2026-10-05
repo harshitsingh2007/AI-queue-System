@@ -187,7 +187,7 @@ export default function App() {
   }, []);
 
   const tenantId =
-    (currentUser && ["admin", "doctor", "staff", "receptionist"].includes((currentUser.role || "").toLowerCase()) && (currentUser.hospital_code || currentUser.primary_hospital_code) && (currentUser.hospital_code || currentUser.primary_hospital_code) !== "all")
+    (currentUser && ["admin", "doctor", "staff", "receptionist"].includes((currentUser.role || "").toLowerCase()) && (currentUser.hospital_code || currentUser.primary_hospital_code) && (currentUser.hospital_code || currentUser.primary_hospital_code) !== "all" && activePage !== "patient")
       ? (currentUser.hospital_code || currentUser.primary_hospital_code)
       : (currentHospitalTenant || HOSPITAL_CONFIG.tenantId || "city-hospital-01");
 
@@ -978,6 +978,25 @@ export default function App() {
     // Reset active ticket / QR pass for prior facility queue
     setActiveTicket(null);
     setTicketQrData(null);
+    setAnalytics(null);
+    setQueueSnapshot([]);
+    setServingTickets([]);
+    setHeldTickets([]);
+
+    // Immediately fetch new hospital telemetry
+    fetch(`${API_BASE}/api/v1/plugin/analytics/${cleanCode}`)
+      .then((r) => r.json())
+      .then((d) => setAnalytics(d))
+      .catch((e) => console.log("Analytics error on switch:", e));
+
+    fetch(`${API_BASE}/api/v1/plugin/queue/${cleanCode}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setQueueSnapshot(d.snapshot || []);
+        setServingTickets(d.serving || []);
+        setHeldTickets(d.held || []);
+      })
+      .catch((e) => console.log("Queue error on switch:", e));
 
     // Update user's facility preference in local state and localStorage
     setCurrentUser((prev) => {
@@ -1249,7 +1268,7 @@ export default function App() {
           onAddFamilyMember={handleAddFamilyMemberFromHeader}
           onManageFamilyMembers={handleManageFamilyMembers}
           currentHospitalTenant={currentHospitalTenant}
-          onSwitchHospital={setCurrentHospitalTenant}
+          onSwitchHospital={handleSwitchHospital}
           hospitalBranding={hospitalBranding}
           theme={theme}
           setTheme={setTheme}
@@ -1294,7 +1313,7 @@ export default function App() {
                     onSwitchProfile={handleSwitchProfile}
                     onFamilyMembersChange={fetchFamilyMembers}
                     currentHospitalTenant={currentHospitalTenant}
-                    onSwitchHospital={setCurrentHospitalTenant}
+                    onSwitchHospital={handleSwitchHospital}
                     hospitalBranding={hospitalBranding}
                     onUpdateHospitalBranding={setHospitalBranding}
                     theme={theme}

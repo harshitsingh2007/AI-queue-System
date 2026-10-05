@@ -45,6 +45,10 @@ const DEFAULT_BRANDING = {
   opd_helpdesk_hours_hi: "सोम – शनि: सुबह 8:00 – रात 8:00",
   support_email: "support@citygeneralhospital.org",
   operating_days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+  available_time_slots: [
+    "09:00 AM", "09:45 AM", "10:30 AM", "11:15 AM", "12:00 PM",
+    "02:00 PM", "02:45 PM", "03:30 PM", "04:15 PM", "05:00 PM"
+  ],
   closed_notice: "Registrations are closed for today. Please visit during OPD hours or book an appointment for tomorrow.",
 };
 
@@ -544,6 +548,15 @@ async function updateHospitalBranding(hospitalCode, brandingData) {
   }
   if (brandingData.registration_close_time) {
     merged.opd_end_time = brandingData.registration_close_time;
+  }
+  if (brandingData.available_time_slots !== undefined) {
+    if (Array.isArray(brandingData.available_time_slots)) {
+      merged.available_time_slots = brandingData.available_time_slots
+        .map((s) => String(s || "").trim())
+        .filter(Boolean);
+    } else {
+      merged.available_time_slots = [];
+    }
   }
 
   const updatePayload = {

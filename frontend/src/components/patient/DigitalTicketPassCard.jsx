@@ -1,5 +1,5 @@
 import React from "react";
-import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel } from "../../utils/i18n";
+import { t, getCategoryLabel, getStatusLabel, formatSymptomLabel, formatCleanText } from "../../utils/i18n";
 import { standaloneCardStyle } from "./patientStyles";
 
 /**
@@ -347,6 +347,26 @@ export default function DigitalTicketPassCard({
                   {activeTicket.parent_ticket_id && <span style={{ opacity: 0.8 }}>(#{activeTicket.parent_ticket_id})</span>}
                 </span>
               )}
+
+              {/* Linked Appointment Badge if checked in from slot */}
+              {activeTicket.appointment_id && (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    color: "#0369A1",
+                    background: "#E0F2FE",
+                    border: "1px solid #BAE6FD",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                  }}
+                >
+                  📅 {language === "hi" ? "स्लॉट चेक-इन:" : "Slot Check-In:"} {activeTicket.appointment_id}
+                </span>
+              )}
             </div>
           </div>
 
@@ -604,7 +624,7 @@ export default function DigitalTicketPassCard({
                 <div style={{ fontSize: "12.5px", color: "#10B981", marginBottom: "6px" }}>
                   <strong style={{ color: "var(--patient-text-main, #0F172A)" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
                   <span style={{ fontWeight: 700, color: "#059669", background: "var(--patient-tag-bg, #D1FAE5)", padding: "2px 8px", borderRadius: "5px", border: "1px solid rgba(5, 150, 105, 0.3)" }}>
-                    {rx.diagnosis}
+                    {formatCleanText(rx.diagnosis, language)}
                   </span>
                 </div>
               )}
@@ -632,7 +652,7 @@ export default function DigitalTicketPassCard({
                         }}
                       >
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
-                        <span>{m.name} {m.dosage ? `(${m.dosage})` : ""}</span>
+                        <span>{formatCleanText(m.name, language)} {m.dosage ? `(${formatCleanText(m.dosage, language)})` : ""}</span>
                       </span>
                     ))}
                   </div>
@@ -641,7 +661,7 @@ export default function DigitalTicketPassCard({
 
               {rx?.advice && (
                 <div style={{ marginTop: "8px", fontSize: "12px", color: "var(--patient-text-main, #334155)", background: "var(--patient-card-bg, #FFFFFF)", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--patient-tag-border, #A7F3D0)" }}>
-                  <strong>{language === "hi" ? "सलाह" : "Advice"}:</strong> {rx.advice}
+                  <strong>{language === "hi" ? "सलाह" : "Advice"}:</strong> {String(rx.advice).replace(/_/g, " ")}
                 </div>
               )}
             </div>

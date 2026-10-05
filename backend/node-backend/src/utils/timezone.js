@@ -91,10 +91,145 @@ function dtToEpoch(val) {
   return Date.now() / 1000.0;
 }
 
+/**
+ * Parses timeSlot strings (e.g. "03:30 PM", "3:30 PM", "11:15 AM", "14:30") into 24h hour and minute.
+ */
+function parseTimeSlot(timeSlot) {
+  if (!timeSlot || typeof timeSlot !== "string") {
+    return { hour: 9, minute: 0, formatted: "09:00 AM" };
+  }
+  const match = timeSlot.trim().match(/^(\d{1,2}):(\d{2})(?:\s*([APap][Mm]))?$/);
+  if (!match) {
+    return { hour: 9, minute: 0, formatted: timeSlot.trim() };
+  }
+  let hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  const meridian = match[3] ? match[3].toUpperCase() : null;
+  if (meridian === "PM" && hour < 12) hour += 12;
+  if (meridian === "AM" && hour === 12) hour = 0;
+
+  const displayH = hour % 12 === 0 ? 12 : hour % 12;
+  const displayM = String(minute).padStart(2, "0");
+  const displayMeridian = hour >= 12 ? "PM" : "AM";
+  const formatted = `${String(displayH).padStart(2, "0")}:${displayM} ${displayMeridian}`;
+
+  return { hour, minute, formatted };
+}
+
+/**
+ * Computes timezone offset in minutes for a given date in target timezone.
+ */
+function getTimeZoneOffsetMinutes(date, timeZone = TIMEZONE) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const p = {};
+  for (const part of parts) {
+    if (part.type !== "literal") p[part.type] = parseInt(part.value, 10);
+  }
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour === 24 ? 0 : p.hour, p.minute, p.second);
+  return (asUtc - date.getTime()) / 60000;
+}
+
+/**
+ * Resolves the exact UTC Date object for an appointment date string and time slot in the hospital timezone.
+ */
+function getZonedAppointmentTime(dateStr, timeSlot, timeZone = TIMEZONE) {
+  const cleanDate = parseQueueDate(dateStr);
+  const { hour, minute } = parseTimeSlot(timeSlot);
+  const [year, month, day] = cleanDate.split("-").map(Number);
+  const approximateUtc = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+  const offsetMinutes = getTimeZoneOffsetMinutes(approximateUtc, timeZone);
+  return new Date(approximateUtc.getTime() - offsetMinutes * 60000);
+}
+
+/**
+ * Formats a Date object in the hospital timezone to 12h time string (e.g. "03:30 PM").
+ */
+function formatInTimezone(date, timeZone = TIMEZONE) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return formatter.format(date);
+}
+
+/**
+ * Evaluates the check-in window and ticket expiration logic for an appointment:
+ * - Check-in Window: Opens exactly 30 minutes before the scheduled appointment time.
+ * - Ticket Expiration: Expires exactly 1 hour (60 minutes) after the scheduled appointment time.
+ * - States:
+ *   - BOOKED: Scheduled slot, current time is before check-in opens.
+ *   - CHECK_IN_AVAILABLE: Within [appointment - 30m, appointment + 60m].
+ *   - EXPIRED: Past appointment + 60m without checking in.
+ */
+function getAppointmentTimingDetails(appointmentDate, timeSlot, now = new Date(), timeZone = TIMEZONE) {
+  const aptTime = getZonedAppointmentTime(appointmentDate, timeSlot, timeZone);
+  const aptTimestamp = aptTime.getTime();
+
+  // Check-in opens 30 minutes before appointment
+  const checkInOpensTimestamp = aptTimestamp - 30 * 60 * 1000;
+  const checkInOpensAt = new Date(checkInOpensTimestamp);
+
+  // Ticket expires 1 hour after scheduled appointment
+  const expiresTimestamp = aptTimestamp + 60 * 60 * 1000;
+  const expiresAt = new Date(expiresTimestamp);
+
+  const currentMs = now instanceof Date ? now.getTime() : new Date(now).getTime();
+
+  let status = "BOOKED";
+  let canCheckIn = false;
+  let isExpired = false;
+
+  if (currentMs > expiresTimestamp) {
+    status = "EXPIRED";
+    isExpired = true;
+    canCheckIn = false;
+  } else if (currentMs >= checkInOpensTimestamp) {
+    status = "CHECK_IN_AVAILABLE";
+    canCheckIn = true;
+  } else {
+    status = "BOOKED";
+    canCheckIn = false;
+  }
+
+  const minutesUntilCheckIn = Math.max(0, Math.ceil((checkInOpensTimestamp - currentMs) / 60000));
+  const minutesUntilExpiration = Math.max(0, Math.ceil((expiresTimestamp - currentMs) / 60000));
+
+  return {
+    appointmentTime: aptTime,
+    checkInOpensAt,
+    expiresAt,
+    formattedAppointmentTime: formatInTimezone(aptTime, timeZone),
+    formattedCheckInOpensAt: formatInTimezone(checkInOpensAt, timeZone),
+    formattedExpiresAt: formatInTimezone(expiresAt, timeZone),
+    status,
+    canCheckIn,
+    isExpired,
+    minutesUntilCheckIn,
+    minutesUntilExpiration,
+  };
+}
+
 module.exports = {
   TIMEZONE,
   getCurrentQueueDate,
   parseQueueDate,
   queueDateToPrismaDate,
   dtToEpoch,
+  parseTimeSlot,
+  getTimeZoneOffsetMinutes,
+  getZonedAppointmentTime,
+  formatInTimezone,
+  getAppointmentTimingDetails,
 };

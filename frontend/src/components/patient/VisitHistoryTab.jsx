@@ -1,5 +1,5 @@
 import React from "react";
-import { t, getCategoryLabel, getStatusLabel } from "../../utils/i18n";
+import { t, getCategoryLabel, getStatusLabel, formatCleanText } from "../../utils/i18n";
 import FamilyMemberSwitcher from "./FamilyMemberSwitcher";
 import HistorySummary from "../patient-history/HistorySummary";
 import { standaloneCardStyle } from "./patientStyles";
@@ -497,7 +497,7 @@ export default function VisitHistoryTab({
                               <div style={{ fontSize: "13px", color: "#0369A1" }}>
                                 <strong style={{ color: "var(--patient-text-main, #0F172A)" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
                                 <span style={{ fontWeight: 800, color: "#0284C7", background: "var(--patient-tag-bg, #E0F2FE)", padding: "2px 8px", borderRadius: "6px", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
-                                  {rx.diagnosis}
+                                  {formatCleanText(rx.diagnosis, language)}
                                 </span>
                               </div>
                             )}
@@ -526,10 +526,10 @@ export default function VisitHistoryTab({
                                       }}
                                     >
                                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
-                                      <strong>{m.name}</strong>
-                                      {m.dosage ? ` • ${m.dosage}` : ""}
-                                      {m.frequency ? ` (${m.frequency})` : ""}
-                                      {m.duration ? ` [${m.duration}]` : ""}
+                                      <strong>{formatCleanText(m.name, language)}</strong>
+                                      {m.dosage ? ` • ${formatCleanText(m.dosage, language)}` : ""}
+                                      {m.frequency ? ` (${formatCleanText(m.frequency, language)})` : ""}
+                                      {m.duration ? ` [${formatCleanText(m.duration, language)}]` : ""}
                                     </span>
                                   ))}
                                 </div>
@@ -770,7 +770,7 @@ export default function VisitHistoryTab({
                               <div style={{ fontSize: "13px", color: "var(--patient-tag-color, #0369A1)" }}>
                                 <strong style={{ color: "var(--patient-text-main, #0F172A)" }}>{language === "hi" ? "निदान" : "Diagnosis"}:</strong>{" "}
                                 <span style={{ fontWeight: 800, color: "#0284C7", background: "var(--patient-tag-bg, #E0F2FE)", padding: "2px 8px", borderRadius: "6px", border: "1px solid var(--patient-tag-border, #BAE6FD)" }}>
-                                  {rx.diagnosis}
+                                  {formatCleanText(rx.diagnosis, language)}
                                 </span>
                               </div>
                             )}
@@ -799,10 +799,10 @@ export default function VisitHistoryTab({
                                       }}
                                     >
                                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
-                                      <strong>{m.name}</strong>
-                                      {m.dosage ? ` • ${m.dosage}` : ""}
-                                      {m.frequency ? ` (${m.frequency})` : ""}
-                                      {m.duration ? ` [${m.duration}]` : ""}
+                                      <strong>{formatCleanText(m.name, language)}</strong>
+                                      {m.dosage ? ` • ${formatCleanText(m.dosage, language)}` : ""}
+                                      {m.frequency ? ` (${formatCleanText(m.frequency, language)})` : ""}
+                                      {m.duration ? ` [${formatCleanText(m.duration, language)}]` : ""}
                                     </span>
                                   ))}
                                 </div>

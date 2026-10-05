@@ -216,25 +216,45 @@ export default function DesksManagementTab({
                                     </button>
                                 </div>
                             ) : (
-                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: "14px" }}>
                                     {deptGroup.desks.map((desk) => (
                                         <div key={desk.id} style={deskCardItemStyle(desk.status)}>
-                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                                <span style={{ fontSize: "13px", fontWeight: 800, color: "var(--superadmin-text-main, #0F172A)" }}>
-                                                    {desk.desk_name}
-                                                </span>
-                                                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                                    <span style={deskStatusPillStyle(desk.status)}>
-                                                        {desk.status}
-                                                    </span>
+                                            {/* Desk Header: Title, Status Badge, Edit & Delete */}
+                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                                                <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: "4px" }}>
+                                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                                        <span
+                                                            style={{
+                                                                fontSize: "14.5px",
+                                                                fontWeight: 800,
+                                                                color: "var(--superadmin-text-main, #0F172A)",
+                                                                letterSpacing: "0.2px",
+                                                                lineHeight: 1.3,
+                                                                wordBreak: "break-word",
+                                                            }}
+                                                        >
+                                                            {desk.desk_name}
+                                                        </span>
+                                                        <span style={deskStatusPillStyle(desk.status)}>
+                                                            {desk.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                                                     {/* Edit Desk Button */}
                                                     <button
                                                         type="button"
                                                         onClick={() => onOpenEditDesk && onOpenEditDesk(desk, deptGroup.dept_code)}
-                                                        style={{ ...deleteDeskIconBtnStyle, color: "#38BDF8", background: "rgba(2, 132, 199, 0.15)", border: "1px solid rgba(2, 132, 199, 0.3)" }}
+                                                        style={{
+                                                            ...deleteDeskIconBtnStyle,
+                                                            color: "#0284C7",
+                                                            background: "rgba(2, 132, 199, 0.08)",
+                                                            border: "1px solid rgba(2, 132, 199, 0.25)",
+                                                        }}
                                                         title={isHi ? "डेस्क संपादित करें" : "Edit Desk"}
                                                     >
-                                                        <IconEdit size={12} color="#38BDF8" />
+                                                        <IconEdit size={13} color="#0284C7" />
                                                     </button>
                                                     {/* Delete Desk Button */}
                                                     <button
@@ -259,89 +279,160 @@ export default function DesksManagementTab({
                                                         <div
                                                             style={{
                                                                 display: "flex",
-                                                                alignItems: "center",
-                                                                justifyContent: "space-between",
-                                                                background: isDoc ? (isOnline ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)") : "var(--superadmin-sub-card, #1E293B)",
-                                                                border: isDoc ? (isOnline ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)") : "1px solid var(--superadmin-card-border, #334155)",
-                                                                borderRadius: "8px",
-                                                                padding: "6px 8px",
-                                                                margin: "8px 0 6px 0",
+                                                                flexDirection: "column",
+                                                                gap: "10px",
+                                                                background: isDoc
+                                                                    ? (isOnline ? "rgba(16, 185, 129, 0.07)" : "rgba(239, 68, 68, 0.06)")
+                                                                    : "var(--superadmin-sub-card, #F8FAFC)",
+                                                                border: isDoc
+                                                                    ? (isOnline ? "1px solid rgba(16, 185, 129, 0.28)" : "1px solid rgba(239, 68, 68, 0.22)")
+                                                                    : "1px solid var(--superadmin-card-border, #E2E8F0)",
+                                                                borderRadius: "10px",
+                                                                padding: "10px 12px",
+                                                                margin: "4px 0",
                                                             }}
                                                         >
-                                                            <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, flex: 1 }}>
-                                                                <span style={{ fontSize: "14px" }}>
+                                                            {/* Doctor Info Row: Icon, Name & Role/Activity */}
+                                                            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                                                                <div
+                                                                    style={{
+                                                                        width: "34px",
+                                                                        height: "34px",
+                                                                        borderRadius: "8px",
+                                                                        display: "flex",
+                                                                        alignItems: "center",
+                                                                        justifyContent: "center",
+                                                                        fontSize: "16px",
+                                                                        background: isDoc
+                                                                            ? (isOnline ? "rgba(16, 185, 129, 0.16)" : "rgba(239, 68, 68, 0.12)")
+                                                                            : "rgba(100, 116, 139, 0.12)",
+                                                                        flexShrink: 0,
+                                                                    }}
+                                                                >
                                                                     {isDoc ? "🩺" : "👤"}
-                                                                </span>
-                                                                <div style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--superadmin-text-main, #F8FAFC)", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                                                            {desk.assigned_employee_name || desk.staff_name}
-                                                                        </span>
-                                                                        <span
-                                                                            style={{
-                                                                                display: "inline-flex",
-                                                                                alignItems: "center",
-                                                                                gap: "3px",
-                                                                                padding: "1px 5px",
-                                                                                borderRadius: "999px",
-                                                                                fontSize: "9px",
-                                                                                fontWeight: 800,
-                                                                                background: isOnline ? "rgba(16, 185, 129, 0.2)" : "rgba(100, 116, 139, 0.2)",
-                                                                                color: isOnline ? "#10B981" : "#94A3B8",
-                                                                                border: isOnline ? "1px solid rgba(16, 185, 129, 0.35)" : "1px solid rgba(100, 116, 139, 0.35)",
-                                                                            }}
-                                                                        >
-                                                                            <span
-                                                                                style={{
-                                                                                    width: "5px",
-                                                                                    height: "5px",
-                                                                                    borderRadius: "50%",
-                                                                                    background: isOnline ? "#16A34A" : "#94A3B8",
-                                                                                }}
-                                                                            />
-                                                                            <span>{isOnline ? (isHi ? "ऑनलाइन" : "Online") : (isHi ? "ऑफलाइन" : "Offline")}</span>
-                                                                        </span>
+                                                                </div>
+                                                                <div style={{ minWidth: 0, flex: 1 }}>
+                                                                    <div
+                                                                        style={{
+                                                                            fontSize: "13px",
+                                                                            fontWeight: 800,
+                                                                            color: "var(--superadmin-text-main, #0F172A)",
+                                                                            lineHeight: 1.3,
+                                                                            wordBreak: "break-word",
+                                                                        }}
+                                                                    >
+                                                                        {desk.assigned_employee_name || desk.staff_name}
                                                                     </div>
-                                                                    <div style={{ fontSize: "10px", color: isDoc ? "#10B981" : "var(--superadmin-text-muted, #94A3B8)", textTransform: "capitalize", fontWeight: 600 }}>
-                                                                        {desk.assigned_employee_role || "Staff"} {desk.assigned_employee_last_login && isOnline ? `• ${formatRelativeLogin ? formatRelativeLogin(desk.assigned_employee_last_login) : desk.assigned_employee_last_login}` : ""}
+                                                                    <div
+                                                                        style={{
+                                                                            fontSize: "11px",
+                                                                            color: isDoc ? (isOnline ? "#059669" : "#DC2626") : "var(--superadmin-text-muted, #64748B)",
+                                                                            fontWeight: 600,
+                                                                            marginTop: "2px",
+                                                                            display: "flex",
+                                                                            alignItems: "center",
+                                                                            gap: "6px",
+                                                                            flexWrap: "wrap",
+                                                                        }}
+                                                                    >
+                                                                        <span style={{ textTransform: "capitalize" }}>{desk.assigned_employee_role || "Staff"}</span>
+                                                                        {desk.assigned_employee_last_login && isOnline && (
+                                                                            <span style={{ opacity: 0.85 }}>
+                                                                                • {formatRelativeLogin ? formatRelativeLogin(desk.assigned_employee_last_login) : desk.assigned_employee_last_login}
+                                                                            </span>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => onOpenAssignDesk && onOpenAssignDesk(desk, String(desk.assigned_employee_id || ""))}
+
+                                                            {/* Doctor Status Badge & Action Controls */}
+                                                            <div
+                                                                style={{
+                                                                    display: "flex",
+                                                                    alignItems: "center",
+                                                                    justifyContent: "space-between",
+                                                                    paddingTop: "8px",
+                                                                    borderTop: isDoc
+                                                                        ? (isOnline ? "1px solid rgba(16, 185, 129, 0.18)" : "1px solid rgba(239, 68, 68, 0.15)")
+                                                                        : "1px solid var(--superadmin-card-border, #E2E8F0)",
+                                                                    gap: "8px",
+                                                                }}
+                                                            >
+                                                                {/* Online / Offline Pill */}
+                                                                <span
                                                                     style={{
-                                                                        background: "var(--superadmin-card-bg, #0F172A)",
-                                                                        border: "1px solid var(--superadmin-card-border, #334155)",
-                                                                        borderRadius: "5px",
-                                                                        padding: "3px 6px",
-                                                                        fontSize: "10px",
+                                                                        display: "inline-flex",
+                                                                        alignItems: "center",
+                                                                        gap: "5px",
+                                                                        padding: "2px 8px",
+                                                                        borderRadius: "999px",
+                                                                        fontSize: "10.5px",
                                                                         fontWeight: 700,
-                                                                        color: "#38BDF8",
-                                                                        cursor: "pointer",
+                                                                        background: isOnline ? "rgba(16, 185, 129, 0.15)" : "rgba(100, 116, 139, 0.15)",
+                                                                        color: isOnline ? "#059669" : "#64748B",
+                                                                        border: isOnline ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(100, 116, 139, 0.3)",
                                                                     }}
-                                                                    title={isHi ? "कार्मिक बदलें" : "Reassign Doctor / Staff"}
                                                                 >
-                                                                    {isHi ? "बदलें" : "Change"}
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => onUnassignDesk && onUnassignDesk(desk.id)}
-                                                                    style={{
-                                                                        background: "rgba(239, 68, 68, 0.15)",
-                                                                        border: "1px solid rgba(239, 68, 68, 0.3)",
-                                                                        borderRadius: "5px",
-                                                                        padding: "3px 6px",
-                                                                        fontSize: "10px",
-                                                                        fontWeight: 700,
-                                                                        color: "#EF4444",
-                                                                        cursor: "pointer",
-                                                                    }}
-                                                                    title={isHi ? "अनअसाइन करें" : "Unassign Desk"}
-                                                                >
-                                                                    <IconX size={15} />
-                                                                </button>
+                                                                    <span
+                                                                        style={{
+                                                                            width: "6px",
+                                                                            height: "6px",
+                                                                            borderRadius: "50%",
+                                                                            background: isOnline ? "#10B981" : "#94A3B8",
+                                                                        }}
+                                                                    />
+                                                                    <span>{isOnline ? (isHi ? "ऑनलाइन" : "Online") : (isHi ? "ऑफलाइन" : "Offline")}</span>
+                                                                </span>
+
+                                                                {/* Change & Unassign Actions */}
+                                                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => onOpenAssignDesk && onOpenAssignDesk(desk, String(desk.assigned_employee_id || ""))}
+                                                                        style={{
+                                                                            background: "#FFFFFF",
+                                                                            border: "1px solid #CBD5E1",
+                                                                            borderRadius: "6px",
+                                                                            padding: "3px 8px",
+                                                                            fontSize: "11px",
+                                                                            fontWeight: 700,
+                                                                            color: "#0284C7",
+                                                                            cursor: "pointer",
+                                                                            boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                                                                        }}
+                                                                        title={isHi ? "कार्मिक बदलें" : "Reassign Doctor / Staff"}
+                                                                    >
+                                                                        {isHi ? "बदलें" : "Change"}
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const staffName = desk.assigned_employee_name || desk.staff_name || "Doctor";
+                                                                            const confirmMsg = isHi
+                                                                                ? `क्या आप वाकई '${desk.desk_name}' से '${staffName}' को हटाना (अनअसाइन) चाहते हैं?`
+                                                                                : `Unassign '${staffName}' from '${desk.desk_name}'?`;
+                                                                            if (window.confirm(confirmMsg)) {
+                                                                                if (onUnassignDesk) onUnassignDesk(desk);
+                                                                            }
+                                                                        }}
+                                                                        style={{
+                                                                            background: "rgba(239, 68, 68, 0.1)",
+                                                                            border: "1px solid rgba(239, 68, 68, 0.25)",
+                                                                            borderRadius: "6px",
+                                                                            width: "26px",
+                                                                            height: "26px",
+                                                                            display: "inline-flex",
+                                                                            alignItems: "center",
+                                                                            justifyContent: "center",
+                                                                            color: "#EF4444",
+                                                                            cursor: "pointer",
+                                                                            transition: "all 0.15s ease",
+                                                                        }}
+                                                                        title={isHi ? "अनअसाइन करें" : "Unassign Desk"}
+                                                                    >
+                                                                        <IconX size={14} color="#EF4444" />
+                                                                    </button>
+                                                                </div>
                                                             </div>
                                                         </div>
 
@@ -351,19 +442,20 @@ export default function DesksManagementTab({
                                                                 style={{
                                                                     display: "flex",
                                                                     alignItems: "center",
-                                                                    gap: "5px",
-                                                                    padding: "4px 8px",
-                                                                    background: "rgba(245, 158, 11, 0.12)",
+                                                                    gap: "6px",
+                                                                    padding: "6px 10px",
+                                                                    background: "rgba(245, 158, 11, 0.1)",
                                                                     border: "1px solid rgba(245, 158, 11, 0.3)",
-                                                                    borderRadius: "6px",
-                                                                    marginBottom: "6px",
-                                                                    fontSize: "10.5px",
-                                                                    color: "#FBBF24",
+                                                                    borderRadius: "7px",
+                                                                    marginBottom: "4px",
+                                                                    fontSize: "11px",
+                                                                    color: "#92400E",
                                                                     fontWeight: 600,
+                                                                    lineHeight: 1.35,
                                                                 }}
                                                             >
-                                                                <IconAlertTriangle size={14} color="#F59E0B" />
-                                                                <span>{isHi ? "सावधानी: नियुक्त कार्मिक वर्तमान में ऑफलाइन हैं" : "Notice: Assigned doctor is currently offline"}</span>
+                                                                <IconAlertTriangle size={15} color="#D97706" style={{ flexShrink: 0 }} />
+                                                                <span>{isHi ? "सावधानी: नियुक्त कार्मिक वर्तमान में ऑफलाइन हैं" : "Assigned doctor is currently offline"}</span>
                                                             </div>
                                                         )}
                                                     </React.Fragment>
@@ -374,32 +466,55 @@ export default function DesksManagementTab({
                                                         display: "flex",
                                                         alignItems: "center",
                                                         justifyContent: "space-between",
-                                                        background: "var(--superadmin-sub-card, #1E293B)",
-                                                        border: "1px dashed var(--superadmin-card-border, #334155)",
-                                                        borderRadius: "8px",
-                                                        padding: "6px 8px",
-                                                        margin: "8px 0 6px 0",
+                                                        background: "var(--superadmin-sub-card, #F8FAFC)",
+                                                        border: "1px dashed var(--superadmin-card-border, #CBD5E1)",
+                                                        borderRadius: "10px",
+                                                        padding: "10px 12px",
+                                                        margin: "4px 0",
+                                                        gap: "10px",
                                                     }}
                                                 >
-                                                    <span style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #94A3B8)", fontWeight: 600, display: "flex", alignItems: "center", gap: "4px" }}>
-                                                        <IconZap size={14} color="#F59E0B" />
-                                                        <span>{isHi ? "स्वचालित बे" : "Auto Bay"}</span>
-                                                    </span>
+                                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flex: 1 }}>
+                                                        <div
+                                                            style={{
+                                                                width: "32px",
+                                                                height: "32px",
+                                                                borderRadius: "8px",
+                                                                background: "rgba(245, 158, 11, 0.15)",
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                justifyContent: "center",
+                                                                flexShrink: 0,
+                                                            }}
+                                                        >
+                                                            <IconZap size={16} color="#D97706" />
+                                                        </div>
+                                                        <div style={{ minWidth: 0 }}>
+                                                            <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--superadmin-text-main, #334155)" }}>
+                                                                {isHi ? "स्वचालित बे" : "Auto Bay / Unassigned"}
+                                                            </div>
+                                                            <div style={{ fontSize: "10.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
+                                                                {isHi ? "कोई डॉक्टर नियुक्त नहीं" : "No doctor assigned"}
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                     <button
                                                         type="button"
                                                         onClick={() => onOpenAssignDesk && onOpenAssignDesk(desk, "")}
                                                         style={{
                                                             background: "#0284C7",
                                                             border: "none",
-                                                            borderRadius: "5px",
-                                                            padding: "3px 8px",
-                                                            fontSize: "10.5px",
+                                                            borderRadius: "6px",
+                                                            padding: "5px 12px",
+                                                            fontSize: "11px",
                                                             fontWeight: 700,
                                                             color: "#FFFFFF",
                                                             cursor: "pointer",
                                                             display: "inline-flex",
                                                             alignItems: "center",
-                                                            gap: "3px",
+                                                            gap: "4px",
+                                                            flexShrink: 0,
+                                                            boxShadow: "0 1px 3px rgba(2, 132, 199, 0.25)",
                                                         }}
                                                     >
                                                         <span>+</span>
@@ -408,11 +523,12 @@ export default function DesksManagementTab({
                                                 </div>
                                             )}
 
-                                            <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                                            {/* Desk Footer Actions */}
+                                            <div style={{ display: "flex", gap: "8px", marginTop: "2px" }}>
                                                 <button
                                                     type="button"
                                                     onClick={() => onToggleDeskStatus && onToggleDeskStatus(desk)}
-                                                    style={{ ...toggleDeskBtnStyle, flex: 1, margin: 0 }}
+                                                    style={{ ...toggleDeskBtnStyle, flex: 1, margin: 0, padding: "7px 10px", fontSize: "11.5px" }}
                                                 >
                                                     {isHi ? "स्थिति बदलें" : "Toggle Status"}
                                                 </button>
@@ -420,17 +536,19 @@ export default function DesksManagementTab({
                                                     type="button"
                                                     onClick={() => onOpenAssignDesk && onOpenAssignDesk(desk, String(desk.assigned_employee_id || ""))}
                                                     style={{
-                                                        padding: "6px 9px",
-                                                        fontSize: "11px",
+                                                        padding: "7px 12px",
+                                                        fontSize: "11.5px",
                                                         fontWeight: 700,
                                                         background: "#F0F9FF",
                                                         border: "1px solid #BAE6FD",
-                                                        borderRadius: "6px",
+                                                        borderRadius: "8px",
                                                         color: "#0369A1",
                                                         cursor: "pointer",
                                                         display: "inline-flex",
                                                         alignItems: "center",
-                                                        gap: "4px",
+                                                        gap: "5px",
+                                                        transition: "all 0.15s ease",
+                                                        whiteSpace: "nowrap",
                                                     }}
                                                     title={isHi ? "डॉक्टर या स्टाफ सौंपें" : "Assign Doctor or Staff"}
                                                 >
