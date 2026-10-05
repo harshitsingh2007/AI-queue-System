@@ -24,6 +24,8 @@ env/
 *.db-wal
 *.sqlite
 *.sqlite3
+*.dump
+*.bak
 
 # Test Scratch Files
 test_user_*.py
