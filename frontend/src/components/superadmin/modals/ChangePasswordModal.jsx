@@ -108,25 +108,9 @@ export default function ChangePasswordModal({
                 ) : (
                     <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                         <div>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                                <label style={fieldLabelStyle}>{isHi ? "नया पासवर्ड सेट करें" : "Set New Password"} *</label>
-                                <button
-                                    type="button"
-                                    onClick={() => setNewPasswordValue("pass" + Math.floor(1000 + Math.random() * 9000))}
-                                    style={{
-                                        background: "none",
-                                        border: "none",
-                                        color: "#0284C7",
-                                        fontSize: "11.5px",
-                                        fontWeight: 700,
-                                        cursor: "pointer",
-                                        padding: 0,
-                                        textDecoration: "underline",
-                                    }}
-                                >
-                                    {isHi ? "रैंडम पासवर्ड बनाएं" : "Generate Random PIN"}
-                                </button>
-                            </div>
+                            <label style={{ ...fieldLabelStyle, display: "block", marginBottom: "6px" }}>
+                                {isHi ? "नया पासवर्ड सेट करें" : "Set New Password"} *
+                            </label>
                             <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                                 <input
                                     type={showPasswordText ? "text" : "password"}
@@ -165,9 +149,6 @@ export default function ChangePasswordModal({
                                     <span>{showPasswordText ? (isHi ? "छिपाएं" : "Hide") : (isHi ? "दिखाएं" : "Show")}</span>
                                 </button>
                             </div>
-                            <span style={{ fontSize: "11px", color: "#64748B", marginTop: "4px", display: "block" }}>
-                                {isHi ? "सुपर एडमिन सीधे डॉक्टर या स्टाफ सदस्य का पासवर्ड रीसेट कर सकता है।" : "Super Admin can directly overwrite the password without needing current password."}
-                            </span>
                         </div>
 
                         <div style={{ display: "flex", gap: "10px", marginTop: "8px" }}>

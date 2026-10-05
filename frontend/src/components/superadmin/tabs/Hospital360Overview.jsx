@@ -26,6 +26,8 @@ import {
     actionBtnStyle,
 } from "../superAdminStyles";
 import { getCategoryLabel } from "../../../utils/i18n";
+import VisitedPatientsSection from "./VisitedPatientsSection";
+import DoctorProductivitySection from "./DoctorProductivitySection";
 import "../SuperAdmin.css";
 
 export default function Hospital360Overview({
@@ -213,14 +215,7 @@ export default function Hospital360Overview({
 
     // Real-Time Telemetry Graph States
     const [chartMetricFilter, setChartMetricFilter] = React.useState("all");
-    const [liveClockStr, setLiveClockStr] = React.useState(() => new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-
-    React.useEffect(() => {
-        const timer = setInterval(() => {
-            setLiveClockStr(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-        }, 1000);
-        return () => clearInterval(timer);
-    }, []);
+    const [telemetryPeriod, setTelemetryPeriod] = React.useState("today"); // "today" | "yesterday" | "week" | "month"
 
     // Helper functions for silky smooth cubic Bézier splines
     const getSmoothSvgPath = (points) => {
@@ -251,9 +246,61 @@ export default function Hospital360Overview({
         return `${linePath} L ${last.x.toFixed(1)} ${bottomY} L ${first.x.toFixed(1)} ${bottomY} Z`;
     };
 
-    // Analytics calculations
-    const hourlyAnalytics = computeHourlyAnalytics ? computeHourlyAnalytics(rawVisits, hospitalQueueSnapshot) : { hourlyData: [], maxVolume: 6, peakHourLabel: "10 AM - 12 PM", peakAvgWait: 14 };
-    const bottleneckAnalytics = computeDepartmentBottlenecks ? computeDepartmentBottlenecks(hospitalDepts, hospitalQueueSnapshot, rawVisits) : [];
+    // Filtered visits based on selected telemetry period (strictly genuine records)
+    const filteredPeriodVisits = React.useMemo(() => {
+        const now = new Date();
+        const todayStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+        const weekAgo = new Date(now);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        return (rawVisits || []).filter((v) => {
+            const ts = v.created_at || v.timestamp || v.visit_time;
+            let vDateStr = v.queue_date;
+            if (ts) {
+                const d = new Date(ts);
+                if (!isNaN(d.getTime())) {
+                    vDateStr = d.toISOString().split("T")[0];
+                }
+            }
+
+            if (telemetryPeriod === "today") {
+                return vDateStr === todayStr;
+            }
+            if (telemetryPeriod === "yesterday") {
+                return vDateStr === yesterdayStr;
+            }
+            if (telemetryPeriod === "week") {
+                if (ts) {
+                    const d = new Date(ts);
+                    return !isNaN(d.getTime()) && d >= weekAgo;
+                }
+                return true;
+            }
+            if (telemetryPeriod === "month") {
+                if (ts) {
+                    const d = new Date(ts);
+                    return !isNaN(d.getTime()) && d >= monthStart;
+                }
+                return true;
+            }
+            return true;
+        });
+    }, [rawVisits, telemetryPeriod]);
+
+    // Analytics calculations (strictly period-sensitive, no fallback to past visits if 0 today)
+    const activeVisitsForHourly = filteredPeriodVisits;
+    const hourlyAnalytics = computeHourlyAnalytics
+        ? computeHourlyAnalytics(
+            activeVisitsForHourly,
+            telemetryPeriod === "today" ? hospitalQueueSnapshot : [],
+            selectedHospital?.branding_json || selectedHospital?.branding
+        )
+        : { hourlyData: [], maxVolume: 0, peakHourLabel: "No Activity", peakAvgWait: 0, totalVisits: 0 };
+    const bottleneckAnalytics = computeDepartmentBottlenecks ? computeDepartmentBottlenecks(hospitalDepts, hospitalQueueSnapshot, activeVisitsForHourly) : [];
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: "22px" }}>
@@ -623,6 +670,8 @@ export default function Hospital360Overview({
                                 { id: "all", label: isHi ? "सभी दृश्य" : "360° All", icon: IconZap },
                                 { id: "hourly", label: isHi ? "प्रति घंटा हीटमैप" : "Hourly Heatmap", icon: IconTrendingUp },
                                 { id: "bottleneck", label: isHi ? "बॉटलनेक विश्लेषक" : "Bottleneck Radar", icon: IconAlertTriangle },
+                                { id: "clinicians", label: isHi ? "डॉक्टर उत्पादकता" : "Clinician Telemetry", icon: IconStethoscope },
+                                { id: "visits", label: isHi ? "मरीज विज़िट रजिस्ट्री" : "Visited Registry", icon: IconFileText },
                             ].map((tab) => (
                                 <button
                                     key={tab.id}
@@ -696,25 +745,27 @@ export default function Hospital360Overview({
                                         <span>{isHi ? "रीयल-टाइम ओपीडी क्लिनिकल टेलीमेट्री व प्रतीक्षा हीटमैप" : "Real-Time Clinical Telemetry & Patient Flow Heatmap"}</span>
                                     </span>
 
-                                    {/* Live Socket Sync Beacon */}
-                                    <div
-                                        style={{
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            gap: "6px",
-                                            background: "rgba(16, 185, 129, 0.12)",
-                                            border: "1px solid rgba(16, 185, 129, 0.35)",
-                                            padding: "3px 10px",
-                                            borderRadius: "20px",
-                                            color: "#10B981",
-                                            fontSize: "11px",
-                                            fontWeight: 800,
-                                            letterSpacing: "0.2px",
-                                        }}
-                                    >
-                                        <span className="live-telemetry-ping" style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981" }} />
-                                        <span>LIVE SYNC: {liveClockStr}</span>
-                                    </div>
+                                    {/* Dynamic Hospital Operating Timing Badge */}
+                                    {hourlyAnalytics.operatingHoursLabel && (
+                                        <div
+                                            style={{
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                gap: "5px",
+                                                background: "rgba(2, 132, 199, 0.10)",
+                                                border: "1px solid rgba(2, 132, 199, 0.3)",
+                                                padding: "3px 10px",
+                                                borderRadius: "20px",
+                                                color: "#0284C7",
+                                                fontSize: "11px",
+                                                fontWeight: 800,
+                                                letterSpacing: "0.2px",
+                                            }}
+                                        >
+                                            <IconClock size={12} color="#0284C7" />
+                                            <span>{isHi ? `ओपीडी समय: ${hourlyAnalytics.operatingHoursLabel}` : `OPD Hours: ${hourlyAnalytics.operatingHoursLabel}`}</span>
+                                        </div>
+                                    )}
                                 </div>
                                 <span style={{ fontSize: "12px", color: "var(--superadmin-text-muted, #64748B)", marginTop: "2px", display: "block" }}>
                                     {isHi
@@ -723,8 +774,38 @@ export default function Hospital360Overview({
                                 </span>
                             </div>
 
-                            {/* Controls: Stream metric toggle pills + Peak Window badge */}
+                            {/* Controls: Period Selector + Stream metric toggle pills + Peak Window badge */}
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                {/* 1. Period Filter (Today / Yesterday / 7 Days / Month) */}
+                                <div style={{ display: "inline-flex", background: "var(--superadmin-sub-card, #F1F5F9)", padding: "3px", borderRadius: "10px", border: "1px solid var(--superadmin-card-border, #CBD5E1)" }}>
+                                    {[
+                                        { id: "today", label: isHi ? "आज (लाइव)" : "Today (Live)" },
+                                        { id: "yesterday", label: isHi ? "कल" : "Yesterday" },
+                                        { id: "week", label: isHi ? "7 दिन" : "7 Days" },
+                                        { id: "month", label: isHi ? "महीना" : "Month" },
+                                    ].map((p) => (
+                                        <button
+                                            key={p.id}
+                                            type="button"
+                                            onClick={() => setTelemetryPeriod(p.id)}
+                                            style={{
+                                                padding: "4px 9px",
+                                                borderRadius: "7px",
+                                                border: "none",
+                                                fontSize: "10.5px",
+                                                fontWeight: 800,
+                                                cursor: "pointer",
+                                                background: telemetryPeriod === p.id ? "#0284C7" : "transparent",
+                                                color: telemetryPeriod === p.id ? "#FFFFFF" : "var(--superadmin-text-muted, #64748B)",
+                                                transition: "all 0.15s ease",
+                                            }}
+                                        >
+                                            {p.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* 2. Stream metric toggle pills */}
                                 <div style={{ display: "inline-flex", background: "var(--superadmin-sub-card, #F1F5F9)", padding: "3px", borderRadius: "10px", border: "1px solid var(--superadmin-card-border, #CBD5E1)" }}>
                                     {[
                                         { id: "all", label: isHi ? "360° सभी" : "All Streams" },
@@ -753,23 +834,25 @@ export default function Hospital360Overview({
                                     ))}
                                 </div>
 
-                                <div
-                                    style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: "6px",
-                                        background: "rgba(245, 158, 11, 0.12)",
-                                        border: "1px solid rgba(245, 158, 11, 0.35)",
-                                        padding: "4px 12px",
-                                        borderRadius: "20px",
-                                        color: "#F59E0B",
-                                        fontSize: "11px",
-                                        fontWeight: 800,
-                                    }}
-                                >
-                                    <IconFlame size={13} color="#F59E0B" />
-                                    <span>{isHi ? `शिखर: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait}m)` : `Peak: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait}m wait)`}</span>
-                                </div>
+                                {hourlyAnalytics.peakVolume > 0 && (
+                                    <div
+                                        style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: "6px",
+                                            background: "rgba(245, 158, 11, 0.12)",
+                                            border: "1px solid rgba(245, 158, 11, 0.35)",
+                                            padding: "4px 12px",
+                                            borderRadius: "20px",
+                                            color: "#F59E0B",
+                                            fontSize: "11px",
+                                            fontWeight: 800,
+                                        }}
+                                    >
+                                        <IconFlame size={13} color="#F59E0B" />
+                                        <span>{isHi ? `शिखर: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait}m)` : `Peak: ${hourlyAnalytics.peakHourLabel} (~${hourlyAnalytics.peakAvgWait}m wait)`}</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -777,8 +860,9 @@ export default function Hospital360Overview({
                         {(() => {
                             const activeIdx = hoveredChartHour !== null
                                 ? hoveredChartHour
-                                : (hourlyAnalytics.currentHourIdx ?? Math.max(0, Math.min(11, new Date().getHours() - 8)));
-                            const activeData = hourlyAnalytics.hourlyData[activeIdx] || hourlyAnalytics.hourlyData[2] || {};
+                                : (hourlyAnalytics.currentHourIdx != null ? Math.max(0, Math.min((hourlyAnalytics.hourlyData?.length || 1) - 1, hourlyAnalytics.currentHourIdx)) : 0);
+                            const activeData = hourlyAnalytics.hourlyData[activeIdx] || hourlyAnalytics.hourlyData[0] || {};
+                            const hasPatientsInSlot = (activeData.count || 0) > 0;
 
                             return (
                                 <div
@@ -819,7 +903,9 @@ export default function Hospital360Overview({
                                             {activeData.count || 0} <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)" }}>patients/hr</span>
                                         </div>
                                         <span style={{ fontSize: "10.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
-                                            {activeData.liveQueue ? `Live in queue: ${activeData.liveQueue}` : "Scheduled flow optimal"}
+                                            {hasPatientsInSlot
+                                                ? (activeData.liveQueue ? `Live in queue: ${activeData.liveQueue}` : "Scheduled flow optimal")
+                                                : (isHi ? "इस स्लॉट में कोई मरीज नहीं" : "No patient inflow in this slot")}
                                         </span>
                                     </div>
 
@@ -828,8 +914,8 @@ export default function Hospital360Overview({
                                             {isHi ? "औसत प्रतीक्षा समय (TAT)" : "Turnaround Time (Avg Wait)"}
                                         </span>
                                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                            <span style={{ fontSize: "15px", fontWeight: 900, color: (activeData.avgWait || 0) > 20 ? "#EF4444" : (activeData.avgWait || 0) > 15 ? "#F59E0B" : "#10B981" }}>
-                                                ~{activeData.avgWait || 12} min
+                                            <span style={{ fontSize: "15px", fontWeight: 900, color: !hasPatientsInSlot ? "#10B981" : (activeData.avgWait || 0) > 20 ? "#EF4444" : (activeData.avgWait || 0) > 15 ? "#F59E0B" : "#10B981" }}>
+                                                {hasPatientsInSlot ? `~${activeData.avgWait} min` : "0 min"}
                                             </span>
                                             <span
                                                 style={{
@@ -837,15 +923,15 @@ export default function Hospital360Overview({
                                                     fontWeight: 800,
                                                     padding: "1px 6px",
                                                     borderRadius: "4px",
-                                                    background: (activeData.avgWait || 0) <= 15 ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
-                                                    color: (activeData.avgWait || 0) <= 15 ? "#10B981" : "#F59E0B",
+                                                    background: (!hasPatientsInSlot || (activeData.avgWait || 0) <= 15) ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                                                    color: (!hasPatientsInSlot || (activeData.avgWait || 0) <= 15) ? "#10B981" : "#F59E0B",
                                                 }}
                                             >
-                                                {(activeData.avgWait || 0) <= 15 ? "NABH Target Passed" : "Surge Threshold"}
+                                                {!hasPatientsInSlot ? (isHi ? "शून्य प्रतीक्षा" : "No Wait") : ((activeData.avgWait || 0) <= 15 ? "NABH Target Passed" : "Surge Threshold")}
                                             </span>
                                         </div>
                                         <span style={{ fontSize: "10.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
-                                            Benchmark compliance: {activeData.compliancePct || 94}%
+                                            Benchmark compliance: {!hasPatientsInSlot ? "100%" : `${activeData.compliancePct || 100}%`}
                                         </span>
                                     </div>
 
@@ -854,10 +940,10 @@ export default function Hospital360Overview({
                                             {isHi ? "डॉक्टर परामर्श अवधि" : "Consultation Velocity"}
                                         </span>
                                         <div style={{ fontSize: "15px", fontWeight: 900, color: "#10B981" }}>
-                                            ~{activeData.avgConsult || 8.5} <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--superadmin-text-muted, #64748B)" }}>min / consult</span>
+                                            {hasPatientsInSlot ? `~${activeData.avgConsult} min / consult` : "0 min"}
                                         </div>
                                         <span style={{ fontSize: "10.5px", color: "var(--superadmin-text-muted, #64748B)" }}>
-                                            Clinician capacity active
+                                            {hasPatientsInSlot ? "Clinician capacity active" : (isHi ? "कोई सक्रिय परामर्श नहीं" : "No active consultations")}
                                         </span>
                                     </div>
                                 </div>
@@ -983,9 +1069,10 @@ export default function Hospital360Overview({
                                     const consultSplinePath = getSmoothSvgPath(consultPoints);
 
                                     // Live Scanline Position
-                                    const activeHourIdx = hourlyAnalytics.currentHourIdx ?? Math.max(0, Math.min(11, new Date().getHours() - 8));
+                                    const activeHourIdx = hourlyAnalytics.currentHourIdx != null ? Math.max(0, Math.min(totalSlots - 1, hourlyAnalytics.currentHourIdx)) : 0;
                                     const minuteFrac = hourlyAnalytics.minuteFraction ?? (new Date().getMinutes() / 60);
-                                    const liveScanX = Math.min(694, 44 + activeHourIdx * slotW + slotW * minuteFrac);
+                                    const isLiveActive = hourlyAnalytics.isCurrentlyActive !== false;
+                                    const liveScanX = Math.min(694, Math.max(44, 44 + activeHourIdx * slotW + (isLiveActive ? slotW * minuteFrac : slotW / 2)));
 
                                     return (
                                         <React.Fragment>
@@ -997,43 +1084,47 @@ export default function Hospital360Overview({
                                             {/* Layer 2: Glowing Column Bars */}
                                             {(chartMetricFilter === "all" || chartMetricFilter === "footfall") &&
                                                 hourlyAnalytics.hourlyData.map((d, i) => {
-                                                    const barW = Math.max(16, slotW * 0.42);
+                                                    const barW = Math.max(8, Math.min(22, slotW * 0.46));
                                                     const x = 44 + i * slotW + (slotW - barW) / 2;
-                                                    const barH = Math.max(6, (d.count / maxVol) * 125);
+                                                    const barH = d.count > 0 ? Math.max(6, (d.count / maxVol) * 125) : 0;
                                                     const y = baselineY - barH;
                                                     const isHovered = hoveredChartHour === i;
                                                     const isCurrent = d.isCurrent;
 
                                                     return (
                                                         <g key={`bar-${i}`} style={{ cursor: "pointer" }}>
-                                                            <rect
-                                                                x={x}
-                                                                y={y}
-                                                                width={barW}
-                                                                height={barH}
-                                                                rx="5"
-                                                                fill={isCurrent ? "url(#telemetryBarActiveGrad)" : "url(#telemetryBarColGrad)"}
-                                                                stroke={isHovered ? "#38BDF8" : isCurrent ? "#38BDF8" : "none"}
-                                                                strokeWidth={isHovered ? "1.5" : isCurrent ? "1.2" : "0"}
-                                                                style={isCurrent ? { animation: "livePulseBar 2.5s ease-in-out infinite" } : {}}
-                                                            />
-                                                            {/* Count label above bar */}
-                                                            <text
-                                                                x={x + barW / 2}
-                                                                y={y - 4}
-                                                                fill={isHovered ? "#38BDF8" : isCurrent ? "#38BDF8" : isDark360 ? "#94A3B8" : "#64748B"}
-                                                                fontSize="9"
-                                                                fontWeight="800"
-                                                                textAnchor="middle"
-                                                            >
-                                                                {d.count}
-                                                            </text>
+                                                            {barH > 0 && (
+                                                                <rect
+                                                                    x={x}
+                                                                    y={y}
+                                                                    width={barW}
+                                                                    height={barH}
+                                                                    rx={barW > 12 ? "4" : "2"}
+                                                                    fill={isCurrent ? "url(#telemetryBarActiveGrad)" : "url(#telemetryBarColGrad)"}
+                                                                    stroke={isHovered ? "#38BDF8" : isCurrent ? "#38BDF8" : "none"}
+                                                                    strokeWidth={isHovered ? "1.5" : isCurrent ? "1.2" : "0"}
+                                                                    style={isCurrent ? { animation: "livePulseBar 2.5s ease-in-out infinite" } : {}}
+                                                                />
+                                                            )}
+                                                            {/* Count label above bar (only if > 0 or hovered) */}
+                                                            {(d.count > 0 || isHovered) && (
+                                                                <text
+                                                                    x={x + barW / 2}
+                                                                    y={y - 4}
+                                                                    fill={isHovered ? "#38BDF8" : isCurrent ? "#38BDF8" : isDark360 ? "#94A3B8" : "#64748B"}
+                                                                    fontSize={totalSlots > 18 ? "7.5" : "9"}
+                                                                    fontWeight="800"
+                                                                    textAnchor="middle"
+                                                                >
+                                                                    {d.count}
+                                                                </text>
+                                                            )}
                                                         </g>
                                                     );
                                                 })}
 
                                             {/* Layer 3: Doctor Consultation Speed Spline (Emerald) */}
-                                            {(chartMetricFilter === "all" || chartMetricFilter === "consult") && (
+                                            {hourlyAnalytics.totalVisits > 0 && (chartMetricFilter === "all" || chartMetricFilter === "consult") && (
                                                 <path
                                                     d={consultSplinePath}
                                                     fill="none"
@@ -1055,7 +1146,7 @@ export default function Hospital360Overview({
                                             )}
 
                                             {/* Layer 5: Avg Wait Time (Turnaround) Spline (Gold / Amber) */}
-                                            {(chartMetricFilter === "all" || chartMetricFilter === "wait") && (
+                                            {hourlyAnalytics.totalVisits > 0 && (chartMetricFilter === "all" || chartMetricFilter === "wait") && (
                                                 <path
                                                     d={waitSplinePath}
                                                     fill="none"
@@ -1065,10 +1156,38 @@ export default function Hospital360Overview({
                                                 />
                                             )}
 
+                                            {/* Zero Data Informative Telemetry Status Banner */}
+                                            {hourlyAnalytics.totalVisits === 0 && (
+                                                <g>
+                                                    <rect
+                                                        x="195"
+                                                        y="68"
+                                                        width="350"
+                                                        height="38"
+                                                        rx="12"
+                                                        fill={isDark360 ? "rgba(15, 23, 42, 0.88)" : "rgba(255, 255, 255, 0.92)"}
+                                                        stroke={isDark360 ? "rgba(56, 189, 248, 0.3)" : "rgba(2, 132, 199, 0.25)"}
+                                                        strokeWidth="1.2"
+                                                    />
+                                                    <circle cx="218" cy="87" r="4.5" fill="#38BDF8" style={{ animation: "livePulseBar 1.8s infinite" }} />
+                                                    <text
+                                                        x="232"
+                                                        y="91"
+                                                        fill={isDark360 ? "#94A3B8" : "#475569"}
+                                                        fontSize="10.5"
+                                                        fontWeight="700"
+                                                    >
+                                                        {isHi ? "आज अभी कोई मरीज नहीं आया • वास्तविक समय टेलीमेट्री सक्रिय" : "No patient arrivals yet • Real-time telemetry monitoring"}
+                                                    </text>
+                                                </g>
+                                            )}
+
                                             {/* Layer 6: Node Points at each hour */}
                                             {waitPoints.map((pt, i) => {
                                                 const isHovered = hoveredChartHour === i;
                                                 const isCurrent = pt.isCurrent;
+                                                const hasData = (pt.count || 0) > 0;
+                                                if (!hasData && !isHovered) return null;
 
                                                 return (
                                                     <g key={`nodes-${i}`}>
@@ -1085,7 +1204,7 @@ export default function Hospital360Overview({
                                                         )}
 
                                                         {/* Wait Time Dot */}
-                                                        {(chartMetricFilter === "all" || chartMetricFilter === "wait") && (
+                                                        {hourlyAnalytics.totalVisits > 0 && (chartMetricFilter === "all" || chartMetricFilter === "wait") && (
                                                             <circle
                                                                 cx={pt.x}
                                                                 cy={pt.y}
@@ -1118,9 +1237,16 @@ export default function Hospital360Overview({
                                                 <circle cx={liveScanX} cy="18" r="2.8" fill="#0284C7" />
 
                                                 {/* Mini Floating "NOW" Pill */}
-                                                <rect x={liveScanX - 18} y="5" width="36" height="12" rx="3" fill="#0284C7" />
-                                                <text x={liveScanX} y="14" fill="#FFFFFF" fontSize="7.5" fontWeight="900" textAnchor="middle">
-                                                    LIVE NOW
+                                                <rect
+                                                    x={liveScanX - (isLiveActive ? 19 : 24)}
+                                                    y="5"
+                                                    width={isLiveActive ? 38 : 48}
+                                                    height="12"
+                                                    rx="3"
+                                                    fill={isLiveActive ? "#0284C7" : "#64748B"}
+                                                />
+                                                <text x={liveScanX} y="14" fill="#FFFFFF" fontSize="7" fontWeight="900" textAnchor="middle">
+                                                    {isLiveActive ? "LIVE NOW" : (isHi ? "ओपीडी बंद" : "OFF HOURS")}
                                                 </text>
                                             </g>
 
@@ -1163,7 +1289,7 @@ export default function Hospital360Overview({
                                                             x={slotX + slotW / 2}
                                                             y="174"
                                                             fill={isHovered ? "#38BDF8" : d.isCurrent ? "#38BDF8" : isDark360 ? "#94A3B8" : "#64748B"}
-                                                            fontSize="9.5"
+                                                            fontSize={totalSlots > 18 ? "7" : totalSlots > 14 ? "8" : "9.5"}
                                                             fontWeight={d.isCurrent || isHovered ? "800" : "600"}
                                                             textAnchor="middle"
                                                         >
@@ -1239,7 +1365,7 @@ export default function Hospital360Overview({
 
                             {/* Live Throughput Telemetry Metric */}
                             <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", fontSize: "11px", color: "var(--superadmin-text-muted, #64748B)" }}>
-                                <span>Throughput: <strong style={{ color: "#0284C7" }}>~{hourlyAnalytics.currentThroughput || 12} pts/hr</strong></span>
+                                <span>Throughput: <strong style={{ color: "#0284C7" }}>{hourlyAnalytics.currentThroughput ? `~${hourlyAnalytics.currentThroughput} pts/hr` : "0 pts/hr"}</strong></span>
                                 <span>•</span>
                                 <span>NABH Target: <strong style={{ color: "#10B981" }}>&lt;15 min</strong></span>
                             </div>
@@ -1583,6 +1709,33 @@ export default function Hospital360Overview({
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* FEATURE 3: CLINICIAN PERFORMANCE & PRODUCTIVITY TELEMETRY */}
+                {(analyticsViewTab === "all" || analyticsViewTab === "clinicians") && (
+                    <DoctorProductivitySection
+                        selectedHospital={currentHosp}
+                        hospitalEmployees={hospitalEmployees}
+                        hospitalDesksData={hospitalDesksData}
+                        hospitalVisitsData={hospitalVisitsData}
+                        hospitalQueueSnapshot={hospitalQueueSnapshot}
+                        hospitalServingTickets={hospitalServingTickets}
+                        isHi={isHi}
+                        theme={theme}
+                        setActiveTab={setActiveTab}
+                    />
+                )}
+
+                {/* FEATURE 4: PATIENT VISIT HISTORY & COMPREHENSIVE DATA DOWNLOAD REGISTRY */}
+                {(analyticsViewTab === "all" || analyticsViewTab === "visits") && (
+                    <VisitedPatientsSection
+                        selectedHospital={currentHosp}
+                        hospitalVisitsData={hospitalVisitsData}
+                        hospitalDepts={hospitalDepts}
+                        isHi={isHi}
+                        theme={theme}
+                        handleDownloadVisitHistory={handleDownloadVisitHistory}
+                    />
                 )}
             </div>
 

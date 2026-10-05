@@ -99,31 +99,6 @@ export default function EditEmployeeModal({
                         </div>
                     </div>
 
-                    <div>
-                        <label style={fieldLabelStyle}>{isHi ? "स्थिति" : "Status"}</label>
-                        <select
-                            value={editEmployeeForm.status}
-                            onChange={(e) => setEditEmployeeForm({ ...editEmployeeForm, status: e.target.value })}
-                            style={fieldInputStyle}
-                        >
-                            <option value="active">Active</option>
-                            <option value="inactive">Inactive / Deactivated</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label style={fieldLabelStyle}>
-                            {isHi ? "नया पासवर्ड (अपरिवर्तित रखने हेतु खाली छोड़ें)" : "New Password (leave blank to keep unchanged)"}
-                        </label>
-                        <input
-                            type="text"
-                            placeholder={isHi ? "उदा. DocPass#2026" : "e.g. DocPass#2026"}
-                            value={editEmployeeForm.password || ""}
-                            onChange={(e) => setEditEmployeeForm({ ...editEmployeeForm, password: e.target.value })}
-                            style={fieldInputStyle}
-                        />
-                    </div>
-
                     <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
                         <button type="button" onClick={onClose} style={modalCancelBtnStyle}>
                             {isHi ? "रद्द करें" : "Cancel"}

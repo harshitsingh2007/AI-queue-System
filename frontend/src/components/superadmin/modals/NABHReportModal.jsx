@@ -39,7 +39,7 @@ export default function NABHReportModal({
     const triggerDownload = onDownloadExcel || handleDownloadNABHExcel;
     const triggerPrint = onPrintReport || handlePrintNABHReport;
 
-    const hourlyAnalytics = computeHourlyAnalytics ? computeHourlyAnalytics(visitsList, queueList) : null;
+    const hourlyAnalytics = computeHourlyAnalytics ? computeHourlyAnalytics(visitsList, queueList, targetHosp?.branding_json || targetHosp?.branding || brandingForm) : null;
     const bottleneckAnalytics = computeDepartmentBottlenecks ? computeDepartmentBottlenecks(deptsList, queueList, visitsList) : [];
 
     const safeTotalPatients = hospitalVisitsData?.summary?.total_patients_visited_all_time ?? (hospitalAnalytics?.total_patients_visited_all_time || visitsList.length);

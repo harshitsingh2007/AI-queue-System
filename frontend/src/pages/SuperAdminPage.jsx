@@ -333,79 +333,158 @@ export default function SuperAdminPage({
     const [analyticsViewTab, setAnalyticsViewTab] = useState("all");
 
     // Real-Time Hourly Clinical Telemetry Computations Engine
-    const computeHourlyAnalytics = useCallback((visitsList = [], queueList = []) => {
+    // Real-Time Hourly Clinical Telemetry Computations Engine (Dynamically scoped to hospital operating timing)
+    const computeHourlyAnalytics = useCallback((visitsList = [], queueList = [], customBranding = null) => {
+        // 1. Resolve authentic hospital operating timing
+        let rawBranding = customBranding || null;
+        if (!rawBranding && selectedHospital) {
+            if (selectedHospital.branding_json) {
+                if (typeof selectedHospital.branding_json === "string") {
+                    try { rawBranding = JSON.parse(selectedHospital.branding_json); } catch (_) {}
+                } else if (typeof selectedHospital.branding_json === "object") {
+                    rawBranding = selectedHospital.branding_json;
+                }
+            }
+            if (!rawBranding) {
+                rawBranding = selectedHospital.branding || null;
+            }
+        }
+        if (!rawBranding) {
+            rawBranding = brandingForm || hospitalBranding || null;
+        }
+
+        const startTimeStr =
+            rawBranding?.opd_start_time ||
+            rawBranding?.registration_open_time ||
+            brandingForm?.opd_start_time ||
+            "08:00";
+
+        const endTimeStr =
+            rawBranding?.opd_end_time ||
+            rawBranding?.registration_close_time ||
+            rawBranding?.registration_cutoff_time ||
+            brandingForm?.opd_end_time ||
+            "20:00";
+
+        const parseH = (str, def) => {
+            if (!str) return def;
+            const [h] = String(str).trim().split(":").map(Number);
+            return isNaN(h) ? def : Math.max(0, Math.min(23, h));
+        };
+
+        let startHour = parseH(startTimeStr, 8);
+        let endHour = parseH(endTimeStr, 20);
+
+        if (endHour <= startHour) {
+            if (startHour === 0 && (endHour === 0 || endTimeStr.includes("23:59") || endTimeStr.includes("23:58"))) {
+                endHour = 23;
+            } else if (startHour === 0 && endHour === 0) {
+                endHour = 23;
+            } else {
+                endHour = Math.min(23, startHour + 12);
+            }
+        }
+
+        let effectiveStart = startHour;
+        let effectiveEnd = endHour;
+
+        // Gracefully expand if actual visit records took place outside normal hours
+        (visitsList || []).forEach((v) => {
+            const ts = v.created_at || v.timestamp || v.visit_time;
+            if (ts) {
+                const d = new Date(ts);
+                if (!isNaN(d.getTime())) {
+                    const h = d.getHours();
+                    if (h < effectiveStart) effectiveStart = Math.max(0, h);
+                    if (h > effectiveEnd) effectiveEnd = Math.min(23, h);
+                }
+            }
+        });
+
+        const totalSlots = Math.max(1, effectiveEnd - effectiveStart + 1);
         const now = new Date();
         const currHour = now.getHours();
         const currMinute = now.getMinutes();
-        const currentHourIdx = Math.max(0, Math.min(11, currHour - 8));
         const minuteFraction = Math.max(0.05, Math.min(0.95, currMinute / 60));
 
-        // Clinical OPD Standard Profiles (08:00 to 20:00)
-        // Replicates authentic NABH-accredited hospital patient footfall distribution
-        const clinicalProfiles = [
-            { hour: "08:00", label: "8 AM", baseWeight: 0.05, baseWait: 9.5, baseConsult: 7.5, phase: isHi ? "ओपीडी पंजीयन व ट्राइएज" : "Triage & Registration Opening" },
-            { hour: "09:00", label: "9 AM", baseWeight: 0.12, baseWait: 12.8, baseConsult: 8.8, phase: isHi ? "प्रातःकालीन परामर्श प्रारंभ" : "Morning Clinic Intake" },
-            { hour: "10:00", label: "10 AM", baseWeight: 0.22, baseWait: 19.5, baseConsult: 10.2, phase: isHi ? "सर्वोच्च भीड़ का समय" : "Peak Morning Surge" },
-            { hour: "11:00", label: "11 AM", baseWeight: 0.19, baseWait: 18.0, baseConsult: 9.8, phase: isHi ? "सघन ओपीडी परामर्श" : "High-Density Clinical Consults" },
-            { hour: "12:00", label: "12 PM", baseWeight: 0.12, baseWait: 14.5, baseConsult: 8.5, phase: isHi ? "दोपहर ओपीडी सत्र" : "Midday Outpatient Flow" },
-            { hour: "13:00", label: "1 PM", baseWeight: 0.06, baseWait: 10.2, baseConsult: 7.0, phase: isHi ? "शिफ्ट परिवर्तन व भोजन अवकाश" : "Shift Handover & Lunch Lull" },
-            { hour: "14:00", label: "2 PM", baseWeight: 0.10, baseWait: 15.2, baseConsult: 9.0, phase: isHi ? "अपराह्न ओपीडी प्रवाह" : "Afternoon Clinic Rush" },
-            { hour: "15:00", label: "3 PM", baseWeight: 0.07, baseWait: 13.8, baseConsult: 8.6, phase: isHi ? "विशेषज्ञ डॉक्टर परामर्श" : "Specialist Consultations" },
-            { hour: "16:00", label: "4 PM", baseWeight: 0.04, baseWait: 11.0, baseConsult: 8.0, phase: isHi ? "जांच रिपोर्ट समीक्षा" : "Diagnostic Reviews & Follow-ups" },
-            { hour: "17:00", label: "5 PM", baseWeight: 0.02, baseWait: 9.2, baseConsult: 7.4, phase: isHi ? "शाम का क्लिनिकल राउंड" : "Evening Clinic Handover" },
-            { hour: "18:00", label: "6 PM", baseWeight: 0.01, baseWait: 8.0, baseConsult: 6.8, phase: isHi ? "डेस्क समापन व राउंड" : "Counters Wrap-up & IPD Rounds" },
-            { hour: "19:00", label: "7 PM", baseWeight: 0.01, baseWait: 7.2, baseConsult: 6.5, phase: isHi ? "आपातकालीन समन्वय" : "Emergency Ward Transition" },
-        ];
+        let currentHourIdx = currHour - effectiveStart;
+        const isCurrentlyActive = currHour >= effectiveStart && currHour <= effectiveEnd;
 
-        // 1. Process actual visit records
-        const realHourCounts = new Array(12).fill(0);
-        const realWaitMinutes = new Array(12).fill(0);
-        const realConsultMinutes = new Array(12).fill(0);
+        // Helper to format hour label (12-hour AM/PM format)
+        const formatHourLabel = (h) => {
+            const ampm = h >= 12 ? "PM" : "AM";
+            const displayH = h % 12 || 12;
+            return `${displayH} ${ampm}`;
+        };
+
+        const getHourPhase = (h, isHindi) => {
+            if (h >= 6 && h < 9) return isHindi ? "ओपीडी पंजीयन व ट्राइएज" : "Triage & Registration Opening";
+            if (h >= 9 && h < 10) return isHindi ? "प्रातःकालीन परामर्श प्रारंभ" : "Morning Clinic Intake";
+            if (h >= 10 && h < 12) return isHindi ? "सर्वोच्च भीड़ का समय" : "Peak Morning Surge";
+            if (h >= 12 && h < 13) return isHindi ? "सघन ओपीडी परामर्श" : "High-Density Clinical Consults";
+            if (h >= 13 && h < 14) return isHindi ? "दोपहर ओपीडी व शिफ्ट राउंड" : "Midday Outpatient Flow";
+            if (h >= 14 && h < 16) return isHindi ? "अपराह्न ओपीडी प्रवाह" : "Afternoon Clinic Rush";
+            if (h >= 16 && h < 17) return isHindi ? "विशेषज्ञ डॉक्टर परामर्श" : "Specialist Consultations";
+            if (h >= 17 && h < 18) return isHindi ? "जांच रिपोर्ट समीक्षा" : "Diagnostic Reviews & Follow-ups";
+            if (h >= 18 && h < 19) return isHindi ? "शाम का क्लिनिकल राउंड" : "Evening Clinic Handover";
+            if (h >= 19 && h < 20) return isHindi ? "डेस्क समापन व राउंड" : "Counters Wrap-up & IPD Rounds";
+            if (h >= 20 && h < 21) return isHindi ? "शाम का ओपीडी समापन" : "Evening OPD Closure";
+            if (h >= 21 && h < 23) return isHindi ? "रात्रि आपातकालीन सेवा" : "Night Shift & Emergency Care";
+            return isHindi ? "24/7 आपातकालीन ट्राइएज" : "Emergency Ward & Night Intake";
+        };
+
+        // 1. Process actual visit records (strictly genuine timestamps and real durations)
+        const realHourCounts = new Array(totalSlots).fill(0);
+        const realWaitMinutes = new Array(totalSlots).fill(0);
+        const realConsultMinutes = new Array(totalSlots).fill(0);
         let totalRealVisits = 0;
 
         (visitsList || []).forEach((v) => {
             const ts = v.created_at || v.timestamp || v.visit_time;
-            let h = 10;
-            if (ts) {
-                const d = new Date(ts);
-                if (!isNaN(d.getTime())) h = d.getHours();
+            if (!ts) return;
+            const d = new Date(ts);
+            if (isNaN(d.getTime())) return;
+            const h = d.getHours();
+            const idx = h - effectiveStart;
+            if (idx >= 0 && idx < totalSlots) {
+                realHourCounts[idx] += 1;
+                const wait = Number(v.wait_time_minutes ?? v.waitTime ?? 0);
+                const consult = Number(v.service_duration_minutes ?? v.serviceDuration ?? 0);
+                realWaitMinutes[idx] += wait;
+                realConsultMinutes[idx] += consult;
+                totalRealVisits += 1;
             }
-            const idx = Math.max(0, Math.min(11, h - 8));
-            realHourCounts[idx] += 1;
-            realWaitMinutes[idx] += Number(v.wait_time_minutes || v.waitTime || 12);
-            realConsultMinutes[idx] += Number(v.service_duration_minutes || v.serviceDuration || 8);
-            totalRealVisits += 1;
         });
 
         // 2. Blend real queue data into active hour
         const liveQueueCount = (queueList || []).length;
-        if (liveQueueCount > 0 && currentHourIdx >= 0 && currentHourIdx < 12) {
+        if (liveQueueCount > 0 && currentHourIdx >= 0 && currentHourIdx < totalSlots) {
             realHourCounts[currentHourIdx] += liveQueueCount;
-            realWaitMinutes[currentHourIdx] += liveQueueCount * 14;
-            realConsultMinutes[currentHourIdx] += liveQueueCount * 9;
+            let totalQueueWait = 0;
+            (queueList || []).forEach((q) => {
+                const waitMin = Number(q.estimated_wait_minutes ?? q.waiting_time ?? q.waitTime ?? 0);
+                totalQueueWait += waitMin;
+            });
+            realWaitMinutes[currentHourIdx] += totalQueueWait;
         }
 
-        // Realistic clinical census baseline: minimum target so the chart is lively & representative
-        const dailyCensusTarget = Math.max(totalRealVisits + liveQueueCount, 96);
-
-        let peakIndex = 2; // 10 AM default
+        let peakIndex = 0;
         let maxVolume = 0;
 
-        const hours = clinicalProfiles.map((prof, i) => {
-            const hasReal = realHourCounts[i] > 0;
-            const baselineCount = Math.round(prof.baseWeight * dailyCensusTarget);
-            const count = hasReal ? Math.max(realHourCounts[i], baselineCount) : baselineCount;
+        const hours = [];
+        for (let i = 0; i < totalSlots; i++) {
+            const h = effectiveStart + i;
+            const hourStr = `${String(h).padStart(2, "0")}:00`;
+            const label = formatHourLabel(h);
+            const phase = getHourPhase(h, isHi);
 
-            let avgWait = prof.baseWait;
-            if (hasReal && realHourCounts[i] > 0) {
-                avgWait = Math.round((realWaitMinutes[i] / realHourCounts[i]) * 10) / 10;
-            } else if (i === currentHourIdx && liveQueueCount > 0) {
-                avgWait = Math.round((prof.baseWait + Math.min(12, liveQueueCount * 2)) * 10) / 10;
-            }
+            const count = realHourCounts[i];
+            let avgWait = 0;
+            let avgConsult = 0;
 
-            let avgConsult = prof.baseConsult;
-            if (hasReal && realHourCounts[i] > 0) {
-                avgConsult = Math.max(4, Math.round((realConsultMinutes[i] / realHourCounts[i]) * 10) / 10);
+            if (count > 0) {
+                avgWait = Math.round((realWaitMinutes[i] / count) * 10) / 10;
+                avgConsult = Math.round((realConsultMinutes[i] / count) * 10) / 10;
             }
 
             if (count > maxVolume) {
@@ -413,15 +492,17 @@ export default function SuperAdminPage({
                 peakIndex = i;
             }
 
-            const isPast = i < currentHourIdx;
-            const isCurrent = i === currentHourIdx;
-            const isFuture = i > currentHourIdx;
-            const compliancePct = Math.max(76, Math.min(100, Math.round(100 - Math.max(0, avgWait - 15) * 3.2)));
+            const isPast = isCurrentlyActive ? i < currentHourIdx : (currHour > effectiveEnd);
+            const isCurrent = isCurrentlyActive && i === currentHourIdx;
+            const isFuture = isCurrentlyActive ? i > currentHourIdx : (currHour < effectiveStart);
+            const compliancePct = count === 0
+                ? 100
+                : Math.max(50, Math.min(100, Math.round(100 - Math.max(0, avgWait - 15) * 3.2)));
 
-            return {
-                hour: prof.hour,
-                label: prof.label,
-                phase: prof.phase,
+            hours.push({
+                hour: hourStr,
+                label,
+                phase,
                 count,
                 avgWait,
                 avgConsult,
@@ -430,25 +511,31 @@ export default function SuperAdminPage({
                 isCurrent,
                 isFuture,
                 liveQueue: isCurrent ? liveQueueCount : 0,
-            };
-        });
+            });
+        }
 
-        const peakHour = hours[peakIndex] || hours[2];
-        const currentHourObj = hours[currentHourIdx] || hours[0];
+        const peakHour = maxVolume > 0 ? (hours[peakIndex] || hours[0]) : null;
+        const safeCurrentIdx = Math.max(0, Math.min(hours.length - 1, currentHourIdx >= 0 ? currentHourIdx : 0));
+        const currentHourObj = hours[safeCurrentIdx] || { count: 0, avgWait: 0, avgConsult: 0 };
 
         return {
             hourlyData: hours,
-            maxVolume: Math.max(maxVolume, 12),
-            peakHourLabel: `${peakHour.label} – ${hours[Math.min(hours.length - 1, peakIndex + 1)]?.label || "Close"}`,
-            peakVolume: peakHour.count,
-            peakAvgWait: peakHour.avgWait,
-            currentHourIdx,
+            maxVolume: maxVolume,
+            totalVisits: totalRealVisits + liveQueueCount,
+            peakHourLabel: peakHour
+                ? `${peakHour.label || ""} – ${hours[Math.min(hours.length - 1, peakIndex + 1)]?.label || (isHi ? "समापन" : "Close")}`
+                : (isHi ? "कोई आवक नहीं" : "No Activity"),
+            peakVolume: peakHour ? peakHour.count : 0,
+            peakAvgWait: peakHour ? peakHour.avgWait : 0,
+            currentHourIdx: isCurrentlyActive ? currentHourIdx : (currHour > effectiveEnd ? hours.length - 1 : 0),
+            isCurrentlyActive,
             minuteFraction,
-            currentThroughput: currentHourObj.count,
-            currentWait: currentHourObj.avgWait,
-            currentConsult: currentHourObj.avgConsult,
+            currentThroughput: currentHourObj.count || 0,
+            currentWait: currentHourObj.avgWait || 0,
+            currentConsult: currentHourObj.avgConsult || 0,
+            operatingHoursLabel: `${formatHourLabel(effectiveStart)} – ${formatHourLabel(effectiveEnd)}`,
         };
-    }, [isHi]);
+    }, [isHi, selectedHospital, brandingForm, hospitalBranding]);
 
     // Department Bottleneck Analytics Computations Engine
     const computeDepartmentBottlenecks = useCallback((departments = [], queueSnapshot = [], rawVisits = []) => {
@@ -473,9 +560,11 @@ export default function SuperAdminPage({
 
             let totalTat = 0;
             deptVisits.forEach((v) => {
-                totalTat += Number(v.service_duration_minutes || 10) + Number(v.wait_time_minutes || 6);
+                totalTat += Number(v.service_duration_minutes || 0) + Number(v.wait_time_minutes || 0);
             });
-            const avgTAT = deptVisits.length > 0 ? Math.round((totalTat / deptVisits.length) * 10) / 10 : (10 + (waitingCount * 2.5));
+            const avgTAT = deptVisits.length > 0
+                ? Math.round((totalTat / deptVisits.length) * 10) / 10
+                : (waitingCount > 0 ? Math.round((waitingCount * 2.5) * 10) / 10 : 0);
 
             let severity = "OPTIMAL";
             let severityColor = "#10B981";
@@ -2035,6 +2124,24 @@ export default function SuperAdminPage({
             <section className="superadmin-hero-container">
                 <div className="superadmin-hero-left-col">
                     <div>
+                        {selectedHospital && (
+                            <div style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                padding: "4px 12px",
+                                borderRadius: "20px",
+                                background: "rgba(56, 189, 248, 0.12)",
+                                border: "1px solid rgba(56, 189, 248, 0.3)",
+                                marginBottom: "12px",
+                                backdropFilter: "blur(8px)"
+                            }}>
+                                <IconHospital size={14} color="#38BDF8" />
+                                <span style={{ fontSize: "12px", fontWeight: 700, color: "#E0F2FE", letterSpacing: "0.2px" }}>
+                                    {selectedHospital.name} <span style={{ opacity: 0.75 }}>({selectedHospital.hospital_code})</span>
+                                </span>
+                            </div>
+                        )}
                         <h1 className="superadmin-hero-title">
                             {isHi ? (
                                 <>
@@ -2051,44 +2158,39 @@ export default function SuperAdminPage({
                             )}
                         </h1>
                         <p className="superadmin-hero-subtitle">
-                            {isHi
-                                ? "सभी अस्पतालों, क्लिनिकल विभागों, डॉक्टर रोस्टर, लाइव काउंटर डेस्क एवं एनएबीएच अनुपालन रिपोर्ट की केंद्रीय निगरानी।"
-                                : "Enterprise multi-tenant orchestration: Manage branches, department counters, doctors, active desk pods & real-time telemetry."}
+                            {selectedHospital
+                                ? (isHi
+                                    ? `${selectedHospital.name} के क्लिनिकल विभागों, डॉक्टर रोस्टर, लाइव काउंटर डेस्क एवं ओपीडी टेलीमेट्री की निगरानी।`
+                                    : `Real-time operations for ${selectedHospital.name}: department counters, clinician roster, active desks & telemetry.`)
+                                : (isHi
+                                    ? "सभी अस्पतालों, क्लिनिकल विभागों, डॉक्टर रोस्टर, लाइव काउंटर डेस्क एवं एनएबीएच अनुपालन रिपोर्ट की केंद्रीय निगरानी।"
+                                    : "Enterprise multi-tenant orchestration: Manage branches, department counters, doctors, active desk pods & real-time telemetry.")}
                         </p>
                     </div>
 
                     {/* Live Synchronized Telemetry Metrics */}
                     {(() => {
-                        const effectiveDocsCount = Math.max(
-                            overview.active_doctors || 0,
-                            (hospitalEmployees || []).filter(e => {
-                                const role = (e.role || "").toLowerCase();
-                                return role === "doctor" || role === "physician" || (e.name || "").toLowerCase().startsWith("dr.");
-                            }).length,
-                            1
-                        );
-                        const effectiveActiveDesks = selectedHospital && hospitalDesksData.total_desks
-                            ? (hospitalDesksData.active_desks || (hospitalServingTickets.length > 0 ? 1 : 1))
-                            : (overview.active_desks || 1);
-                        const effectiveTotalDesks = selectedHospital && hospitalDesksData.total_desks
-                            ? hospitalDesksData.total_desks
-                            : (overview.total_desks || 2);
-                        const effectivePatientsToday = Math.max(
-                            overview.patients_today || 0,
-                            (hospitalAnalytics?.completed_today || 0) + (hospitalQueueSnapshot.length + hospitalServingTickets.length),
-                            14
-                        );
-                        const effectiveActiveQueues = Math.max(
-                            overview.active_queues || 0,
-                            hospitalQueueSnapshot.length + hospitalServingTickets.length,
-                            6
-                        );
-                        const effectiveTotalTickets = Math.max(
-                            overview.total_tickets || 0,
-                            hospitalVisitsData?.summary?.total_patients_visited_all_time || 0,
-                            74
-                        );
-                        const effectiveUsers = Math.max(overview.total_users || 0, 5);
+                        const hospitalDocs = (hospitalEmployees || []).filter(e => {
+                            const role = (e.role || "").toLowerCase();
+                            return role === "doctor" || role === "physician" || (e.name || "").toLowerCase().startsWith("dr.");
+                        });
+                        const activeDocs = hospitalDocs.filter(e => (e.status || "active").toLowerCase() === "active").length;
+                        const effectiveDocsCount = selectedHospital
+                            ? (activeDocs > 0 ? activeDocs : hospitalDocs.length)
+                            : (overview.active_doctors || 0);
+
+                        const effectiveActiveDesks = selectedHospital
+                            ? (hospitalDesksData.active_desks || 0)
+                            : (overview.active_desks || 0);
+                        const effectiveTotalDesks = selectedHospital
+                            ? (hospitalDesksData.total_desks || 0)
+                            : (overview.total_desks || 0);
+
+                        const effectivePatientsToday = selectedHospital
+                            ? (hospitalVisitsData?.summary?.today_patients_visited != null
+                                ? hospitalVisitsData.summary.today_patients_visited
+                                : ((hospitalAnalytics?.completed_today || 0) + (hospitalQueueSnapshot.length + hospitalServingTickets.length)))
+                            : (overview.patients_today || 0);
 
                         return (
                             <div className="superadmin-hero-stats-row">
@@ -2135,42 +2237,69 @@ export default function SuperAdminPage({
 
                 {/* Right Column: Live Network Telemetry & Hospital Vector */}
                 <div className="superadmin-hero-right-col" style={{ padding: "24px 28px", display: "flex", flexDirection: "column", justifyContent: "center", gap: "16px", position: "relative", boxSizing: "border-box" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", zIndex: 3, flexWrap: "wrap", gap: "8px" }}>
-                        <div className="superadmin-hero-telemetry-badge" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(8px)", padding: "4px 12px", borderRadius: "9999px", border: "1px solid #BAE6FD", boxShadow: "0 2px 8px rgba(2, 132, 199, 0.08)" }}>
-                            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
-                            <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", letterSpacing: "0.2px" }}>
-                                {isHi ? "लाइव नेटवर्क टेलीमेट्री" : "LIVE CLOUD TELEMETRY"}
-                            </span>
-                        </div>
-                    </div>
+                    {(() => {
+                        const effectiveActiveQueues = selectedHospital
+                            ? (hospitalQueueSnapshot.length + hospitalServingTickets.length || (hospitalAnalytics ? ((hospitalAnalytics.waiting_count || 0) + (hospitalAnalytics.serving_count || 0)) : 0))
+                            : (overview.active_queues || 0);
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", width: "100%", margin: "0", zIndex: 3 }}>
-                        <div className="superadmin-hero-telemetry-card" style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                                <span className="superadmin-telemetry-label" style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "सक्रिय कतारें" : "Active In Queue"}</span>
-                                <span style={{ color: "#0284C7" }}><IconClock size={16} /></span>
-                            </div>
-                            <div className="superadmin-telemetry-val" style={{ fontSize: "22px", fontWeight: 800, color: "#0284C7", lineHeight: 1.1 }}>
-                                {Math.max(overview.active_queues || 0, hospitalQueueSnapshot.length + hospitalServingTickets.length, 6)}
-                            </div>
-                            <span className="superadmin-telemetry-sub" style={{ fontSize: "10px", color: "#0369A1", fontWeight: 600, display: "block", marginTop: "2px" }}>
-                                {isHi ? "प्रतीक्षारत / सेवारत टोकन" : "Waiting & Serving Tokens"}
-                            </span>
-                        </div>
+                        const effectiveTotalTickets = selectedHospital
+                            ? (hospitalVisitsData?.summary?.total_patients_visited_all_time != null
+                                ? hospitalVisitsData.summary.total_patients_visited_all_time
+                                : (hospitalAnalytics?.total_completed || 0))
+                            : (overview.total_tickets || 0);
 
-                        <div className="superadmin-hero-telemetry-card" style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                                <span className="superadmin-telemetry-label" style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "कुल विज़िट" : "Lifetime Visits"}</span>
-                                <span style={{ color: "#16A34A" }}><IconTrendingUp size={16} /></span>
-                            </div>
-                            <div className="superadmin-telemetry-val" style={{ fontSize: "22px", fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
-                                {Math.max(overview.total_tickets || 0, hospitalVisitsData?.summary?.total_patients_visited_all_time || 0, 74)}
-                            </div>
-                            <span style={{ fontSize: "10px", color: "#16A34A", fontWeight: 700, display: "block", marginTop: "2px" }}>
-                                ✓ {Math.max(overview.total_users || 0, 5)} {isHi ? "पंजीकृत उपयोगकर्ता" : "Registered Accounts"}
-                            </span>
-                        </div>
-                    </div>
+                        const effectiveUsers = selectedHospital
+                            ? (hospitalEmployees || []).length
+                            : (overview.total_users || 0);
+
+                        return (
+                            <>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", zIndex: 3, flexWrap: "wrap", gap: "8px" }}>
+                                    <div className="superadmin-hero-telemetry-badge" style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(8px)", padding: "4px 12px", borderRadius: "9999px", border: "1px solid #BAE6FD", boxShadow: "0 2px 8px rgba(2, 132, 199, 0.08)" }}>
+                                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10B981", display: "inline-block" }} />
+                                        <span style={{ fontSize: "11px", fontWeight: 800, color: "#0369A1", letterSpacing: "0.2px" }}>
+                                            {selectedHospital
+                                                ? `${selectedHospital.name.toUpperCase()} • ${isHi ? "लाइव टेलीमेट्री" : "LIVE CLOUD TELEMETRY"}`
+                                                : (isHi ? "लाइव नेटवर्क टेलीमेट्री" : "LIVE CLOUD TELEMETRY")}
+                                        </span>
+                                    </div>
+                                    {selectedHospital && (
+                                        <span style={{ fontSize: "11px", color: "#64748B", fontWeight: 700 }}>
+                                            {selectedHospital.hospital_code}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", width: "100%", margin: "0", zIndex: 3 }}>
+                                    <div className="superadmin-hero-telemetry-card" style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                                            <span className="superadmin-telemetry-label" style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "सक्रिय कतारें" : "Active In Queue"}</span>
+                                            <span style={{ color: "#0284C7" }}><IconClock size={16} /></span>
+                                        </div>
+                                        <div className="superadmin-telemetry-val" style={{ fontSize: "22px", fontWeight: 800, color: "#0284C7", lineHeight: 1.1 }}>
+                                            {effectiveActiveQueues}
+                                        </div>
+                                        <span className="superadmin-telemetry-sub" style={{ fontSize: "10px", color: "#0369A1", fontWeight: 600, display: "block", marginTop: "2px" }}>
+                                            {isHi ? "प्रतीक्षारत / सेवारत टोकन" : "Waiting & Serving Tokens"}
+                                        </span>
+                                    </div>
+
+                                    <div className="superadmin-hero-telemetry-card" style={{ background: "rgba(255, 255, 255, 0.92)", backdropFilter: "blur(10px)", border: "1px solid #BAE6FD", borderRadius: "14px", padding: "12px 14px", boxShadow: "0 4px 12px rgba(2, 132, 199, 0.06)" }}>
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                                            <span className="superadmin-telemetry-label" style={{ fontSize: "11px", fontWeight: 700, color: "#64748B" }}>{isHi ? "कुल विज़िट" : "Lifetime Visits"}</span>
+                                            <span style={{ color: "#16A34A" }}><IconTrendingUp size={16} /></span>
+                                        </div>
+                                        <div className="superadmin-telemetry-val" style={{ fontSize: "22px", fontWeight: 800, color: "#0F172A", lineHeight: 1.1 }}>
+                                            {effectiveTotalTickets}
+                                        </div>
+                                        <span style={{ fontSize: "10px", color: "#16A34A", fontWeight: 700, display: "block", marginTop: "2px" }}>
+                                            ✓ {effectiveUsers} {selectedHospital ? (isHi ? "पंजीकृत स्टाफ / कर्मचारी" : "Registered Staff & Accounts") : (isHi ? "पंजीकृत उपयोगकर्ता" : "Registered Accounts")}
+                                        </span>
+                                    </div>
+                                </div>
+                            </>
+                        );
+                    })()}
 
                     {/* Background Vector Graphic Silhouette */}
                     <div style={{ position: "absolute", right: "-10px", bottom: "-10px", opacity: 0.12, pointerEvents: "none", zIndex: 1, width: "240px", maxHeight: "200px" }}>
