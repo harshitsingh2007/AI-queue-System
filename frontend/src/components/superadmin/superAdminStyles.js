@@ -51,7 +51,7 @@ export const hospitalStatusBadgeStyle = (status) => ({
     padding: "2px 7px",
     borderRadius: "6px",
     background: status === "active" ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-    color: status === "active" ? "#10B981" : "#EF4444",
+    color: status === "active" ? "#047857" : "#B91C1C",
     border: status === "active" ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
 });
 
@@ -121,10 +121,10 @@ export const tableTdStyle = {
 };
 
 export const roleBadgeStyle = (role) => {
-    if (role === "doctor") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "rgba(2, 132, 199, 0.15)", color: "#38BDF8", border: "1px solid rgba(2, 132, 199, 0.3)" };
-    if (role === "admin") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "rgba(217, 119, 6, 0.15)", color: "#FBBF24", border: "1px solid rgba(217, 119, 6, 0.3)" };
-    if (role === "receptionist") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "rgba(126, 34, 206, 0.15)", color: "#C084FC", border: "1px solid rgba(126, 34, 206, 0.3)" };
-    return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "rgba(29, 78, 216, 0.15)", color: "#60A5FA", border: "1px solid rgba(29, 78, 216, 0.3)" };
+    if (role === "doctor") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#E0F2FE", color: "#075985", border: "1px solid #7DD3FC" };
+    if (role === "admin") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#FEF3C7", color: "#92400E", border: "1px solid #F59E0B" };
+    if (role === "receptionist") return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#F3E8FF", color: "#6B21A8", border: "1px solid #C084FC" };
+    return { padding: "2px 7px", borderRadius: "6px", fontSize: "10px", fontWeight: 800, background: "#DBEAFE", color: "#1E40AF", border: "1px solid #93C5FD" };
 };
 
 export const copySmallBtnStyle = {

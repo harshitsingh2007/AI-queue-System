@@ -34,6 +34,8 @@ const {
   bulkUpdateDeskStatusEndpoint,
   getDbOverviewEndpoint,
   getHospitalVisitsEndpoint,
+  bulkAddHospitalEmployeesEndpoint,
+  bulkAddHospitalVisitsEndpoint,
 } = require("../controllers/hospital.controller");
 const { optionalAuth, authenticate } = require("../middleware/auth");
 
@@ -61,6 +63,8 @@ router.delete("/superadmin/hospitals/:hospital_code", optionalAuth, deleteHospit
 // Employees
 router.get("/superadmin/hospitals/:hospital_code/employees", optionalAuth, getHospitalEmployeesEndpoint);
 router.post("/superadmin/hospitals/:hospital_code/employees", optionalAuth, addHospitalEmployeeEndpoint);
+router.post("/superadmin/hospitals/:hospital_code/employees/bulk", optionalAuth, bulkAddHospitalEmployeesEndpoint);
+router.post("/superadmin/hospitals/:hospital_code/visits/bulk", optionalAuth, bulkAddHospitalVisitsEndpoint);
 router.put("/superadmin/hospitals/:hospital_code/employees/:user_id", optionalAuth, updateHospitalEmployeeEndpoint);
 router.put("/superadmin/hospitals/:hospital_code/employees/:user_id/password", optionalAuth, updateEmployeePasswordEndpoint);
 router.post("/superadmin/hospitals/:hospital_code/employees/:user_id/password", optionalAuth, updateEmployeePasswordEndpoint);

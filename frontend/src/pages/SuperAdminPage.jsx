@@ -279,6 +279,12 @@ export default function SuperAdminPage({
         employee_id: "",
         phone: "",
         password: "pass" + Math.floor(1000 + Math.random() * 9000),
+        qualification: "",
+        specialization: "",
+        license_number: "",
+        gender: "other",
+        experience_years: 0,
+        room_number: "",
     });
 
     const [editEmployeeForm, setEditEmployeeForm] = useState({
@@ -290,6 +296,12 @@ export default function SuperAdminPage({
         employee_id: "",
         status: "active",
         password: "",
+        qualification: "",
+        specialization: "",
+        license_number: "",
+        gender: "other",
+        experience_years: 0,
+        room_number: "",
     });
 
     const [newDeptForm, setNewDeptForm] = useState({
@@ -1720,6 +1732,8 @@ export default function SuperAdminPage({
                     role: data.employee.role,
                     department: data.employee.department,
                     hospital_name: selectedHospital.name,
+                    specialization: data.employee.specialization || newEmployeeForm.specialization,
+                    room_number: data.employee.room_number || newEmployeeForm.room_number,
                 });
                 setNewEmployeeForm({
                     name: "",
@@ -1729,6 +1743,12 @@ export default function SuperAdminPage({
                     employee_id: "",
                     phone: "",
                     password: "pass" + Math.floor(1000 + Math.random() * 9000),
+                    qualification: "",
+                    specialization: "",
+                    license_number: "",
+                    gender: "other",
+                    experience_years: 0,
+                    room_number: "",
                 });
                 notify(isHi ? `कर्मचारी '${data.employee.username}' सफलतापूर्वक जोड़ा गया!` : `Employee '${data.employee.username}' provisioned successfully!`);
                 fetchHospitalDeepDive(selectedHospital.hospital_code);
@@ -2607,6 +2627,12 @@ export default function SuperAdminPage({
                                     status: emp.status || "active",
                                     password: "",
                                     assigned_desk_id: emp.assigned_desk_id || null,
+                                    qualification: emp.qualification || "",
+                                    specialization: emp.specialization || "",
+                                    license_number: emp.license_number || "",
+                                    gender: emp.gender || "other",
+                                    experience_years: emp.experience_years || 0,
+                                    room_number: emp.room_number || "",
                                 });
                                 setShowEditEmployeeModal(true);
                             }}
@@ -2725,6 +2751,14 @@ export default function SuperAdminPage({
                             handleResetBrandingDefaults={handleResetBrandingDefaults}
                             notify={notify}
                             isHi={isHi}
+                            hospitalEmployees={hospitalEmployees}
+                            hospitalVisitsData={hospitalVisitsData}
+                            hospitalDepts={hospitalDepts}
+                            handleDownloadVisitHistory={handleDownloadVisitHistory}
+                            fetchHospitalDeepDive={fetchHospitalDeepDive}
+                            fetchGlobalData={fetchGlobalData}
+                            getAuthHeaders={getAuthHeaders}
+                            currentUser={currentUser}
                         />
                     )}
                 </div>

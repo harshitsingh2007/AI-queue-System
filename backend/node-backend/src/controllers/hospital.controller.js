@@ -32,6 +32,8 @@ const {
   bulkUpdateDeskStatus,
   getDatabaseOverview,
   getHospitalVisitHistory,
+  bulkAddHospitalEmployees,
+  bulkAddHospitalVisits,
 } = require("../services/hospitalService");
 const { verifyHospitalAccess } = require("../middleware/hospitalIsolation");
 const { getIo } = require("../socket");
@@ -311,6 +313,12 @@ async function addHospitalEmployeeEndpoint(req, res, next) {
       employee_id = "",
       phone = "",
       password = "pass123",
+      qualification = "",
+      specialization = "",
+      license_number = "",
+      gender = "other",
+      experience_years = 0,
+      room_number = "",
     } = req.body;
 
     const employee = await addHospitalEmployee({
@@ -322,6 +330,12 @@ async function addHospitalEmployeeEndpoint(req, res, next) {
       employeeId: employee_id,
       phone,
       password,
+      qualification,
+      specialization,
+      license_number,
+      gender,
+      experience_years,
+      room_number,
     });
 
     notifyHospitalChange(req, hospitalCode);
@@ -694,6 +708,46 @@ async function getHospitalVisitsEndpoint(req, res, next) {
   }
 }
 
+async function bulkAddHospitalEmployeesEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const { employees } = req.body;
+    if (!Array.isArray(employees) || employees.length === 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "No employee records provided.",
+      });
+    }
+    const result = await bulkAddHospitalEmployees(hospitalCode, employees);
+    return res.status(200).json({
+      status: "success",
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function bulkAddHospitalVisitsEndpoint(req, res, next) {
+  try {
+    const hospitalCode = req.params.hospital_code;
+    const { visits } = req.body;
+    if (!Array.isArray(visits) || visits.length === 0) {
+      return res.status(400).json({
+        status: "error",
+        message: "No patient visit records provided.",
+      });
+    }
+    const result = await bulkAddHospitalVisits(hospitalCode, visits);
+    return res.status(200).json({
+      status: "success",
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getHospitalInfoEndpoint,
   getPublicHospitalsEndpoint,
@@ -723,4 +777,6 @@ module.exports = {
   bulkUpdateDeskStatusEndpoint,
   getDbOverviewEndpoint,
   getHospitalVisitsEndpoint,
+  bulkAddHospitalEmployeesEndpoint,
+  bulkAddHospitalVisitsEndpoint,
 };

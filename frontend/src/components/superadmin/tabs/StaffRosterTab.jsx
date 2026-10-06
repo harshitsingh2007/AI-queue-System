@@ -128,12 +128,12 @@ export default function StaffRosterTab({
                     <div style={{ fontSize: "11.5px", color: "var(--superadmin-text-muted, #94A3B8)", fontWeight: 700 }}>{isHi ? "कुल कार्मिक" : "Total Personnel"}</div>
                     <div style={{ fontSize: "22px", fontWeight: 800, color: "var(--superadmin-text-main, #F8FAFC)", marginTop: "4px" }}>{hospitalEmployees.length}</div>
                 </div>
-                <div style={{ padding: "12px 16px", borderRadius: "10px", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)" }}>
+                <div style={{ padding: "12px 16px", borderRadius: "10px", background: "#ECFDF5", border: "1px solid #6EE7B7" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#16A34A" }} />
-                        <span style={{ fontSize: "11.5px", color: "#10B981", fontWeight: 700 }}>{isHi ? "सक्रिय / ऑनलाइन" : "Active / Logged In"}</span>
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#047857" }} />
+                        <span style={{ fontSize: "11.5px", color: "#065F46", fontWeight: 700 }}>{isHi ? "सक्रिय / ऑनलाइन" : "Active / Logged In"}</span>
                     </div>
-                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#10B981", marginTop: "4px" }}>{onlineCount}</div>
+                    <div style={{ fontSize: "22px", fontWeight: 800, color: "#047857", marginTop: "4px" }}>{onlineCount}</div>
                 </div>
                 <div style={{ padding: "12px 16px", borderRadius: "10px", background: "var(--superadmin-sub-card, #1E293B)", border: "1px solid var(--superadmin-card-border, #334155)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -175,9 +175,9 @@ export default function StaffRosterTab({
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "6px",
-                            border: employeeStatusFilter === "active" ? "1.5px solid #16A34A" : "1px solid var(--superadmin-card-border, #334155)",
-                            background: employeeStatusFilter === "active" ? "rgba(16, 185, 129, 0.15)" : "var(--superadmin-sub-card, #1E293B)",
-                            color: employeeStatusFilter === "active" ? "#10B981" : "var(--superadmin-text-muted, #94A3B8)",
+                            border: employeeStatusFilter === "active" ? "1.5px solid #059669" : "1px solid var(--superadmin-card-border, #334155)",
+                            background: employeeStatusFilter === "active" ? "#D1FAE5" : "var(--superadmin-sub-card, #1E293B)",
+                            color: employeeStatusFilter === "active" ? "#065F46" : "var(--superadmin-text-muted, #94A3B8)",
                         }}
                     >
                         <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#16A34A" }} />
@@ -247,14 +247,31 @@ export default function StaffRosterTab({
                                 return (
                                     <tr key={emp.id || emp.employee_id_num} style={{ borderBottom: "1px solid var(--superadmin-card-border, #1E293B)" }}>
                                         <td style={tableTdStyle}>
-                                            <div style={{ fontWeight: 800, color: "var(--superadmin-text-main, #F8FAFC)", fontSize: "13.5px" }}>
-                                                {emp.name || emp.username || "Staff Member"}
+                                            <div style={{ fontWeight: 800, color: "var(--superadmin-text-main, #F8FAFC)", fontSize: "13.5px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                                <span>{emp.name || emp.username || "Staff Member"}</span>
+                                                {emp.qualification && (
+                                                    <span style={{ fontSize: "11px", fontWeight: 700, color: "#075985", background: "#E0F2FE", border: "1px solid #7DD3FC", padding: "1px 6px", borderRadius: "4px" }}>
+                                                        {emp.qualification}
+                                                    </span>
+                                                )}
                                             </div>
-                                            <span style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #94A3B8)", display: "block", marginTop: "2px" }}>
-                                                {emp.email}
-                                            </span>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginTop: "3px" }}>
+                                                <span style={{ fontSize: "11px", color: "var(--superadmin-text-muted, #94A3B8)" }}>
+                                                    {emp.email}
+                                                </span>
+                                                {emp.specialization && (
+                                                    <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#065F46", background: "#D1FAE5", border: "1px solid #6EE7B7", padding: "1px 6px", borderRadius: "4px" }}>
+                                                        {emp.specialization}
+                                                    </span>
+                                                )}
+                                                {emp.room_number && (
+                                                    <span style={{ fontSize: "10.5px", fontWeight: 700, color: "#92400E", background: "#FEF3C7", border: "1px solid #F59E0B", padding: "1px 6px", borderRadius: "4px" }}>
+                                                        {emp.room_number}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
-                                        <td style={{ ...tableTdStyle, fontWeight: 700, color: "#38BDF8" }}>
+                                        <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0369A1" }}>
                                             {emp.employee_id || `EMP-${emp.id || emp.employee_id_num}`}
                                         </td>
                                         <td style={tableTdStyle}>
@@ -262,7 +279,7 @@ export default function StaffRosterTab({
                                                 {(emp.role || "").toUpperCase()}
                                             </span>
                                         </td>
-                                        <td style={{ ...tableTdStyle, fontWeight: 700, color: "#38BDF8" }}>
+                                        <td style={{ ...tableTdStyle, fontWeight: 700, color: "#0369A1" }}>
                                             {getCategoryLabel(emp.department, language)}
                                         </td>
                                         <td style={tableTdStyle}>
@@ -273,9 +290,9 @@ export default function StaffRosterTab({
                                                         style={{
                                                             fontSize: "11.5px",
                                                             fontWeight: 700,
-                                                            color: "#38BDF8",
-                                                            background: "rgba(2, 132, 199, 0.15)",
-                                                            border: "1px solid rgba(2, 132, 199, 0.3)",
+                                                            color: "#075985",
+                                                            background: "#E0F2FE",
+                                                            border: "1px solid #7DD3FC",
                                                             padding: "3px 8px",
                                                             borderRadius: "6px",
                                                             display: "inline-flex",
@@ -312,16 +329,16 @@ export default function StaffRosterTab({
                                                                     borderRadius: "999px",
                                                                     fontSize: "10.5px",
                                                                     fontWeight: 800,
-                                                                    background: "rgba(245, 158, 11, 0.15)",
-                                                                    color: "#F59E0B",
-                                                                    border: "1px solid rgba(245, 158, 11, 0.3)",
+                                                                    background: "#FEF3C7",
+                                                                    color: "#92400E",
+                                                                    border: "1px solid #F59E0B",
                                                                     width: "fit-content",
                                                                 }}
                                                             >
-                                                                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#F59E0B" }} />
+                                                                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#D97706" }} />
                                                                 <span>{isHi ? "अवकाश (ब्रेक)" : "ON BREAK"}</span>
                                                             </span>
-                                                            <span style={{ fontSize: "10px", color: "#F59E0B" }}>
+                                                            <span style={{ fontSize: "10px", color: "#B45309" }}>
                                                                 {isHi ? "अल्पाहार / अवकाश पर" : "Temporary break"}
                                                             </span>
                                                         </div>
@@ -366,9 +383,9 @@ export default function StaffRosterTab({
                                                                     borderRadius: "999px",
                                                                     fontSize: "10.5px",
                                                                     fontWeight: 800,
-                                                                    background: "rgba(16, 185, 129, 0.15)",
-                                                                    color: "#10B981",
-                                                                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                                                                    background: "#D1FAE5",
+                                                                    color: "#065F46",
+                                                                    border: "1px solid #34D399",
                                                                     width: "fit-content",
                                                                 }}
                                                             >
@@ -377,7 +394,7 @@ export default function StaffRosterTab({
                                                                         width: "6px",
                                                                         height: "6px",
                                                                         borderRadius: "50%",
-                                                                        background: "#10B981",
+                                                                        background: "#059669",
                                                                         boxShadow: "0 0 0 2px rgba(16, 185, 129, 0.3)",
                                                                     }}
                                                                 />
@@ -388,7 +405,7 @@ export default function StaffRosterTab({
                                                                     {formatRelativeLogin ? formatRelativeLogin(emp.last_login_at) : emp.last_login_at}
                                                                 </span>
                                                             ) : (
-                                                                <span style={{ fontSize: "10px", color: "#10B981" }}>
+                                                                <span style={{ fontSize: "10px", color: "#047857" }}>
                                                                     {isHi ? "सक्रिय सत्र" : "Active session"}
                                                                 </span>
                                                             )}
@@ -439,9 +456,9 @@ export default function StaffRosterTab({
                                                     onClick={() => onToggleStatus && onToggleStatus(emp)}
                                                     style={{
                                                         ...editSmallBtnStyle,
-                                                        background: isActive ? "rgba(239, 68, 68, 0.12)" : "rgba(16, 185, 129, 0.12)",
-                                                        color: isActive ? "#EF4444" : "#10B981",
-                                                        border: isActive ? "1px solid rgba(239, 68, 68, 0.3)" : "1px solid rgba(16, 185, 129, 0.3)",
+                                                        background: isActive ? "rgba(239, 68, 68, 0.12)" : "#D1FAE5",
+                                                        color: isActive ? "#B91C1C" : "#065F46",
+                                                        border: isActive ? "1px solid rgba(239, 68, 68, 0.3)" : "1px solid #34D399",
                                                         fontWeight: 700,
                                                         fontSize: "11px",
                                                         opacity: isTogglingEmpStatus === (emp.user_id || emp.id || emp.employee_id_num) ? 0.6 : 1,
@@ -467,14 +484,14 @@ export default function StaffRosterTab({
                                                     onClick={() => onChangePassword && onChangePassword(emp)}
                                                     style={{
                                                         ...editSmallBtnStyle,
-                                                        background: "rgba(245, 158, 11, 0.15)",
-                                                        color: "#FBBF24",
-                                                        border: "1px solid rgba(245, 158, 11, 0.3)",
+                                                        background: "#FEF3C7",
+                                                        color: "#92400E",
+                                                        border: "1px solid #F59E0B",
                                                     }}
                                                     title={isHi ? "पासवर्ड बदलें" : "Change Password"}
                                                 >
                                                     <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                                        <IconKey size={12} color="#FBBF24" />
+                                                        <IconKey size={12} color="#92400E" />
                                                         <span>{isHi ? "पासवर्ड" : "Password"}</span>
                                                     </span>
                                                 </button>

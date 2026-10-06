@@ -103,21 +103,28 @@ model desks {
 }
 
 model employees {
-  id            Int          @id @default(autoincrement())
-  user_id       Int
-  hospital_id   Int
-  department_id Int?
-  employee_code String?      @default("") @db.VarChar(100)
-  name          String       @db.VarChar(255)
-  email         String?      @default("") @db.VarChar(255)
-  phone         String?      @default("") @db.VarChar(100)
-  status        String       @default("active") @db.VarChar(50)
-  created_at    DateTime     @default(now()) @db.Timestamptz(6)
-  updated_at    DateTime     @default(now()) @db.Timestamptz(6)
-  desks         desks[]
-  departments   departments? @relation(fields: [department_id], references: [id], onUpdate: NoAction)
-  hospitals     hospitals    @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users         users        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id               Int          @id @default(autoincrement())
+  user_id          Int
+  hospital_id      Int
+  department_id    Int?
+  employee_code    String?      @default("") @db.VarChar(100)
+  name             String       @db.VarChar(255)
+  email            String?      @default("") @db.VarChar(255)
+  phone            String?      @default("") @db.VarChar(100)
+  qualification    String?      @default("") @db.VarChar(255)
+  specialization   String?      @default("") @db.VarChar(255)
+  license_number   String?      @default("") @db.VarChar(100)
+  gender           String?      @default("other") @db.VarChar(50)
+  experience_years Int?         @default(0)
+  room_number      String?      @default("") @db.VarChar(100)
+  profile_json     Json?        @default("{}")
+  status           String       @default("active") @db.VarChar(50)
+  created_at       DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime     @default(now()) @db.Timestamptz(6)
+  desks            desks[]
+  departments      departments? @relation(fields: [department_id], references: [id], onUpdate: NoAction)
+  hospitals        hospitals    @relation(fields: [hospital_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users            users        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([hospital_id, user_id])
   @@index([department_id], map: "idx_employees_department")

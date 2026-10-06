@@ -18,6 +18,130 @@ const STANDARD_DEPARTMENTS = [
   ["emergency", "Emergency Triage", "Critical emergency resuscitation and trauma"],
 ];
 
+/**
+ * Normalizes a department name string by:
+ * 1. Lowercasing and replacing punctuation/brackets/hyphens/slashes with spaces.
+ * 2. Stripping common hospital department suffixes and prefixes:
+ *    department, dept, departments, opd, ipd, unit, section, division, of, the
+ * 3. Collapsing multiple spaces and trimming.
+ */
+function normalizeDeptString(str) {
+  if (!str) return "";
+  let s = String(str).toLowerCase();
+  s = s.replace(/[\(\)\[\]\{\}\-_/\\.,:;]/g, " ");
+  s = s.replace(/\b(department|dept|departments|opd|ipd|unit|section|division|of|the)\b/gi, " ");
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function cleanAlphanumeric(str) {
+  if (!str) return "";
+  return String(str)
+    .toLowerCase()
+    .replace(/[\(\)\[\]\{\}\-_/\\.,:;]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Finds the best matching department from an array of existing department objects.
+ * Supports flexible normalization, ignoring brackets, hyphens, and noise words (OPD, Dept, Unit, etc.).
+ * Returns the matched department object, or null if no valid match.
+ */
+function findMatchingDepartment(rawInput, departments = []) {
+  if (!rawInput || !Array.isArray(departments) || departments.length === 0) {
+    return null;
+  }
+
+  const raw = String(rawInput).trim();
+  if (!raw) return null;
+  const rawLower = raw.toLowerCase();
+
+  // Tier 1: Exact case-insensitive match on dept_code or name
+  for (const dept of departments) {
+    const code = String(dept.dept_code || "").toLowerCase().trim();
+    const name = String(dept.name || "").toLowerCase().trim();
+    if (code === rawLower || name === rawLower) {
+      return dept;
+    }
+  }
+
+  // Tier 2: Cleaned alphanumeric match (ignoring brackets, hyphens, extra whitespace)
+  const cleanRaw = cleanAlphanumeric(raw);
+  if (cleanRaw) {
+    for (const dept of departments) {
+      const cleanCode = cleanAlphanumeric(dept.dept_code);
+      const cleanName = cleanAlphanumeric(dept.name);
+      if (cleanCode && cleanCode === cleanRaw) return dept;
+      if (cleanName && cleanName === cleanRaw) return dept;
+    }
+  }
+
+  // Tier 3: Core normalized match (stripping 'Department', 'OPD', 'Unit', 'Section', 'of', etc.)
+  const normRaw = normalizeDeptString(raw);
+  if (normRaw) {
+    for (const dept of departments) {
+      const normCode = normalizeDeptString(dept.dept_code);
+      const normName = normalizeDeptString(dept.name);
+      if (normCode && normCode === normRaw) return dept;
+      if (normName && normName === normRaw) return dept;
+    }
+  }
+
+  // Tier 4: Singular/Plural variations & Word-boundary phrase matching
+  if (normRaw && normRaw.length >= 3) {
+    // 4a. Check simple plural/singular variations (e.g. pediatric vs pediatrics)
+    for (const dept of departments) {
+      const normName = normalizeDeptString(dept.name);
+      const normCode = normalizeDeptString(dept.dept_code);
+      for (const target of [normName, normCode]) {
+        if (!target) continue;
+        if (normRaw + "s" === target || normRaw === target + "s") return dept;
+        if (normRaw + "es" === target || normRaw === target + "es") return dept;
+        if (normRaw.replace(/ic$/, "ics") === target || normRaw === target.replace(/ic$/, "ics")) return dept;
+      }
+    }
+
+    // 4b. Whole word-boundary subphrase match
+    let bestMatch = null;
+    let bestMatchScore = 0;
+
+    for (const dept of departments) {
+      const normName = normalizeDeptString(dept.name);
+      const normCode = normalizeDeptString(dept.dept_code);
+
+      for (const target of [normName, normCode]) {
+        if (!target || target.length < 3) continue;
+
+        const targetRegex = new RegExp(`(^|\\s)${escapeRegex(target)}(\\s|$)`, "i");
+        const rawRegex = new RegExp(`(^|\\s)${escapeRegex(normRaw)}(\\s|$)`, "i");
+
+        if (targetRegex.test(normRaw)) {
+          if (target.length > bestMatchScore) {
+            bestMatchScore = target.length;
+            bestMatch = dept;
+          }
+        } else if (normRaw.length >= 4 && rawRegex.test(target)) {
+          if (normRaw.length > bestMatchScore) {
+            bestMatchScore = normRaw.length;
+            bestMatch = dept;
+          }
+        }
+      }
+    }
+
+    if (bestMatch) {
+      return bestMatch;
+    }
+  }
+
+  return null;
+}
+
+
 const DEFAULT_BRANDING = {
   logo_url: "",
   primary_color: "#0284C7",
@@ -699,6 +823,12 @@ async function getHospitalEmployees(hospitalCode) {
       role: e.users?.role || "staff",
       department: e.departments?.dept_code || "all",
       department_name: e.departments?.name || "All Departments",
+      qualification: e.qualification || "",
+      specialization: e.specialization || "",
+      license_number: e.license_number || "",
+      gender: e.gender || "other",
+      experience_years: e.experience_years || 0,
+      room_number: e.room_number || "",
       status: effectiveStatus,
       duty_status: dutyStatusLabel,
       last_login_at: e.users?.last_login_at ? e.users.last_login_at.toISOString() : null,
@@ -719,6 +849,12 @@ async function addHospitalEmployee({
   employeeId = "",
   phone = "",
   password = "pass123",
+  qualification = "",
+  specialization = "",
+  license_number = "",
+  gender = "other",
+  experience_years = 0,
+  room_number = "",
 }) {
   const cleanEmail = String(email).trim().toLowerCase();
   const hosp = await prisma.hospitals.findUnique({
@@ -731,12 +867,9 @@ async function addHospitalEmployee({
     throw err;
   }
 
-  const dept = await prisma.departments.findFirst({
-    where: {
-      hospital_id: hosp.id,
-      dept_code: String(department || "consultation").trim().toLowerCase(),
-    },
-  });
+  const cleanDeptStr = String(department || "consultation").trim();
+  const allDepts = await prisma.departments.findMany({ where: { hospital_id: hosp.id } });
+  const dept = findMatchingDepartment(cleanDeptStr, allDepts);
 
   const pwdHash = await hashPassword(password);
 
@@ -761,6 +894,8 @@ async function addHospitalEmployee({
   }
 
   const empCode = employeeId || `EMP-${user.id}`;
+  const parsedExp = parseInt(experience_years, 10) || 0;
+  const cleanGender = String(gender || "other").toLowerCase().trim();
 
   // 2. Upsert employee
   const employee = await prisma.employees.upsert({
@@ -778,6 +913,12 @@ async function addHospitalEmployee({
       name,
       email: cleanEmail,
       phone,
+      qualification: String(qualification || "").trim(),
+      specialization: String(specialization || "").trim(),
+      license_number: String(license_number || "").trim(),
+      gender: cleanGender,
+      experience_years: parsedExp,
+      room_number: String(room_number || "").trim(),
       status: "inactive",
     },
     update: {
@@ -786,6 +927,12 @@ async function addHospitalEmployee({
       email: cleanEmail,
       phone,
       employee_code: empCode,
+      qualification: String(qualification || "").trim(),
+      specialization: String(specialization || "").trim(),
+      license_number: String(license_number || "").trim(),
+      gender: cleanGender,
+      experience_years: parsedExp,
+      room_number: String(room_number || "").trim(),
       updated_at: new Date(),
     },
   });
@@ -797,6 +944,12 @@ async function addHospitalEmployee({
     role,
     department: department || "consultation",
     employee_id: empCode,
+    qualification: String(qualification || "").trim(),
+    specialization: String(specialization || "").trim(),
+    license_number: String(license_number || "").trim(),
+    gender: cleanGender,
+    experience_years: parsedExp,
+    room_number: String(room_number || "").trim(),
     status: employee.status || "inactive",
   };
 }
@@ -828,6 +981,12 @@ async function updateHospitalEmployee(userId, updateData = {}) {
     employeeId,
     status,
     password,
+    qualification,
+    specialization,
+    license_number,
+    gender,
+    experience_years,
+    room_number,
   } = updateData;
 
   const cleanEmail = email !== undefined && email !== null ? String(email).trim().toLowerCase() : undefined;
@@ -882,6 +1041,24 @@ async function updateHospitalEmployee(userId, updateData = {}) {
     };
     if (cleanEmail) {
       empData.email = cleanEmail;
+    }
+    if (qualification !== undefined) {
+      empData.qualification = String(qualification).trim();
+    }
+    if (specialization !== undefined) {
+      empData.specialization = String(specialization).trim();
+    }
+    if (license_number !== undefined) {
+      empData.license_number = String(license_number).trim();
+    }
+    if (gender !== undefined) {
+      empData.gender = String(gender).toLowerCase().trim();
+    }
+    if (experience_years !== undefined) {
+      empData.experience_years = parseInt(experience_years, 10) || 0;
+    }
+    if (room_number !== undefined) {
+      empData.room_number = String(room_number).trim();
     }
 
     await prisma.employees.update({
@@ -1673,6 +1850,230 @@ async function getHospitalVisitHistory(hospitalCode, limit = 60) {
   };
 }
 
+/**
+ * Bulk provisions hospital employees from CSV/Excel imported list.
+ */
+async function bulkAddHospitalEmployees(hospitalCode, employeesList = []) {
+  const hCode = String(hospitalCode).trim();
+  const hosp = await prisma.hospitals.findUnique({
+    where: { hospital_code: hCode },
+    include: { departments: true },
+  });
+  if (!hosp) {
+    const err = new Error(`Hospital '${hospitalCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const results = {
+    imported_count: 0,
+    skipped_count: 0,
+    errors: [],
+    skipped_departments: [],
+    message: "",
+  };
+
+  const skippedDeptsSet = new Set();
+
+  for (let i = 0; i < employeesList.length; i++) {
+    const item = employeesList[i];
+    const name = item.name || item.username || item.full_name || item.staff_name;
+    const email = item.email || item.email_id || item.email_address;
+    if (!name || !email) {
+      results.skipped_count++;
+      results.errors.push(`Row ${i + 1}: Name or email missing`);
+      continue;
+    }
+
+    const deptStr = String(item.department || item.dept || "").trim();
+    if (!deptStr) {
+      results.skipped_count++;
+      results.errors.push(`Row ${i + 1} (${name}): Department is missing`);
+      continue;
+    }
+
+    // Flexible/normalized department matching against registered departments
+    const matchedDept = findMatchingDepartment(deptStr, hosp.departments);
+
+    if (!matchedDept) {
+      results.skipped_count++;
+      skippedDeptsSet.add(deptStr);
+      results.errors.push(`Row ${i + 1} (${name}): Department '${deptStr}' does not exist in this hospital.`);
+      continue; // Skip and don't add
+    }
+
+    const role = (item.role || "doctor").toLowerCase();
+    const department = matchedDept.dept_code;
+    const employeeId = item.employee_id || item.employee_code || item.id || `EMP-${Date.now().toString().slice(-4)}${i}`;
+    const phone = item.phone || item.mobile || item.contact || "";
+    const password = item.password || ("pass" + Math.floor(1000 + Math.random() * 9000));
+    const qualification = item.qualification || item.qualifications || item.degree || "";
+    const specialization = item.specialization || item.specialty || item.designation || "";
+    const licenseNumber = item.license_number || item.license_no || item.medical_license || item.registration_number || item.reg_no || "";
+    const gender = (item.gender || item.sex || "other").toLowerCase();
+    const experienceYears = parseInt(item.experience_years || item.experience || item.years_of_experience || 0, 10) || 0;
+    const roomNumber = item.room_number || item.room || item.cabin || item.cabin_number || item.room_no || "";
+
+    try {
+      await addHospitalEmployee({
+        hospitalCode: hCode,
+        name,
+        email,
+        role,
+        department,
+        employeeId,
+        phone,
+        password,
+        qualification,
+        specialization,
+        license_number: licenseNumber,
+        gender,
+        experience_years: experienceYears,
+        room_number: roomNumber,
+      });
+      results.imported_count++;
+    } catch (err) {
+      results.skipped_count++;
+      results.errors.push(`Row ${i + 1} (${email}): ${err.message}`);
+    }
+  }
+
+  const skippedDepts = Array.from(skippedDeptsSet);
+  results.skipped_departments = skippedDepts;
+
+  if (results.skipped_count > 0 && skippedDepts.length > 0) {
+    const deptsFormatted = skippedDepts.map((d) => `'${d}'`).join(", ");
+    results.message = `Imported ${results.imported_count} staff members. Skipped ${results.skipped_count} staff members because their departments (${deptsFormatted}) are not registered in this hospital.`;
+  } else if (results.skipped_count > 0) {
+    results.message = `Imported ${results.imported_count} staff members. Skipped ${results.skipped_count} staff members.`;
+  } else {
+    results.message = `Successfully imported all ${results.imported_count} staff members.`;
+  }
+
+  return results;
+}
+
+/**
+ * Bulk imports past patient visits from CSV/Excel for a hospital.
+ */
+async function bulkAddHospitalVisits(hospitalCode, visitsList = []) {
+  const hCode = String(hospitalCode).trim();
+  const hosp = await prisma.hospitals.findUnique({
+    where: { hospital_code: hCode },
+    include: { departments: true },
+  });
+  if (!hosp) {
+    const err = new Error(`Hospital '${hospitalCode}' not found.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const results = {
+    imported_count: 0,
+    skipped_count: 0,
+    errors: [],
+  };
+
+  for (let i = 0; i < visitsList.length; i++) {
+    const item = visitsList[i];
+    const patientName = item.patient_name || item.name || item.patient || "";
+    if (!patientName.trim()) {
+      results.skipped_count++;
+      results.errors.push(`Row ${i + 1}: Patient name missing`);
+      continue;
+    }
+
+    const phone = String(item.phone || item.mobile || item.contact || "").trim();
+    const age = parseInt(item.age, 10) || 30;
+    const gender = String(item.gender || "other").toLowerCase();
+    const deptStr = String(item.department || item.dept || "consultation").toLowerCase();
+    const doctorName = item.doctor || item.doctor_name || "Attending Consultant";
+    const duration = parseFloat(item.service_duration_minutes || item.duration || item.consult_duration) || 12.0;
+    const status = String(item.status || "completed").toLowerCase();
+    const symptoms = item.symptoms || item.medical_condition || item.condition || "Routine Consultation";
+    const prescription = item.prescription || item.advice || item.notes || "";
+
+    let visitDateObj = new Date();
+    if (item.visit_date || item.date || item.queue_date) {
+      const d = new Date(item.visit_date || item.date || item.queue_date);
+      if (!isNaN(d.getTime())) {
+        visitDateObj = d;
+      }
+    }
+    const queueDateOnly = new Date(visitDateObj.getFullYear(), visitDateObj.getMonth(), visitDateObj.getDate());
+
+    const dept = hosp.departments.find(
+      (d) =>
+        d.dept_code.toLowerCase() === deptStr ||
+        d.name.toLowerCase().includes(deptStr) ||
+        deptStr.includes(d.name.toLowerCase())
+    ) || hosp.departments[0] || null;
+
+    try {
+      let patient = null;
+      if (phone) {
+        patient = await prisma.patients.findFirst({ where: { phone } });
+      }
+      if (!patient) {
+        patient = await prisma.patients.create({
+          data: {
+            name: patientName.trim(),
+            phone,
+            age,
+            gender: gender.startsWith("m") ? "male" : gender.startsWith("f") ? "female" : "other",
+          },
+        });
+      }
+
+      const randSuffix = Math.floor(1000 + Math.random() * 9000);
+      const ticketId = item.ticket_id || `H-${visitDateObj.toISOString().slice(2, 10).replace(/-/g, "")}-${randSuffix}-${i + 1}`;
+
+      const ticket = await prisma.tickets.create({
+        data: {
+          ticket_id: ticketId,
+          hospital_id: hosp.id,
+          department_id: dept?.id || null,
+          patient_id: patient.id,
+          name: patientName.trim(),
+          service_category: dept?.dept_code || "consultation",
+          status,
+          actual_service_minutes: duration,
+          predicted_service_minutes: duration,
+          medical_condition: symptoms,
+          prescription_notes: prescription,
+          queue_date: queueDateOnly,
+          created_at: visitDateObj,
+          join_timestamp: visitDateObj,
+          serve_start_time: visitDateObj,
+          serve_end_time: new Date(visitDateObj.getTime() + duration * 60000),
+        },
+      });
+
+      await prisma.visit_history.create({
+        data: {
+          patient_id: patient.id,
+          hospital_id: hosp.id,
+          ticket_id: ticket.ticket_id,
+          doctor_name: doctorName,
+          department_name: dept?.name || "General OPD",
+          visit_date: queueDateOnly,
+          diagnosis: symptoms,
+          clinical_notes: symptoms,
+          advice: prescription,
+          created_at: visitDateObj,
+        },
+      });
+
+      results.imported_count++;
+    } catch (err) {
+      results.skipped_count++;
+      results.errors.push(`Row ${i + 1} (${patientName}): ${err.message}`);
+    }
+  }
+
+  return results;
+}
+
 module.exports = {
   getSuperAdminOverview,
   getAllHospitals,
@@ -1700,4 +2101,8 @@ module.exports = {
   bulkUpdateDeskStatus,
   getDatabaseOverview,
   getHospitalVisitHistory,
+  bulkAddHospitalEmployees,
+  bulkAddHospitalVisits,
+  findMatchingDepartment,
+  normalizeDeptString,
 };
