@@ -691,7 +691,7 @@ async function getDbOverviewEndpoint(req, res, next) {
 async function getHospitalVisitsEndpoint(req, res, next) {
   try {
     const hospitalCode = req.params.hospital_code;
-    const limit = parseInt(req.query.limit, 10) || 60;
+    const limit = parseInt(req.query.limit, 10) || 500;
     const history = await getHospitalVisitHistory(hospitalCode, limit);
     if (!history) {
       return res.status(404).json({

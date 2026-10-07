@@ -46,6 +46,7 @@ import {
     DesksManagementTab,
     DepartmentsTab,
     BrandingStudioTab,
+    PatientVisitsTab,
 } from "../components/superadmin/tabs";
 
 import {
@@ -89,8 +90,38 @@ export default function SuperAdminPage({
     const [searchQuery, setSearchQuery] = useState("");
     const [feedbackMsg, setFeedbackMsg] = useState("");
 
-    // Navigation Tabs: "overview" | "hospitals" | "employees" | "desks" | "depts" | "branding"
+    // Navigation Tabs: "overview" | "hospitals" | "employees" | "desks" | "depts" | "visits" | "branding"
     const [activeTab, setActiveTab] = useState("overview");
+
+    // Slider Bar State & Scrolling Logic
+    const tabsBarRef = useRef(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(true);
+
+    const updateScrollBounds = useCallback(() => {
+        const el = tabsBarRef.current;
+        if (!el) return;
+        const { scrollLeft, scrollWidth, clientWidth } = el;
+        setCanScrollLeft(scrollLeft > 6);
+        setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 6);
+    }, []);
+
+
+    useEffect(() => {
+        const el = tabsBarRef.current;
+        if (!el) return;
+        const activeEl = el.querySelector(`.tab-button-modern.active`);
+        if (activeEl) {
+            activeEl.scrollIntoView({ behavior: "smooth", inline: "nearest", block: "nearest" });
+        }
+        updateScrollBounds();
+    }, [activeTab, updateScrollBounds]);
+
+    useEffect(() => {
+        updateScrollBounds();
+        window.addEventListener("resize", updateScrollBounds);
+        return () => window.removeEventListener("resize", updateScrollBounds);
+    }, [updateScrollBounds]);
 
     // Deep-Dive Selected Hospital Mode
     const [selectedHospital, setSelectedHospital] = useState(null);
@@ -1137,7 +1168,7 @@ export default function SuperAdminPage({
                 fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/departments`, { headers }).then((r) => r.json()).catch(() => null),
                 fetch(`${API_BASE}/api/v1/plugin/analytics/${hCode}`).then((r) => r.json()).catch(() => null),
                 fetch(`${API_BASE}/api/v1/plugin/queue/snapshot/${hCode}`).then((r) => r.json()).catch(() => null),
-                fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/visits`, { headers }).then((r) => r.json()).catch(() => null),
+                fetch(`${API_BASE}/api/v1/superadmin/hospitals/${hCode}/visits?limit=500`, { headers }).then((r) => r.json()).catch(() => null),
             ]);
 
             if (detailRes && detailRes.status === "success") {
@@ -1231,8 +1262,8 @@ export default function SuperAdminPage({
                 setLastSyncedAt(new Date());
                 const docId = data.doctor_id;
                 const docEmail = (data.doctor_email || "").toLowerCase();
-                const newDuty = data.duty?.status || "ACTIVE";
-                const newStatus = newDuty === "OFF_DUTY" ? "inactive" : (newDuty === "ACTIVE" ? "active" : newDuty.toLowerCase());
+                const newDuty = (data.duty?.status || "ACTIVE").toUpperCase();
+                const newStatus = newDuty === "OFF_DUTY" ? "off_duty" : (newDuty === "ACTIVE" ? "active" : newDuty.toLowerCase());
 
                 setHospitalEmployees((prev) =>
                     prev.map((emp) => {
@@ -1253,6 +1284,7 @@ export default function SuperAdminPage({
                 fetchGlobalData(true);
             });
             socket.on("ticket_served", () => fetchHospitalDeepDive(hCode, true));
+            socket.on("ticket_transferred", () => fetchHospitalDeepDive(hCode, true));
             socket.on("ticket_completed", () => fetchHospitalDeepDive(hCode, true));
             socket.on("ticket_cancelled", () => fetchHospitalDeepDive(hCode, true));
             socket.on("desk_update", () => fetchHospitalDeepDive(hCode, true));
@@ -2335,7 +2367,7 @@ export default function SuperAdminPage({
                 </div>
             )}
 
-            {/* 2. UNIFIED SUPER ADMIN NAVIGATION HUB (6 TABS) */}
+            {/* 2. UNIFIED SUPER ADMIN NAVIGATION HUB (SLIDER BAR) */}
             <section className="superadmin-nav-section">
                 <div className="superadmin-nav-header">
                     <div className="superadmin-nav-title">
@@ -2351,175 +2383,124 @@ export default function SuperAdminPage({
                     </div>
                 </div>
 
-                <div className="superadmin-tabs-bar">
-                    {/* Tab 0: 360° Overview */}
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab("overview")}
-                        className={`tab-button-modern ${activeTab === "overview" ? "active" : "inactive"}`}
-                    >
-                        <div className="tab-icon-wrapper">
-                            <IconChart size={20} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                <span className="tab-title-text">
-                                    {isHi ? "360° अवलोकन" : "360° Overview"}
-                                </span>
-                            </div>
-                            <span className="tab-sub-text" style={{ color: activeTab === "overview" ? "#E0F2FE" : "#64748B" }}>
-                                {isHi ? "लाइव कतार, चार्ट, ऑडिट" : "Live Queue & Telemetry"}
-                            </span>
-                        </div>
-                    </button>
+                <div className="superadmin-tabs-slider-wrapper">
+                    {/* Left subtle edge gradient indicator */}
+                    <div className={`slider-edge-gradient left ${canScrollLeft ? "active" : ""}`} />
 
-                    {/* Tab 1: Hospitals Directory */}
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab("hospitals")}
-                        className={`tab-button-modern ${activeTab === "hospitals" ? "active" : "inactive"}`}
+                    <div
+                        className="superadmin-tabs-bar"
+                        ref={tabsBarRef}
+                        onScroll={updateScrollBounds}
                     >
-                        <div className="tab-icon-wrapper">
-                            <IconHospital size={20} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                <span className="tab-title-text">
-                                    {isHi ? "अस्पताल नेटवर्क" : "Hospitals"}
-                                </span>
-                                <span
-                                    className="tab-count-badge"
-                                    style={{
-                                        background: activeTab === "hospitals" ? "#FFFFFF" : "#0284C7",
-                                        color: activeTab === "hospitals" ? "#0284C7" : "#FFFFFF",
+                        {[
+                            {
+                                id: "overview",
+                                icon: <IconChart size={20} />,
+                                title: isHi ? "360° अवलोकन" : "360° Overview",
+                                subtitle: isHi ? "लाइव कतार, चार्ट, ऑडिट" : "Live Queue & Telemetry",
+                                badge: null,
+                            },
+                            {
+                                id: "hospitals",
+                                icon: <IconHospital size={20} />,
+                                title: isHi ? "अस्पताल नेटवर्क" : "Hospitals",
+                                subtitle: isHi ? "शाखाएं व स्थान" : "Branches & Locations",
+                                badge: hospitals.length,
+                            },
+                            {
+                                id: "employees",
+                                icon: <IconUsers size={20} />,
+                                title: isHi ? "स्टाफ" : "Staff",
+                                subtitle: isHi ? "डॉक्टर, स्टाफ, क्रेडेंशियल" : "Clinicians & Employees",
+                                badge: hospitalEmployees.length,
+                            },
+                            {
+                                id: "desks",
+                                icon: <IconDesk size={20} />,
+                                title: isHi ? "सक्रिय काउंटर/डेस्क" : "Active Desks",
+                                subtitle: isHi ? "जोड़ें / हटाएं / स्थिति" : "Add, Remove & Status",
+                                badge: `${hospitalDesksData.active_desks || 0}/${hospitalDesksData.total_desks || 0}`,
+                            },
+                            {
+                                id: "depts",
+                                icon: <IconBuilding size={20} />,
+                                title: isHi ? "क्लिनिकल विभाग" : "Departments",
+                                subtitle: isHi ? "जोड़ें / हटाएं / OPD, Lab" : "Add, Remove Categories",
+                                badge: hospitalDepts.length,
+                            },
+                            {
+                                id: "visits",
+                                icon: <IconFileText size={20} />,
+                                title: isHi ? "मरीज़ विज़िट" : "Patient Visits",
+                                subtitle: isHi ? "परामर्श व विज़िट इतिहास" : "Consultation Archive",
+                                badge: hospitalVisitsData?.summary?.total_patients_visited_all_time ?? hospitalVisitsData?.visits?.length ?? 0,
+                            },
+                            {
+                                id: "branding",
+                                icon: <IconPalette size={20} />,
+                                title: isHi ? "कस्टमाइज़ेशन व ब्रांडिंग" : "Branding Studio",
+                                subtitle: isHi ? "प्रोफाइल, थीम, लोगो, समय" : "Profile, Theme, Logo & Hours",
+                                badge: null,
+                            },
+                        ].map((tab) => {
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    data-tab={tab.id}
+                                    onClick={() => {
+                                        setActiveTab(tab.id);
+                                        if (tab.id === "branding") {
+                                            setActiveBrandingTab("profile");
+                                            const target = selectedHospital || hospitals[0];
+                                            if (target) {
+                                                loadHospitalBrandingData(target);
+                                            }
+                                        }
                                     }}
+                                    className={`tab-button-modern ${isActive ? "active" : "inactive"}`}
                                 >
-                                    {hospitals.length}
-                                </span>
-                            </div>
-                            <span className="tab-sub-text" style={{ color: activeTab === "hospitals" ? "#E0F2FE" : "#64748B" }}>
-                                {isHi ? "शाखाएं व स्थान" : "Branches & Locations"}
-                            </span>
-                        </div>
-                    </button>
+                                    <div className="tab-icon-wrapper">
+                                        {tab.icon}
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                                            <span className="tab-title-text" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                {tab.title}
+                                            </span>
+                                            {tab.badge !== null && (
+                                                <span
+                                                    className="tab-count-badge"
+                                                    style={{
+                                                        background: isActive ? "#FFFFFF" : "#0284C7",
+                                                        color: isActive ? "#0284C7" : "#FFFFFF",
+                                                        flexShrink: 0,
+                                                    }}
+                                                >
+                                                    {tab.badge}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span
+                                            className="tab-sub-text"
+                                            style={{
+                                                color: isActive ? "#E0F2FE" : "#64748B",
+                                                whiteSpace: "nowrap",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                            }}
+                                        >
+                                            {tab.subtitle}
+                                        </span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
 
-                    {/* Tab 2: Staff & Clinicians */}
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab("employees")}
-                        className={`tab-button-modern ${activeTab === "employees" ? "active" : "inactive"}`}
-                    >
-                        <div className="tab-icon-wrapper">
-                            <IconUsers size={20} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                <span className="tab-title-text">
-                                    {isHi ? "स्टाफ" : "Staff"}
-                                </span>
-                                <span
-                                    className="tab-count-badge"
-                                    style={{
-                                        background: activeTab === "employees" ? "#FFFFFF" : "#0284C7",
-                                        color: activeTab === "employees" ? "#0284C7" : "#FFFFFF",
-                                    }}
-                                >
-                                    {hospitalEmployees.length}
-                                </span>
-                            </div>
-                            <span className="tab-sub-text" style={{ color: activeTab === "employees" ? "#E0F2FE" : "#64748B" }}>
-                                {isHi ? "डॉक्टर, स्टाफ, क्रेडेंशियल" : "Clinicians & Employees"}
-                            </span>
-                        </div>
-                    </button>
-
-                    {/* Tab 3: Active Desks */}
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab("desks")}
-                        className={`tab-button-modern ${activeTab === "desks" ? "active" : "inactive"}`}
-                    >
-                        <div className="tab-icon-wrapper">
-                            <IconDesk size={20} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                <span className="tab-title-text">
-                                    {isHi ? "सक्रिय काउंटर/डेस्क" : "Active Desks"}
-                                </span>
-                                <span
-                                    className="tab-count-badge"
-                                    style={{
-                                        background: activeTab === "desks" ? "#FFFFFF" : "#0284C7",
-                                        color: activeTab === "desks" ? "#0284C7" : "#FFFFFF",
-                                    }}
-                                >
-                                    {hospitalDesksData.active_desks || 0}/{hospitalDesksData.total_desks || 0}
-                                </span>
-                            </div>
-                            <span className="tab-sub-text" style={{ color: activeTab === "desks" ? "#E0F2FE" : "#64748B" }}>
-                                {isHi ? "जोड़ें / हटाएं / स्थिति" : "Add, Remove & Status"}
-                            </span>
-                        </div>
-                    </button>
-
-                    {/* Tab 4: Clinical Departments */}
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab("depts")}
-                        className={`tab-button-modern ${activeTab === "depts" ? "active" : "inactive"}`}
-                    >
-                        <div className="tab-icon-wrapper">
-                            <IconBuilding size={20} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                <span className="tab-title-text">
-                                    {isHi ? "क्लिनिकल विभाग" : "Departments"}
-                                </span>
-                                <span
-                                    className="tab-count-badge"
-                                    style={{
-                                        background: activeTab === "depts" ? "#FFFFFF" : "#0284C7",
-                                        color: activeTab === "depts" ? "#0284C7" : "#FFFFFF",
-                                    }}
-                                >
-                                    {hospitalDepts.length}
-                                </span>
-                            </div>
-                            <span className="tab-sub-text" style={{ color: activeTab === "depts" ? "#E0F2FE" : "#64748B" }}>
-                                {isHi ? "जोड़ें / हटाएं / OPD, Lab" : "Add, Remove Categories"}
-                            </span>
-                        </div>
-                    </button>
-
-                    {/* Tab 5: Hospital Customization & Branding Studio */}
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setActiveTab("branding");
-                            setActiveBrandingTab("profile");
-                            const target = selectedHospital || hospitals[0];
-                            if (target) {
-                                loadHospitalBrandingData(target);
-                            }
-                        }}
-                        className={`tab-button-modern ${activeTab === "branding" ? "active" : "inactive"}`}
-                    >
-                        <div className="tab-icon-wrapper">
-                            <IconPalette size={20} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center" }}>
-                                <span className="tab-title-text">
-                                    {isHi ? "कस्टमाइज़ेशन व ब्रांडिंग" : "Branding Studio"}
-                                </span>
-                            </div>
-                            <span className="tab-sub-text" style={{ color: activeTab === "branding" ? "#E0F2FE" : "#64748B" }}>
-                                {isHi ? "प्रोफाइल, थीम, लोगो, समय" : "Profile, Theme, Logo & Hours"}
-                            </span>
-                        </div>
-                    </button>
+                    {/* Right subtle edge gradient indicator */}
+                    <div className={`slider-edge-gradient right ${canScrollRight ? "active" : ""}`} />
                 </div>
             </section>
 
@@ -2594,6 +2575,7 @@ export default function SuperAdminPage({
                                 setActiveTab("branding");
                                 window.scrollTo({ top: 380, behavior: "smooth" });
                             }}
+                            hospitalVisitsData={hospitalVisitsData}
                             isHi={isHi}
                         />
                     )}
@@ -2608,6 +2590,7 @@ export default function SuperAdminPage({
                                 if (onSelectHospitalTenant) onSelectHospitalTenant(hosp.hospital_code);
                             }}
                             hospitalEmployees={hospitalEmployees}
+                            hospitalDepts={hospitalDepts}
                             employeeStatusFilter={employeeStatusFilter}
                             setEmployeeStatusFilter={setEmployeeStatusFilter}
                             employeeSearchQuery={employeeSearchQuery}
@@ -2652,6 +2635,9 @@ export default function SuperAdminPage({
                             notify={notify}
                             language={language}
                             isHi={isHi}
+                            getAuthHeaders={getAuthHeaders}
+                            fetchHospitalDeepDive={fetchHospitalDeepDive}
+                            fetchGlobalData={fetchGlobalData}
                         />
                     )}
 
@@ -2729,7 +2715,21 @@ export default function SuperAdminPage({
                         />
                     )}
 
-                    {/* TAB 5: BRANDING STUDIO */}
+                    {/* TAB 5: PATIENT VISITS ARCHIVE */}
+                    {activeTab === "visits" && (
+                        <PatientVisitsTab
+                            selectedHospital={selectedHospital}
+                            hospitals={hospitals}
+                            notify={notify}
+                            isHi={isHi}
+                            getAuthHeaders={getAuthHeaders}
+                            hospitalVisitsData={hospitalVisitsData}
+                            handleDownloadVisitHistory={handleDownloadVisitHistory}
+                            fetchHospitalDeepDive={fetchHospitalDeepDive}
+                        />
+                    )}
+
+                    {/* TAB 6: BRANDING STUDIO */}
                     {activeTab === "branding" && (
                         <BrandingStudioTab
                             brandingTargetHospital={brandingTargetHospital}

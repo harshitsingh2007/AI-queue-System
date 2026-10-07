@@ -607,72 +607,47 @@ async function getUserHistory(req, res, next) {
       } catch (e) {}
     }
 
-    // Build lookup map to connect transfer chains
-    const ticketMap = new Map();
-    for (const t of tickets) {
-      ticketMap.set(t.ticket_id, t);
-    }
-
-    const formatted = tickets.map((t) => {
-      const transfers = [];
-
-      // 1. Outgoing transfer events recorded for this ticket
-      if (Array.isArray(t.queue_events)) {
-        for (const ev of t.queue_events) {
-          if (ev.event_type === "TRANSFERRED" && ev.metadata) {
-            transfers.push({
-              direction: "outgoing",
-              from_department: t.departments?.name || t.service_category,
-              to_department: ev.metadata.target_dept || "",
-              transferred_to_ticket: ev.metadata.transferred_to_ticket || "",
-              timestamp: ev.created_at ? ev.created_at.toISOString() : null,
-              notes: t.prescription_notes || "",
-            });
+    // Helper: safely parse clinical prescription notes JSON / string
+    function parseRxSafe(raw) {
+      if (!raw) return null;
+      if (typeof raw === "object") return raw;
+      if (typeof raw === "string") {
+        let trimmed = raw.trim();
+        while ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+          trimmed = trimmed.slice(1, -1).trim();
+        }
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+          try {
+            return JSON.parse(trimmed);
+          } catch (e) {
+            try { return JSON.parse(JSON.parse(raw)); } catch (e2) {}
           }
         }
       }
+      return null;
+    }
 
-      // 2. Incoming transfer if this ticket was created via transfer from parent
-      if (t.parent_ticket_id || t.transferred_from_dept) {
-        const parentTkt = ticketMap.get(t.parent_ticket_id);
-        const fromDept = t.transferred_from_dept || (parentTkt?.departments?.name || parentTkt?.service_category) || "Previous Department";
-        transfers.unshift({
-          direction: "incoming",
-          from_department: fromDept,
-          to_department: t.departments?.name || t.service_category,
-          transferred_from_ticket: t.parent_ticket_id || "",
-          timestamp: t.join_timestamp ? t.join_timestamp.toISOString() : null,
-          notes: parentTkt?.prescription_notes || t.prescription_notes || "",
-        });
-      }
-
-      // Resolve attending doctor name
+    // Helper: resolve doctor name for a ticket
+    function resolveDoctorNameForTicket(t) {
       let docName = "";
-      // 1. in-memory queue
       const inMem = engine._getTenant(t.hospitals?.hospital_code || "city-hospital-01")?.tickets?.get(t.ticket_id);
       if (inMem?.served_by_doctor_name) {
         docName = inMem.served_by_doctor_name;
       }
-      // 2. prescriptions table
       if (!docName && prescriptionsByTicketId.get(t.ticket_id)?.doctor_name) {
         docName = prescriptionsByTicketId.get(t.ticket_id).doctor_name;
       }
-      // 3. visit_history table
       if (!docName && visitsByTicketId.get(t.ticket_id)?.doctor_name) {
         docName = visitsByTicketId.get(t.ticket_id).doctor_name;
       }
-      // 4. prescription_notes JSON
       if (!docName && t.prescription_notes) {
         try {
-          const rx = typeof t.prescription_notes === "object"
-            ? t.prescription_notes
-            : JSON.parse(t.prescription_notes);
+          const rx = typeof t.prescription_notes === "object" ? t.prescription_notes : JSON.parse(t.prescription_notes);
           if (rx?.doctor_name && rx.doctor_name !== "Dr. Staff Desk") {
             docName = rx.doctor_name;
           }
         } catch (e) {}
       }
-      // 5. queue_events metadata
       if (!docName && Array.isArray(t.queue_events)) {
         for (const ev of t.queue_events) {
           if (ev.metadata?.doctor_name && ev.metadata.doctor_name !== "Dr. Staff Desk") {
@@ -681,21 +656,177 @@ async function getUserHistory(req, res, next) {
           }
         }
       }
-      // 6. Department assigned doctor fallback
       if (!docName && t.departments?.employees && t.departments.employees.length > 0) {
         const activeDoc = t.departments.employees.find((e) => (e.status || "").toLowerCase() === "active") || t.departments.employees[0];
         if (activeDoc?.name) {
           docName = activeDoc.name;
         }
       }
-
       if (docName && !docName.startsWith("Dr.") && !docName.startsWith("Dr ")) {
         docName = `Dr. ${docName}`;
       }
+      return docName || null;
+    }
 
-      const transferCount = transfers.length;
+    // Build lookup map to connect transfer chains
+    const ticketMap = new Map();
+    for (const t of tickets) {
+      ticketMap.set(String(t.ticket_id), t);
+    }
 
-      return {
+    // Identify parent tickets that have a child ticket in the list
+    const parentIdSet = new Set();
+    for (const t of tickets) {
+      if (t.parent_ticket_id && ticketMap.has(String(t.parent_ticket_id))) {
+        parentIdSet.add(String(t.parent_ticket_id));
+      }
+      if (Array.isArray(t.queue_events)) {
+        for (const ev of t.queue_events) {
+          if (ev.event_type === "TRANSFERRED" && ev.metadata?.transferred_to_ticket) {
+            if (ticketMap.has(String(ev.metadata.transferred_to_ticket))) {
+              parentIdSet.add(String(t.ticket_id));
+            }
+          }
+        }
+      }
+    }
+
+    const formatted = [];
+
+    for (const t of tickets) {
+      const tid = String(t.ticket_id || "");
+      const s = String(t.status || "").toLowerCase();
+
+      // If this ticket is marked "transferred" and its target child ticket is present in this history list,
+      // skip it as an independent standalone row so it collapses into the unified visit card.
+      if (s === "transferred" && parentIdSet.has(tid)) {
+        continue;
+      }
+
+      // Build consultation journey stages by walking UP parent_ticket_id links
+      const stages = [];
+      let curr = t;
+      const visitedInChain = new Set();
+
+      while (curr && !visitedInChain.has(String(curr.ticket_id))) {
+        visitedInChain.add(String(curr.ticket_id));
+        const stageDoc = resolveDoctorNameForTicket(curr);
+        const stageDept = curr.departments?.name || curr.service_category || "General OPD";
+
+        stages.unshift({
+          ticket_id: curr.ticket_id,
+          department: stageDept,
+          dept_code: curr.departments?.dept_code || curr.service_category || "consultation",
+          doctor_name: stageDoc || "",
+          status: (curr.status || "").toLowerCase(),
+          prescription_notes: curr.prescription_notes || "",
+          medical_condition: curr.medical_condition || "",
+          serve_start_time: curr.serve_start_time ? curr.serve_start_time.toISOString() : null,
+          serve_end_time: curr.serve_end_time ? curr.serve_end_time.toISOString() : null,
+          actual_service_minutes: curr.actual_service_minutes || null,
+          created_at: curr.join_timestamp ? curr.join_timestamp.toISOString() : (curr.created_at ? curr.created_at.toISOString() : null),
+        });
+
+        if (curr.parent_ticket_id && ticketMap.has(String(curr.parent_ticket_id))) {
+          curr = ticketMap.get(String(curr.parent_ticket_id));
+        } else {
+          // Check queue_events transfer target
+          const parentByEvent = tickets.find((ot) => {
+            if (visitedInChain.has(String(ot.ticket_id))) return false;
+            return ot.queue_events?.some(
+              (ev) => ev.event_type === "TRANSFERRED" && String(ev.metadata?.transferred_to_ticket) === String(curr.ticket_id)
+            );
+          });
+          if (parentByEvent) {
+            curr = parentByEvent;
+          } else {
+            break;
+          }
+        }
+      }
+
+      stages.forEach((stg, idx) => {
+        stg.stage_number = idx + 1;
+      });
+
+      const isTransferred = stages.length > 1 || Boolean(t.transferred_from_dept) || Boolean(t.parent_ticket_id);
+      const transferTrail = stages
+        .map((stg) => stg.department)
+        .filter((dept, idx, arr) => idx === 0 || dept !== arr[idx - 1])
+        .join(" → ");
+      const originDept = stages[0]?.department || t.transferred_from_dept || t.departments?.name || t.service_category || "General OPD";
+      const docName = resolveDoctorNameForTicket(t) || stages[stages.length - 1]?.doctor_name || stages[0]?.doctor_name || null;
+      const allDoctors = Array.from(new Set(stages.map((stg) => stg.doctor_name).filter(Boolean)));
+
+      // Merge multi-stage prescription notes into a unified structured clinical record
+      let unifiedPrescriptionNotes = t.prescription_notes || "";
+      if (stages.length > 1) {
+        let mergedDiag = "";
+        let mergedAdvices = [];
+        let mergedLabTests = [];
+        let mergedFollowUp = "";
+        let mergedMeds = [];
+        const seenMeds = new Set();
+        let targetDept = "";
+        let transferNotes = "";
+
+        for (const stg of stages) {
+          const rx = parseRxSafe(stg.notes);
+          if (rx) {
+            if (rx.diagnosis && rx.diagnosis !== "Clinical Consultation" && rx.diagnosis !== "General OPD") {
+              mergedDiag = rx.diagnosis;
+            }
+            if (rx.advice && rx.advice.trim()) {
+              mergedAdvices.push(rx.advice.trim());
+            }
+            if (rx.lab_tests && rx.lab_tests !== "no") {
+              mergedLabTests.push(rx.lab_tests);
+            }
+            if (rx.follow_up) {
+              mergedFollowUp = rx.follow_up;
+            }
+            if (rx.target_department) targetDept = rx.target_department;
+            if (rx.transfer_notes) transferNotes = rx.transfer_notes;
+
+            if (Array.isArray(rx.medicines)) {
+              for (const med of rx.medicines) {
+                const k = `${String(med.name || "").toLowerCase().trim()}_${String(med.dosage || "").toLowerCase().trim()}`;
+                if (!seenMeds.has(k)) {
+                  seenMeds.add(k);
+                  mergedMeds.push(med);
+                }
+              }
+            }
+          }
+        }
+
+        const topRx = parseRxSafe(t.prescription_notes);
+        if (topRx) {
+          if (topRx.diagnosis) mergedDiag = topRx.diagnosis;
+          if (topRx.follow_up) mergedFollowUp = topRx.follow_up;
+        }
+
+        const consolidated = {
+          doctor_name: docName || "Consultant Physician",
+          doctor_department: t.departments?.name || t.service_category || "General OPD",
+          doctor_employee_id: topRx?.doctor_employee_id || "",
+          diagnosis: mergedDiag || t.medical_condition || "Clinical Consultation",
+          medicines: mergedMeds,
+          lab_tests: mergedLabTests.join(", "),
+          advice: mergedAdvices.join(" • ") || "Clinical consultation completed.",
+          follow_up: mergedFollowUp || "Review as advised",
+          target_department: targetDept,
+          transfer_notes: transferNotes,
+          stages: stages,
+          prescribed_at: t.serve_end_time ? t.serve_end_time.toISOString() : (t.join_timestamp ? t.join_timestamp.toISOString() : new Date().toISOString()),
+        };
+        unifiedPrescriptionNotes = JSON.stringify(consolidated);
+      }
+
+      // Root ticket for timestamp
+      const rootTicket = stages[0] ? ticketMap.get(String(stages[0].ticket_id)) || t : t;
+
+      formatted.push({
         ticket_id: t.ticket_id,
         name: t.name,
         status: t.status,
@@ -703,11 +834,11 @@ async function getUserHistory(req, res, next) {
         priority_level: t.priority_level,
         position: t.position,
         estimated_wait_minutes: t.estimated_wait_minutes,
-        created_at: t.join_timestamp ? t.join_timestamp.toISOString() : null,
+        created_at: rootTicket.join_timestamp ? rootTicket.join_timestamp.toISOString() : (t.join_timestamp ? t.join_timestamp.toISOString() : null),
         serve_start_time: t.serve_start_time ? t.serve_start_time.toISOString() : null,
         serve_end_time: t.serve_end_time ? t.serve_end_time.toISOString() : null,
         actual_service_minutes: t.actual_service_minutes,
-        prescription_notes: t.prescription_notes || "",
+        prescription_notes: unifiedPrescriptionNotes,
         cancellation_reason: t.cancellation_reason || "",
         cancelled_at: t.cancelled_at ? t.cancelled_at.toISOString() : null,
         medical_condition: t.medical_condition,
@@ -717,14 +848,18 @@ async function getUserHistory(req, res, next) {
         hospital_code: t.hospitals?.hospital_code || "city-hospital-01",
         hospital_name: t.hospitals?.name || "City General Hospital",
         department_name: t.departments?.name || t.service_category,
-        doctor_name: docName || null,
-        served_by_doctor_name: docName || null,
+        doctor_name: docName,
+        served_by_doctor_name: docName,
+        all_doctors: allDoctors,
         parent_ticket_id: t.parent_ticket_id || "",
-        transferred_from_dept: t.transferred_from_dept || "",
-        transfer_count: transferCount,
-        transfers: transfers,
-      };
-    });
+        transferred_from_dept: isTransferred ? originDept : (t.transferred_from_dept || ""),
+        is_transferred: isTransferred,
+        transfer_trail: isTransferred ? transferTrail : null,
+        transfer_stages: stages,
+        transfer_count: stages.length > 1 ? stages.length - 1 : 0,
+        transfers: stages.length > 1 ? stages : [],
+      });
+    }
 
     return res.status(200).json({
       status: "success",

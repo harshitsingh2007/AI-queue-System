@@ -22,6 +22,7 @@ export default function HospitalsDirectoryTab({
     onDeleteHospital,
     onManageStaff,
     onCustomizeBranding,
+    hospitalVisitsData,
     isHi = false
 }) {
     const filteredHospitals = hospitals.filter((h) => {
@@ -171,7 +172,11 @@ export default function HospitalsDirectoryTab({
                             </div>
                             <div style={{ textAlign: "center" }}>
                                 <span style={{ fontSize: "9.5px", color: "var(--superadmin-text-muted, #94A3B8)", fontWeight: 700, display: "block" }}>{isHi ? "विज़िट" : "Visits"}</span>
-                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#FBBF24" }}>{hosp.patients_today ?? hosp.total_visits ?? 0}</span>
+                                <span style={{ fontSize: "13px", fontWeight: 800, color: "#FBBF24" }}>
+                                    {(selectedHospital?.hospital_code === hosp.hospital_code && hospitalVisitsData?.summary?.today_completed != null)
+                                        ? hospitalVisitsData.summary.today_completed
+                                        : (hosp.completed_today ?? hosp.patients_today ?? 0)}
+                                </span>
                             </div>
                         </div>
 

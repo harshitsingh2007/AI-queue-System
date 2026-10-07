@@ -43,7 +43,7 @@ export default function NABHReportModal({
     const bottleneckAnalytics = computeDepartmentBottlenecks ? computeDepartmentBottlenecks(deptsList, queueList, visitsList) : [];
 
     const safeTotalPatients = hospitalVisitsData?.summary?.total_patients_visited_all_time ?? (hospitalAnalytics?.total_patients_visited_all_time || visitsList.length);
-    const safeCompleted = hospitalAnalytics?.completed_today ?? (hospitalVisitsData?.summary?.today_completed || 0);
+    const safeCompleted = hospitalVisitsData?.summary?.today_completed ?? hospitalAnalytics?.completed_today ?? 0;
     const safeWaiting = hospitalAnalytics?.waiting_count ?? queueList.filter((q) => (q.status || "").toLowerCase() === "waiting").length;
     const safeAvgWait = hospitalAnalytics?.avg_wait_minutes ?? 12;
     const activeDoctorsCount = (hospitalEmployees || []).filter((e) => {

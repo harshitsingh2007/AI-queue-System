@@ -25,8 +25,6 @@ import {
     fieldInputStyle,
 } from "../superAdminStyles";
 import { generateOperatingHoursText } from "../../../utils/operatingHoursHelper";
-import BrandingStaffSubTab from "./branding/BrandingStaffSubTab";
-import BrandingPatientHistorySubTab from "./branding/BrandingPatientHistorySubTab";
 import "../SuperAdmin.css";
 
 export default function BrandingStudioTab({
@@ -455,8 +453,6 @@ export default function BrandingStudioTab({
                     { id: "logo", label: isHi ? "लोगो और आइकन" : "Logo & Favicon", icon: IconImage },
                     { id: "about", label: isHi ? "अबाउट अस मॉडल" : "About Us Modal", icon: IconBookOpen },
                     { id: "hours", label: isHi ? "संचालन समय व कटऑफ" : "Operating Hours & Cutoff", icon: IconClock },
-                    { id: "staff", label: isHi ? "कर्मचारी व डॉक्टर" : "Staff & Add Doctor", icon: IconUsers },
-                    { id: "patient_history", label: isHi ? "मरीज़ विज़िट इतिहास" : "Patient Visit History", icon: IconFileText },
                 ].map((tab) => {
                     const isActive = activeBrandingTab === tab.id;
                     return (
@@ -473,35 +469,8 @@ export default function BrandingStudioTab({
                 })}
             </div>
 
-            {/* 3. STUDIO WORKSPACE (FULL-WIDTH MANAGEMENT OR 2-COLUMN SIMULATOR) */}
-            {["staff", "patient_history"].includes(activeBrandingTab) ? (
-                <div style={{ width: "100%", marginTop: "6px" }}>
-                    {activeBrandingTab === "staff" && (
-                        <BrandingStaffSubTab
-                            currentHosp={currentHosp}
-                            notify={notify}
-                            isHi={isHi}
-                            getAuthHeaders={getAuthHeaders}
-                            hospitalEmployees={hospitalEmployees}
-                            hospitalDepts={hospitalDepts}
-                            fetchHospitalDeepDive={fetchHospitalDeepDive}
-                            fetchGlobalData={fetchGlobalData}
-                        />
-                    )}
-                    {activeBrandingTab === "patient_history" && (
-                        <BrandingPatientHistorySubTab
-                            currentHosp={currentHosp}
-                            notify={notify}
-                            isHi={isHi}
-                            getAuthHeaders={getAuthHeaders}
-                            hospitalVisitsData={hospitalVisitsData}
-                            handleDownloadVisitHistory={handleDownloadVisitHistory}
-                            fetchHospitalDeepDive={fetchHospitalDeepDive}
-                        />
-                    )}
-                </div>
-            ) : (
-                <div className="branding-studio-grid">
+            {/* 3. STUDIO WORKSPACE (2-COLUMN SIMULATOR) */}
+            <div className="branding-studio-grid">
                     {/* LEFT COLUMN: Configuration Form Controls */}
                     <form onSubmit={(e) => handleSaveBrandingSubmit(e, currentHosp)} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
                         {/* TAB 0: HOSPITAL PROFILE & CORE CONFIGURATION */}
@@ -2208,7 +2177,6 @@ export default function BrandingStudioTab({
                     </div>
                 </div>
             </div>
-            )}
         </div>
     );
 }

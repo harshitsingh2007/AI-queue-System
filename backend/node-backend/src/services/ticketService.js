@@ -63,7 +63,7 @@ async function setDoctorDutyStatus(docIdentifier, statusData = {}) {
     const targetEmail = statusData.email || (String(docIdentifier).includes("@") ? String(docIdentifier).trim().toLowerCase() : null);
     const targetUserId = statusData.userId || (!isNaN(Number(docIdentifier)) ? Number(docIdentifier) : null);
 
-    const empStatus = finalStatus === "OFF_DUTY" ? "inactive" : (finalStatus === "ACTIVE" ? "active" : finalStatus.toLowerCase());
+    const empStatus = finalStatus === "OFF_DUTY" ? "off_duty" : (finalStatus === "ACTIVE" ? "active" : finalStatus.toLowerCase());
 
     const orClauses = [];
     if (targetEmail) orClauses.push({ email: targetEmail });

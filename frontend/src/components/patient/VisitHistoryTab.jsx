@@ -322,6 +322,23 @@ export default function VisitHistoryTab({
                       }}>
                         {getStatusLabel(tk.status, language)}
                       </span>
+                      {tk.transfer_stages && tk.transfer_stages.length > 1 && (
+                        <span style={{
+                          padding: "3px 8px",
+                          borderRadius: "6px",
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          background: "#EFF6FF",
+                          color: "#0284C7",
+                          border: "1px solid #BAE6FD",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}>
+                          <span>🔄</span>
+                          <span>{language === "hi" ? `मल्टी-डिपार्टमेंट (${tk.transfer_stages.length} चरण)` : `Multi-Dept (${tk.transfer_stages.length} Stages)`}</span>
+                        </span>
+                      )}
                       <span style={{
                         fontSize: "11px",
                         fontWeight: 700,
@@ -348,6 +365,28 @@ export default function VisitHistoryTab({
                       {tk.name} • {getCategoryLabel(tk.service_category, language)}
                     </p>
 
+                    {/* Care Journey Trail for multi-stage transfer */}
+                    {tk.transfer_trail && (
+                      <div style={{
+                        marginTop: "4px",
+                        marginBottom: "4px",
+                        padding: "4px 10px",
+                        borderRadius: "8px",
+                        background: "rgba(2, 132, 199, 0.06)",
+                        border: "1px solid #BAE6FD",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "#0369A1",
+                        flexWrap: "wrap",
+                      }}>
+                        <span>🧭 {language === "hi" ? "परामर्श यात्रा:" : "Care Journey:"}</span>
+                        <span>{tk.transfer_trail}</span>
+                      </div>
+                    )}
+
                     <span style={{ fontSize: "12.5px", color: "var(--patient-text-sub, #64748B)", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "4px" }}>
                       <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/><path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4"/><line x1="10" y1="9" x2="14" y2="9"/><line x1="12" y1="7" x2="12" y2="11"/></svg>
@@ -361,7 +400,15 @@ export default function VisitHistoryTab({
                           <span>Dept: {tk.department_name}</span>
                         </>
                       )}
-                      {(tk.doctor_name || tk.served_by_doctor_name) && (
+                      {(tk.all_doctors && tk.all_doctors.length > 1) ? (
+                        <>
+                          <span>•</span>
+                          <span style={{ color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></svg>
+                            <span>{language === "hi" ? "चिकित्सक दल" : "Doctors"}: {tk.all_doctors.join(" • ")}</span>
+                          </span>
+                        </>
+                      ) : (tk.doctor_name || tk.served_by_doctor_name) ? (
                         <>
                           <span>•</span>
                           <span style={{ color: "#0284C7", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
@@ -369,7 +416,7 @@ export default function VisitHistoryTab({
                             <span>{language === "hi" ? "चिकित्सक" : "Doctor"}: {tk.doctor_name || tk.served_by_doctor_name}</span>
                           </span>
                         </>
-                      )}
+                      ) : null}
                     </span>
                     {tk.cancellation_reason && (
                       <p style={{ margin: "4px 0 0 0", fontSize: "11.5px", color: "#DC2626", fontStyle: "italic" }}>

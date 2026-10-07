@@ -627,12 +627,50 @@ export default function PatientPage({
       const resolvedDoctor = (parsed.doctor_name && parsed.doctor_name !== "Dr. Staff Desk")
         ? parsed.doctor_name
         : (fallbackTicket?.doctor_name || fallbackTicket?.served_by_doctor_name || (parsed.doctor_name !== "Dr. Staff Desk" ? parsed.doctor_name : "") || "Consultant Physician");
+
+      const resolvedStages = (Array.isArray(fallbackTicket?.transfer_stages) && fallbackTicket.transfer_stages.length > 0)
+        ? fallbackTicket.transfer_stages
+        : (Array.isArray(parsed.stages) ? parsed.stages : []);
+
+      let allMeds = Array.isArray(parsed.medicines) ? [...parsed.medicines] : [];
+      let allLabTests = parsed.lab_tests ? [parsed.lab_tests] : [];
+      let allAdvices = parsed.advice ? [parsed.advice] : [];
+
+      if (resolvedStages.length > 0) {
+        const seenMeds = new Set(allMeds.map((m) => `${String(m.name || "").toLowerCase()}_${String(m.dosage || "").toLowerCase()}`));
+        resolvedStages.forEach((stg) => {
+          let stgRx = null;
+          try {
+            if (stg.prescription_notes) {
+              stgRx = typeof stg.prescription_notes === "object" ? stg.prescription_notes : JSON.parse(stg.prescription_notes);
+            }
+          } catch (e) {}
+          if (stgRx) {
+            if (Array.isArray(stgRx.medicines)) {
+              stgRx.medicines.forEach((m) => {
+                const k = `${String(m.name || "").toLowerCase()}_${String(m.dosage || "").toLowerCase()}`;
+                if (!seenMeds.has(k)) {
+                  seenMeds.add(k);
+                  allMeds.push(m);
+                }
+              });
+            }
+            if (stgRx.lab_tests && stgRx.lab_tests !== "no" && !allLabTests.includes(stgRx.lab_tests)) {
+              allLabTests.push(stgRx.lab_tests);
+            }
+            if (stgRx.advice && stgRx.advice.trim() && !allAdvices.includes(stgRx.advice.trim())) {
+              allAdvices.push(stgRx.advice.trim());
+            }
+          }
+        });
+      }
+
       return {
         doctor_name: formatCleanText(resolvedDoctor, language),
         doctor_department: formatCleanText(parsed.doctor_department || fallbackTicket?.service_category || fallbackTicket?.department_name || "General OPD", language),
         doctor_employee_id: parsed.doctor_employee_id || "",
         diagnosis: formatCleanText(parsed.diagnosis || fallbackTicket?.medical_condition || "Clinical Consultation", language),
-        medicines: (Array.isArray(parsed.medicines) ? parsed.medicines : []).map((m) => ({
+        medicines: allMeds.map((m) => ({
           ...m,
           name: formatCleanText(m.name, language),
           dosage: m.dosage ? formatCleanText(m.dosage, language) : "",
@@ -640,8 +678,8 @@ export default function PatientPage({
           duration: m.duration ? formatCleanText(m.duration, language) : "",
           instructions: m.instructions ? formatCleanText(m.instructions, language) : "After food",
         })),
-        lab_tests: parsed.lab_tests ? formatCleanText(parsed.lab_tests, language) : "",
-        advice: parsed.advice ? String(parsed.advice).replace(/_/g, " ") : "",
+        lab_tests: formatCleanText(allLabTests.join(", "), language),
+        advice: allAdvices.join(" • ").replace(/_/g, " "),
         follow_up: parsed.follow_up ? formatCleanText(parsed.follow_up, language) : "",
         transfer_notes: parsed.transfer_notes ? String(parsed.transfer_notes).replace(/_/g, " ") : "",
         target_department: parsed.target_department ? formatCleanText(parsed.target_department, language) : "",
@@ -652,6 +690,10 @@ export default function PatientPage({
         gender: formatCleanText(fallbackTicket?.gender || "Patient", language),
         hospital_name: fallbackTicket?.hospital_name || (fallbackTicket?.hospital_code && Array.isArray(hospitalsList) && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.name) || currentHospitalDisplayName,
         logo_url: fallbackTicket?.logo_url || hospitalBranding?.logo_url || (fallbackTicket?.hospital_code && Array.isArray(hospitalsList) && hospitalsList.find((h) => String(h.hospital_code) === String(fallbackTicket.hospital_code))?.logo_url) || "",
+        stages: resolvedStages,
+        transfer_stages: resolvedStages,
+        transfer_trail: fallbackTicket?.transfer_trail || null,
+        is_transferred: Boolean(fallbackTicket?.is_transferred || resolvedStages.length > 1),
       };
     }
 
@@ -1121,9 +1163,183 @@ export default function PatientPage({
     });
   }, [userAppointments, userTicketHistory, showCancelledHistory, doesRecordMatchMember, selectedMember]);
 
+  // Helper: safely collapse multi-stage transferred tickets of a visit journey into ONE unified ticket
+  const collapseTicketJourneys = useCallback((ticketsList) => {
+    if (!Array.isArray(ticketsList) || ticketsList.length === 0) return [];
+
+    const ticketMap = new Map();
+    ticketsList.forEach((t) => {
+      if (t?.ticket_id) ticketMap.set(String(t.ticket_id), t);
+    });
+
+    const parentIdSet = new Set();
+    ticketsList.forEach((t) => {
+      if (t.parent_ticket_id && ticketMap.has(String(t.parent_ticket_id))) {
+        parentIdSet.add(String(t.parent_ticket_id));
+      }
+      if (Array.isArray(t.queue_events)) {
+        t.queue_events.forEach((ev) => {
+          if (ev.event_type === "TRANSFERRED" && ev.metadata?.transferred_to_ticket) {
+            if (ticketMap.has(String(ev.metadata.transferred_to_ticket))) {
+              parentIdSet.add(String(t.ticket_id));
+            }
+          }
+        });
+      }
+      if (Array.isArray(t.transfers)) {
+        t.transfers.forEach((tr) => {
+          if (tr.direction === "outgoing" && tr.transferred_to_ticket && ticketMap.has(String(tr.transferred_to_ticket))) {
+            parentIdSet.add(String(t.ticket_id));
+          }
+        });
+      }
+    });
+
+    const collapsed = [];
+
+    for (const t of ticketsList) {
+      const tid = String(t.ticket_id || "");
+      const s = String(t.status || "").toLowerCase();
+
+      // If this ticket is marked "transferred" and its target child ticket is present in this list,
+      // skip it from the top-level list so it collapses into the child ticket card.
+      if (s === "transferred" && parentIdSet.has(tid)) {
+        continue;
+      }
+
+      // If already has transfer_stages from backend, preserve them
+      let stages = Array.isArray(t.transfer_stages) && t.transfer_stages.length > 0 ? [...t.transfer_stages] : [];
+
+      if (stages.length === 0) {
+        let curr = t;
+        const visitedInChain = new Set();
+
+        while (curr && !visitedInChain.has(String(curr.ticket_id))) {
+          visitedInChain.add(String(curr.ticket_id));
+          const stageDoc = curr.doctor_name || curr.served_by_doctor_name || "";
+          const stageDept = curr.department_name || curr.service_category || "General OPD";
+
+          stages.unshift({
+            ticket_id: curr.ticket_id,
+            department: stageDept,
+            dept_code: curr.service_category || "consultation",
+            doctor_name: stageDoc,
+            status: (curr.status || "").toLowerCase(),
+            prescription_notes: curr.prescription_notes || "",
+            medical_condition: curr.medical_condition || "",
+            serve_start_time: curr.serve_start_time,
+            serve_end_time: curr.serve_end_time,
+            created_at: curr.created_at || curr.join_timestamp,
+          });
+
+          if (curr.parent_ticket_id && ticketMap.has(String(curr.parent_ticket_id))) {
+            curr = ticketMap.get(String(curr.parent_ticket_id));
+          } else {
+            const parentByTr = ticketsList.find((ot) => {
+              if (visitedInChain.has(String(ot.ticket_id))) return false;
+              if (Array.isArray(ot.transfers)) {
+                return ot.transfers.some(
+                  (tr) => tr.direction === "outgoing" && String(tr.transferred_to_ticket) === String(curr.ticket_id)
+                );
+              }
+              return false;
+            });
+            if (parentByTr) {
+              curr = parentByTr;
+            } else {
+              break;
+            }
+          }
+        }
+      }
+
+      stages.forEach((stg, idx) => {
+        stg.stage_number = idx + 1;
+      });
+
+      const isTransferred = stages.length > 1 || Boolean(t.transferred_from_dept) || Boolean(t.parent_ticket_id) || Boolean(t.is_transferred);
+      const transferTrail = stages
+        .map((stg) => stg.department)
+        .filter((dept, idx, arr) => idx === 0 || dept !== arr[idx - 1])
+        .join(" → ");
+      const originDept = stages[0]?.department || t.transferred_from_dept || t.department_name || t.service_category || "General OPD";
+      const allDoctors = Array.from(new Set(stages.map((stg) => stg.doctor_name).filter(Boolean)));
+
+      // Merge multi-stage prescription notes if stages > 1 and notes not already unified
+      let unifiedNotes = t.prescription_notes || "";
+      if (stages.length > 1) {
+        let mergedDiag = "";
+        let mergedAdvices = [];
+        let mergedLabTests = [];
+        let mergedFollowUp = "";
+        let mergedMeds = [];
+        const seenMeds = new Set();
+        let targetDept = "";
+        let transferNotes = "";
+
+        for (const stg of stages) {
+          let rx = null;
+          try {
+            if (stg.prescription_notes) {
+              const str = typeof stg.prescription_notes === "object" ? stg.prescription_notes : JSON.parse(stg.prescription_notes);
+              rx = str;
+            }
+          } catch (e) {}
+
+          if (rx) {
+            if (rx.diagnosis && rx.diagnosis !== "Clinical Consultation" && rx.diagnosis !== "General OPD") mergedDiag = rx.diagnosis;
+            if (rx.advice && rx.advice.trim()) mergedAdvices.push(rx.advice.trim());
+            if (rx.lab_tests && rx.lab_tests !== "no") mergedLabTests.push(rx.lab_tests);
+            if (rx.follow_up) mergedFollowUp = rx.follow_up;
+            if (rx.target_department) targetDept = rx.target_department;
+            if (rx.transfer_notes) transferNotes = rx.transfer_notes;
+            if (Array.isArray(rx.medicines)) {
+              for (const m of rx.medicines) {
+                const k = `${String(m.name || "").toLowerCase().trim()}_${String(m.dosage || "").toLowerCase().trim()}`;
+                if (!seenMeds.has(k)) {
+                  seenMeds.add(k);
+                  mergedMeds.push(m);
+                }
+              }
+            }
+          }
+        }
+
+        const topDoc = t.doctor_name || t.served_by_doctor_name || stages[stages.length - 1]?.doctor_name || stages[0]?.doctor_name || "";
+        const consolidated = {
+          doctor_name: topDoc,
+          doctor_department: t.department_name || t.service_category || "General OPD",
+          diagnosis: mergedDiag || t.medical_condition || "Clinical Consultation",
+          medicines: mergedMeds,
+          lab_tests: mergedLabTests.join(", "),
+          advice: mergedAdvices.join(" • ") || "Clinical consultation completed.",
+          follow_up: mergedFollowUp || "Review as advised",
+          target_department: targetDept,
+          transfer_notes: transferNotes,
+          stages: stages,
+          prescribed_at: t.serve_end_time || t.created_at || new Date().toISOString(),
+        };
+        unifiedNotes = JSON.stringify(consolidated);
+      }
+
+      collapsed.push({
+        ...t,
+        is_transferred: isTransferred,
+        transfer_trail: isTransferred ? transferTrail : (t.transfer_trail || null),
+        transferred_from_dept: isTransferred ? originDept : (t.transferred_from_dept || null),
+        transfer_stages: stages,
+        prescription_notes: unifiedNotes,
+        all_doctors: allDoctors.length > 0 ? allDoctors : (t.all_doctors || (t.doctor_name ? [t.doctor_name] : [])),
+      });
+    }
+
+    return collapsed;
+  }, []);
+
   // Walk-in tickets: completed, or cancelled/expired only if toggle is enabled, scoped to selected profile
+  // and collapsed into unified single cards per transfer journey
   const historyTickets = useMemo(() => {
-    return userTicketHistory.filter((t) => {
+    const scoped = userTicketHistory.filter((t) => {
       const s = (t.status || "").toLowerCase();
       const isCompleted = s === "completed" || s === "transferred";
       const isCancelled = s === "cancelled" || s === "no_show" || s === "expired";
@@ -1133,7 +1349,8 @@ export default function PatientPage({
       // Strictly scope history tickets to selected profile
       return doesRecordMatchMember(t, selectedMember);
     });
-  }, [userTicketHistory, showCancelledHistory, doesRecordMatchMember, selectedMember]);
+    return collapseTicketJourneys(scoped);
+  }, [userTicketHistory, showCancelledHistory, doesRecordMatchMember, selectedMember, collapseTicketJourneys]);
 
   // Dynamically calculate accurate clinical summary metrics for the selected profile
   const selectedMemberHistoryStats = useMemo(() => {
@@ -1251,9 +1468,12 @@ export default function PatientPage({
     if (!historySearchQuery.trim()) return list;
     const q = historySearchQuery.trim().toLowerCase();
     return list.filter((tk) => {
-      const idMatch = String(tk.ticket_id || "").toLowerCase().includes(q);
-      const docMatch = (tk.doctor_name || tk.served_by_doctor_name || "").toLowerCase().includes(q);
-      const deptMatch = (tk.department_name || tk.service_category || "").toLowerCase().includes(q);
+      const idMatch = String(tk.ticket_id || "").toLowerCase().includes(q) ||
+        (Array.isArray(tk.transfer_stages) && tk.transfer_stages.some((s) => String(s.ticket_id || "").toLowerCase().includes(q)));
+      const docMatch = (tk.doctor_name || tk.served_by_doctor_name || "").toLowerCase().includes(q) ||
+        (Array.isArray(tk.all_doctors) && tk.all_doctors.some((d) => String(d).toLowerCase().includes(q)));
+      const deptMatch = (tk.department_name || tk.service_category || "").toLowerCase().includes(q) ||
+        (tk.transfer_trail || "").toLowerCase().includes(q);
       const patientMatch = (tk.name || "").toLowerCase().includes(q);
       const diagMatch = (tk.prescription_notes || "").toLowerCase().includes(q);
       const dateMatch = tk.created_at ? new Date(tk.created_at).toLocaleDateString().toLowerCase().includes(q) : false;
@@ -2323,7 +2543,7 @@ export default function PatientPage({
 
         .patient-tabs-bar {
           display: grid;
-          grid-template-columns: repeat(5, 1fr);
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 10px;
           background: var(--patient-card-bg, #FFFFFF);
           padding: 8px;
@@ -2332,6 +2552,14 @@ export default function PatientPage({
           box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
           box-sizing: border-box;
           width: 100%;
+        }
+
+        .patient-tabs-bar .tab-button-modern {
+          width: 100% !important;
+          max-width: none !important;
+          min-width: 0 !important;
+          flex: 1 1 0 !important;
+          box-sizing: border-box !important;
         }
 
         body.theme-dark .patient-nav-header {
@@ -2359,26 +2587,43 @@ export default function PatientPage({
           color: #38BDF8;
         }
 
-        @media (max-width: 1080px) {
+        @media (max-width: 1100px) {
           .patient-tabs-bar {
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 6px;
+            padding: 6px;
+          }
+          .patient-tabs-bar .tab-button-modern {
+            padding: 9px 8px;
+            gap: 6px;
+          }
+          .patient-tabs-bar .tab-title-text {
+            font-size: 12px;
+          }
+          .patient-tabs-bar .tab-sub-text {
+            font-size: 10px;
           }
         }
 
-        @media (max-width: 680px) {
+        @media (max-width: 768px) {
           .patient-tabs-bar {
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 6px;
             padding: 6px;
             border-radius: 14px;
           }
+          .patient-tabs-bar > button:last-child {
+            grid-column: span 2;
+          }
         }
 
-        @media (max-width: 380px) {
+        @media (max-width: 480px) {
           .patient-tabs-bar {
             grid-template-columns: 1fr;
             gap: 6px;
+          }
+          .patient-tabs-bar > button:last-child {
+            grid-column: span 1;
           }
         }
 
@@ -2434,6 +2679,8 @@ export default function PatientPage({
           position: relative;
           box-sizing: border-box;
           min-width: 0;
+          max-width: none;
+          flex: 1;
         }
 
         @media (max-width: 680px) {
@@ -3808,6 +4055,49 @@ export default function PatientPage({
                 </div>
               </div>
             </div>
+
+            {/* Multi-Department Care Journey Timeline if multi-stage */}
+            {viewingPrescriptionData.stages && viewingPrescriptionData.stages.length > 1 && (
+              <div style={{
+                marginBottom: "16px",
+                padding: "12px 14px",
+                borderRadius: "10px",
+                background: "linear-gradient(135deg, rgba(2, 132, 199, 0.05) 0%, rgba(14, 165, 233, 0.02) 100%)",
+                border: "1.5px solid #BAE6FD",
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 900, color: "#0369A1", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    <span>🔄</span>
+                    <span>{language === "hi" ? "स्थानांतरण परामर्श यात्रा (मल्टी-डिपार्टमेंट टाइमलाइन)" : "Transfer Journey (Multi-Department Clinical Timeline)"}</span>
+                  </span>
+                  <span style={{ fontSize: "11px", fontWeight: 800, color: "#0284C7", background: "#E0F2FE", padding: "2px 8px", borderRadius: "8px" }}>
+                    {viewingPrescriptionData.stages.length} Stages
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {viewingPrescriptionData.stages.map((stg, sIdx) => {
+                    const isLast = sIdx === viewingPrescriptionData.stages.length - 1;
+                    return (
+                      <div key={sIdx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", fontSize: "12px", padding: "6px 10px", background: "var(--patient-card-bg, #FFFFFF)", borderRadius: "8px", border: "1px solid var(--patient-card-border, #E2E8F0)", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: isLast ? "#0284C7" : "#0369A1", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10.5px", fontWeight: 800 }}>
+                            {stg.stage_number || sIdx + 1}
+                          </span>
+                          <strong style={{ color: "var(--patient-text-main, #0F172A)" }}>{stg.department}</strong>
+                          {stg.doctor_name && <span style={{ color: "#0284C7" }}>• {stg.doctor_name}</span>}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{ fontSize: "10.5px", color: "var(--patient-text-sub, #64748B)" }}>#{stg.ticket_id}</span>
+                          <span style={{ fontSize: "10.5px", fontWeight: 700, padding: "2px 6px", borderRadius: "4px", background: isLast ? "#DEF7EC" : "#EFF6FF", color: isLast ? "#03543F" : "#0284C7" }}>
+                            {getStatusLabel(stg.status, language)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* 3. Provisional Diagnosis & Tests */}
             <div style={{ marginBottom: "16px" }}>

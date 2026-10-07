@@ -229,14 +229,14 @@ async function getSuperAdminOverview(requesterUser = null) {
       const totalEmp = await prisma.employees.count({
         where: {
           hospital_id: { in: hIds },
-          status: { notIn: ["deactivated", "suspended", "blocked"] },
+          status: { in: ["active", "ACTIVE"] },
         },
       });
 
       let activeDocs = await prisma.employees.count({
         where: {
           hospital_id: { in: hIds },
-          status: "active",
+          status: { in: ["active", "ACTIVE"] },
           users: {
             role: { in: ["doctor", "admin", "physician"] },
           },
@@ -246,7 +246,7 @@ async function getSuperAdminOverview(requesterUser = null) {
         activeDocs = await prisma.users.count({
           where: {
             role: { in: ["doctor", "admin"] },
-            status: "active",
+            status: { in: ["active", "ACTIVE"] },
           },
         });
       }
@@ -259,8 +259,8 @@ async function getSuperAdminOverview(requesterUser = null) {
         where: {
           hospital_id: { in: hIds },
           OR: [
-            { status: { in: ["OCCUPIED", "BUSY", "SERVING", "serving", "ACTIVE"] } },
-            { AND: [{ status: "AVAILABLE" }, { assigned_employee_id: { not: null } }] },
+            { status: { in: ["OCCUPIED", "BUSY", "SERVING", "serving", "ACTIVE", "active", "AVAILABLE"] } },
+            { assigned_employee_id: { not: null } },
           ],
         },
       });
@@ -268,6 +268,7 @@ async function getSuperAdminOverview(requesterUser = null) {
       const todayTickets = await prisma.tickets.count({
         where: {
           hospital_id: { in: hIds },
+          status: { in: ["completed", "COMPLETED"] },
           OR: [
             { queue_date: todayDateObj },
             { created_at: { gte: todayDateObj } },
@@ -283,7 +284,10 @@ async function getSuperAdminOverview(requesterUser = null) {
       });
 
       const totalTickets = await prisma.tickets.count({
-        where: { hospital_id: { in: hIds } },
+        where: {
+          hospital_id: { in: hIds },
+          status: { notIn: ["transferred", "TRANSFERRED"] },
+        },
       });
 
 
@@ -354,6 +358,7 @@ async function getSuperAdminOverview(requesterUser = null) {
   });
   const todayTickets = await prisma.tickets.count({
     where: {
+      status: { notIn: ["transferred", "TRANSFERRED"] },
       OR: [
         { queue_date: todayDateObj },
         { created_at: { gte: todayDateObj } },
@@ -363,7 +368,11 @@ async function getSuperAdminOverview(requesterUser = null) {
   const activeQueues = await prisma.tickets.count({
     where: { status: { in: ["waiting", "called", "serving", "WAITING", "CALLED", "SERVING"] } },
   });
-  const totalTickets = await prisma.tickets.count();
+  const totalTickets = await prisma.tickets.count({
+    where: {
+      status: { notIn: ["transferred", "TRANSFERRED"] },
+    },
+  });
   const totalUsers = await prisma.users.count();
 
   return {
@@ -422,22 +431,24 @@ async function getAllHospitals(requesterUser = null) {
   if (!list || list.length === 0) return [];
 
   const hIds = list.map((h) => h.id);
+  const todayStr = getCurrentQueueDate();
+  const todayDateObj = queueDateToPrismaDate(todayStr);
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
-  const [empCounts, docCounts, deskCounts, activeDeskCounts, todayTicketCounts, allTicketCounts] = await Promise.all([
+  const [empCounts, docCounts, deskCounts, activeDeskCounts, todayTicketCounts, todayCompletedCounts, allTicketCounts] = await Promise.all([
     prisma.employees.groupBy({
       by: ["hospital_id"],
       _count: { id: true },
-      where: { hospital_id: { in: hIds }, status: { notIn: ["deactivated", "suspended", "blocked"] } },
+      where: { hospital_id: { in: hIds }, status: { in: ["active", "ACTIVE"] } },
     }),
     prisma.employees.groupBy({
       by: ["hospital_id"],
       _count: { id: true },
       where: {
         hospital_id: { in: hIds },
-        status: "active",
-        users: { role: { in: ["doctor", "admin"] } },
+        status: { in: ["active", "ACTIVE"] },
+        users: { role: { in: ["doctor", "admin", "physician"] } },
       },
     }),
     prisma.desks.groupBy({
@@ -450,18 +461,45 @@ async function getAllHospitals(requesterUser = null) {
       _count: { id: true },
       where: {
         hospital_id: { in: hIds },
-        status: { in: ["AVAILABLE", "OCCUPIED", "BUSY", "CALLING"] },
+        OR: [
+          { status: { in: ["AVAILABLE", "OCCUPIED", "BUSY", "CALLING", "ACTIVE", "active", "SERVING", "serving"] } },
+          { assigned_employee_id: { not: null } },
+        ],
       },
     }),
     prisma.tickets.groupBy({
       by: ["hospital_id"],
       _count: { id: true },
-      where: { hospital_id: { in: hIds }, join_timestamp: { gte: startOfDay } },
+      where: {
+        hospital_id: { in: hIds },
+        status: { in: ["completed", "COMPLETED"] },
+        OR: [
+          { queue_date: todayDateObj },
+          { created_at: { gte: startOfDay } },
+          { join_timestamp: { gte: startOfDay } },
+        ],
+      },
     }),
     prisma.tickets.groupBy({
       by: ["hospital_id"],
       _count: { id: true },
-      where: { hospital_id: { in: hIds } },
+      where: {
+        hospital_id: { in: hIds },
+        status: { in: ["completed", "COMPLETED"] },
+        OR: [
+          { queue_date: todayDateObj },
+          { created_at: { gte: startOfDay } },
+          { join_timestamp: { gte: startOfDay } },
+        ],
+      },
+    }),
+    prisma.tickets.groupBy({
+      by: ["hospital_id"],
+      _count: { id: true },
+      where: {
+        hospital_id: { in: hIds },
+        status: { notIn: ["transferred", "TRANSFERRED"] },
+      },
     }),
   ]);
 
@@ -470,6 +508,7 @@ async function getAllHospitals(requesterUser = null) {
   const deskMap = new Map(deskCounts.map((k) => [k.hospital_id, k._count.id]));
   const activeDeskMap = new Map(activeDeskCounts.map((a) => [a.hospital_id, a._count.id]));
   const todayTicketMap = new Map(todayTicketCounts.map((t) => [t.hospital_id, t._count.id]));
+  const todayCompletedMap = new Map(todayCompletedCounts.map((t) => [t.hospital_id, t._count.id]));
   const allTicketMap = new Map(allTicketCounts.map((t) => [t.hospital_id, t._count.id]));
 
   return list.map((h) => {
@@ -485,8 +524,9 @@ async function getAllHospitals(requesterUser = null) {
       employee_count: empMap.get(h.id) ?? 0,
       doctor_count: docMap.get(h.id) ?? 0,
       total_desks: deskMap.get(h.id) ?? 0,
-      active_desks: activeDeskMap.get(h.id) ?? 0,
-      patients_today: todayTicketMap.get(h.id) || allTicketMap.get(h.id) || 0,
+      active_desks: Math.min(deskMap.get(h.id) ?? 0, activeDeskMap.get(h.id) ?? 0),
+      patients_today: todayCompletedMap.get(h.id) ?? 0,
+      completed_today: todayCompletedMap.get(h.id) ?? 0,
       total_visits: allTicketMap.get(h.id) ?? 0,
     };
   });
@@ -793,24 +833,34 @@ async function getHospitalEmployees(hospitalCode) {
       dutyInfo = getDoctorDutyStatus(e.user_id, e.email);
     } catch (_) {}
 
-    const isDutyOff = dutyInfo?.status === "OFF_DUTY" || e.status === "inactive" || e.status === "off_duty";
-    const isDutyBreak = dutyInfo?.status === "ON_BREAK" || e.status === "on_break";
-    const isDutyEmergency = dutyInfo?.status === "EMERGENCY_ROUND" || e.status === "emergency_round";
+    // Prioritize real-time duty status from memory store if present
+    const memoryStatus = dutyInfo?.status ? String(dutyInfo.status).toUpperCase() : null;
+    const isDutyBreak = memoryStatus === "ON_BREAK" || e.status === "on_break";
+    const isDutyEmergency = memoryStatus === "EMERGENCY_ROUND" || e.status === "emergency_round";
+    const isDutyOff = memoryStatus === "OFF_DUTY" || e.status === "off_duty";
+    const isExplicitlyInactive = !memoryStatus && e.status === "inactive";
 
     let effectiveStatus = "active";
-    if (isDutyOff) {
-      effectiveStatus = "inactive";
-    } else if (isDutyBreak) {
+    let dutyStatusLabel = "ACTIVE";
+
+    if (isDutyBreak) {
       effectiveStatus = "on_break";
+      dutyStatusLabel = "ON_BREAK";
     } else if (isDutyEmergency) {
       effectiveStatus = "emergency_round";
+      dutyStatusLabel = "EMERGENCY_ROUND";
+    } else if (isDutyOff) {
+      effectiveStatus = "off_duty";
+      dutyStatusLabel = "OFF_DUTY";
+    } else if (isExplicitlyInactive) {
+      effectiveStatus = "inactive";
+      dutyStatusLabel = "OFF_DUTY";
     } else {
       const lastLoginTime = e.users?.last_login_at ? new Date(e.users.last_login_at).getTime() : null;
       const isStale = !lastLoginTime || (now - lastLoginTime > SESSION_MAX_AGE_MS);
       effectiveStatus = (e.status === "active" && e.users?.status === "active" && !isStale) ? "active" : "inactive";
+      dutyStatusLabel = effectiveStatus === "active" ? "ACTIVE" : "OFF_DUTY";
     }
-
-    const dutyStatusLabel = isDutyOff ? "OFF_DUTY" : isDutyBreak ? "ON_BREAK" : isDutyEmergency ? "EMERGENCY_ROUND" : "ACTIVE";
 
     return {
       id: e.user_id,
@@ -1769,7 +1819,7 @@ async function getDatabaseOverview(hospitalCode = null) {
 /**
  * Retrieves historical patient visit logs and footfall statistics for a specific hospital.
  */
-async function getHospitalVisitHistory(hospitalCode, limit = 60) {
+async function getHospitalVisitHistory(hospitalCode, limit = 500) {
   const hCode = String(hospitalCode).trim();
   const hospital = await prisma.hospitals.findUnique({
     where: { hospital_code: hCode },
@@ -1787,6 +1837,10 @@ async function getHospitalVisitHistory(hospitalCode, limit = 60) {
   startOfMonth.setDate(1);
   startOfMonth.setHours(0, 0, 0, 0);
 
+  const nonTransferredCondition = {
+    status: { notIn: ["transferred", "TRANSFERRED"] },
+  };
+
   const [
     totalAllTime,
     allTimeCompleted,
@@ -1796,12 +1850,12 @@ async function getHospitalVisitHistory(hospitalCode, limit = 60) {
     thisMonthVisits,
     recentTickets,
   ] = await Promise.all([
-    prisma.tickets.count({ where: { hospital_id: hospital.id } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, ...nonTransferredCondition } }).catch(() => 0),
     prisma.tickets.count({ where: { hospital_id: hospital.id, status: { in: ["completed", "COMPLETED"] } } }).catch(() => 0),
-    prisma.tickets.count({ where: { hospital_id: hospital.id, queue_date: todayDateObj } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, queue_date: todayDateObj, ...nonTransferredCondition } }).catch(() => 0),
     prisma.tickets.count({ where: { hospital_id: hospital.id, queue_date: todayDateObj, status: { in: ["completed", "COMPLETED"] } } }).catch(() => 0),
-    prisma.tickets.count({ where: { hospital_id: hospital.id, created_at: { gte: sevenDaysAgo } } }).catch(() => 0),
-    prisma.tickets.count({ where: { hospital_id: hospital.id, created_at: { gte: startOfMonth } } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, created_at: { gte: sevenDaysAgo }, ...nonTransferredCondition } }).catch(() => 0),
+    prisma.tickets.count({ where: { hospital_id: hospital.id, created_at: { gte: startOfMonth }, ...nonTransferredCondition } }).catch(() => 0),
     prisma.tickets.findMany({
       where: { hospital_id: hospital.id },
       include: {
@@ -1809,30 +1863,120 @@ async function getHospitalVisitHistory(hospitalCode, limit = 60) {
         patients: true,
       },
       orderBy: [{ created_at: "desc" }, { id: "desc" }],
-      take: limit,
+      take: Math.max(limit * 3, 500),
     }).catch(() => []),
   ]);
 
-  const visits = recentTickets.map((t) => ({
-    id: t.id,
-    ticket_id: t.ticket_id,
-    token_number: t.ticket_id,
-    patient_name: t.name || t.patients?.name || "Patient",
-    phone: t.patients?.phone || "",
-    gender: t.patients?.gender || "",
-    age: t.patients?.age || null,
-    department: t.departments?.name || t.service_category || "General OPD",
-    dept_code: t.departments?.dept_code || t.service_category || "consultation",
-    status: (t.status || "").toLowerCase(),
-    priority_level: t.priority_level,
-    medical_condition: t.medical_condition,
-    join_time: t.join_timestamp ? t.join_timestamp.toISOString() : null,
-    serve_start_time: t.serve_start_time ? t.serve_start_time.toISOString() : null,
-    serve_end_time: t.serve_end_time ? t.serve_end_time.toISOString() : null,
-    service_duration_minutes: Math.round((t.actual_service_minutes || t.predicted_service_minutes || 10) * 10) / 10,
-    created_at: t.created_at ? t.created_at.toISOString() : null,
-    queue_date: t.queue_date ? t.queue_date.toISOString().split("T")[0] : todayStr,
-  }));
+  // 1. Map all tickets by ticket_id for rapid O(1) lookup
+  const ticketMap = new Map();
+  recentTickets.forEach((t) => ticketMap.set(t.ticket_id, t));
+
+  // 2. Fetch any missing parents for complete multi-department transfer chains
+  const missingParentIds = recentTickets
+    .map((t) => t.parent_ticket_id)
+    .filter((pid) => pid && !ticketMap.has(pid));
+
+  if (missingParentIds.length > 0) {
+    try {
+      const parents = await prisma.tickets.findMany({
+        where: { ticket_id: { in: missingParentIds } },
+        include: { departments: true, patients: true },
+      });
+      parents.forEach((p) => ticketMap.set(p.ticket_id, p));
+    } catch (e) {
+      console.warn("Could not load missing parent tickets for transfer chain:", e.message);
+    }
+  }
+
+  // 3. Set of ticket IDs that are parent of another ticket in the active hospital dataset
+  const parentIdSet = new Set();
+  ticketMap.forEach((t) => {
+    if (t.parent_ticket_id) parentIdSet.add(t.parent_ticket_id);
+  });
+
+  // 4. Construct unified visits: collapse intermediate transferred parent rows into child rows
+  const visits = [];
+
+  for (const t of recentTickets) {
+    // If this ticket is marked "transferred" and its target child ticket is present,
+    // skip it as an independent top-level row so it doesn't duplicate the visit count.
+    if ((t.status || "").toLowerCase() === "transferred" && parentIdSet.has(t.ticket_id)) {
+      continue;
+    }
+
+    // Build the consultation stages by walking up parent_ticket_id links
+    const stages = [];
+    let curr = t;
+    const visitedInChain = new Set();
+
+    while (curr && !visitedInChain.has(curr.ticket_id)) {
+      visitedInChain.add(curr.ticket_id);
+      stages.unshift({
+        ticket_id: curr.ticket_id,
+        department: curr.departments?.name || curr.service_category || "General OPD",
+        dept_code: curr.departments?.dept_code || curr.service_category || "consultation",
+        status: (curr.status || "").toLowerCase(),
+        notes: curr.prescription_notes || "",
+        medical_condition: curr.medical_condition || "",
+        serve_start_time: curr.serve_start_time ? curr.serve_start_time.toISOString() : null,
+        serve_end_time: curr.serve_end_time ? curr.serve_end_time.toISOString() : null,
+        duration_minutes: Math.round((curr.actual_service_minutes || curr.predicted_service_minutes || 10) * 10) / 10,
+        created_at: curr.created_at ? curr.created_at.toISOString() : null,
+      });
+
+      if (curr.parent_ticket_id && ticketMap.has(curr.parent_ticket_id)) {
+        curr = ticketMap.get(curr.parent_ticket_id);
+      } else {
+        break;
+      }
+    }
+
+    stages.forEach((s, idx) => {
+      s.stage_number = idx + 1;
+    });
+
+    const isTransferred = stages.length > 1 || Boolean(t.transferred_from_dept);
+    const transferTrail = stages.map((s) => s.department).join(" → ");
+    const originDept = stages[0]?.department || t.transferred_from_dept || t.departments?.name || "General OPD";
+    const totalDuration = stages.reduce((acc, s) => acc + (s.duration_minutes || 0), 0);
+
+    const combinedNotes = stages
+      .filter((s) => s.notes && s.notes.trim())
+      .map((s) => `[${s.department}]: ${s.notes.trim()}`)
+      .join("\n\n");
+
+    const rootTicket = stages[0] ? ticketMap.get(stages[0].ticket_id) || t : t;
+
+    visits.push({
+      id: t.id,
+      ticket_id: t.ticket_id,
+      root_ticket_id: stages[0]?.ticket_id || t.ticket_id,
+      token_number: t.ticket_id,
+      patient_name: t.name || t.patients?.name || rootTicket.name || "Patient",
+      phone: t.patients?.phone || rootTicket.patients?.phone || "",
+      gender: t.patients?.gender || rootTicket.patients?.gender || "",
+      age: t.patients?.age || rootTicket.patients?.age || null,
+      department: t.departments?.name || t.service_category || "General OPD",
+      dept_code: t.departments?.dept_code || t.service_category || "consultation",
+      origin_department: originDept,
+      status: (t.status || "").toLowerCase(),
+      priority_level: t.priority_level,
+      medical_condition: t.medical_condition,
+      join_time: (rootTicket.join_timestamp || t.join_timestamp) ? (rootTicket.join_timestamp || t.join_timestamp).toISOString() : null,
+      serve_start_time: t.serve_start_time ? t.serve_start_time.toISOString() : null,
+      serve_end_time: t.serve_end_time ? t.serve_end_time.toISOString() : null,
+      service_duration_minutes: Math.round((totalDuration || t.actual_service_minutes || 10) * 10) / 10,
+      created_at: (rootTicket.created_at || t.created_at) ? (rootTicket.created_at || t.created_at).toISOString() : null,
+      queue_date: t.queue_date ? t.queue_date.toISOString().split("T")[0] : todayStr,
+      is_transferred: isTransferred,
+      transfer_trail: isTransferred ? transferTrail : null,
+      transferred_from_dept: isTransferred ? originDept : null,
+      transfer_stages: stages,
+      prescription_notes: combinedNotes || t.prescription_notes || "",
+    });
+
+    if (visits.length >= limit) break;
+  }
 
   return {
     hospital_id: hospital.id,

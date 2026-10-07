@@ -26,7 +26,6 @@ import {
     actionBtnStyle,
 } from "../superAdminStyles";
 import { getCategoryLabel } from "../../../utils/i18n";
-import VisitedPatientsSection from "./VisitedPatientsSection";
 import DoctorProductivitySection from "./DoctorProductivitySection";
 import "../SuperAdmin.css";
 
@@ -111,16 +110,16 @@ export default function Hospital360Overview({
     const helpline = activeBranding.emergency_helpline || currentHosp.phone || "108 / Emergency";
 
     // Aggregate metrics & Footfall history
+    const footfallSummary = hospitalVisitsData?.summary || {};
     const waitingCount = hospitalAnalytics?.waiting_count ?? hospitalQueueSnapshot.length;
     const servingCount = hospitalAnalytics?.serving_count ?? hospitalServingTickets.length;
-    const completedToday = hospitalAnalytics?.completed_today ?? 0;
+    const completedToday = footfallSummary.today_completed ?? hospitalAnalytics?.completed_today ?? 0;
     const avgWait = hospitalAnalytics?.avg_wait_minutes ?? 12;
     const activeDesksCount = hospitalDesksData.active_desks || 0;
     const totalDesksCount = hospitalDesksData.total_desks || 0;
     const doctorsCount = hospitalEmployees.filter((e) => (e.role || "").toLowerCase() === "doctor").length;
     const staffCount = hospitalEmployees.filter((e) => (e.role || "").toLowerCase() !== "doctor").length;
 
-    const footfallSummary = hospitalVisitsData?.summary || {};
     const allTimePatientsVisited = footfallSummary.total_patients_visited_all_time ?? (hospitalAnalytics?.total_patients_visited_all_time || 0);
     const allTimeCompleted = footfallSummary.all_time_completed ?? 0;
     const todayFootfall = footfallSummary.today_patients_visited ?? completedToday;
@@ -671,7 +670,6 @@ export default function Hospital360Overview({
                                 { id: "hourly", label: isHi ? "प्रति घंटा हीटमैप" : "Hourly Heatmap", icon: IconTrendingUp },
                                 { id: "bottleneck", label: isHi ? "बॉटलनेक विश्लेषक" : "Bottleneck Radar", icon: IconAlertTriangle },
                                 { id: "clinicians", label: isHi ? "डॉक्टर उत्पादकता" : "Clinician Telemetry", icon: IconStethoscope },
-                                { id: "visits", label: isHi ? "मरीज विज़िट रजिस्ट्री" : "Visited Registry", icon: IconFileText },
                             ].map((tab) => (
                                 <button
                                     key={tab.id}
@@ -1726,17 +1724,6 @@ export default function Hospital360Overview({
                     />
                 )}
 
-                {/* FEATURE 4: PATIENT VISIT HISTORY & COMPREHENSIVE DATA DOWNLOAD REGISTRY */}
-                {(analyticsViewTab === "all" || analyticsViewTab === "visits") && (
-                    <VisitedPatientsSection
-                        selectedHospital={currentHosp}
-                        hospitalVisitsData={hospitalVisitsData}
-                        hospitalDepts={hospitalDepts}
-                        isHi={isHi}
-                        theme={theme}
-                        handleDownloadVisitHistory={handleDownloadVisitHistory}
-                    />
-                )}
             </div>
 
         </div>

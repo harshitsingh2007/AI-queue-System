@@ -4,3 +4,4 @@ export { default as StaffRosterTab } from "./StaffRosterTab";
 export { default as DesksManagementTab } from "./DesksManagementTab";
 export { default as DepartmentsTab } from "./DepartmentsTab";
 export { default as BrandingStudioTab } from "./BrandingStudioTab";
+export { default as PatientVisitsTab } from "./PatientVisitsTab";

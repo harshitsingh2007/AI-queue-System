@@ -885,7 +885,7 @@ class NodeQueueEngine {
     const whereTickets = {
       hospital_id: hid,
       queue_date: queueDateToPrismaDate(targetDate),
-      status: { in: ["completed", "transferred"] },
+      status: { in: ["completed", "COMPLETED"] },
     };
     if (deptFilter && deptFilter !== "all") {
       whereTickets.service_category = { equals: deptFilter, mode: "insensitive" };

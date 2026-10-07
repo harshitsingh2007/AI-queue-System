@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { API_BASE } from "../../../../config/hospitalConfig";
 import {
@@ -13,9 +13,36 @@ import {
     IconStethoscope,
     IconUser,
     IconPlus,
+    IconPrinter,
 } from "../../SuperAdminIcons";
 import { fieldInputStyle } from "../../superAdminStyles";
 import "../../SuperAdmin.css";
+import { printPrescriptionSlip, downloadPrescriptionPDF } from "../../../../utils/printPassHelper";
+
+// Robust parser for clinical notes/prescriptions that converts raw JSON strings into clean structured records
+function parseClinicalRecord(raw) {
+    if (!raw) return null;
+    let data = raw;
+    if (typeof raw === "string") {
+        let trimmed = raw.trim();
+        while ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+            trimmed = trimmed.slice(1, -1).trim();
+        }
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            try {
+                data = JSON.parse(trimmed);
+            } catch (e) {
+                try { data = JSON.parse(JSON.parse(raw)); } catch (e2) {}
+            }
+        } else {
+            return { rawText: raw };
+        }
+    }
+    if (typeof data === "object" && data !== null) {
+        return data;
+    }
+    return { rawText: String(raw) };
+}
 
 // Resilient spreadsheet parser supporting .xlsx, .xls, .csv via SheetJS
 async function parseSpreadsheetData(file) {
@@ -89,7 +116,7 @@ export default function BrandingPatientHistorySubTab({
         setLoadingVisits(true);
         try {
             const headers = getAuthHeaders ? getAuthHeaders() : { "Content-Type": "application/json" };
-            const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${tenantId}/visits`, { headers });
+            const res = await fetch(`${API_BASE}/api/v1/superadmin/hospitals/${tenantId}/visits?limit=500`, { headers });
             const data = await res.json();
             if (res.ok && data.status === "success") {
                 setVisits(data.visits || []);
@@ -110,14 +137,53 @@ export default function BrandingPatientHistorySubTab({
             (v.patient_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
             (v.phone || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
             (v.doctor_name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (v.department || "").toLowerCase().includes(searchQuery.toLowerCase());
+            (v.department || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (v.transfer_trail || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (Array.isArray(v.transfer_stages) && v.transfer_stages.some((st) => (st.department || "").toLowerCase().includes(searchQuery.toLowerCase())));
 
-        const matchesStatus =
-            statusFilter === "all" ||
-            (v.status || "completed").toLowerCase() === statusFilter.toLowerCase();
+        const isVisitTransferred = Boolean(
+            v.is_transferred ||
+            (v.status || "").toLowerCase() === "transferred" ||
+            v.transfer_trail ||
+            v.transferred_from_dept ||
+            (Array.isArray(v.transfer_stages) && v.transfer_stages.length > 1)
+        );
+
+        let matchesStatus = false;
+        if (statusFilter === "all") {
+            matchesStatus = true;
+        } else if (statusFilter === "transferred") {
+            matchesStatus = isVisitTransferred;
+        } else {
+            matchesStatus = (v.status || "completed").toLowerCase() === statusFilter.toLowerCase();
+        }
 
         return matchesQuery && matchesStatus;
     });
+
+    const statusCounts = useMemo(() => {
+        let completed = 0;
+        let transferred = 0;
+        let noShow = 0;
+        let cancelled = 0;
+
+        visits.forEach((v) => {
+            const s = (v.status || "completed").toLowerCase();
+            const isTrans = Boolean(
+                v.is_transferred ||
+                s === "transferred" ||
+                v.transfer_trail ||
+                v.transferred_from_dept ||
+                (Array.isArray(v.transfer_stages) && v.transfer_stages.length > 1)
+            );
+            if (isTrans) transferred++;
+            if (s === "completed") completed++;
+            else if (s === "no_show") noShow++;
+            else if (s === "cancelled") cancelled++;
+        });
+
+        return { all: visits.length, completed, transferred, no_show: noShow, cancelled };
+    }, [visits]);
 
     // Process visits file (both from input and drag-and-drop)
     const processVisitsFile = async (file) => {
@@ -401,7 +467,7 @@ export default function BrandingPatientHistorySubTab({
         if (notify) notify(isHi ? "मरीज़ विज़िट इतिहास CSV डाउनलोड हो गया!" : "Patient visit history CSV downloaded!");
     };
 
-    const totalVisitsCount = summary.total_completed_today ?? visits.length;
+    const totalVisitsCount = summary.today_completed ?? summary.total_completed_today ?? visits.filter((v) => (v.status || "").toLowerCase() === "completed").length;
     const avgDuration = summary.avg_service_duration_minutes ?? (
         visits.length > 0
             ? (visits.reduce((acc, curr) => acc + (Number(curr.service_duration_minutes) || 12), 0) / visits.length).toFixed(1)
@@ -487,10 +553,12 @@ export default function BrandingPatientHistorySubTab({
                 }}>
                     <div style={{ padding: "14px 16px", borderRadius: "12px", background: "var(--superadmin-sub-card, #F8FAFC)", border: "1.5px solid var(--superadmin-card-border, #E2E8F0)" }}>
                         <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748B", textTransform: "uppercase" }}>{isHi ? "कुल विज़िट रिकॉर्ड्स" : "Total Logged Visits"}</span>
-                        <div style={{ fontSize: "22px", fontWeight: 900, color: "#0F172A", marginTop: "2px" }}>{visits.length}</div>
+                        <div style={{ fontSize: "22px", fontWeight: 900, color: "#0F172A", marginTop: "2px" }}>
+                            {summary.total_patients_visited_all_time ?? visits.length}
+                        </div>
                     </div>
                     <div style={{ padding: "14px 16px", borderRadius: "12px", background: "rgba(16, 185, 129, 0.08)", border: "1.5px solid rgba(16, 185, 129, 0.25)" }}>
-                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#059669", textTransform: "uppercase" }}>{isHi ? "पूर्ण परामर्श" : "Completed Consultations"}</span>
+                        <span style={{ fontSize: "11px", fontWeight: 700, color: "#059669", textTransform: "uppercase" }}>{isHi ? "आज पूर्ण परामर्श" : "Completed Consultations today"}</span>
                         <div style={{ fontSize: "22px", fontWeight: 900, color: "#065F46", marginTop: "2px" }}>{totalVisitsCount}</div>
                     </div>
                     <div style={{ padding: "14px 16px", borderRadius: "12px", background: "rgba(2, 132, 199, 0.08)", border: "1.5px solid rgba(2, 132, 199, 0.25)" }}>
@@ -756,11 +824,11 @@ export default function BrandingPatientHistorySubTab({
                     {/* Status Filter Pills */}
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
                         {[
-                            { id: "all", label: isHi ? "सभी विज़िट" : "All Visits" },
-                            { id: "completed", label: isHi ? "सफल (Completed)" : "Completed" },
-                            { id: "transferred", label: isHi ? "स्थानांतरित" : "Transferred" },
-                            { id: "no_show", label: isHi ? "नो-शो" : "No-Show" },
-                            { id: "cancelled", label: isHi ? "रद्द" : "Cancelled" },
+                            { id: "all", label: isHi ? `सभी विज़िट (${statusCounts.all})` : `All Visits (${statusCounts.all})` },
+                            { id: "completed", label: isHi ? `सफल (${statusCounts.completed})` : `Completed (${statusCounts.completed})` },
+                            { id: "transferred", label: isHi ? `स्थानांतरित (${statusCounts.transferred})` : `Transferred (${statusCounts.transferred})` },
+                            { id: "no_show", label: isHi ? `नो-शो (${statusCounts.no_show})` : `No-Show (${statusCounts.no_show})` },
+                            { id: "cancelled", label: isHi ? `रद्द (${statusCounts.cancelled})` : `Cancelled (${statusCounts.cancelled})` },
                         ].map((item) => (
                             <button
                                 key={item.id}
@@ -836,13 +904,39 @@ export default function BrandingPatientHistorySubTab({
                                             </td>
 
                                             <td style={{ padding: "12px 14px" }}>
-                                                <div style={{ fontWeight: 700, color: "var(--superadmin-text-main, #0F172A)" }}>
-                                                    {visit.department || "General OPD"}
+                                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                                    <span style={{ fontWeight: 700, color: "var(--superadmin-text-main, #0F172A)" }}>
+                                                        {visit.department || "General OPD"}
+                                                    </span>
+                                                    {visit.is_transferred && (
+                                                        <span
+                                                            style={{
+                                                                fontSize: "10px",
+                                                                fontWeight: 800,
+                                                                padding: "2px 6px",
+                                                                borderRadius: "5px",
+                                                                background: "#EFF6FF",
+                                                                color: "#0284C7",
+                                                                border: "1px solid #BAE6FD",
+                                                                letterSpacing: "0.2px",
+                                                            }}
+                                                            title={visit.transfer_trail || `Transferred from ${visit.transferred_from_dept}`}
+                                                        >
+                                                            {isHi ? "स्थानांतरित" : "Transferred"}
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div style={{ fontSize: "11.5px", color: "#059669", display: "flex", alignItems: "center", gap: "4px" }}>
-                                                    <IconStethoscope size={12} />
-                                                    <span>{visit.doctor_name || "Consultant"}</span>
-                                                </div>
+                                                {visit.transfer_trail ? (
+                                                    <div style={{ fontSize: "11px", color: "#0284C7", fontWeight: 700, marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
+                                                        <span>🔄</span>
+                                                        <span>{visit.transfer_trail}</span>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ fontSize: "11.5px", color: "#059669", display: "flex", alignItems: "center", gap: "4px" }}>
+                                                        <IconStethoscope size={12} />
+                                                        <span>{visit.doctor_name || "Consultant"}</span>
+                                                    </div>
+                                                )}
                                             </td>
 
                                             <td style={{ padding: "12px 14px" }}>
@@ -1160,98 +1254,679 @@ export default function BrandingPatientHistorySubTab({
                 </div>
             )}
 
-            {/* 5. CLINICAL SLIP MODAL */}
-            {selectedVisitDetail && (
-                <div style={{
-                    position: "fixed",
-                    inset: 0,
-                    background: "rgba(15, 23, 42, 0.6)",
-                    backdropFilter: "blur(4px)",
-                    zIndex: 9999,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: "20px",
-                }}>
+            {/* 5. REDESIGNED CLINICAL SLIP MODAL */}
+            {selectedVisitDetail && (() => {
+                const stages = Array.isArray(selectedVisitDetail.transfer_stages) ? selectedVisitDetail.transfer_stages : [];
+                const isMultiStage = stages.length > 1;
+                const statusVal = (selectedVisitDetail.status || "completed").toLowerCase();
+                const isCompleted = statusVal === "completed" || statusVal === "served";
+
+                // Extract or synthesize slip data for official printing & downloading
+                const slipExportData = (() => {
+                    let docName = selectedVisitDetail.doctor_name || "Attending Medical Officer";
+                    let docDept = selectedVisitDetail.department || "General OPD";
+                    let docId = "DOC-1";
+                    let diagnosis = selectedVisitDetail.medical_condition || selectedVisitDetail.symptoms || "Clinical Consultation & OPD Assessment";
+                    let advice = "";
+                    let followUp = "";
+                    const allMeds = [];
+                    const seenMeds = new Set();
+                    const labTests = [];
+
+                    stages.forEach((stg) => {
+                        const parsed = parseClinicalRecord(stg.notes);
+                        if (parsed) {
+                            if (parsed.doctor_name && parsed.doctor_name !== "Attending Medical Officer") docName = parsed.doctor_name;
+                            if (parsed.doctor_department) docDept = parsed.doctor_department;
+                            if (parsed.doctor_employee_id) docId = parsed.doctor_employee_id;
+                            if (parsed.diagnosis && parsed.diagnosis !== "Consultation & Clinical Assessment") diagnosis = parsed.diagnosis;
+                            if (parsed.advice && parsed.advice.trim()) {
+                                advice = advice ? `${advice} • ${parsed.advice}` : parsed.advice;
+                            }
+                            if (parsed.follow_up) followUp = parsed.follow_up;
+                            if (parsed.lab_tests && parsed.lab_tests !== "no") labTests.push(parsed.lab_tests);
+                            if (Array.isArray(parsed.medicines)) {
+                                parsed.medicines.forEach((m) => {
+                                    const k = `${m.name || ""}_${m.dosage || ""}`;
+                                    if (!seenMeds.has(k)) {
+                                        seenMeds.add(k);
+                                        allMeds.push(m);
+                                    }
+                                });
+                            }
+                        }
+                    });
+
+                    if (selectedVisitDetail.prescription) {
+                        const topParsed = parseClinicalRecord(selectedVisitDetail.prescription);
+                        if (topParsed) {
+                            if (topParsed.doctor_name) docName = topParsed.doctor_name;
+                            if (topParsed.diagnosis) diagnosis = topParsed.diagnosis;
+                            if (topParsed.advice) advice = advice ? `${advice} • ${topParsed.advice}` : topParsed.advice;
+                            if (Array.isArray(topParsed.medicines)) {
+                                topParsed.medicines.forEach((m) => {
+                                    const k = `${m.name || ""}_${m.dosage || ""}`;
+                                    if (!seenMeds.has(k)) {
+                                        seenMeds.add(k);
+                                        allMeds.push(m);
+                                    }
+                                });
+                            }
+                        }
+                    }
+
+                    return {
+                        patient_name: selectedVisitDetail.patient_name || "Patient",
+                        age: selectedVisitDetail.age || 30,
+                        gender: selectedVisitDetail.gender || "male",
+                        phone: selectedVisitDetail.phone || "",
+                        ticket_id: selectedVisitDetail.ticket_id || `#${selectedVisitDetail.id}`,
+                        doctor_name: docName,
+                        doctor_department: docDept,
+                        doctor_employee_id: docId,
+                        diagnosis: diagnosis,
+                        medicines: allMeds,
+                        lab_tests: labTests.join(", "),
+                        advice: advice || "Consultation completed. Regular medical review as advised.",
+                        follow_up: followUp || "After 5 days or if needed",
+                        prescribed_at: selectedVisitDetail.created_at || selectedVisitDetail.queue_date || new Date().toISOString(),
+                        hospital_name: hospName,
+                        logo_url: currentHosp?.logo_url || currentHosp?.hospital_logo || "",
+                    };
+                })();
+
+                return (
                     <div style={{
-                        background: "#FFFFFF",
-                        borderRadius: "18px",
-                        maxWidth: "500px",
-                        width: "100%",
-                        padding: "26px",
-                        boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
-                        border: "1.5px solid #CBD5E1",
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(15, 23, 42, 0.65)",
+                        backdropFilter: "blur(6px)",
+                        zIndex: 9999,
                         display: "flex",
-                        flexDirection: "column",
-                        gap: "16px",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "16px",
                     }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #E2E8F0", paddingBottom: "12px" }}>
-                            <div>
-                                <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 800, color: "#0F172A" }}>
-                                    {isHi ? "मरीज़ परामर्श रिकॉर्ड" : "Clinical Consultation Record"}
-                                </h3>
-                                <span style={{ fontSize: "12px", color: "#0284C7", fontFamily: "monospace", fontWeight: 700 }}>
-                                    Ticket: {selectedVisitDetail.ticket_id || `#${selectedVisitDetail.id}`}
-                                </span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedVisitDetail(null)}
-                                style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B" }}
-                            >
-                                <IconX size={20} />
-                            </button>
-                        </div>
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", color: "#334155" }}>
-                            <div><strong>Hospital:</strong> {hospName} ({tenantId})</div>
-                            <div><strong>Patient:</strong> {selectedVisitDetail.patient_name} ({selectedVisitDetail.age || "N/A"} yrs, {selectedVisitDetail.gender || "N/A"})</div>
-                            <div><strong>Phone:</strong> {selectedVisitDetail.phone || "N/A"}</div>
-                            <div><strong>Department:</strong> {selectedVisitDetail.department || "General OPD"}</div>
-                            <div><strong>Consulting Doctor:</strong> {selectedVisitDetail.doctor_name || "Attending Medical Officer"}</div>
-                            <div><strong>Consultation Duration:</strong> {selectedVisitDetail.service_duration_minutes || "12"} minutes</div>
-                            <div><strong>Date & Time:</strong> {selectedVisitDetail.created_at ? new Date(selectedVisitDetail.created_at).toLocaleString() : (selectedVisitDetail.queue_date || "Today")}</div>
-
-                            {selectedVisitDetail.symptoms && (
-                                <div style={{ marginTop: "6px", padding: "10px", borderRadius: "8px", background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                                    <strong style={{ color: "#0F172A" }}>Symptoms / Triage Notes:</strong>
-                                    <div style={{ fontSize: "12.5px", marginTop: "2px" }}>{selectedVisitDetail.symptoms}</div>
-                                </div>
-                            )}
-
-                            {selectedVisitDetail.prescription && (
-                                <div style={{ marginTop: "6px", padding: "10px", borderRadius: "8px", background: "#ECFDF5", border: "1px solid #A7F3D0" }}>
-                                    <strong style={{ color: "#065F46" }}>E-Prescription & Advice:</strong>
-                                    <div style={{ fontSize: "12.5px", marginTop: "2px", whiteSpace: "pre-wrap" }}>
-                                        {typeof selectedVisitDetail.prescription === "string"
-                                            ? selectedVisitDetail.prescription
-                                            : JSON.stringify(selectedVisitDetail.prescription, null, 2)}
+                        <div style={{
+                            background: "#FFFFFF",
+                            borderRadius: "20px",
+                            maxWidth: "700px",
+                            width: "100%",
+                            maxHeight: "92vh",
+                            boxShadow: "0 25px 60px -15px rgba(15, 23, 42, 0.4), 0 0 0 1px rgba(226, 232, 240, 0.8)",
+                            display: "flex",
+                            flexDirection: "column",
+                            overflow: "hidden",
+                        }}>
+                            {/* MODAL HEADER */}
+                            <div style={{
+                                padding: "18px 24px",
+                                borderBottom: "1.5px solid #E2E8F0",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                background: "linear-gradient(135deg, #F8FAFC 0%, #FFFFFF 100%)",
+                            }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                                    <div style={{
+                                        width: "42px",
+                                        height: "42px",
+                                        borderRadius: "12px",
+                                        background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                                        color: "#FFFFFF",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        fontWeight: 900,
+                                        fontSize: "22px",
+                                        fontFamily: "serif",
+                                        boxShadow: "0 4px 10px rgba(2, 132, 199, 0.3)",
+                                        flexShrink: 0,
+                                    }}>
+                                        ℞
+                                    </div>
+                                    <div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                            <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 900, color: "#0F172A", letterSpacing: "-0.2px" }}>
+                                                {isHi ? "मरीज़ क्लिनिकल परामर्श रिकॉर्ड" : "Clinical Consultation Record"}
+                                            </h3>
+                                            <span style={{
+                                                fontSize: "12px",
+                                                color: "#0284C7",
+                                                fontFamily: "monospace",
+                                                fontWeight: 800,
+                                                background: "#E0F2FE",
+                                                padding: "2px 8px",
+                                                borderRadius: "6px",
+                                                border: "1px solid #BAE6FD",
+                                            }}>
+                                                Token #{selectedVisitDetail.ticket_id || selectedVisitDetail.id}
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: "11.5px", color: "#64748B", marginTop: "2px" }}>
+                                            {hospName} • <span style={{ fontFamily: "monospace" }}>{tenantId}</span>
+                                        </div>
                                     </div>
                                 </div>
-                            )}
-                        </div>
 
-                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedVisitDetail(null)}
-                                style={{
-                                    padding: "8px 18px",
-                                    borderRadius: "8px",
-                                    background: "#0284C7",
-                                    color: "#FFFFFF",
-                                    border: "none",
-                                    fontSize: "12.5px",
-                                    fontWeight: 800,
-                                    cursor: "pointer",
-                                }}
-                            >
-                                Close
-                            </button>
+                                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                    {isMultiStage ? (
+                                        <span style={{
+                                            fontSize: "11px",
+                                            fontWeight: 800,
+                                            padding: "4px 10px",
+                                            borderRadius: "8px",
+                                            background: "#EFF6FF",
+                                            color: "#0284C7",
+                                            border: "1.5px solid #BAE6FD",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "5px",
+                                        }}>
+                                            <span>🔄</span>
+                                            <span>Multi-Dept Transfer ({stages.length} Stages)</span>
+                                        </span>
+                                    ) : (
+                                        <span style={{
+                                            fontSize: "11px",
+                                            fontWeight: 800,
+                                            padding: "4px 10px",
+                                            borderRadius: "8px",
+                                            background: isCompleted ? "#DEF7EC" : "#FEF3C7",
+                                            color: isCompleted ? "#03543F" : "#92400E",
+                                            border: `1.5px solid ${isCompleted ? "#A7F3D0" : "#FDE68A"}`,
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "5px",
+                                        }}>
+                                            <span>{isCompleted ? "✓" : "⏳"}</span>
+                                            <span style={{ textTransform: "capitalize" }}>{selectedVisitDetail.status || "Completed"}</span>
+                                        </span>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedVisitDetail(null)}
+                                        style={{
+                                            width: "32px",
+                                            height: "32px",
+                                            borderRadius: "50%",
+                                            background: "#F1F5F9",
+                                            border: "none",
+                                            cursor: "pointer",
+                                            color: "#64748B",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            transition: "background 0.15s ease",
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = "#E2E8F0"; e.currentTarget.style.color = "#0F172A"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = "#F1F5F9"; e.currentTarget.style.color = "#64748B"; }}
+                                    >
+                                        <IconX size={18} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* MODAL BODY (SCROLLABLE) */}
+                            <div style={{
+                                padding: "20px 24px",
+                                overflowY: "auto",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "16px",
+                            }}>
+                                {/* PATIENT DEMOGRAPHICS TILES */}
+                                <div style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                                    gap: "12px",
+                                    background: "#F8FAFC",
+                                    padding: "14px 16px",
+                                    borderRadius: "14px",
+                                    border: "1.5px solid #E2E8F0",
+                                }}>
+                                    <div>
+                                        <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                            {isHi ? "मरीज़ विवरण" : "Patient Demographics"}
+                                        </div>
+                                        <div style={{ fontSize: "14px", fontWeight: 900, color: "#0F172A", marginTop: "3px" }}>
+                                            {selectedVisitDetail.patient_name || "Patient"}
+                                        </div>
+                                        <div style={{ fontSize: "11.5px", color: "#64748B", marginTop: "2px" }}>
+                                            {selectedVisitDetail.age ? `${selectedVisitDetail.age} yrs` : "N/A"} • {selectedVisitDetail.gender || "male"} • Phone: {selectedVisitDetail.phone || "N/A"}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                            {isHi ? "विजिट विभाग व डॉक्टर" : "Department & Doctor"}
+                                        </div>
+                                        <div style={{ fontSize: "14px", fontWeight: 800, color: "#0284C7", marginTop: "3px" }}>
+                                            {selectedVisitDetail.department || "General OPD"}
+                                        </div>
+                                        <div style={{ fontSize: "11.5px", color: "#475569", marginTop: "2px", display: "flex", alignItems: "center", gap: "4px" }}>
+                                            <IconStethoscope size={12} color="#059669" />
+                                            <span>{selectedVisitDetail.doctor_name || "Attending Medical Officer"}</span>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                            {isHi ? "अवधि व समय" : "Duration & Date"}
+                                        </div>
+                                        <div style={{ fontSize: "13.5px", fontWeight: 800, color: "#0F172A", marginTop: "3px" }}>
+                                            ⏱️ {selectedVisitDetail.service_duration_minutes ? `${Number(selectedVisitDetail.service_duration_minutes).toFixed(1)} min` : "10 min"}
+                                        </div>
+                                        <div style={{ fontSize: "11px", color: "#64748B", marginTop: "2px" }}>
+                                            {selectedVisitDetail.created_at ? new Date(selectedVisitDetail.created_at).toLocaleString() : (selectedVisitDetail.queue_date || "Today")}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* MULTI-STAGE DEPARTMENT TRANSFER JOURNEY TIMELINE */}
+                                {isMultiStage && (
+                                    <div style={{
+                                        padding: "16px 18px",
+                                        borderRadius: "14px",
+                                        background: "linear-gradient(135deg, rgba(2, 132, 199, 0.04) 0%, rgba(14, 165, 233, 0.02) 100%)",
+                                        border: "1.5px solid #BAE6FD",
+                                    }}>
+                                        <div style={{
+                                            fontSize: "12.5px",
+                                            fontWeight: 900,
+                                            color: "#0369A1",
+                                            marginBottom: "14px",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "space-between",
+                                        }}>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                <span style={{ fontSize: "15px" }}>🔄</span>
+                                                <span>{isHi ? "स्थानांतरण परामर्श यात्रा (मल्टी-डिपार्टमेंट टाइमलाइन)" : "Transfer Journey (Multi-Department Clinical Timeline)"}</span>
+                                            </div>
+                                            <span style={{
+                                                fontSize: "11px",
+                                                fontWeight: 800,
+                                                background: "#0284C7",
+                                                color: "#FFFFFF",
+                                                padding: "2px 8px",
+                                                borderRadius: "10px",
+                                            }}>
+                                                {stages.length} Stages
+                                            </span>
+                                        </div>
+
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "14px", position: "relative" }}>
+                                            {stages.map((stg, sIdx) => {
+                                                const isLatest = sIdx === stages.length - 1;
+                                                const parsed = parseClinicalRecord(stg.notes);
+                                                const isTransferred = (stg.status || "").toLowerCase() === "transferred";
+                                                const stageMeds = Array.isArray(parsed?.medicines) ? parsed.medicines : [];
+
+                                                return (
+                                                    <div key={sIdx} style={{ display: "flex", alignItems: "flex-start", gap: "12px", position: "relative" }}>
+                                                        {/* Stage Step Icon / Connector */}
+                                                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                                                            <div style={{
+                                                                width: "28px",
+                                                                height: "28px",
+                                                                borderRadius: "50%",
+                                                                background: isLatest ? "#0284C7" : "#0369A1",
+                                                                color: "#FFFFFF",
+                                                                fontSize: "12px",
+                                                                fontWeight: 900,
+                                                                display: "flex",
+                                                                alignItems: "center",
+                                                                justifyContent: "center",
+                                                                boxShadow: isLatest ? "0 0 0 4px rgba(2, 132, 199, 0.2)" : "none",
+                                                            }}>
+                                                                {stg.stage_number || sIdx + 1}
+                                                            </div>
+                                                            {sIdx < stages.length - 1 && (
+                                                                <div style={{
+                                                                    width: "2px",
+                                                                    flexGrow: 1,
+                                                                    minHeight: "36px",
+                                                                    background: "#BAE6FD",
+                                                                    marginTop: "4px",
+                                                                }} />
+                                                            )}
+                                                        </div>
+
+                                                        {/* Stage Body Card */}
+                                                        <div style={{
+                                                            flex: 1,
+                                                            minWidth: 0,
+                                                            background: "#FFFFFF",
+                                                            padding: "12px 14px",
+                                                            borderRadius: "12px",
+                                                            border: "1.5px solid #E2E8F0",
+                                                            boxShadow: "0 2px 5px rgba(0,0,0,0.03)",
+                                                            display: "flex",
+                                                            flexDirection: "column",
+                                                            gap: "8px",
+                                                        }}>
+                                                            {/* Stage Title Header */}
+                                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+                                                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                                    <strong style={{ color: "#0F172A", fontSize: "13.5px", fontWeight: 800 }}>
+                                                                        {stg.department}
+                                                                    </strong>
+                                                                    <span style={{ fontSize: "11px", color: "#0284C7", fontFamily: "monospace", fontWeight: 700 }}>
+                                                                        Ticket: {stg.ticket_id}
+                                                                    </span>
+                                                                    {stg.duration_minutes ? (
+                                                                        <span style={{ fontSize: "11px", color: "#64748B" }}>
+                                                                            • ~{stg.duration_minutes}m
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
+
+                                                                <span style={{
+                                                                    fontSize: "10.5px",
+                                                                    fontWeight: 800,
+                                                                    padding: "2px 8px",
+                                                                    borderRadius: "6px",
+                                                                    background: isTransferred ? "#FEF3C7" : "#DEF7EC",
+                                                                    color: isTransferred ? "#92400E" : "#03543F",
+                                                                    border: `1px solid ${isTransferred ? "#FDE68A" : "#A7F3D0"}`,
+                                                                    textTransform: "uppercase",
+                                                                }}>
+                                                                    {stg.status}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Doctor Badge */}
+                                                            <div style={{ fontSize: "12px", color: "#475569", display: "flex", alignItems: "center", gap: "6px" }}>
+                                                                <IconStethoscope size={13} color="#0284C7" />
+                                                                <span style={{ fontWeight: 700, color: "#0F172A" }}>
+                                                                    {parsed?.doctor_name || "Attending Medical Officer"}
+                                                                </span>
+                                                                {parsed?.doctor_employee_id && (
+                                                                    <span style={{ fontSize: "10.5px", color: "#64748B", background: "#F1F5F9", padding: "1px 6px", borderRadius: "4px" }}>
+                                                                        {parsed.doctor_employee_id}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* Diagnosis */}
+                                                            {parsed?.diagnosis && (
+                                                                <div style={{
+                                                                    fontSize: "12px",
+                                                                    background: "#F0FDF4",
+                                                                    border: "1px solid #BBF7D0",
+                                                                    padding: "6px 10px",
+                                                                    borderRadius: "8px",
+                                                                    color: "#166534",
+                                                                    display: "flex",
+                                                                    alignItems: "center",
+                                                                    gap: "6px",
+                                                                }}>
+                                                                    <strong>📋 Diagnosis:</strong>
+                                                                    <span>{parsed.diagnosis}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Prescribed Medicines (if any) */}
+                                                            {stageMeds.length > 0 && (
+                                                                <div style={{ marginTop: "2px" }}>
+                                                                    <div style={{ fontSize: "11px", fontWeight: 800, color: "#475569", textTransform: "uppercase", marginBottom: "4px" }}>
+                                                                        ℞ Prescribed Medicines ({stageMeds.length}):
+                                                                    </div>
+                                                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                                                                        {stageMeds.map((med, mIdx) => (
+                                                                            <span key={mIdx} style={{
+                                                                                fontSize: "11.5px",
+                                                                                padding: "4px 8px",
+                                                                                borderRadius: "6px",
+                                                                                background: "#EFF6FF",
+                                                                                color: "#1E40AF",
+                                                                                border: "1px solid #BFDBFE",
+                                                                                display: "inline-flex",
+                                                                                alignItems: "center",
+                                                                                gap: "4px",
+                                                                            }}>
+                                                                                <strong>{med.name}</strong>
+                                                                                {med.dosage && <span>• {med.dosage}</span>}
+                                                                                {med.frequency && <span style={{ color: "#0284C7" }}>[{med.frequency}]</span>}
+                                                                                {med.duration && <span>({med.duration})</span>}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Lab tests */}
+                                                            {parsed?.lab_tests && parsed.lab_tests !== "no" && (
+                                                                <div style={{ fontSize: "11.5px", color: "#0369A1", background: "#F0F9FF", padding: "5px 9px", borderRadius: "6px", border: "1px solid #BAE6FD" }}>
+                                                                    <strong>🧪 Investigations / Lab:</strong> {parsed.lab_tests}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Doctor's Advice */}
+                                                            {parsed?.advice && parsed.advice.trim() && (
+                                                                <div style={{ fontSize: "11.5px", color: "#166534", background: "#F0FDF4", padding: "5px 9px", borderRadius: "6px", border: "1px solid #BBF7D0" }}>
+                                                                    <strong>💡 Doctor's Advice:</strong> {parsed.advice}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Follow-up */}
+                                                            {parsed?.follow_up && (
+                                                                <div style={{ fontSize: "11.5px", color: "#64748B" }}>
+                                                                    <strong>🗓️ Follow-up:</strong> {parsed.follow_up}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Transfer Note / Target Department */}
+                                                            {(parsed?.target_department || parsed?.transfer_notes) && (
+                                                                <div style={{
+                                                                    fontSize: "11.5px",
+                                                                    color: "#92400E",
+                                                                    background: "#FFFBEB",
+                                                                    padding: "6px 9px",
+                                                                    borderRadius: "6px",
+                                                                    border: "1px solid #FDE68A",
+                                                                    display: "flex",
+                                                                    alignItems: "center",
+                                                                    gap: "6px",
+                                                                }}>
+                                                                    <span>➡️</span>
+                                                                    <span>
+                                                                        <strong>Transferred to:</strong> {parsed.target_department || "Next Department"}
+                                                                        {parsed.transfer_notes ? ` • Note: "${parsed.transfer_notes}"` : ""}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Unparsed Plain Text Notes */}
+                                                            {parsed?.rawText && !parsed?.doctor_name && (
+                                                                <div style={{ fontSize: "11.5px", color: "#334155", background: "#F8FAFC", padding: "6px 9px", borderRadius: "6px", border: "1px solid #E2E8F0" }}>
+                                                                    <strong>Notes:</strong> {parsed.rawText}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* SYMPTOMS / TRIAGE NOTES */}
+                                {selectedVisitDetail.symptoms && (
+                                    <div style={{
+                                        padding: "12px 14px",
+                                        borderRadius: "12px",
+                                        background: "#F8FAFC",
+                                        border: "1.5px solid #E2E8F0",
+                                    }}>
+                                        <div style={{ fontSize: "11px", fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
+                                            Symptoms / Triage Chief Complaints:
+                                        </div>
+                                        <div style={{ fontSize: "13px", color: "#0F172A", fontWeight: 600 }}>
+                                            {selectedVisitDetail.symptoms}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* STANDALONE PRESCRIPTION (WHEN NOT A MULTI-STAGE TRANSFER OR TOP-LEVEL RX) */}
+                                {!isMultiStage && selectedVisitDetail.prescription && (() => {
+                                    const parsedRx = parseClinicalRecord(selectedVisitDetail.prescription);
+                                    const rxMeds = Array.isArray(parsedRx?.medicines) ? parsedRx.medicines : [];
+                                    return (
+                                        <div style={{
+                                            padding: "14px 16px",
+                                            borderRadius: "14px",
+                                            background: "#F0FDF4",
+                                            border: "1.5px solid #BBF7D0",
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            gap: "8px",
+                                        }}>
+                                            <div style={{ fontSize: "12.5px", fontWeight: 900, color: "#166534", display: "flex", alignItems: "center", gap: "6px" }}>
+                                                <span>℞</span>
+                                                <span>Clinical E-Prescription & Care Plan</span>
+                                            </div>
+
+                                            {parsedRx?.diagnosis && (
+                                                <div style={{ fontSize: "12.5px", color: "#15803D" }}>
+                                                    <strong>Diagnosis:</strong> {parsedRx.diagnosis}
+                                                </div>
+                                            )}
+
+                                            {rxMeds.length > 0 && (
+                                                <div>
+                                                    <div style={{ fontSize: "11px", fontWeight: 800, color: "#166534", textTransform: "uppercase", marginBottom: "4px" }}>
+                                                        Prescribed Medications:
+                                                    </div>
+                                                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                                                        {rxMeds.map((med, idx) => (
+                                                            <span key={idx} style={{
+                                                                fontSize: "11.5px",
+                                                                padding: "4px 8px",
+                                                                borderRadius: "6px",
+                                                                background: "#DCFCE7",
+                                                                color: "#166534",
+                                                                border: "1px solid #86EFAC",
+                                                                fontWeight: 700,
+                                                            }}>
+                                                                {med.name} {med.dosage ? `• ${med.dosage}` : ""} {med.frequency ? `[${med.frequency}]` : ""}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {parsedRx?.advice && (
+                                                <div style={{ fontSize: "12px", color: "#166534" }}>
+                                                    <strong>Advice:</strong> {parsedRx.advice}
+                                                </div>
+                                            )}
+
+                                            {parsedRx?.rawText && !parsedRx?.diagnosis && (
+                                                <div style={{ fontSize: "12.5px", color: "#166534", whiteSpace: "pre-wrap" }}>
+                                                    {parsedRx.rawText}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* MODAL FOOTER WITH PRINT & DOWNLOAD ACTIONS */}
+                            <div style={{
+                                padding: "14px 24px",
+                                borderTop: "1.5px solid #E2E8F0",
+                                background: "#F8FAFC",
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                flexWrap: "wrap",
+                                gap: "10px",
+                            }}>
+                                <div style={{ fontSize: "11.5px", color: "#059669", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <IconCheckCircle size={14} color="#059669" />
+                                    <span>{isHi ? "प्रमाणित आउटपेशेंट ई-पर्ची" : "NABH Authenticated Clinical E-Slip"}</span>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => printPrescriptionSlip(slipExportData, isHi ? "hi" : "en", currentHosp)}
+                                        style={{
+                                            padding: "8px 14px",
+                                            borderRadius: "9px",
+                                            background: "#FFFFFF",
+                                            color: "#0284C7",
+                                            border: "1.5px solid #BAE6FD",
+                                            fontSize: "12.5px",
+                                            fontWeight: 800,
+                                            cursor: "pointer",
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: "6px",
+                                            transition: "all 0.15s ease",
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = "#F0F9FF"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = "#FFFFFF"; }}
+                                        title="Print Official Clinical Prescription Slip"
+                                    >
+                                        <IconPrinter size={15} />
+                                        <span>{isHi ? "पर्ची प्रिंट करें" : "Print Slip"}</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => downloadPrescriptionPDF(slipExportData, isHi ? "hi" : "en", currentHosp)}
+                                        style={{
+                                            padding: "8px 14px",
+                                            borderRadius: "9px",
+                                            background: "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)",
+                                            color: "#FFFFFF",
+                                            border: "none",
+                                            fontSize: "12.5px",
+                                            fontWeight: 800,
+                                            cursor: "pointer",
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: "6px",
+                                            boxShadow: "0 2px 6px rgba(2, 132, 199, 0.25)",
+                                            transition: "all 0.15s ease",
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(1.08)"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.filter = "brightness(1)"; }}
+                                        title="Download PDF Clinical Prescription Slip"
+                                    >
+                                        <IconDownload size={15} />
+                                        <span>{isHi ? "PDF डाउनलोड" : "Download PDF"}</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedVisitDetail(null)}
+                                        style={{
+                                            padding: "8px 16px",
+                                            borderRadius: "9px",
+                                            background: "#E2E8F0",
+                                            color: "#334155",
+                                            border: "none",
+                                            fontSize: "12.5px",
+                                            fontWeight: 800,
+                                            cursor: "pointer",
+                                            transition: "background 0.15s ease",
+                                        }}
+                                        onMouseEnter={(e) => { e.currentTarget.style.background = "#CBD5E1"; }}
+                                        onMouseLeave={(e) => { e.currentTarget.style.background = "#E2E8F0"; }}
+                                    >
+                                        {isHi ? "बंद करें" : "Close"}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 }
